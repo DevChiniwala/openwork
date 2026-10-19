@@ -39,15 +39,28 @@ In **Settings → SSO**, choose **OIDC** and enter:
 | **Scopes** | `openid email profile` |
 | **Token endpoint auth method** | A method supported by this provider/client, such as `client_secret_post` or `client_secret_basic`; see the recipes |
 
-Leave **Skip discovery** unchecked for a normal setup. OpenWork discovers the
-authorization, token, and JWKS endpoints from the issuer's
+Leave **Use manual OIDC endpoints instead of discovery** unchecked for normal
+discovery. OpenWork discovers the authorization, token, and JWKS endpoints from the issuer's
 `/.well-known/openid-configuration` document. If discovery cannot be used, only
 enter manual endpoints from that document; do not substitute the authorize URL
 for the issuer. Save. The connection is still disabled.
 
+### Change identity provider
+
+After discovery, OpenWork saves the resolved endpoints as manual configuration.
+When you reopen an existing OIDC connection, **Use manual OIDC endpoints instead
+of discovery** can therefore be checked with the previous provider's endpoints
+still filled in. Changing **Issuer URL** alone does not clear those values.
+
+When switching providers, enter the new issuer and client credentials, **uncheck
+Use manual OIDC endpoints instead of discovery**, then save so OpenWork discovers
+the new provider's endpoints. Test the saved configuration again before enabling.
+Clearing endpoint fields alone does not turn discovery on: while the checkbox
+is checked, manual mode requires authorization, token and JWKS endpoints.
+
 ## 3. Register OpenWork's Redirect URL
 
-**Use exactly the Redirect URL OpenWork shows** after save. Register it in the
+**Copy the Redirect URL OpenWork shows** after save. Register it in the
 provider's callback field, using the mapping below. This is not the **Sign-in
 URL** (which starts an organization login) or SAML's **ACS URL**.
 
