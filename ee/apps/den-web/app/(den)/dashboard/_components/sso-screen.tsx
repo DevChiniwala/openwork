@@ -10,6 +10,7 @@ import { getRequestError, isReauthRequiredError, requestJson } from "../../_lib/
 import { getBillingRoute, getOrgAccessFlags, parseOrgSsoPayload, type DenOrgSsoConnection, permissionLockReason } from "../../_lib/den-org";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { EnterprisePlanNotice } from "./enterprise-plan-notice";
+import { SsoProviderValues } from "./sso-provider-values";
 
 function formatDateTime(value: string | null) {
   if (!value) return "Not configured";
@@ -596,7 +597,7 @@ export function SsoScreen() {
               </div>
               {connection && !editing ? (
                 <div className="flex flex-wrap gap-3">
-                  <DenButton variant="secondary" onClick={() => setEditing(true)} disabled={!access.canManageSso}>Edit connection</DenButton>
+                  <DenButton variant="secondary" onClick={() => { syncFormFromConnection(connection); setEditing(true); }} disabled={!access.canManageSso}>Edit connection</DenButton>
                   {connection.status === "enabled" ? (
                     <DenButton variant="secondary" onClick={() => void handleDisable()} disabled={disabling || !access.canManageSso}>{disabling ? "Disabling..." : "Disable SSO"}</DenButton>
                   ) : connection.testStatus === "succeeded" ? (
@@ -674,22 +675,7 @@ export function SsoScreen() {
                   </div>
                 )}
 
-                <div data-testid="sso-provider-setup" className="space-y-4">
-                  {[
-                    ["Sign-in URL", connection.signInUrl, "signin"],
-                    ["Redirect URL", connection.redirectUrl, "redirect"],
-                    ["ACS URL", connection.acsUrl, "acs"],
-                    ["Metadata URL", connection.metadataUrl, "metadata"],
-                  ].map(([label, value, key]) => (
-                    <div key={key as string} className="rounded-[20px] border border-gray-200 bg-gray-50 p-4">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p className="text-[13px] font-semibold uppercase tracking-[0.12em] text-gray-500">{label as string}</p>
-                        <DenButton variant="secondary" icon={Copy} onClick={() => void copyValue((value as string | null) ?? null, key as string)} disabled={!value}>{copiedValue === key ? "Copied" : "Copy"}</DenButton>
-                      </div>
-                      <code className="block break-all text-[13px] leading-6 text-gray-700">{(value as string | null) ?? "Not applicable"}</code>
-                    </div>
-                  ))}
-                </div>
+                <SsoProviderValues connection={connection} mode={formMode} onModeChange={setFormMode} copiedValue={copiedValue} onCopy={(value, key) => void copyValue(value, key)} />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-[20px] border border-gray-200 bg-gray-50 p-4 text-[14px] text-gray-700">
