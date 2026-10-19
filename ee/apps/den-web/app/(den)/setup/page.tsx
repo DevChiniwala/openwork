@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { MemberAuthGuard } from "../_components/member-auth-guard";
 import { AUTH_TOKEN_STORAGE_KEY, getErrorMessage, getToken, requestJson } from "../_lib/den-flow";
 import type { SetupBootstrapStatus } from "../_lib/member-auth-routing";
+import { SetupPasswordField } from "./password-field";
 
 type SetupStatus = SetupBootstrapStatus;
 type SetupStep = "verify" | "create";
@@ -196,17 +197,7 @@ export default function SetupPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <label className="den-label" htmlFor="setup-password">Password</label>
-                  <input
-                    id="setup-password"
-                    name="password"
-                    type="password"
-                    autoComplete="new-password"
-                    className="den-input"
-                    value={password}
-                    onChange={(event) => setPassword(event.currentTarget.value)}
-                    required
-                  />
+                  <SetupPasswordField value={password} onChange={setPassword} />
                 </div>
                 {error ? <p className="m-0 text-sm font-medium text-rose-600" role="alert">{error}</p> : null}
                 <button type="submit" className="den-button-primary" disabled={busy}>

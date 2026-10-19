@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
 import { setTimeout as delay } from "node:timers/promises";
 import { expect } from "vitest";
 import { chrome, server, setViewport, test } from "@openwork/testkit";
@@ -75,7 +77,9 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   const { connection: savedConnection } = parseOrgSsoPayload(await initial.json());
   if (!savedConnection) throw new Error("SSO registration did not return its configuration");
   expect(savedConnection.acsUrl).toContain("https://ow.ai.example.test/api/auth/sso/saml2/sp/acs/");
-  expect(savedConnection.redirectUrl).toContain("https://api-ow.ai.example.test/api/auth/sso/callback/");
+  // The form renders the API-provided value; the separate redirect-contract
+  // spec owns its host/runtime equality, so this UI-only branch composes with that fix.
+  expect(new URL(savedConnection.redirectUrl).pathname).toBe(`/api/auth/sso/callback/${encodeURIComponent(savedConnection.providerId)}`);
 
   await using browser = await chrome({ name: "sso-provider-values", headless: true, startUrl: den.ref.webUrl, host: place.host() });
   const client = browser.client;
@@ -122,6 +126,7 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   expect(form.labels[1]).toBe("IdP Issuer URL");
   expect(form.domain).toBe("example.test");
   expect(form.advancedOpen).toBe(false);
+  expect(await evaluate(client, () => document.body.innerText)).toContain('We recommend signing SAML assertions with SHA-256.');
   await click(client, 'summary', 'Advanced');
   expect(await evaluate(client, () => document.querySelector('details')?.textContent)).toContain('Leave blank to use OpenWork’s Entity ID (shown in the values to give your identity provider).');
   await setField(client, "Users' email domain", 'example.test,wrong.test');
@@ -137,6 +142,7 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   await click(client, 'p', 'Paste the values from your identity provider');
   await click(client, "button", "OIDC");
   await eventually(() => evaluate(client, () => document.body.innerText.includes("Client ID")), "unsaved OIDC form tab");
+  expect(await evaluate(client, () => document.body.innerText)).toContain("The issuer from your identity provider's OpenID configuration (not the authorize or token URL), e.g. https://login.microsoftonline.com/<tenant-id>/v2.0.");
   expect(await checkCopies()).toEqual(saml);
   expect(await evaluate(client, () => Boolean(document.querySelector('[data-sso-value="redirect"]')))).toBe(false);
   const afterSaml = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
@@ -210,4 +216,43 @@ test("multi-domain blur warning names only unmatched entries and remains after a
   expect(saved.status).toBe(200);
   expect(parseOrgSsoPayload(await saved.json()).connection?.domain).toBe("example.test,wrong.test");
   expect(await setupPrecedesVerification(client)).toBe(true);
+});
+
+test("initial administrator setup shows the shared password policy and natively caps typed input at its maximum", async ({ place }) => {
+  const code = randomUUID();
+  await using den = await server({ place, provision: false, web: true, env: {
+    DEN_ORG_MODE: 'single_org', DEN_SINGLE_ORG_OWNER_EMAILS: 'admin@example.test',
+    DEN_SINGLE_ORG_ALLOW_PUBLIC_SIGNUP: 'false', DEN_INITIAL_ADMIN_BOOTSTRAP_CODE: code,
+  } });
+  await using browser = await chrome({ name: 'setup-password-policy', headless: true, startUrl: den.ref.webUrl, host: place.host() });
+  const client = browser.client;
+  await setViewport(browser, { width: 1440, height: 1000, deviceScaleFactor: 1 });
+  await navigate(client, `${den.ref.webUrl}/setup`);
+  await eventually(() => evaluate(client, () => Boolean(document.querySelector('#setup-email'))), 'bootstrap verification form');
+  await callFunction(client, (code) => {
+    for (const [id, value] of [['setup-email', 'admin@example.test'], ['setup-code', code]]) {
+      const input = document.getElementById(id);
+      if (!(input instanceof HTMLInputElement)) throw new Error('Missing setup verification input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }, [code]);
+  await click(client, 'button', 'Continue');
+  await eventually(() => evaluate(client, () => Boolean(document.querySelector('#setup-password'))), 'administrator password form');
+  const policy = await evaluate(client, () => {
+    const input = document.querySelector('#setup-password');
+    if (!(input instanceof HTMLInputElement)) throw new Error('Missing setup password field');
+    return { min: input.minLength, max: input.maxLength, hint: document.querySelector('#setup-password-policy')?.textContent, describedBy: input.getAttribute('aria-describedby') };
+  });
+  expect(policy.min).toBe(MIN_PASSWORD_LENGTH);
+  expect(policy.max).toBe(MAX_PASSWORD_LENGTH);
+  expect(policy.hint).toContain(`Use ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters.`);
+  expect(policy.describedBy).toBe('setup-password-policy');
+  await click(client, '#setup-password');
+  await client.send('Input.insertText', { text: 'x'.repeat(MAX_PASSWORD_LENGTH + 1) });
+  expect(await evaluate(client, () => document.querySelector<HTMLInputElement>('#setup-password')?.value.length)).toBe(MAX_PASSWORD_LENGTH);
+  const status = await fetch(`${den.ref.apiUrl}/v1/auth/bootstrap/status`);
+  expect(status.status).toBe(200);
+  const payload: unknown = await status.json();
+  expect(payload).toMatchObject({ status: 'available' });
 });

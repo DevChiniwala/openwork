@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto"
+import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@openwork/types/den/password-policy"
 import { eq } from "@openwork-ee/den-db/drizzle"
 import { RateLimitTable } from "@openwork-ee/den-db/schema"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
@@ -8,12 +9,12 @@ import { dictionary as englishPasswordDictionary, translations as englishPasswor
 import { db } from "./db.js"
 import { env } from "./env.js"
 
+export { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@openwork/types/den/password-policy"
+
 export const EMAIL_PASSWORD_SIGN_IN_PATH = "/api/auth/sign-in/email"
 export const EMAIL_PASSWORD_SIGN_UP_PATH = "/api/auth/sign-up/email"
 export const CHANGE_PASSWORD_PATH = "/api/auth/change-password"
 export const RESET_PASSWORD_PATH = "/api/auth/reset-password"
-export const MIN_PASSWORD_LENGTH = 8
-export const MAX_PASSWORD_LENGTH = 32
 export const MIN_PASSWORD_STRENGTH_SCORE = 3
 export const LOGIN_LOCKOUT_FAILURE_THRESHOLD = 5
 export const LOGIN_LOCKOUT_FAILURE_WINDOW_MS = 60 * 60 * 1000

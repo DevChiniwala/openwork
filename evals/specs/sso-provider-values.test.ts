@@ -3,14 +3,18 @@ import { test } from "@openwork/testkit";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getSamlEntityId, getSsoSetupValues, SsoProviderValues } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-provider-values";
-import { getEmailDomain, getSsoDomainWarning, getSsoRequestError, SsoAdvancedAudience, SsoDomainField, SsoEnableWarning } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-form-guidance";
+import { getEmailDomain, getSsoDomainWarning, getSsoRequestError, SsoAdvancedAudience, SsoDomainField, SsoEnableWarning, SsoOidcIssuerHint, SsoSamlNotice } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-form-guidance";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
+import { SetupPasswordField } from "../../ee/apps/den-web/app/(den)/setup/password-field";
+import { ORGANIZATION_SAML_ALLOW_IDP_INITIATED } from "../../ee/apps/den-api/src/sso-saml-policy";
+import { isOrganizationSsoReady } from "../../ee/apps/den-api/src/sso-readiness";
 import type { DenOrgSsoConnection } from "../../ee/apps/den-web/app/(den)/_lib/den-org";
 
 const connection: DenOrgSsoConnection = {
   id: "example-sso", providerId: "example-provider", kind: "saml", issuer: "https://idp.example.test", domain: "example.test",
   status: "disabled", testStatus: "untested", testExpiresAt: null, signInPath: "/sso/example-workspace",
   signInUrl: "https://ow.ai.example.test/sso/example-workspace",
-  redirectUrl: "https://api-ow.ai.example.test/api/auth/sso/callback/example-provider",
+  redirectUrl: "https://ow.ai.example.test/api/auth/sso/callback/example-provider",
   acsUrl: "https://ow.ai.example.test/api/auth/sso/saml2/sp/acs/example-provider",
   metadataUrl: "https://ow.ai.example.test/api/auth/sso/saml2/sp/metadata?providerId=example-provider",
   domainVerified: true, domainVerificationHost: "_example", domainVerificationDnsName: "_example.example.test",
@@ -64,7 +68,7 @@ test("persisted custom audience is the Entity ID, never the API callback origin"
   const custom = { ...connection, saml: { entryPoint: null, audience: "https://audience.example.test/tenant", wantAssertionsSigned: true } };
   expect(getSamlEntityId(custom)).toBe("https://audience.example.test/tenant");
   expect(getSamlEntityId(connection)).toBe("https://ow.ai.example.test");
-  expect(getSamlEntityId(connection)).not.toBe(new URL(connection.redirectUrl).origin);
+  expect(getSamlEntityId(connection)).not.toBe("https://api-ow.ai.example.test");
 });
 
 test("missing or malformed ACS never invents an Entity ID or falls back to the API host", () => {
@@ -159,6 +163,35 @@ test("enable dialog warns that email/password sign-in stops, using the existing 
   const html = renderToStaticMarkup(createElement(SsoEnableWarning));
   expect(html).toContain("Once enabled, email and password sign-in stops for everyone in this workspace, including you. Keep this admin session open until you have signed in with SSO.");
   expect(html).toContain("mt-2 pr-8 text-[14px] leading-6 text-slate-600");
+});
+
+test("SAML notice recommends assertion signing without claiming response-only signatures always fail or forbidding IdP initiation", () => {
+  const html = renderToStaticMarkup(createElement(SsoSamlNotice));
+  expect(html).toContain('We recommend signing SAML assertions with SHA-256.');
+  expect(html).toContain('IdP-initiated sign-in for this workspace requires a verified, enabled SSO connection.');
+  expect(html).not.toMatch(/always requires|SP-initiated responses|response-only.*fail/);
+  expect(ORGANIZATION_SAML_ALLOW_IDP_INITIATED).toBe(true);
+  expect(isOrganizationSsoReady({ connection: { status: 'enabled' }, provider: { domainVerified: true } })).toBe(true);
+  expect(isOrganizationSsoReady({ connection: { status: 'disabled' }, provider: { domainVerified: true } })).toBe(false);
+  expect(isOrganizationSsoReady({ connection: { status: 'enabled' }, provider: { domainVerified: false } })).toBe(false);
+});
+
+test("OIDC issuer guidance distinguishes discovery issuer from authorize and token endpoints", () => {
+  const html = renderToStaticMarkup(createElement(SsoOidcIssuerHint));
+  expect(html).toContain('OpenID configuration (not the authorize or token URL)');
+  expect(html).toContain('https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0.');
+  expect(html).toContain('mt-1 block text-[12px] text-gray-500');
+});
+
+test("setup password input and visible hint use the same 8–32 length policy as server validation", () => {
+  const html = renderToStaticMarkup(createElement(SetupPasswordField, { value: '', onChange: () => {} }));
+  expect(MIN_PASSWORD_LENGTH).toBe(8);
+  expect(MAX_PASSWORD_LENGTH).toBe(32);
+  expect(html).toMatch(new RegExp(`minlength="${MIN_PASSWORD_LENGTH}"`, 'i'));
+  expect(html).toMatch(new RegExp(`maxlength="${MAX_PASSWORD_LENGTH}"`, 'i'));
+  expect(html).toContain(`Use ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters.`);
+  expect(html).toContain('aria-describedby="setup-password-policy"');
+  expect(html).toContain('class="den-input"');
 });
 
 test("only a single_org_mode 409 receives the sign-out/sign-in recovery text", () => {

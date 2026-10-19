@@ -57,6 +57,14 @@ export function SsoAdvancedAudience({ value, onChange, disabled }: { value: stri
   );
 }
 
+export function SsoSamlNotice() {
+  return <div className="rounded-[18px] border border-gray-200 px-4 py-3 text-[14px] leading-6 text-gray-600 md:col-span-2">We recommend signing SAML assertions with SHA-256. IdP-initiated sign-in for this workspace requires a verified, enabled SSO connection.</div>;
+}
+
+export function SsoOidcIssuerHint() {
+  return <span className="mt-1 block text-[12px] text-gray-500">The issuer from your identity provider&apos;s OpenID configuration (not the authorize or token URL), e.g. https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0.</span>;
+}
+
 export function SsoEnableWarning() {
   return <p className="mt-2 pr-8 text-[14px] leading-6 text-slate-600">Once enabled, email and password sign-in stops for everyone in this workspace, including you. Keep this admin session open until you have signed in with SSO.</p>;
 }

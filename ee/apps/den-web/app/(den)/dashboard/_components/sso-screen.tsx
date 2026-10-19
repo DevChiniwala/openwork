@@ -11,7 +11,7 @@ import { getBillingRoute, getOrgAccessFlags, parseOrgSsoPayload, type DenOrgSsoC
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { EnterprisePlanNotice } from "./enterprise-plan-notice";
 import { SsoProviderValues } from "./sso-provider-values";
-import { getEmailDomain, getSsoDomainWarning, getSsoRequestError, SsoAdvancedAudience, SsoDomainField, SsoEnableWarning } from "./sso-form-guidance";
+import { getEmailDomain, getSsoDomainWarning, getSsoRequestError, SsoAdvancedAudience, SsoDomainField, SsoEnableWarning, SsoOidcIssuerHint, SsoSamlNotice } from "./sso-form-guidance";
 
 function formatDateTime(value: string | null) {
   if (!value) return "Not configured";
@@ -524,7 +524,7 @@ export function SsoScreen() {
                 <label className="block text-[14px] text-gray-700">
                   <span className="mb-2 block font-medium">{formMode === "saml" ? "IdP Issuer URL" : "Issuer URL"}</span>
                   <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="https://idp.example.com" disabled={ssoFormDisabled} />
-                  {formMode === "saml" ? <span className="mt-1 block text-[12px] text-gray-500">Also called Identifier, Entity ID or Issuer in your identity provider.</span> : null}
+                  {formMode === "saml" ? <span className="mt-1 block text-[12px] text-gray-500">Also called Identifier, Entity ID or Issuer in your identity provider.</span> : <SsoOidcIssuerHint />}
                 </label>
                 {formMode === "saml" ? (
                   <>
@@ -540,9 +540,7 @@ export function SsoScreen() {
                       <span className="mt-1 block text-[12px] text-gray-500">Certificates are not returned after save; enter a replacement only when editing.</span>
                     </label>
                     <SsoAdvancedAudience value={audience} onChange={setAudience} disabled={ssoFormDisabled} />
-                    <div className="rounded-[18px] border border-gray-200 px-4 py-3 text-[14px] leading-6 text-gray-600 md:col-span-2">
-                      OpenWork always requires signed SAML assertions, timestamps, and SP-initiated responses for organization SAML connections.
-                    </div>
+                    <SsoSamlNotice />
                   </>
                 ) : (
                   <>
