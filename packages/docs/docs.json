@@ -245,6 +245,7 @@
           {
             "group": "SSO and SCIM",
             "pages": [
+              "cloud/sso-oidc",
               "cloud/sso-google-workspace",
               "cloud/scim-google-workspace",
               "cloud/sso-okta",

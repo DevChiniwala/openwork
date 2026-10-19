@@ -19,11 +19,12 @@ You need:
   OpenWork asks you to verify it.
 - A recovery plan prepared **before** enabling SSO; see [Recovery](#recovery).
 
-In the Entra admin center, open **Entra ID → Enterprise apps** and create a
-non-gallery application for OpenWork. Select **Single sign-on → SAML**. Keep
-Entra and OpenWork **Settings → SSO** open in separate tabs. A saved OpenWork
-configuration stays disabled until domain verification, a real authentication
-test, and explicit enablement are complete.
+Creating an ordinary app registration does not establish permission to create
+or manage a non-gallery enterprise application. Confirm those Entra rights
+before starting. Keep Entra and OpenWork open in separate tabs.
+
+A saved OpenWork configuration stays disabled until domain verification, a real
+authentication test, and explicit enablement are complete.
 
 <Note>
 For self-hosted deployments, use the URLs shown in **Settings → SSO**. SAML uses
@@ -31,11 +32,35 @@ the OpenWork web/auth origin, for example `https://ow.ai.example.test`, never
 the separate API host. Keep `/api/auth` reachable through that web/auth origin.
 </Note>
 
+## Setup order
+
+Follow these steps in order. The mapping tables below are **reference**, not a
+second sequence of setup steps.
+
+1. **Create the IdP app and pause.** In the Entra admin center, open **Entra ID →
+   Enterprise apps**, create a non-gallery application for OpenWork, and select
+   **Single sign-on → SAML**. Pause before completing **Basic SAML Configuration**.
+2. **Copy the IdP values.** Obtain **Microsoft Entra Identifier**, **Login URL**,
+   and the active **Certificate (Base64)** using the [Entra reference](#what-you-need-from-microsoft-entra).
+3. **Save in OpenWork.** Open **Settings → SSO**, choose **SAML**, enter those IdP
+   values and your users' email domain, leave **Audience URL** blank unless you
+   need an override, then save. SSO is still disabled.
+4. **Copy OpenWork's generated values back into Entra.** Edit **Basic SAML
+   Configuration** using the [OpenWork reference](#what-openwork-gives-you):
+   Entity ID → Identifier, ACS URL → Reply URL, Sign-in URL → Sign on URL. Save in Entra.
+5. **Configure claims, signing and assignment.** Follow [Claims and Name ID](#claims-and-name-id)
+   and [Assign users](#assign-users), including the same administrator who will test.
+6. **Verify the domain.** Follow [Set and verify the email domain](#set-and-verify-the-email-domain);
+   skip TXT only if OpenWork already shows the domain verified.
+7. **Test.** Complete [Test SSO](#test-sso) as the existing OpenWork administrator.
+8. **Enable.** Prepare [recovery](#recovery), then follow [Enable SSO](#enable-sso).
+   Do not treat saving or a successful test as enablement.
+
 ## What OpenWork gives you
 
-After saving the connection using the Entra values in the next section, copy
-these values into Entra **Basic SAML Configuration**. Newer OpenWork versions
-group them under **Give these values to your identity provider**.
+Reference for **step 4**, after the first OpenWork save: copy these generated
+values into Entra **Basic SAML Configuration**. Newer OpenWork versions group
+them under **Give these values to your identity provider**.
 
 | OpenWork value | Entra field | What to enter |
 | --- | --- | --- |
@@ -59,8 +84,8 @@ also display a Redirect URL card for SAML; do not copy it into Entra.
 
 ## What you need from Microsoft Entra
 
-Under **Set up** your application, copy the two URLs below. Under
-**SAML Certificates**, download the active **Certificate (Base64)**.
+Reference for **steps 2–3**: under **Set up** your application, copy the two
+URLs below. Under **SAML Certificates**, download the active **Certificate (Base64)**.
 
 In OpenWork **Settings → SSO**, choose **SAML** and enter:
 
@@ -99,9 +124,6 @@ Open **SAML Certificates** and edit the token signing certificate settings:
 
 - **Signing Option**: `Sign SAML assertion`
 - **Signing Algorithm**: `SHA-256`
-
-OpenWork requires signed SAML assertions. If Entra signs only the response, the
-callback fails with `saml_error` and `Invalid SAML response`.
 
 After a certificate change, copy the active certificate into OpenWork again.
 Entra can activate a new certificate while you edit settings. Save and retest
@@ -156,6 +178,16 @@ After assignments and domain verification are complete:
 Test links expire after five minutes. The test uses the saved provider and ACS
 URL, not a separate test ACS URL. If you edit the configuration, test it again.
 Do not enable SSO while a test is failing.
+
+After a failure, correct the cause and select **Try SSO login again** once.
+If the dialog still shows **Authentication test in progress**, finish the
+existing popup or wait for that test's five-minute expiry. Closing or reloading
+the administrator browser can leave that intent in progress until it expires.
+Do not click repeatedly or resave a configuration that already passed.
+
+OpenWork allows **IdP-initiated SAML** sign-in. Use OpenWork's built-in test
+above before enabling: launching an Entra tile alone does not record the
+required administrator test result.
 
 ## Enable SSO
 
@@ -230,7 +262,7 @@ Do not repeatedly submit a failing login.
 | `For security, confirm it's you before changing workspace settings.` / `fresh_auth_required` | The two-hour privileged-session window ended. Re-authenticate before changing SSO; if SSO is broken, use the pre-created authorized organization API key. |
 | HTTP `429` | Stop retries and honor `Retry-After` when present. Production auth defaults to 20 requests per 60 seconds; email/password sign-in is limited to 5 requests per 5 minutes and can also have failed-password lockouts. Do not confuse the password limit with the SSO test's five-minute expiry. |
 | `This deployment uses organization SSO. Continue with SSO to sign in.` | Password sign-in is blocked in single-organization mode, including for the owner. Use the organization **Sign-in URL**, or an existing recovery path to disable SSO. |
-| `unsolicited_response` / `IdP-initiated SSO not allowed` | An older version rejects IdP-initiated SAML. Upgrade, or start from OpenWork's organization **Sign-in URL**. |
+| `unsolicited_response` / `IdP-initiated SSO not allowed` | Current OpenWork SAML policy allows IdP-initiated sign-in. Check the running version and provider configuration rather than assuming all IdP-initiated responses are rejected; start from OpenWork's organization **Sign-in URL** while diagnosing. |
 
 For Entra's field definitions, see Microsoft's
 [SAML setup guide](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/add-application-portal-setup-sso),

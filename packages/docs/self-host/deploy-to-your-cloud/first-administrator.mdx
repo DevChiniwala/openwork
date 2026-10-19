@@ -42,8 +42,12 @@ Then open `http://localhost:3005/setup` and continue with [Complete setup](#comp
 1. Wait until Den web, Den API, and the migration Job are healthy.
 2. Open `/setup` on the Den web hostname.
 3. Enter the configured administrator email and the one-time setup code.
-4. Choose the administrator's name and password.
-5. Confirm that OpenWork signs the administrator in and opens the singleton organization.
+4. Choose the administrator's name and a password of **8–32 characters**. The
+   maximum is **32 characters**, including for a generated password. Include
+   uppercase and lowercase letters, a number, and a special character; normal
+   password-strength and compromised-password checks still apply.
+5. Confirm that OpenWork opens the **installation/onboarding page** (`/install`)
+   with the administrator signed in to the singleton organization.
 
 The setup flow uses the existing Better Auth password and session protections. Successful setup creates the first account, creates or claims the singleton organization, grants the configured owner and platform-admin roles, and makes setup unavailable because the deployment now has a user.
 
@@ -65,6 +69,7 @@ Configure SAML or OIDC SSO for workforce access, test it as the existing owner,
 then configure SCIM if needed. For SAML, follow the
 [Microsoft Entra](/cloud/sso-microsoft-entra),
 [Google Workspace](/cloud/sso-google-workspace), or [Okta](/cloud/sso-okta) guide.
+For an OpenID Connect client, use the [OIDC SSO guide](/cloud/sso-oidc).
 Use the URLs shown in **Settings → SSO**: SAML's ACS URL uses the web/auth origin,
 not a separate API host. Set **Domain** (labelled **Users' email domain** in newer
 versions) to the part after `@` in the owner's and users' actual email addresses,
