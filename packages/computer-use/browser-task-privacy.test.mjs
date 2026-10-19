@@ -119,7 +119,9 @@ test("select options keep backing identities private and revalidate before choos
   }, new AbortController().signal);
   assert.equal(program.ok, true, JSON.stringify(program));
   assert.equal(select.value, "different-private-identity");
-  assert.equal(inputChecks, 2);
+  // Refs survive a layout change: the control is located again and the
+  // select goes through on the first input check, without a re-observation.
+  assert.equal(inputChecks, 1);
   assert.ok(!JSON.stringify(program).includes("private-identity"));
   options[0].value = "1"; options[0].label = "Plan 1";
   const publicLabel = await observe();
