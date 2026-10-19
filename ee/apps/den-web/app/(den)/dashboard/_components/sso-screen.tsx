@@ -597,7 +597,7 @@ export function SsoScreen() {
               </div>
               {connection && !editing ? (
                 <div className="flex flex-wrap gap-3">
-                  <DenButton variant="secondary" onClick={() => { syncFormFromConnection(connection); setEditing(true); }} disabled={!access.canManageSso}>Edit connection</DenButton>
+                  <DenButton variant="secondary" onClick={() => setEditing(true)} disabled={!access.canManageSso}>Edit connection</DenButton>
                   {connection.status === "enabled" ? (
                     <DenButton variant="secondary" onClick={() => void handleDisable()} disabled={disabling || !access.canManageSso}>{disabling ? "Disabling..." : "Disable SSO"}</DenButton>
                   ) : connection.testStatus === "succeeded" ? (
@@ -675,7 +675,7 @@ export function SsoScreen() {
                   </div>
                 )}
 
-                <SsoProviderValues connection={connection} mode={formMode} onModeChange={setFormMode} copiedValue={copiedValue} onCopy={(value, key) => void copyValue(value, key)} />
+                <SsoProviderValues connection={connection} copiedValue={copiedValue} onCopy={(value, key) => void copyValue(value, key)} />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-[20px] border border-gray-200 bg-gray-50 p-4 text-[14px] text-gray-700">

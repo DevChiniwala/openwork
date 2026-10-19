@@ -4,7 +4,6 @@ import { expect } from "vitest";
 import { chrome, server, setViewport, test } from "@openwork/testkit";
 import { callFunction, evaluate, navigate } from "@openwork/cdp";
 import type { CdpClient } from "@openwork/cdp";
-import { SAML_SETUP_DESIGN } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-provider-values";
 import { parseOrgSsoPayload } from "../../ee/apps/den-web/app/(den)/_lib/den-org";
 
 async function eventually(check: () => Promise<boolean>, label: string) {
@@ -16,19 +15,19 @@ async function eventually(check: () => Promise<boolean>, label: string) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-async function click(client: CdpClient, selector: string) {
-  const point = await callFunction(client, (selector) => {
-    const button = document.querySelector(selector);
+async function click(client: CdpClient, selector: string, text = "") {
+  const point = await callFunction(client, (selector, text) => {
+    const button = Array.from(document.querySelectorAll(selector)).find(button => !text || button.textContent?.trim() === text);
     if (!(button instanceof HTMLElement)) throw new Error(`Missing control: ${selector}`);
     button.scrollIntoView({ block: "center" });
     const rect = button.getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-  }, [selector]);
+  }, [selector, text]);
   await client.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point });
   await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point });
 }
 
-test("saved SAML setup switches labels and protocol without writes, and every Copy button copies its own value", async ({ place }) => {
+test("generic setup follows the saved protocol despite unsaved form tabs, and every Copy button copies its own value", async ({ place }) => {
   // Local placement was explicitly requested for this isolated UI comparison.
   // No published customer system or running desktop app is used.
   await using den = await server({
@@ -80,37 +79,47 @@ test("saved SAML setup switches labels and protocol without writes, and every Co
     }
     return rows;
   }
-  const entra = await checkCopies();
-  expect(entra.map(row => row.label)).toEqual(["Identifier (Entity ID)", "Reply URL (Assertion Consumer Service URL)", "Sign on URL", "Metadata URL"]);
-  expect(entra.map(row => row.value)).toEqual(["https://ow.ai.example.test", savedConnection.acsUrl, savedConnection.signInUrl, savedConnection.metadataUrl]);
-  expect(entra.some(row => row.value === savedConnection.redirectUrl)).toBe(false);
-  if (SAML_SETUP_DESIGN === "b") {
-    for (const idp of ["Okta", "Other SAML", "Microsoft Entra"]) {
-      await click(client, '[aria-label="SAML identity provider"]');
-      await eventually(() => evaluate(client, () => Boolean(document.querySelector('[role="listbox"]'))), "IdP picker");
-      const selector = await callFunction(client, name => {
-        const options = Array.from(document.querySelectorAll('[role="option"]'));
-        const option = options.find(option => option.textContent?.trim() === name);
-        if (!option) throw new Error("Missing IdP option");
-        return `[id="${option.id}"]`;
-      }, [idp]);
-      await click(client, selector);
-      await eventually(() => evaluate(client, () => !document.querySelector('[role="listbox"]')), "closed IdP picker");
-      const rows = await checkCopies();
-      expect(Object.fromEntries(rows.map(row => [row.key, row.value]))).toEqual(Object.fromEntries(entra.map(row => [row.key, row.value])));
-      if (idp === "Okta") expect(rows.map(row => row.label)).toEqual(["Single sign-on URL", "Audience URI (SP Entity ID)", "SP-initiated sign-in URL", "Metadata URL"]);
-      if (idp === "Other SAML") expect(rows.map(row => row.label)).toEqual(["SP Entity ID", "ACS URL", "SP-initiated sign-in URL", "Metadata URL"]);
-    }
-  }
-  await click(client, '[aria-label="Provider setup protocol"] button[aria-pressed="false"]');
-  await eventually(() => evaluate(client, () => Boolean(document.querySelector('[data-sso-value="redirect"]'))), "OIDC callback");
+  const saml = await checkCopies();
+  expect(saml.map(row => row.label)).toEqual(["Entity ID", "ACS URL", "Sign-in URL", "Metadata URL"]);
+  expect(saml.map(row => row.value)).toEqual(["https://ow.ai.example.test", savedConnection.acsUrl, savedConnection.signInUrl, savedConnection.metadataUrl]);
+  expect(saml.some(row => row.value === savedConnection.redirectUrl)).toBe(false);
+  expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.querySelectorAll('button').length)).toBe(4);
+  expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.textContent)).not.toMatch(/OIDC|Microsoft|Entra|Okta/);
+
+  await click(client, "button", "Edit connection");
+  await eventually(() => evaluate(client, () => document.body.innerText.includes("IdP Certificate")), "SAML form");
+  await click(client, "button", "OIDC");
+  await eventually(() => evaluate(client, () => document.body.innerText.includes("Client ID")), "unsaved OIDC form tab");
+  expect(await checkCopies()).toEqual(saml);
+  expect(await evaluate(client, () => Boolean(document.querySelector('[data-sso-value="redirect"]')))).toBe(false);
+  const afterSaml = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
+  expect(afterSaml.status).toBe(200);
+  expect(parseOrgSsoPayload(await afterSaml.json()).connection).toEqual(savedConnection);
+
+  // A different saved protocol, not an unsaved tab, is required to expose the callback.
+  const registeredOidc = await fetch(`${den.ref.apiUrl}/v1/sso/oidc`, {
+    method: "POST", headers,
+    body: JSON.stringify({ issuer: "https://idp.example.test/issuer", domain: "example.test", clientId: "example-client", clientSecret: "not-a-real-client-secret", skipDiscovery: true, authorizationEndpoint: "https://idp.example.test/authorize", tokenEndpoint: "https://idp.example.test/token", jwksEndpoint: "https://idp.example.test/jwks" }),
+  });
+  expect(registeredOidc.status).toBe(201);
+  const initialOidc = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
+  expect(initialOidc.status).toBe(200);
+  const { connection: savedOidc } = parseOrgSsoPayload(await initialOidc.json());
+  if (!savedOidc) throw new Error("OIDC registration did not return its configuration");
+  expect(savedOidc.kind).toBe("oidc");
+  await navigate(client, `${den.ref.webUrl}/dashboard/sso`);
+  await eventually(() => evaluate(client, () => Boolean(document.querySelector('[data-sso-value="redirect"]'))), "saved OIDC callback");
   const oidc = await checkCopies();
-  expect(oidc.map(row => [row.label, row.value])).toEqual([["Sign-in URL", savedConnection.signInUrl], ["Redirect URL", savedConnection.redirectUrl]]);
+  expect(oidc.map(row => [row.label, row.value])).toEqual([["Sign-in URL", savedOidc.signInUrl], ["Redirect URL", savedOidc.redirectUrl]]);
   expect(oidc.some(row => row.value === savedConnection.acsUrl)).toBe(false);
-  await click(client, '[aria-label="Provider setup protocol"] button[aria-pressed="false"]');
-  await eventually(() => evaluate(client, () => Boolean(document.querySelector('[data-sso-value="entity"]'))), "SAML restored");
-  expect(await readRows()).toEqual(entra);
-  const after = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
-  expect(after.status).toBe(200);
-  expect(parseOrgSsoPayload(await after.json()).connection).toEqual(savedConnection);
+  expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.textContent)).toContain("Also called Redirect URI or Callback URL.");
+  await click(client, "button", "Edit connection");
+  await eventually(() => evaluate(client, () => document.body.innerText.includes("Client ID")), "OIDC form");
+  await click(client, "button", "SAML");
+  await eventually(() => evaluate(client, () => document.body.innerText.includes("IdP Certificate")), "unsaved SAML form tab");
+  expect(await checkCopies()).toEqual(oidc);
+  expect(await evaluate(client, () => Boolean(document.querySelector('[data-sso-value="acs"]')))).toBe(false);
+  const afterOidc = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
+  expect(afterOidc.status).toBe(200);
+  expect(parseOrgSsoPayload(await afterOidc.json()).connection).toEqual(savedOidc);
 });

@@ -17,50 +17,49 @@ const connection: DenOrgSsoConnection = {
   lastTestedAt: null, lastError: null, createdAt: null, updatedAt: null,
 };
 
-for (const design of ["a", "b"] satisfies ("a" | "b")[]) {
-  test(`design ${design}: SAML omits the OIDC callback and renders four correctly paired Copy buttons`, () => {
-    const rows = getSsoSetupValues(connection, "saml", design, "entra");
-    expect(rows.map(row => row.key)).toEqual(["entity", "acs", "signin", "metadata"]);
-    expect(rows.map(row => row.value)).toEqual(["https://ow.ai.example.test", connection.acsUrl, connection.signInUrl, connection.metadataUrl]);
-    expect(rows.some(row => row.value === connection.redirectUrl)).toBe(false);
-    const html = renderToStaticMarkup(createElement(SsoProviderValues, { connection, mode: "saml", design, copiedValue: null, onModeChange: () => {}, onCopy: () => {} }));
-    expect(html).not.toContain(connection.redirectUrl);
-    expect(html.match(/aria-label="Copy /g)).toHaveLength(4);
-    for (const row of rows) expect(html).toContain(`aria-label="Copy ${row.label}"`);
-    expect(html).toContain("Use these values for SAML. The OIDC redirect URL is on the OIDC tab.");
-  });
-  test(`design ${design}: OIDC preserves Sign-in and Redirect URL, without SAML setup rows`, () => {
-    const rows = getSsoSetupValues(connection, "oidc", design, "entra");
-    expect(rows.map(row => [row.label, row.value])).toEqual([["Sign-in URL", connection.signInUrl], ["Redirect URL", connection.redirectUrl]]);
-    const html = renderToStaticMarkup(createElement(SsoProviderValues, { connection, mode: "oidc", design, copiedValue: null, onModeChange: () => {}, onCopy: () => {} }));
-    expect(html).toContain(connection.redirectUrl);
-    expect(html).not.toContain(connection.acsUrl);
-    expect(html).not.toContain("SAML identity provider");
-    expect(html.match(/aria-label="Copy /g)).toHaveLength(2);
-  });
+function render(saved: DenOrgSsoConnection, copiedValue: string | null = null) {
+  return renderToStaticMarkup(createElement(SsoProviderValues, { connection: saved, copiedValue, onCopy: () => {} }));
 }
 
-test("neutral design has the requested labels and Entra hints without a picker", () => {
-  const rows = getSsoSetupValues(connection, "saml", "a", "other");
-  expect(rows.map(row => row.label)).toEqual(["Identifier (Entity ID)", "Reply URL (Assertion Consumer Service URL)", "Sign on URL", "Metadata URL"]);
-  expect(rows[1].hint).toBe("Microsoft Entra: Basic SAML Configuration > Reply URL");
-  const html = renderToStaticMarkup(createElement(SsoProviderValues, { connection, mode: "saml", design: "a", copiedValue: null, onModeChange: () => {}, onCopy: () => {} }));
-  expect(html).not.toContain("SAML identity provider");
+test("saved SAML has four generic rows in order, exact synonym hints and correctly paired values", () => {
+  const rows = getSsoSetupValues(connection);
+  expect(rows.map(row => row.key)).toEqual(["entity", "acs", "signin", "metadata"]);
+  expect(rows.map(row => row.label)).toEqual(["Entity ID", "ACS URL", "Sign-in URL", "Metadata URL"]);
+  expect(rows.map(row => row.hint)).toEqual([
+    "Also called Identifier or Audience URI.",
+    "Also called Reply URL or Single sign-on URL. Use this exact value.",
+    "Optional. Starts sign-in from OpenWork.",
+    "For identity providers that can import service provider metadata.",
+  ]);
+  expect(rows.map(row => row.value)).toEqual(["https://ow.ai.example.test", connection.acsUrl, connection.signInUrl, connection.metadataUrl]);
+  expect(rows.some(row => row.value === connection.redirectUrl)).toBe(false);
 });
 
-test("picker labels match each IdP, while keys retain exactly the same values", () => {
-  const entra = getSsoSetupValues(connection, "saml", "b", "entra");
-  const okta = getSsoSetupValues(connection, "saml", "b", "okta");
-  const other = getSsoSetupValues(connection, "saml", "b", "other");
-  expect(okta.map(row => row.label)).toEqual(["Single sign-on URL", "Audience URI (SP Entity ID)", "SP-initiated sign-in URL", "Metadata URL"]);
-  expect(other.map(row => row.label)).toEqual(["SP Entity ID", "ACS URL", "SP-initiated sign-in URL", "Metadata URL"]);
-  expect(okta.find(row => row.key === "signin")?.hint).toContain("No equivalent Okta setup field verified.");
-  const valuesByKey = (rows: ReturnType<typeof getSsoSetupValues>) => Object.fromEntries(rows.map(row => [row.key, row.value]));
-  expect(valuesByKey(okta)).toEqual(valuesByKey(entra));
-  expect(valuesByKey(other)).toEqual(valuesByKey(entra));
+test("SAML setup exposes neither the callback nor a protocol switch, picker or vendor catalog", () => {
+  const html = render(connection);
+  expect(html).not.toContain(connection.redirectUrl);
+  expect(html).not.toContain("Redirect URL");
+  expect(html).not.toMatch(/OIDC|Microsoft|Entra|Okta|combobox|listbox|aria-pressed/);
+  expect(html.match(/<button/g)).toHaveLength(4);
+  expect(html.match(/aria-label="Copy /g)).toHaveLength(4);
+  for (const row of getSsoSetupValues(connection)) expect(html).toContain(`aria-label="Copy ${row.label}"`);
 });
 
-test("persisted custom audience is the Entity ID; unsaved field edits cannot change it", () => {
+test("saved OIDC alone exposes the original callback with neutral synonyms, even if stale SAML fields exist", () => {
+  const oidc: DenOrgSsoConnection = { ...connection, kind: "oidc" };
+  const rows = getSsoSetupValues(oidc);
+  expect(rows.map(row => [row.label, row.value])).toEqual([["Sign-in URL", connection.signInUrl], ["Redirect URL", connection.redirectUrl]]);
+  expect(rows[1].hint).toBe("Also called Redirect URI or Callback URL.");
+  const html = render(oidc);
+  expect(html).toContain(connection.redirectUrl);
+  expect(html).not.toContain(connection.acsUrl);
+  expect(html).not.toContain(connection.metadataUrl);
+  expect(html).not.toMatch(/Entity ID|ACS URL|Metadata URL|combobox|aria-pressed/);
+  expect(html.match(/aria-label="Copy /g)).toHaveLength(2);
+  expect(getSamlEntityId(oidc)).toBeNull();
+});
+
+test("persisted custom audience is the Entity ID, never the API callback origin", () => {
   const custom = { ...connection, saml: { entryPoint: null, audience: "https://audience.example.test/tenant", wantAssertionsSigned: true } };
   expect(getSamlEntityId(custom)).toBe("https://audience.example.test/tenant");
   expect(getSamlEntityId(connection)).toBe("https://ow.ai.example.test");
@@ -70,4 +69,20 @@ test("persisted custom audience is the Entity ID; unsaved field edits cannot cha
 test("missing or malformed ACS never invents an Entity ID or falls back to the API host", () => {
   expect(getSamlEntityId({ ...connection, acsUrl: null })).toBeNull();
   expect(getSamlEntityId({ ...connection, acsUrl: "not-a-url" })).toBeNull();
+});
+
+test("missing values disable their Copy buttons, while copied feedback stays paired with its row", () => {
+  const unavailable = render({ ...connection, acsUrl: null, metadataUrl: null });
+  expect(unavailable.match(/disabled=""/g)).toHaveLength(3);
+  const copied = render(connection, "acs");
+  expect(copied.match(/>Copied</g)).toHaveLength(1);
+  const acsButton = copied.match(/<button aria-label="Copy ACS URL"[\s\S]*?<\/button>/)?.[0];
+  expect(acsButton).toContain(">Copied<");
+});
+
+test("deriving and rendering setup values never changes the saved connection", () => {
+  const before = structuredClone(connection);
+  getSsoSetupValues(connection);
+  render(connection);
+  expect(connection).toEqual(before);
 });
