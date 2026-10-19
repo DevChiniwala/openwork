@@ -33,7 +33,7 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   await using den = await server({
     place, web: true,
     publicOrigins: { web: "https://ow.ai.example.test", api: "https://api-ow.ai.example.test" },
-    org: { name: "Example Workspace", admin: { name: "Example Admin", email: "admin@sso.example.test" }, members: {} },
+    org: { name: "Example Workspace", admin: { name: "Example Admin", email: "admin@example.test" }, members: {} },
   });
   const login = await fetch(`${den.ref.apiUrl}/api/auth/sign-in/email`, {
     method: "POST", headers: { "content-type": "application/json", origin: den.ref.webUrl },
@@ -45,7 +45,7 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   const cert = execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/dev/null", "-out", "/dev/stdout", "-days", "1", "-subj", "/CN=idp.example.test"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   const saved = await fetch(`${den.ref.apiUrl}/v1/sso/saml`, {
     method: "POST", headers,
-    body: JSON.stringify({ issuer: "https://idp.example.test/issuer", domain: "example.test", entryPoint: "https://idp.example.test/sso", cert }),
+    body: JSON.stringify({ issuer: "https://sts.windows.net/00000000-0000-0000-0000-000000000001/", domain: "example.test", entryPoint: "https://idp.example.test/sso", cert }),
   });
   expect(saved.status).toBe(201);
   // Registration also requests a domain token after taking its response snapshot.
@@ -80,14 +80,27 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
     return rows;
   }
   const saml = await checkCopies();
-  expect(saml.map(row => row.label)).toEqual(["Entity ID", "ACS URL", "Sign-in URL", "Metadata URL"]);
+  expect(saml.map(row => row.label)).toEqual(["Entity ID", "ACS URL (Reply URL)", "Sign-in URL", "Metadata URL"]);
   expect(saml.map(row => row.value)).toEqual(["https://ow.ai.example.test", savedConnection.acsUrl, savedConnection.signInUrl, savedConnection.metadataUrl]);
   expect(saml.some(row => row.value === savedConnection.redirectUrl)).toBe(false);
   expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.querySelectorAll('button').length)).toBe(4);
   expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.textContent)).not.toMatch(/OIDC|Microsoft|Entra|Okta/);
 
+  await click(client, "button", "Enable Config");
+  await eventually(() => evaluate(client, () => Boolean(document.querySelector('[data-testid="sso-test-dialog"]'))), "enable dialog");
+  expect(await evaluate(client, () => document.querySelector('[data-testid="sso-test-dialog"]')?.textContent)).toContain("Once enabled, email and password sign-in stops for everyone in this workspace, including you. Keep this admin session open until you have signed in with SSO.");
+  await click(client, "button", "Close");
   await click(client, "button", "Edit connection");
   await eventually(() => evaluate(client, () => document.body.innerText.includes("IdP Certificate")), "SAML form");
+  const form = await evaluate(client, () => ({
+    labels: Array.from(document.querySelectorAll('label')).map(label => label.querySelector('span')?.textContent),
+    advancedOpen: document.querySelector('details')?.open,
+    domain: Array.from(document.querySelectorAll('label')).find(label => label.querySelector('span')?.textContent === "Users' email domain")?.querySelector('input')?.value,
+  }));
+  expect(form.labels[0]).toBe("Users' email domain");
+  expect(form.labels[1]).toBe("IdP Issuer URL");
+  expect(form.domain).toBe("example.test");
+  expect(form.advancedOpen).toBe(false);
   await click(client, "button", "OIDC");
   await eventually(() => evaluate(client, () => document.body.innerText.includes("Client ID")), "unsaved OIDC form tab");
   expect(await checkCopies()).toEqual(saml);
@@ -112,7 +125,7 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   const oidc = await checkCopies();
   expect(oidc.map(row => [row.label, row.value])).toEqual([["Sign-in URL", savedOidc.signInUrl], ["Redirect URL", savedOidc.redirectUrl]]);
   expect(oidc.some(row => row.value === savedConnection.acsUrl)).toBe(false);
-  expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.textContent)).toContain("Also called Redirect URI or Callback URL.");
+  expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.textContent)).toContain("Also called Redirect URI.");
   await click(client, "button", "Edit connection");
   await eventually(() => evaluate(client, () => document.body.innerText.includes("Client ID")), "OIDC form");
   await click(client, "button", "SAML");
