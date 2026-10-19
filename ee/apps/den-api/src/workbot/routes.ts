@@ -514,7 +514,11 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         headers.set("content-type", "application/json")
       }
       const response = await app.fetch(new Request(new URL(`${inner}${url.search}`, "http://den-api.local"), { method: c.req.method, headers, body }))
-      return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff", ...(editor?.[1] === "content" ? { "content-security-policy": "default-src 'none'; sandbox" } : {}) } })
+      // Den reports a Google refusal (for example a Google API turned off for the
+      // connector) as 502. The tunnel in front of Den replaces 502 bodies with its
+      // own page, so Workbot lost the reason. 424 carries the same body intact.
+      const status = response.status === 502 ? 424 : response.status
+      return new Response(response.body, { status, headers: { "content-type": response.headers.get("content-type") ?? "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff", ...(editor?.[1] === "content" ? { "content-security-policy": "default-src 'none'; sandbox" } : {}) } })
     },
   )
 
