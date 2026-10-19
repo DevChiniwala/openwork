@@ -9,18 +9,21 @@ export function getEmailDomain(email: string | null | undefined): string | null 
 }
 
 export function getSsoDomainWarning(domain: string, issuer: string, adminEmails: string[]): string | null {
-  const normalized = domain.trim().toLowerCase();
-  const knownDomains = adminEmails.map(getEmailDomain).filter(value => value !== null);
-  if (!normalized || knownDomains.includes(normalized)) return null;
+  const domains = [...new Set(domain.split(",").map(value => value.trim().toLowerCase()).filter(Boolean))];
+  if (domains.length === 0) return null;
+  const knownDomains = adminEmails.map(getEmailDomain).filter((value): value is string => value !== null);
   if (knownDomains.length > 0) {
-    return `The connection was saved, but no workspace owner or admin email uses ${normalized}. Check that this is your users' email domain before enabling SSO.`;
+    const unmatched = domains.filter(entry => !knownDomains.some(known => known === entry || known.endsWith(`.${entry}`)));
+    return unmatched.length > 0
+      ? `No workspace owner or admin email matches ${unmatched.join(", ")}. Check your users' email domains before enabling SSO.`
+      : null;
   }
   let issuerHost: string | null = null;
   try { issuerHost = new URL(issuer).hostname.toLowerCase(); } catch { /* An invalid issuer is handled by the existing save validation. */ }
-  if (normalized.endsWith(".onmicrosoft.com") || (issuerHost && normalized.includes(issuerHost))) {
-    return `The connection was saved, but ${normalized} looks like an identity provider domain. Check that this is your users' email domain before enabling SSO.`;
-  }
-  return null;
+  const suspicious = domains.filter(entry => entry.endsWith(".onmicrosoft.com") || (issuerHost && entry.includes(issuerHost)));
+  return suspicious.length > 0
+    ? `These entries look like identity provider domains: ${suspicious.join(", ")}. Check your users' email domains before enabling SSO.`
+    : null;
 }
 
 export function getSsoRequestError(payload: unknown, response: Response, fallback: string) {
@@ -31,11 +34,11 @@ export function getSsoRequestError(payload: unknown, response: Response, fallbac
   return error;
 }
 
-export function SsoDomainField({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled: boolean }) {
+export function SsoDomainField({ value, onChange, onBlur, disabled }: { value: string; onChange: (value: string) => void; onBlur?: () => void; disabled: boolean }) {
   return (
     <label className="block text-[14px] text-gray-700">
       <span className="mb-2 block font-medium">Users&apos; email domain</span>
-      <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={value} onChange={event => onChange(event.target.value)} placeholder="example.com" disabled={disabled} />
+      <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={value} onChange={event => onChange(event.target.value)} onBlur={onBlur} placeholder="example.com" disabled={disabled} />
       <span className="mt-1 block text-[12px] text-gray-500">The domain after the @ in your users&apos; email addresses, e.g. example.com. Not your identity provider&apos;s tenant domain.</span>
     </label>
   );
@@ -48,7 +51,7 @@ export function SsoAdvancedAudience({ value, onChange, disabled }: { value: stri
       <label className="mt-4 block">
         <span className="mb-2 block font-medium">Audience URL</span>
         <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={value} onChange={event => onChange(event.target.value)} placeholder="Defaults to the OpenWork auth URL" disabled={disabled} />
-        <span className="mt-1 block text-[12px] text-gray-500">Leave blank to use the Entity ID shown above.</span>
+        <span className="mt-1 block text-[12px] text-gray-500">Leave blank to use OpenWork’s Entity ID (shown in the values to give your identity provider).</span>
       </label>
     </details>
   );

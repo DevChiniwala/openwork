@@ -27,6 +27,26 @@ async function click(client: CdpClient, selector: string, text = "") {
   await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point });
 }
 
+async function setField(client: CdpClient, label: string, value: string) {
+  await callFunction(client, (label, value) => {
+    const field = Array.from(document.querySelectorAll('label')).find(element => element.querySelector('span')?.textContent === label)?.querySelector('input,textarea');
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) throw new Error(`Missing field: ${label}`);
+    field.focus();
+    const prototype = field instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  }, [label, value]);
+}
+
+async function setupPrecedesVerification(client: CdpClient) {
+  return evaluate(client, () => {
+    const setup = document.querySelector('[data-testid="sso-provider-setup"]');
+    const verification = document.querySelector('[data-testid="sso-domain-verification"], [data-testid="sso-domain-verified"]');
+    if (!setup || !verification) throw new Error('Missing setup or verification block');
+    return Boolean(setup.compareDocumentPosition(verification) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+}
+
 test("generic setup follows the saved protocol despite unsaved form tabs, and every Copy button copies its own value", async ({ place }) => {
   // Local placement was explicitly requested for this isolated UI comparison.
   // No published customer system or running desktop app is used.
@@ -80,6 +100,7 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
     return rows;
   }
   const saml = await checkCopies();
+  expect(await setupPrecedesVerification(client)).toBe(true);
   expect(saml.map(row => row.label)).toEqual(["Entity ID", "ACS URL (Reply URL)", "Sign-in URL", "Metadata URL"]);
   expect(saml.map(row => row.value)).toEqual(["https://ow.ai.example.test", savedConnection.acsUrl, savedConnection.signInUrl, savedConnection.metadataUrl]);
   expect(saml.some(row => row.value === savedConnection.redirectUrl)).toBe(false);
@@ -101,6 +122,19 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   expect(form.labels[1]).toBe("IdP Issuer URL");
   expect(form.domain).toBe("example.test");
   expect(form.advancedOpen).toBe(false);
+  await click(client, 'summary', 'Advanced');
+  expect(await evaluate(client, () => document.querySelector('details')?.textContent)).toContain('Leave blank to use OpenWork’s Entity ID (shown in the values to give your identity provider).');
+  await setField(client, "Users' email domain", 'example.test,wrong.test');
+  await click(client, 'p', 'Paste the values from your identity provider');
+  await eventually(() => evaluate(client, () => Boolean(document.querySelector('[data-notice-tone="warning"]'))), 'warning on domain blur');
+  const warning = await evaluate(client, () => document.querySelector('[data-notice-tone="warning"]')?.textContent);
+  expect(warning).toContain('matches wrong.test.');
+  expect(warning).not.toContain('example.test');
+  await setField(client, "Users' email domain", ' EXAMPLE.TEST , example.test ');
+  await click(client, 'p', 'Paste the values from your identity provider');
+  await eventually(() => evaluate(client, () => !document.querySelector('[data-notice-tone="warning"]')), 'no false CSV warning on blur');
+  await setField(client, "Users' email domain", 'example.test');
+  await click(client, 'p', 'Paste the values from your identity provider');
   await click(client, "button", "OIDC");
   await eventually(() => evaluate(client, () => document.body.innerText.includes("Client ID")), "unsaved OIDC form tab");
   expect(await checkCopies()).toEqual(saml);
@@ -123,6 +157,7 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   await navigate(client, `${den.ref.webUrl}/dashboard/sso`);
   await eventually(() => evaluate(client, () => Boolean(document.querySelector('[data-sso-value="redirect"]'))), "saved OIDC callback");
   const oidc = await checkCopies();
+  expect(await setupPrecedesVerification(client)).toBe(true);
   expect(oidc.map(row => [row.label, row.value])).toEqual([["Sign-in URL", savedOidc.signInUrl], ["Redirect URL", savedOidc.redirectUrl]]);
   expect(oidc.some(row => row.value === savedConnection.acsUrl)).toBe(false);
   expect(await evaluate(client, () => document.querySelector('[data-testid="sso-provider-setup"]')?.textContent)).toContain("Also called Redirect URI.");
@@ -135,4 +170,44 @@ test("generic setup follows the saved protocol despite unsaved form tabs, and ev
   const afterOidc = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
   expect(afterOidc.status).toBe(200);
   expect(parseOrgSsoPayload(await afterOidc.json()).connection).toEqual(savedOidc);
+});
+
+test("multi-domain blur warning names only unmatched entries and remains after a non-blocking UI save", async ({ place }) => {
+  await using den = await server({ place, web: true, org: { name: "Example Workspace", admin: { name: "Example Admin", email: "admin@example.test" }, members: {} } });
+  const login = await fetch(`${den.ref.apiUrl}/api/auth/sign-in/email`, { method: "POST", headers: { "content-type": "application/json", origin: den.ref.webUrl }, body: JSON.stringify({ email: den.admin.email, password: den.admin.password }) });
+  expect(login.status).toBe(200);
+  const cookies = login.headers.getSetCookie();
+  await using browser = await chrome({ name: "sso-domain-warning-save", headless: true, startUrl: den.ref.webUrl, host: place.host() });
+  const client = browser.client;
+  await setViewport(browser, { width: 1440, height: 1200, deviceScaleFactor: 1 });
+  await eventually(() => callFunction(client, url => location.href.startsWith(url) && document.readyState === "complete", [den.ref.webUrl]), "domain warning fixture origin");
+  await callFunction(client, token => { localStorage.setItem("openwork:web:auth-token", token); }, [den.admin.token]);
+  await client.send("Network.setCookies", { cookies: cookies.map(raw => {
+    const pair = raw.split(";")[0];
+    const at = pair.indexOf("=");
+    return { name: pair.slice(0, at), value: pair.slice(at + 1), url: den.ref.webUrl, httpOnly: true, secure: raw.toLowerCase().includes("; secure") };
+  }) });
+  await navigate(client, `${den.ref.webUrl}/dashboard/sso`);
+  await eventually(() => evaluate(client, () => document.body.innerText.includes("IdP Certificate")), "empty SAML form");
+  const cert = execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/dev/null", "-out", "/dev/stdout", "-days", "1", "-subj", "/CN=idp.example.test"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  await setField(client, "IdP Issuer URL", "https://idp.example.test/issuer");
+  await setField(client, "SAML Entry Point", "https://idp.example.test/sso");
+  await setField(client, "IdP Certificate", cert);
+  await setField(client, "Users' email domain", "example.test,wrong.test");
+  await click(client, "p", "Paste the values from your identity provider");
+  await eventually(() => evaluate(client, () => Boolean(document.querySelector('[data-notice-tone="warning"]'))), "pre-save blur warning");
+  const before = await evaluate(client, () => document.querySelector('[data-notice-tone="warning"]')?.textContent);
+  expect(before).toContain("matches wrong.test.");
+  expect(before).not.toContain("example.test");
+  const headers = { authorization: `Bearer ${den.admin.token}` };
+  const initial = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
+  expect(parseOrgSsoPayload(await initial.json()).connection).toBeNull();
+  await click(client, "button", "Save SSO connection");
+  await eventually(() => evaluate(client, () => Array.from(document.querySelectorAll('button')).some(button => button.textContent?.trim() === "Edit connection") || Boolean(document.querySelector('[role="alert"]'))), "UI save settled");
+  expect(await evaluate(client, () => document.querySelector('[role="alert"]')?.textContent ?? null)).toBeNull();
+  expect(await evaluate(client, () => document.querySelector('[data-notice-tone="warning"]')?.textContent)).toBe(before);
+  const saved = await fetch(`${den.ref.apiUrl}/v1/sso`, { headers });
+  expect(saved.status).toBe(200);
+  expect(parseOrgSsoPayload(await saved.json()).connection?.domain).toBe("example.test,wrong.test");
+  expect(await setupPrecedesVerification(client)).toBe(true);
 });

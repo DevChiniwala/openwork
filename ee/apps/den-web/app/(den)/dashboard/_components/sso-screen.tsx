@@ -218,6 +218,14 @@ export function SsoScreen() {
     }
   }
 
+  function updateDomainWarning() {
+    const adminEmails = [
+      orgContext?.organization.owner?.email,
+      ...(orgContext?.members.filter(member => member.isOwner || roleIncludesCanonicalRole(member.effectiveRole, "admin") || member.adminTeams.length > 0).map(member => member.user.email) ?? []),
+    ].filter((email): email is string => typeof email === "string");
+    setDomainWarning(getSsoDomainWarning(domain, issuer, adminEmails));
+  }
+
   async function handleSave() {
     if (!orgId) {
       setError("Organization not found.");
@@ -263,11 +271,7 @@ export function SsoScreen() {
 
           const parsed = parseOrgSsoPayload(payload);
           setConnection(parsed.connection);
-          const adminEmails = [
-            orgContext?.organization.owner?.email,
-            ...(orgContext?.members.filter(member => member.isOwner || roleIncludesCanonicalRole(member.effectiveRole, "admin") || member.adminTeams.length > 0).map(member => member.user.email) ?? []),
-          ].filter((email): email is string => typeof email === "string");
-          setDomainWarning(getSsoDomainWarning(domain, issuer, adminEmails));
+          updateDomainWarning();
           syncFormFromConnection(parsed.connection);
           setDomainVerificationToken(parsed.domainVerificationToken);
           setEditing(false);
@@ -516,7 +520,7 @@ export function SsoScreen() {
 
               <p className="mt-6 text-[16px] font-semibold tracking-[-0.03em] text-gray-900">Paste the values from your identity provider</p>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <SsoDomainField value={domain} onChange={setDomain} disabled={ssoFormDisabled} />
+                <SsoDomainField value={domain} onChange={setDomain} onBlur={updateDomainWarning} disabled={ssoFormDisabled} />
                 <label className="block text-[14px] text-gray-700">
                   <span className="mb-2 block font-medium">{formMode === "saml" ? "IdP Issuer URL" : "Issuer URL"}</span>
                   <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="https://idp.example.com" disabled={ssoFormDisabled} />
@@ -623,6 +627,7 @@ export function SsoScreen() {
 
             {connection ? (
               <div className="mt-5 space-y-4">
+                <SsoProviderValues connection={connection} copiedValue={copiedValue} onCopy={(value, key) => void copyValue(value, key)} />
                 {!connection.domainVerified ? (
                   <section data-testid="sso-domain-verification" className="overflow-hidden rounded-[24px] border border-[var(--dls-border)] bg-[var(--dls-surface)] text-[14px] text-[var(--dls-text-primary)]">
                     <div className="flex flex-col gap-4 border-b border-[var(--dls-border)] bg-[var(--dls-hover)] px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
@@ -675,7 +680,7 @@ export function SsoScreen() {
                     </div>
                   </section>
                 ) : (
-                  <div className="flex items-start gap-3 rounded-[20px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-[14px] text-emerald-900">
+                  <div data-testid="sso-domain-verified" className="flex items-start gap-3 rounded-[20px] border border-emerald-200 bg-emerald-50 px-5 py-4 text-[14px] text-emerald-900">
                     <CheckCircle2 className="mt-0.5 shrink-0" size={18} aria-hidden="true" />
                     <div>
                       <p className="font-semibold">Domain verified{connection.status === "enabled" ? " · SSO enabled" : ""}</p>
@@ -683,8 +688,6 @@ export function SsoScreen() {
                     </div>
                   </div>
                 )}
-
-                <SsoProviderValues connection={connection} copiedValue={copiedValue} onCopy={(value, key) => void copyValue(value, key)} />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-[20px] border border-gray-200 bg-gray-50 p-4 text-[14px] text-gray-700">

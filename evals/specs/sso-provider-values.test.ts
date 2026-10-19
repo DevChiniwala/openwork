@@ -112,11 +112,37 @@ test("owner email prefill is normalized and unavailable or malformed email produ
 test("domain warning compares available owner/admin emails and does not block saving", () => {
   expect(getSsoDomainWarning("EXAMPLE.TEST", "https://idp.example.test", ["admin@example.test"])).toBeNull();
   expect(getSsoDomainWarning("other.test", "https://idp.example.test", ["owner@example.test", "admin@other.test"])).toBeNull();
-  expect(getSsoDomainWarning("tenant.onmicrosoft.example", "https://idp.example.test", ["admin@example.test"])).toContain("The connection was saved, but no workspace owner or admin email uses tenant.onmicrosoft.example.");
+  expect(getSsoDomainWarning("tenant.onmicrosoft.example", "https://idp.example.test", ["admin@example.test"])).toContain("No workspace owner or admin email matches tenant.onmicrosoft.example.");
   expect(getSsoDomainWarning("example.test", "https://idp.example.test", [])).toBeNull();
-  expect(getSsoDomainWarning("tenant.onmicrosoft.com", "https://idp.example.test", [])).toContain("looks like an identity provider domain");
-  expect(getSsoDomainWarning("idp.example.test", "https://idp.example.test/issuer", [])).toContain("looks like an identity provider domain");
+  expect(getSsoDomainWarning("tenant.onmicrosoft.com", "https://idp.example.test", [])).toContain("look like identity provider domains");
+  expect(getSsoDomainWarning("idp.example.test", "https://idp.example.test/issuer", [])).toContain("look like identity provider domains");
   expect(getSsoDomainWarning("example.test", "not-a-url", [])).toBeNull();
+});
+
+test("comma-separated domains are checked individually, trimmed and matched to different admins", () => {
+  const admins = ["admin@example.test", "admin@tenant.onmicrosoft.example"];
+  expect(getSsoDomainWarning(" EXAMPLE.TEST , tenant.onmicrosoft.example ", "https://idp.example.test", admins)).toBeNull();
+  const warning = getSsoDomainWarning("example.test, tenant.onmicrosoft.example, wrong.test, wrong.test", "https://idp.example.test", admins);
+  expect(warning).toContain("matches wrong.test.");
+  expect(warning).not.toContain("example.test");
+  expect(warning).not.toContain("tenant.onmicrosoft.example");
+  expect(warning?.match(/wrong\.test/g)).toHaveLength(1);
+  expect(warning).not.toContain("was saved");
+  expect(getSsoDomainWarning("example.test,tenant.onmicrosoft.example", "https://idp.example.test", ["admin@example.test"])).toContain("matches tenant.onmicrosoft.example.");
+  expect(getSsoDomainWarning(" , , ", "https://idp.example.test", admins)).toBeNull();
+});
+
+test("admin email subdomains match their parent domain, but not siblings, suffix lookalikes or the reverse", () => {
+  expect(getSsoDomainWarning("example.com, other.test", "https://idp.example.test", ["owner@eu.example.com", "admin@team.other.test"])).toBeNull();
+  expect(getSsoDomainWarning("example.com", "https://idp.example.test", ["admin@notexample.com"])).toContain("matches example.com.");
+  expect(getSsoDomainWarning("eu.example.com", "https://idp.example.test", ["admin@example.com"])).toContain("matches eu.example.com.");
+  expect(getSsoDomainWarning("eu.example.com", "https://idp.example.test", ["admin@us.example.com"])).toContain("matches eu.example.com.");
+});
+
+test("without admin data, only suspicious individual entries are named", () => {
+  const warning = getSsoDomainWarning("example.test, tenant.onmicrosoft.com, idp.other.test", "https://idp.other.test/issuer", []);
+  expect(warning).toContain("tenant.onmicrosoft.com, idp.other.test");
+  expect(warning).not.toContain("example.test");
 });
 
 test("Audience URL is in a native collapsed Advanced section and retains its saved value", () => {
@@ -126,7 +152,7 @@ test("Audience URL is in a native collapsed Advanced section and retains its sav
   expect(html).toContain("Advanced</summary>");
   expect(html).toContain("Audience URL");
   expect(html).toContain('value="https://audience.example.test"');
-  expect(html).toContain("Leave blank to use the Entity ID shown above.");
+  expect(html).toContain("Leave blank to use OpenWork’s Entity ID (shown in the values to give your identity provider).");
 });
 
 test("enable dialog warns that email/password sign-in stops, using the existing dialog text style", () => {
