@@ -91,6 +91,7 @@ export async function modelProbeFixture(options: {
       /** Accept one more provider key, e.g. the per-member Gateway key a scoped modelAccess presents. */
       acceptModelKey: (key: string) => { acceptedKeys.add(key) },
       app: runtime.app,
+      modelAccess: { baseUrl: `${provider.url}${options.basePath ?? ""}`, apiKey: modelKey, protocol: options.protocol ?? "openai" },
       calls: () => [...calls],
       setMode: (next: ProbeFixtureMode) => { mode = next },
       sessionCount: () => sql.prepare("SELECT COUNT(*) AS count FROM sessions").get()?.count,

@@ -21,7 +21,7 @@ import { openworkYourConnectionsUrl } from "../mcp/connection-navigation.js"
 import { createInternalMcpPrincipalHeader } from "../session.js"
 import { getOrganizationContextForUser, listTeamsForMember } from "../orgs.js"
 import { listMemberUsableConnectionFacts } from "../routes/org/mcp-connections.js"
-import { readWorkbotModel, WORKBOT_DEFAULT_MODEL_ID, workbotModelRecoverySchema } from "@openwork/types/den/workbot-settings"
+import { readWorkbotModel, WORKBOT_DEFAULT_MODEL_ID, workbotModelRecoverySchema, workbotAccessFailureSchema } from "@openwork/types/den/workbot-settings"
 import { getMemberInferenceAccess, organizationAllowsManagedModels } from "../inference.js"
 import { organizationHasOngoingInferenceSubscription } from "../stripe-billing.js"
 import { cloudAgentModelCatalog, headlessModelCatalog } from "./model.js"
@@ -29,6 +29,7 @@ import { headlessModelAccessSchema, createHeadlessRunnerClient } from "@openwork
 import { workbotOwner } from "@openwork-ee/headless-protocol/workbot-routing"
 import { defaultHeadlessRunnerDeps } from "../headless-runner/client.js"
 import { explicitWorkbotModel } from "./readiness.js"
+import { CloudAgentGatewayAccessError } from "./gateway-model.js"
 import { recordWorkbotTelemetry, workbotTelemetrySchema, workbotTelemetryServiceAuthorized } from "./telemetry.js"
 import { resolvePermissionsForMember } from "../permissions/resolve.js"
 import { workbotOrigin } from "./config.js"
@@ -290,7 +291,12 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       organizationHasOngoingInferenceSubscription(organization.id),
     ])
     return c.json({
-      canUpgrade: allowed && !subscribed && Boolean(env.stripe.secretKey && env.stripe.inferencePriceId && env.openRouterManagementApiKey) && permissions.has("billing.manage") && permissions.has("inference.view"),
+      // Checkout materializes legacy Models providers, not an authorized Workbot
+      // Gateway assignment. Keep purchasing eligibility separate from a proven continuation.
+      canUpgrade: false,
+      purchaseEligible: allowed && !subscribed && Boolean(env.stripe.secretKey && env.stripe.inferencePriceId && env.openRouterManagementApiKey) && permissions.has("billing.manage") && permissions.has("inference.view"),
+      paidContinuation: "unavailable",
+      upgradeBlockedReason: "paid_workbot_route_unavailable",
       canManageModels: permissions.has("inference.manage") && permissions.has("inference.view"),
       canManageBilling: permissions.has("billing.view") && permissions.has("billing_portal.use"),
       freeExhausted: access.kind === "exhausted",
@@ -571,7 +577,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       responses: {
         200: jsonResponse("The token.", runTokenSchema),
         401: jsonResponse("The token is missing, expired or revoked, or the membership ended.", unauthorizedSchema),
-        403: jsonResponse("Workbot is off or the sign-in grant cannot start a turn.", signedOutSchema),
+        403: jsonResponse("Workbot or model access cannot start a turn.", z.union([signedOutSchema, workbotAccessFailureSchema])),
         429: jsonResponse("Too many tokens requested.", z.object({ error: z.literal("rate_limited"), retryAfter: z.number() })),
       },
     }),
@@ -586,7 +592,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       const readOnly = c.req.valid("json").readOnly === true
       const requiredScopes = readOnly ? [DEN_MCP_READ_SCOPE] : [DEN_MCP_READ_SCOPE, DEN_MCP_WRITE_SCOPE]
       if (requiredScopes.some((scope) => !resolved.scopes.has(scope))) {
-        return c.json({ error: "insufficient_scope", message: "The sign-in grant does not allow this Workbot turn." }, 403)
+        return c.json({ error: "workbot_turn_access_denied", reason: "oauth_scope_missing" }, 403)
       }
       const retryAfter = await checkRateLimit(`workbot-run-token:${principal.organizationId}:${principal.userId}`, RUN_TOKENS_PER_WINDOW, RUN_TOKEN_WINDOW_MS, Date.now())
       if (retryAfter !== null) return c.json({ error: "rate_limited" as const, retryAfter }, 429)
@@ -602,8 +608,8 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
           ...(modelAccess ? { modelAccess } : {}),
           ...(indexCapability ? { indexCapability } : {}),
         })
-      } catch {
-        return c.json({ error: "cloud_model_unavailable", message: "Your workspace model isn't available to you. Ask your model administrator to check your AI Gateway access." }, 403)
+      } catch (error) {
+        return c.json({ error: "workbot_turn_access_denied", reason: error instanceof CloudAgentGatewayAccessError ? error.reason : "model_access_unavailable" }, 403)
       }
     },
   )

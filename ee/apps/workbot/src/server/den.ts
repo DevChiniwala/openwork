@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { skillCreatedPayloadSchema } from "@openwork/types/skill-created-app"
 import { headlessModelAccessSchema } from "@openwork-ee/headless-protocol"
+import { workbotAccessFailureSchema, type WorkbotAccessReason } from "@openwork/types/den/workbot-settings"
 import type { Tokens } from "./sealed.js"
 
 /**
@@ -69,6 +70,18 @@ export class DenSignedOutError extends Error {
   constructor() {
     super("signed_out")
     this.name = "DenSignedOutError"
+  }
+}
+
+/** Only this allowlisted refusal survives a failed credential mint. Never retain Den's raw payload. */
+export class WorkbotTurnAccessError extends Error {
+  constructor(readonly reason: WorkbotAccessReason, readonly status: 403 | 429 | 503, readonly retryAfter?: number) {
+    super(`workbot_turn_access_denied:${reason}`)
+    this.name = "WorkbotTurnAccessError"
+  }
+  response(): Response {
+    return Response.json({ error: "workbot_turn_access_denied", reason: this.reason, ...(this.retryAfter ? { retryAfter: this.retryAfter } : {}) },
+      { status: this.status, headers: { "Cache-Control": "no-store", ...(this.retryAfter ? { "Retry-After": String(this.retryAfter) } : {}) } })
   }
 }
 
@@ -234,7 +247,15 @@ export function createDen(options: { apiUrl: string; publicUrl: string; serviceT
       const { status, payload } = await authorized("POST", "/v1/workbot/run-token", accessToken, body)
       const parsed = runTokenSchema.safeParse(payload)
       // Never include the response body or validation issues: they may contain model credentials.
-      if (status !== 200 || !parsed.success) throw new Error(`den_run_token_${status}`)
+      if (status !== 200) {
+        const refusal = workbotAccessFailureSchema.safeParse(payload)
+        if (refusal.success) throw new WorkbotTurnAccessError(refusal.data.reason, status === 429 ? 429 : status === 403 ? 403 : 503, refusal.data.retryAfter)
+        // Compatibility with older Dens is deliberately generic, never an upgrade signal.
+        const rateLimited = status === 429
+        const missingScope = status === 403 && typeof payload === "object" && payload !== null && "error" in payload && payload.error === "insufficient_scope"
+        throw new WorkbotTurnAccessError(rateLimited ? "rate_limited" : missingScope ? "oauth_scope_missing" : "model_access_unavailable", status === 429 ? 429 : status === 403 ? 403 : 503)
+      }
+      if (!parsed.success) throw new Error("den_run_token_200")
       return parsed.data
     },
     /** The Gmail, Slack and Microsoft 365 connections the person's admins set up, and whether each is ready for them. */

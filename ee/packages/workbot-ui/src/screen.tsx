@@ -16,6 +16,7 @@ import {
   useWorkbotLive,
   useWorkbotThread,
   WorkbotChatProvider,
+  WorkbotSendError,
   workbotFilesKey,
   uploadWorkbotFile,
   type LiveText,
@@ -31,7 +32,7 @@ import { documentLinks, WorkbotMarkdown } from "./markdown";
 import { OpenFileContext } from "./open-file";
 import { PreviewPanel } from "./preview";
 import { Welcome } from "./welcome";
-import { ModelRecovery } from "./model-recovery";
+import { ModelRecovery, AccessRecovery } from "./model-recovery";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
 import { WorkbotComputer } from "./computer";
@@ -269,7 +270,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   };
 
   /** Failed answer retries are reported on their original message. Unaccepted sends stay with their pending owner. */
-  const [editErrors, setEditErrors] = useState<Readonly<Record<string, string>>>({});
+  const [editErrors, setEditErrors] = useState<Readonly<Record<string, Error | string>>>({});
 
   /** A correction is an ordinary new message. Earlier messages and answers stay truthful and recoverable. */
   const editTurn = (turn: WorkbotTurn, text: string) => {
@@ -297,7 +298,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         // A retry may ask again; what it asked before is never replayed.
         for (const receipt of turn.navigation) followed.current.add(receipt.id);
         sentFrom.current.set(turn.id, viewRef.current);
-        retry.mutate(turn.id, { onError: error => setEditErrors(current => ({ ...current, [turn.id]: error.message })) });
+        retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: error => setEditErrors(current => ({ ...current, [turn.id]: error })) });
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
     /> : null;
@@ -309,7 +310,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       : !data ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 text-center text-[13px] text-[var(--wb-muted)]" role="status"><p>Couldn't load your conversation.</p><button type="button" className="rounded-lg px-3 py-2 underline focus-visible:shadow-[var(--wb-focus)]" onClick={() => void thread.refetch()}>Try again</button></div>
       : welcome === "showing" ? <Welcome name={name} firstName={firstName} onBegin={() => { if (start.isIdle) { setGreetingAwaited(true); start.mutate(); } }} onDone={() => setWelcome("done")} />
       : empty && side ? <SideChatStart name={name} organizationName={data.organizationName}>{composer}</SideChatStart>
-      : empty && !starting ? <FirstOpen name={name} organizationName={data.organizationName} firstName={firstName} onSuggestion={text => submit(text)} error={start.isError ? <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}>{composer}</FirstOpen>
+      : empty && !starting ? <FirstOpen name={name} organizationName={data.organizationName} firstName={firstName} onSuggestion={text => submit(text)} error={start.isError ? start.error instanceof WorkbotSendError && start.error.accessReason ? <AccessRecovery reason={start.error.accessReason} onRetry={() => { setGreetingAwaited(true); start.mutate(); }} /> : <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}>{composer}</FirstOpen>
       : <>{conversation}<div className="flex shrink-0 justify-center px-3 pb-4 pt-3"><div className={COLUMN}>{composer}</div></div></>;
     return <OpenFileContext.Provider value={setPreview}>
       <OpenDocumentContext.Provider value={tab === "documents" && documentContext?.kind === "document" ? documentContext.fileId : null}>
@@ -452,7 +453,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           organizationName={data.organizationName}
           firstName={firstName}
           onSuggestion={(text) => submit(text)}
-          error={start.isError ? <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}
+          error={start.isError ? start.error instanceof WorkbotSendError && start.error.accessReason ? <AccessRecovery reason={start.error.accessReason} onRetry={() => { setGreetingAwaited(true); start.mutate(); }} /> : <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}
         >
           {composer}
         </FirstOpen>
@@ -477,7 +478,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
                 return;
               }
               // The same message is answered again in place, so the conversation keeps one copy of it.
-              retry.mutate(turn.id, { onError: (error) => setEditErrors((current) => ({ ...current, [turn.id]: error.message })) });
+              retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: (error) => setEditErrors((current) => ({ ...current, [turn.id]: error })) });
             }}
             onSuggestion={(text) => submit(text)}
             starting={starting}
@@ -836,7 +837,7 @@ function Conversation(props: {
   canChange: boolean;
   onEdit: (turn: WorkbotTurn, text: string) => void;
   /** Why an edit of a message didn't go through, by message id. */
-  editErrors: Readonly<Record<string, string>>;
+  editErrors: Readonly<Record<string, Error | string>>;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -1239,7 +1240,7 @@ function PendingView({ entry, onRetry, waiting }: { entry: Pending; onRetry: () 
       <SentContext context={entry.context} />
       <UserBubble text={entry.correctionReference ? workbotCorrectionPrompt(readBrowserSkillRunPrompt(entry.text), entry.correctionReference) : readBrowserSkillRunPrompt(entry.text)} muted={Boolean(entry.failed)} action={entry.failed ? undefined : <EditButton disabled />} />
       {entry.failed ? (
-        <ErrorLine align="end" action={{ label: "Send again", onClick: onRetry }}>{entry.failed}</ErrorLine>
+        entry.accessIssue ? <AccessRecovery reason={entry.accessIssue} onRetry={onRetry} /> : <ErrorLine align="end" action={{ label: "Send again", onClick: onRetry }}>{entry.failed}</ErrorLine>
       ) : uploading || waiting ? (
         // The rows its turn will show, so nothing moves when the turn arrives.
         <>
@@ -1521,7 +1522,7 @@ type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; k
 function TurnView(props: {
   canChange: boolean;
   onEdit: (turn: WorkbotTurn, text: string) => void;
-  editError: string | null;
+  editError: Error | string | null;
   turn: WorkbotTurn;
   live: LiveText | null;
   latest: boolean;
@@ -1582,7 +1583,7 @@ function TurnView(props: {
     <>
       <SentAttachments attachments={turn.attachments} localUrls={props.previews} />
       {turn.text && !turn.greeting ? (
-        <OwnMessage turn={turn} canChange={props.canChange && turn.status !== "queued"} onEdit={props.onEdit} error={props.editError} />
+        <OwnMessage turn={turn} canChange={props.canChange && turn.status !== "queued"} onEdit={props.onEdit} error={props.editError instanceof WorkbotSendError && props.editError.accessReason ? null : props.editError instanceof Error ? props.editError.message : props.editError} />
       ) : (
         <UserBubble text={turn.text} reaction={turn.reaction} />
       )}
@@ -1623,7 +1624,9 @@ function TurnView(props: {
           ))}
         </ul>
       ) : null}
-      {turn.status === "failed" && turn.modelIssue && workbotHost().usageRecovery ? (
+      {turn.status === "failed" && props.editError instanceof WorkbotSendError && props.editError.accessReason ? (
+        <AccessRecovery reason={props.editError.accessReason} onRetry={props.latest ? props.onRetry : undefined} />
+      ) : turn.status === "failed" && turn.modelIssue && workbotHost().usageRecovery ? (
         <ModelRecovery issue={turn.modelIssue} onRetry={props.latest ? props.onRetry : undefined} />
       ) : turn.status === "failed" ? (
         <ErrorLine action={props.latest && (turn.greeting || turn.retryable) ? { label: "Try again", onClick: props.onRetry } : null}>{turn.greeting ? HELLO_FAILED : turn.error}</ErrorLine>

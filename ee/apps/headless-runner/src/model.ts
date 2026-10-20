@@ -1,5 +1,4 @@
 import { z } from "zod"
-import { hasGatewayUsageLimitHttpMarker } from "@openwork/types/den/gateway-usage-limits"
 import type { HeadlessModelAccess, Message, ToolCall, ToolSpec } from "./types.js"
 
 /** Constructed per run: never mutates the deployment adapter or retains another member's credentials. */
@@ -145,7 +144,8 @@ async function openResponse(input: {
     const freeLimit = response.status === 429 && modelsRoute
       && response.headers.get("X-OpenWork-Error-Code") === "free_allowance_exhausted"
       && response.headers.get("X-OpenWork-Usage-State") === "blocked"
-    const usageLimit = hasGatewayUsageLimitHttpMarker(response)
+    // Keep this adapter independent of unbuilt workspace runtime exports.
+    const usageLimit = (response.status === 429 && response.headers.get("X-OpenWork-Error-Code") === "openwork_gateway_usage_limit_exceeded" && response.headers.get("X-OpenWork-Usage-State") === "blocked")
       || (response.status === 429 && modelsRoute && response.headers.has("x-openwork-limit-bucket-id") && response.headers.has("x-openwork-limit-window-type"))
     const recoveryCode = freeLimit ? "model_free_allowance_exhausted" : usageLimit ? "model_usage_limit_exceeded"
       : modelsRoute && response.status === 402 ? "model_payment_required" : null

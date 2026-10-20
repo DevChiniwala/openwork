@@ -16,24 +16,25 @@ test("a signed-in member can recover from a model limit without losing the conve
     expect(witness).toEqual({ attempts: 1, retryable: false });
     await user.screenshot();
   });
-  await step("after: an authorized member sees the reset time and an upgrade in the same workspace", async () => {
+  await step("after: an eligible purchaser sees the reset and no checkout without a paid Workbot route", async () => {
     await user.navigate(`${world.url}?recovery=on`);
     await user.see({ text: /You've used the free model allowance for now/ });
     await user.see({ text: /It resets/ });
-    await user.see({ role: "link", label: /^Upgrade models/ });
+    await user.notSee({ role: "link", label: /^Upgrade models/ });
+    await user.see({ text: /A subscription won’t refill Auto’s weekly allowance/ });
     await user.notSee({ text: /Sign in for/ });
     await user.type({ role: "textbox", label: "Message Workbot" }, "Keep this draft");
     await user.click({ role: "button", label: "Check access" });
     await user.notSee({ role: "button", label: "Try again" });
-    const links = await probe.dom('a[href="https://den.example.test/dashboard/ai-gateway?tab=openwork-models&workbotOrganizationId=org_recovery"][target="_blank"][rel~="noopener"]');
+    const links = await probe.dom('a[href="https://den.example.test/dashboard/workbot-settings?workbotOrganizationId=org_recovery"][target="_blank"][rel~="noopener"]');
     await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Keep this draft" });
-    evidence.recordAssertionEvidence("The upgrade opens separately for the exact workspace and keeps the draft", `Exact workspace/new-tab links=${links.elements.length}; draft remains visible`, links.elements.length === 1);
+    evidence.recordAssertionEvidence("Model settings open for the exact workspace and keep the draft; checkout is suppressed", `Exact workspace/new-tab links=${links.elements.length}; draft remains visible`, links.elements.length === 1);
     expect(links.elements.length).toBe(1);
     await user.screenshot();
   });
   await step("a member without billing access gets an admin next step", async () => {
     await user.navigate(`${world.url}?recovery=on&persona=member`);
-    await user.see({ text: "Ask a workspace admin to choose another model to keep going." });
+    await user.see({ text: "Auto keeps its weekly free allowance on paid plans. Ask a workspace admin to choose an available model to keep going." });
     await user.notSee({ role: "link", label: /^Upgrade models/ });
     await user.notSee({ role: "link", label: /^Manage billing/ });
     const actions = await probe.dom('[data-testid="workbot-model-recovery"] a');
@@ -63,6 +64,31 @@ test("a signed-in member can recover from a model limit without losing the conve
     const witness = world.witness("temporary");
     evidence.recordAssertionEvidence("An untrusted error body cannot create an upgrade prompt", `Transient attempts=${witness.attempts}; retryable=${witness.retryable}`, witness.attempts === 3 && witness.retryable === true);
     expect(witness).toEqual({ attempts: 3, retryable: true });
+    await user.screenshot();
+  });
+  await step("a Gateway refusal offers access recovery without an upgrade or execution", async () => {
+    await user.navigate(`${world.url}?recovery=on&issue=access`);
+    await user.type({ role: "textbox", label: "Message Workbot" }, "Continue with the paid model");
+    await user.click({ role: "button", label: "Send" });
+    await user.see({ text: /You haven’t been granted access to Workbot’s selected model/ });
+    await user.see({ role: "link", label: /^Review Workbot’s model/ });
+    await user.notSee({ role: "link", label: /^Upgrade models/ });
+    await user.notSee({ text: /fixture-secret-must-not-reach-browser/ });
+    evidence.recordAssertionEvidence("A structured authorization refusal never reaches the provider", `Provider calls after denial=${world.accessCalls()}`, world.accessCalls() === 0);
+    expect(world.accessCalls()).toBe(0);
+    await user.screenshot();
+  });
+  await step("restoring authorized paid access retries the pending message exactly once", async () => {
+    world.restorePaidAccess();
+    await user.click({ role: "button", label: "Check access and retry" });
+    await probe.eventually(() => world.paidRecovery(), { within: 5000, label: "The pending message completes through the paid route", until: turn => turn.status === "done" });
+    expect(await world.repeatPaidSend()).toBe(202);
+    const recovered = await world.paidRecovery();
+    expect(recovered).toEqual({ copies: 1, status: "done", earlier: true, calls: 1 });
+    evidence.recordAssertionEvidence("Explicit recovery and a repeated send keep one execution and the earlier conversation", JSON.stringify(recovered), recovered.copies === 1 && recovered.calls === 1 && recovered.earlier);
+    await user.see({ text: "Keep our earlier work" });
+    await user.see({ text: "Your conversation is still here." });
+    await user.notSee({ testId: "workbot-access-recovery" });
     await user.screenshot();
   });
   await step("after the allowance resets the member explicitly retries the same message", async () => {

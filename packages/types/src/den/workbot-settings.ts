@@ -12,9 +12,26 @@ import { z } from "zod"
 export const WORKBOT_DEFAULT_MODEL_ID = "openai/gpt-6-luna"
 export const WORKBOT_DEFAULT_MODEL_NAME = "GPT-6 Luna"
 
+export const workbotAccessReasonSchema = z.enum([
+  "gateway_not_configured", "gateway_provider_missing", "gateway_member_access_missing",
+  "gateway_model_unavailable", "gateway_authentication_required", "gateway_credentials_unavailable",
+  "oauth_scope_missing", "model_access_unavailable", "rate_limited",
+])
+export type WorkbotAccessReason = z.infer<typeof workbotAccessReasonSchema>
+/** Closed vocabulary only. Unknown Den/provider fields never cross Workbot's browser boundary. */
+export const workbotAccessFailureSchema = z.object({
+  error: z.literal("workbot_turn_access_denied"),
+  reason: workbotAccessReasonSchema,
+  retryAfter: z.number().int().min(1).max(3600).optional(),
+})
+
 /** Navigation hints for the signed-in member. Destinations recheck policy, permissions and billing. */
 export const workbotModelRecoverySchema = z.object({
   canUpgrade: z.boolean(),
+  purchaseEligible: z.boolean().default(false),
+  /** Checkout does not provision Workbot's Gateway assignment. No offer until that handoff exists. */
+  paidContinuation: z.enum(["unavailable", "authorized"]).default("unavailable"),
+  upgradeBlockedReason: z.literal("paid_workbot_route_unavailable").nullable().default("paid_workbot_route_unavailable"),
   canManageModels: z.boolean(),
   canManageBilling: z.boolean(),
   freeExhausted: z.boolean(),

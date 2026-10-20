@@ -7,7 +7,7 @@ import { mintHeadlessRunMcpToken, revokeHeadlessRunMcpToken } from "../mcp/headl
 import { appLogger } from "../observability/logger.js"
 import { checkRateLimit } from "../utils/rate-limit.js"
 import type { HeadlessModelAccess } from "@openwork-ee/headless-protocol"
-import { organizationCloudModel } from "../workbot/model.js"
+import { organizationCloudModelSelection } from "../workbot/model.js"
 import { cloudAgentGatewayAccess } from "../workbot/gateway-model.js"
 import { indexCapabilityForTurn, type HeadlessIndexKind } from "./session-index.js"
 
@@ -148,7 +148,7 @@ export async function mintHeadlessTurnCredentials(input: {
   // Taken before anything is minted: a credential revocation after this moment outranks the grant (see
   // headlessResumeGrantAuthorizedBeforeRevocation), however long minting takes.
   const authorizedAt = new Date()
-  const modelAccess = await cloudAgentGatewayAccess(input, input.model ?? await organizationCloudModel(input) ?? "")
+  const modelAccess = await cloudAgentGatewayAccess(input, input.model ?? await organizationCloudModelSelection(input) ?? "")
   const minted = await mintHeadlessRunMcpToken(input)
   const resumeGrant = await resumeGrantForTurn({ ...input, authorizedAt })
   const indexCapability = await indexCapabilityForTurn(input)

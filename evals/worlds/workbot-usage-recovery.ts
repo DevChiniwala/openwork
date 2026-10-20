@@ -1,3 +1,4 @@
+import { workbotAccessFixture } from "../../ee/apps/workbot/scripts/workbot-access-fixture.ts";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { z } from "zod";
@@ -12,7 +13,7 @@ export async function workbotUsageRecovery(_seed: Seed, { place }: { place: Plac
   const resources = new AsyncDisposableStack();
   try {
     const cases = new Map<string, { workbot: ReturnType<typeof createWorkbot>; actor: WorkbotActor; runner: Awaited<ReturnType<typeof modelProbeFixture>>; attempts: number; error: string | null; retryable: boolean }>();
-    for (const [key, mode] of new Map<string, ProbeFixtureMode>([["free", "free_limit"], ["usage", "usage_limit"], ["payment", "payment_required"], ["temporary", "rate_limited"]])) {
+    for (const [key, mode] of new Map<string, ProbeFixtureMode>([["free", "free_limit"], ["usage", "usage_limit"], ["payment", "payment_required"], ["temporary", "rate_limited"], ["access", "answered"]])) {
       const runner = await modelProbeFixture({ basePath: "/api/v1", protocol: "openai-responses", answer: "Your conversation is still here." });
       resources.defer(() => runner.close());
       const client = createHeadlessRunnerClient({ config: { url: runner.url, token: "r".repeat(32) }, fetch, mintToken: async () => ({ token: "fixture-mcp-token" }), maxTokenTtlMs: 60_000 });
@@ -30,10 +31,17 @@ export async function workbotUsageRecovery(_seed: Seed, { place }: { place: Plac
       await settled();
       runner.setMode(mode);
       const before = runner.calls().length;
-      await workbot.send(actor, { id: "message_limited", text: "Continue my work" });
+      if (key !== "access") await workbot.send(actor, { id: "message_limited", text: "Continue my work" });
       const thread = await settled();
       cases.set(key, { workbot, actor, runner, attempts: runner.calls().length - before, error: thread.turns.at(-1)?.error ?? null, retryable: thread.turns.at(-1)?.retryable ?? false });
     }
+    // Real Workbot HTTP -> Den client -> runner. Only Den's outside identity/grant response is synthetic.
+    const access = cases.get("access");
+    if (!access) throw new Error("Missing access fixture");
+    let accessInput: { id: string; text: string } | null = null;
+    const accessServer = await workbotAccessFixture({ actor: access.actor, runnerUrl: access.runner.url, modelAccess: access.runner.modelAccess });
+    resources.defer(() => accessServer.close());
+    const sendAccess = accessServer.send;
     const vite = await createServer({
       configFile: fileURLToPath(new URL("../../ee/apps/workbot/vite.config.ts", import.meta.url)),
       server: { host: "127.0.0.1", port: 0, strictPort: false },
@@ -50,7 +58,7 @@ export async function workbotUsageRecovery(_seed: Seed, { place }: { place: Plac
             const enabled = page.searchParams.get("recovery") === "on";
             const json = (body: unknown) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(body)); };
             if (url.pathname === "/v1/workbot/me") return json({ name: "Alex", email: "alex@example.test", userId: entry.actor.userId, organizationId: entry.actor.organizationId, organizationName: "Recovery workspace", enabled: true, calendar: false, sideChats: false, usageRecovery: enabled, denUrl: "https://den.example.test" });
-            if (url.pathname === "/v1/workbot/model-recovery") return json({ canUpgrade: owner && key === "free", canManageModels: owner, canManageBilling: owner, freeExhausted: key === "free" && !page.searchParams.has("cleared"), freeResetsAt: key === "free" ? "2026-10-26T00:00:00.000Z" : null });
+            if (url.pathname === "/v1/workbot/model-recovery") return json({ canUpgrade: false, purchaseEligible: owner && key === "free", paidContinuation: "unavailable", upgradeBlockedReason: "paid_workbot_route_unavailable", canManageModels: owner, canManageBilling: owner, freeExhausted: key === "free" && !page.searchParams.has("cleared"), freeResetsAt: key === "free" ? "2026-10-26T00:00:00.000Z" : null });
             if (url.pathname === "/v1/workbot") return json({ available: true, ...await entry.workbot.readThread(entry.actor) });
             if (url.pathname === "/v1/workbot/events") { res.setHeader("content-type", "text/event-stream"); res.end(": fixture\n\n"); return; }
             if (url.pathname === "/v1/workbot/messages/message_limited/retry" && req.method === "POST") {
@@ -60,6 +68,12 @@ export async function workbotUsageRecovery(_seed: Seed, { place }: { place: Plac
             if (url.pathname === "/v1/workbot/messages" && req.method === "POST") {
               let body = ""; for await (const chunk of req) body += chunk;
               const input = z.object({ id: z.string(), text: z.string() }).parse(JSON.parse(body));
+              if (key === "access") {
+                accessInput = input;
+                const result = await sendAccess(input);
+                res.statusCode = result.status;
+                return json(await result.json());
+              }
               return json(await entry.workbot.send(entry.actor, input));
             }
             res.statusCode = 404; json({ error: "not_found" });
@@ -73,6 +87,14 @@ export async function workbotUsageRecovery(_seed: Seed, { place }: { place: Plac
     if (!url) throw new Error("Recovery UI did not start");
     const web = resources.use(await chrome({ host: place.host(), name: "workbot-usage-recovery", startUrl: url, headless: true }));
     return { web, url, witness: (key: string) => ({ attempts: cases.get(key)?.attempts, retryable: cases.get(key)?.retryable }),
+      restorePaidAccess: () => accessServer.restore(),
+      accessCalls: () => access.runner.calls().length - 1,
+      async paidRecovery() {
+        const turns = (await access.workbot.readThread(access.actor)).turns;
+        const matches = turns.filter(turn => turn.id === accessInput?.id);
+        return { copies: matches.length, status: matches[0]?.status, earlier: turns.some(turn => turn.id === "message_earlier"), calls: access.runner.calls().length - 1 };
+      },
+      async repeatPaidSend() { if (!accessInput) throw new Error("No pending access message"); return (await sendAccess(accessInput)).status; },
       async recoveredTurn() {
         const entry = cases.get("free");
         if (!entry) throw new Error("Missing free fixture");
