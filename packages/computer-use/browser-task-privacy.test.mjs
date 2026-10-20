@@ -58,6 +58,7 @@ test("withheld field values cannot escape through accessible labels", async () =
 });
 
 test("select options keep backing identities private and revalidate before choosing", async () => {
+  let events = 0;
   const options = [
     { value: "private-account-001", label: "Personal", selected: true, disabled: false },
     { value: "private-account-002", label: "Work", selected: false, disabled: false },
@@ -74,7 +75,7 @@ test("select options keep backing identities private and revalidate before choos
     closest() { return null; }
     getBoundingClientRect() { return { x: 10, y: 10, left: 10, top: 10, right: 210, bottom: 50, width: 200, height: 40 }; }
     focus() { document.activeElement = this; }
-    dispatchEvent() {}
+    dispatchEvent() { events++; }
     contains(element) { return element === this; }
   }
   const select = new Element();
@@ -129,4 +130,68 @@ test("select options keep backing identities private and revalidate before choos
   const languages = await observe();
   assert.equal(languages.elements[0].options[1].label, "French");
   assert.notEqual(languages.elements[0].options[1].value, "fr");
+  while (options.length < 201) options.push({ value: `private-account-${options.length}`, label: `Account ${options.length}`, selected: false, disabled: false });
+  const truncated = await observe();
+  const observed = truncated.elements[0].options;
+  assert.equal(observed.length, 200);
+  assert.equal(truncated.elements[0].optionsTruncated, true);
+  const unseen = `o${Math.max(...observed.map(option => Number(option.value.slice(1)))) + 1}`;
+  const priorValue = select.value, priorEvents = events;
+  assert.equal((await act(truncated, unseen)).code, "option_unavailable");
+  assert.equal(select.value, priorValue);
+  assert.equal(events, priorEvents, "An unobserved option must not dispatch page events");
+  const refreshed = await observe();
+  assert.equal((await act(refreshed, refreshed.elements[0].options[199].value)).ok, true);
+  assert.equal(select.value, options[199].value);
+});
+
+test("rejected or transformed fills keep unmatched field values withheld", async () => {
+  class Input {
+    tagName = "INPUT"; parentElement = null; labels = []; isConnected = true; type = "text";
+    value = "previously-private-account";
+    getAttribute(name) { return name === "aria-label" ? "Account" : null; }
+    hasAttribute() { return false; }
+    matches() { return false; }
+    closest() { return null; }
+    contains(element) { return element === this; }
+    getBoundingClientRect() { return { x: 10, y: 10, left: 10, top: 10, right: 210, bottom: 50, width: 200, height: 40 }; }
+    focus() { document.activeElement = this; }
+    select() {}
+  }
+  const field = new Input();
+  let insert = () => {};
+  const document = { title: "Profile", body: { innerText: "Account" }, activeElement: field,
+    getElementById: () => null, elementFromPoint: () => field, querySelectorAll: () => [field] };
+  const context = vm.createContext({ document, HTMLElement: Input, HTMLInputElement: Input,
+    HTMLSelectElement: class {}, HTMLTextAreaElement: class {}, HTMLLabelElement: class {},
+    getComputedStyle: () => ({ visibility: "visible", display: "block", overflowX: "visible", overflowY: "visible" }),
+    innerWidth: 800, innerHeight: 600, scrollX: 0, scrollY: 0, performance, setTimeout });
+  const tab = { tabId: "tab", webMcpRevision: 0, view: { webContents: { isDestroyed: () => false,
+    getURL: () => "https://example.com/", insertText: async text => insert(text),
+    executeJavaScriptInIsolatedWorld: async (_world, scripts) => vm.runInContext(scripts[0].code, context) } } };
+  const host = createBrowserTaskHost({ getTab: () => tab, tabsFor: () => [tab], ownerOf: () => "chat", activeFor: () => "tab",
+    enabled: () => true, allowed: async () => true, changed: () => {}, isVisible: () => true });
+  const observe = () => host.request({ sessionId: "chat", operation: "observe", args: { tabId: "tab" } });
+  const fill = async text => {
+    const seen = await observe();
+    return host.request({ sessionId: "chat", operation: "act", args: { tabId: "tab", observationId: seen.observationId,
+      action: { type: "fill", ref: seen.elements[0].ref, text } } });
+  };
+  const rejected = await fill("requested-account");
+  assert.equal(rejected.code, "value_mismatch");
+  assert.equal(rejected.control.valueWithheld, true);
+  assert.equal(rejected.control.value, undefined);
+  assert.ok(!JSON.stringify(rejected).includes(field.value));
+  assert.ok(!JSON.stringify(await observe()).includes(field.value));
+  insert = () => { field.value = "page-transformed-account"; };
+  const transformed = await fill("another-request");
+  assert.equal(transformed.code, "value_mismatch");
+  assert.equal(transformed.control.valueWithheld, true);
+  assert.ok(!JSON.stringify(transformed).includes(field.value));
+  assert.ok(!JSON.stringify(await observe()).includes(field.value));
+  insert = text => { field.value = text; };
+  const accepted = await fill("agent-entered-account");
+  assert.equal(accepted.ok, true);
+  assert.equal(accepted.control.value, "agent-entered-account");
+  assert.equal((await observe()).elements[0].value, "agent-entered-account");
 });
