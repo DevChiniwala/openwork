@@ -10,10 +10,66 @@ command -v Xvfb >/dev/null
 if [ -f /usr/local/share/openwork-desktop/configure-files.sh ]; then
   bash /usr/local/share/openwork-desktop/configure-files.sh
 fi
-mkdir -p "$state"
-chmod 0700 "$state"
-chown -R openwork-browser:openwork-browser "$state"
-export DISPLAY="$display" XAUTHORITY="$state/.Xauthority"
+runtime="/run/openwork-desktop/${display#:}"
+# Root's authority and logs never live in the browser-writable profile state.
+# Hold directory inodes while setting ownership; never recurse through that state.
+python3 - "$1" "$runtime" <<'PY'
+import os
+import pwd
+import stat
+import sys
+
+def prepare_state(base, runtime, uid, gid):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    def trusted(fd):
+        info = os.fstat(fd)
+        if info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise PermissionError('Desktop root state must be owned by its trusted host and not writable by other accounts')
+    def directory(parent, name, mode, owner, group):
+        try: os.mkdir(name, mode=mode, dir_fd=parent)
+        except FileExistsError: pass
+        fd = os.open(name, flags, dir_fd=parent)
+        try:
+            if owner == os.geteuid(): trusted(fd)
+            os.fchown(fd, owner, group)
+            os.fchmod(fd, mode)
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+    parent = os.open(base, flags)
+    try:
+        trusted(parent)
+        profile = directory(parent, 'cloud-desktop', 0o700, uid, gid)
+        os.close(profile)
+    finally: os.close(parent)
+    # /run is root-owned. Reject pre-existing symlinks and writable directories
+    # before any root redirection, xauth lock, or ownership change occurs there.
+    parent_path, name = os.path.split(runtime)
+    grandparent_path, parent_name = os.path.split(parent_path)
+    root = os.open(grandparent_path, flags)
+    try:
+        trusted(root)
+        parent = directory(root, parent_name, 0o755, os.geteuid(), os.getegid())
+        try: folder = directory(parent, name, 0o710, os.geteuid(), gid)
+        finally: os.close(parent)
+    finally: os.close(root)
+    try:
+        for name in ('.Xauthority', 'display.log', 'window-manager.log', 'taskbar.log', 'browser.log'):
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=folder)
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1 or info.st_mode & 0o022:
+                    raise PermissionError('Desktop runtime files must be private regular files')
+                os.fchown(fd, os.geteuid(), gid)
+                os.fchmod(fd, 0o640 if name == '.Xauthority' else 0o600)
+            finally: os.close(fd)
+    finally: os.close(folder)
+
+browser = pwd.getpwnam('openwork-browser')
+prepare_state(sys.argv[1], sys.argv[2], browser.pw_uid, browser.pw_gid)
+PY
+export DISPLAY="$display" XAUTHORITY="$runtime/.Xauthority"
 as_browser() {
   # The desktop must not inherit the worker's host, model or activity tokens.
   env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/home/openwork-browser \
@@ -72,13 +128,12 @@ command -v iptables >/dev/null || { echo "The desktop network guard needs iptabl
 guard_desktop_egress
 umask 077
 if [ ! -s "$XAUTHORITY" ]; then
-  touch "$XAUTHORITY"
-  chmod 0600 "$XAUTHORITY"
   xauth -f "$XAUTHORITY" add "$display" . "$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
-  chown openwork-browser:openwork-browser "$XAUTHORITY"
 fi
+chown root:openwork-browser "$XAUTHORITY"
+chmod 0640 "$XAUTHORITY"
 if ! xdotool getdisplaygeometry >/dev/null 2>&1; then
-  as_browser setsid -f Xvfb "$display" -screen 0 1280x800x24 -nolisten tcp -auth "$XAUTHORITY" >"$state/display.log" 2>&1 < /dev/null
+  as_browser setsid -f Xvfb "$display" -screen 0 1280x800x24 -nolisten tcp -auth "$XAUTHORITY" >"$runtime/display.log" 2>&1 < /dev/null
 fi
 attempt=0
 until xdotool getdisplaygeometry >/dev/null 2>&1; do
@@ -89,29 +144,30 @@ done
 if id openwork-app >/dev/null 2>&1; then
   # Share display access, never the Chromium profile or browser home. The
   # window manager launches menu/taskbar apps under the same isolated account.
-  install -o openwork-app -g openwork-app -m 0600 "$XAUTHORITY" /home/openwork-app/.Xauthority
+  # A planted destination can only be opened with the app account's own rights.
+  cat "$XAUTHORITY" | as_app sh -c 'umask 077; cat > "$HOME/.Xauthority"'
 fi
 if ! xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id'; then
   if id openwork-app >/dev/null 2>&1; then
-    as_app setsid -f openbox >"$state/window-manager.log" 2>&1 < /dev/null
+    as_app setsid -f openbox >"$runtime/window-manager.log" 2>&1 < /dev/null
   else
-    as_browser setsid -f openbox >"$state/window-manager.log" 2>&1 < /dev/null
+    as_browser setsid -f openbox >"$runtime/window-manager.log" 2>&1 < /dev/null
   fi
 fi
 # A taskbar and Applications menu are installed by the Workbot desktop image.
 # Older snapshots still open their browser without claiming extra apps exist.
 if command -v tint2 >/dev/null; then
   if id openwork-app >/dev/null 2>&1; then
-    if ! pgrep -u openwork-app -x tint2 >/dev/null; then as_app setsid -f tint2 >"$state/taskbar.log" 2>&1 < /dev/null; fi
+    if ! pgrep -u openwork-app -x tint2 >/dev/null; then as_app setsid -f tint2 >"$runtime/taskbar.log" 2>&1 < /dev/null; fi
   elif ! pgrep -u openwork-browser -x tint2 >/dev/null; then
-    as_browser setsid -f tint2 >"$state/taskbar.log" 2>&1 < /dev/null
+    as_browser setsid -f tint2 >"$runtime/taskbar.log" 2>&1 < /dev/null
   fi
 fi
 if ! curl --fail --silent --max-time 2 http://127.0.0.1:9222/json/version >/dev/null; then
   # The browser runs as an unprivileged user with Chromium's sandbox enabled.
   as_browser setsid -f chromium --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
     --user-data-dir="$state/profile" --window-size=1280,800 --force-device-scale-factor=1 --no-first-run \
-    --no-default-browser-check about:blank >"$state/browser.log" 2>&1 < /dev/null
+    --no-default-browser-check about:blank >"$runtime/browser.log" 2>&1 < /dev/null
 fi
 attempt=0
 until curl --fail --silent --max-time 2 http://127.0.0.1:9222/json/version >/dev/null; do
