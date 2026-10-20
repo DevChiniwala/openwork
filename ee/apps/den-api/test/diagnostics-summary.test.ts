@@ -94,9 +94,8 @@ test("Slack and Google connector states", () => {
   assert.equal(classifySlackAuthTest({ ok: false, error: new SlackApiError("invalid_auth") }, "T1"), "rejected")
   assert.equal(classifySlackAuthTest({ ok: false, error: new SlackApiError("ratelimited") }, "T1"), "unavailable")
   assert.equal(classifySlackAuthTest({ ok: false, error: new TypeError("fetch failed") }, "T1"), "unavailable")
-  const slack = { id: "slack:emc_1", name: "Slack", featureEnabled: true, runnerAvailable: true, enabled: true, hasBotToken: true, lastEventAt: null, completed24h: 3, live: null }
+  const slack = { id: "slack:emc_1", name: "Slack", runnerAvailable: true, enabled: true, hasBotToken: true, lastEventAt: null, completed24h: 3, live: null }
   const at = new Date(NOW).toISOString()
-  assert.equal(slackConnectorCheck({ ...slack, featureEnabled: false }).reason, "slack_assistant_off")
   assert.equal(slackConnectorCheck({ ...slack, enabled: false }).reason, "slack_assistant_off")
   assert.equal(slackConnectorCheck({ ...slack, runnerAvailable: false }).reason, "slack_runner_missing")
   assert.equal(slackConnectorCheck({ ...slack, hasBotToken: false }).state, "attention")
@@ -139,8 +138,8 @@ test("attention is derived only from visible sections, errors first", () => {
     },
     connectors: {
       access: "granted", checkedAt: null, items: [
-        slackConnectorCheck({ id: "slack:1", name: "Slack", featureEnabled: true, runnerAvailable: true, enabled: true, hasBotToken: true, lastEventAt: null, completed24h: null, live: { result: "rejected", checkedAt: new Date(NOW).toISOString() } }),
-        slackConnectorCheck({ id: "slack:2", name: "Slack 2", featureEnabled: true, runnerAvailable: true, enabled: true, hasBotToken: false, lastEventAt: null, completed24h: null, live: null }),
+        slackConnectorCheck({ id: "slack:1", name: "Slack", runnerAvailable: true, enabled: true, hasBotToken: true, lastEventAt: null, completed24h: null, live: { result: "rejected", checkedAt: new Date(NOW).toISOString() } }),
+        slackConnectorCheck({ id: "slack:2", name: "Slack 2", runnerAvailable: true, enabled: true, hasBotToken: false, lastEventAt: null, completed24h: null, live: null }),
         googleConnectorCheck({ id: "google:1", name: "Google", apis: [{ id: "gmail", name: "Gmail API" }], live: { checks: [{ id: "gmail", name: "Gmail API", status: "disabled" }], checkedAt: new Date(NOW).toISOString() } }),
       ],
     },

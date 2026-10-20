@@ -57,7 +57,7 @@ const EVENTS_MAX_MS = 170_000
 /** A comment this often keeps idle proxies from closing the page's stream (as the runner's SSE does). */
 const KEEP_ALIVE_MS = 15_000
 /**
- * A live socket from the runner (`headlessStepTurns`) that couldn't open, or ended within `SOCKET_MIN_MS`, rests the
+ * A live socket from the runner (`headlessDurableTurns`) that couldn't open, or ended within `SOCKET_MIN_MS`, rests the
  * person's sockets for `SOCKET_REST_MS`: their streams use SSE meanwhile. Remembered for at most this many people.
  */
 const SOCKET_MIN_MS = 10_000
@@ -117,7 +117,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       // Gateway access is validated for this actor and model by Den when minting each turn, not by the runner catalog.
       verifyModel: !member.den.gatewayModels && member.den.verifyModel,
       workspaceAssistant: async () => member.den.workspaceAssistant,
-      // `headlessStepTurns`: turns run one step at a time; off (or an older Den) sends them as before.
+      // `headlessDurableTurns`: turns run one step at a time; off (or an older Den) sends them as before.
       stepTurns: member.den.stepTurns,
       // `headlessSessionCells`: new chats in their own session cells; off (or an older Den) creates them as before.
       sessionCells: member.den.sessionCells,
@@ -158,15 +158,12 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       email: who.user.email,
       organizationName: who.organization.name,
       enabled: who.enabled,
-      firstRun: who.firstRun === true,
-      canEnableWorkbot: who.canEnableWorkbot === true,
       calendar: who.enabled && who.calendar === true,
       documents: who.enabled && who.documents === true,
       computer: who.enabled && who.computer,
       documentEditing: who.enabled && who.documents === true && who.documentEditing,
       workspaceAssistant: who.enabled && who.workspaceAssistant,
       guidedNavigation: who.enabled && who.workspaceAssistant && who.guidedNavigation,
-      teamLinks: who.enabled ? who.teamLinks : undefined,
       canSchedule: who.enabled && who.canSchedule,
       sideChats: who.enabled && who.sideChats,
       denUrl: config.denWebUrl ?? (await den.webUrl().catch(() => null)),
@@ -465,7 +462,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   }
 
   /**
-   * `headlessStepTurns`: the runner's live events over a WebSocket, which on celld keeps going while the runner's
+   * `headlessDurableTurns`: the runner's live events over a WebSocket, which on celld keeps going while the runner's
    * code is switched under it. Null (use SSE) when the runner doesn't upgrade, or while this person's socket is resting
    * after one that couldn't open or ended early, so a runner that can't keep one isn't tried on every stream.
    */

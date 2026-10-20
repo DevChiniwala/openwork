@@ -29,7 +29,6 @@ import { registerOrgInferenceRoutes } from "./inference.js"
 import { registerModelsAnalyticsRoutes } from "./models-analytics.js"
 import { registerLibraryUsageRoutes } from "./library-usage.js"
 import { registerOrgHeadlessSessionRoutes } from "./headless-sessions.js"
-import { registerModelsAnalyticsExportRoutes } from "../../models-analytics-export.js"
 import { registerOrgLlmProviderRoutes } from "./llm-providers.js"
 import { registerOrgMemberRoutes } from "./members.js"
 import { registerOrgPermissionRoutes } from "./permissions.js"
@@ -93,7 +92,6 @@ export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & Req
   registerModelsAnalyticsRoutes(app)
   registerLibraryUsageRoutes(app)
   registerOrgHeadlessSessionRoutes(app)
-  registerModelsAnalyticsExportRoutes(app)
   registerOrgScimRoutes(app)
   registerOrgSsoRoutes(app)
   registerOrgInvitationRoutes(app)

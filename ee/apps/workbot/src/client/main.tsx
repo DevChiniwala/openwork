@@ -74,7 +74,7 @@ function App() {
   }, [me.isFetching, me.data, verified, identityWaiters])
   if (owner !== null) {
     const authorization = blocked ? workspaceDisabled ? "disabled" : identityUnavailable || me.isFetching ? "blocked" : "signin" : undefined
-    if (!blocked && !owner.enabled && owner.firstRun) return <WorkspaceAccess me={owner} />
+    if (!blocked && !owner.enabled) return <WorkspaceAccess me={owner} />
     // Hidden, not conditionally removed: auth revalidation cannot run editor teardown.
     return <>
       <div className="h-full" hidden={blocked} data-workbot-retained-owner><Signed key={JSON.stringify([owner.organizationId, owner.userId])} me={owner} authorization={authorization} refreshIdentity={refreshIdentity} /></div>

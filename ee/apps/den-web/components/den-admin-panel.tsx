@@ -765,7 +765,7 @@ function buildFixtureOrganization(index: number, includeFeatures = false): Admin
     seatsFreeAdditional: target ? 20 : 0,
     billableSeatCount: target ? 103 : 0,
     features: includeFeatures ? mapFeatures((key) => {
-      const enabled = target && (key === "secureSecretFields" || key === "workbotTeamLinks");
+      const enabled = target && key === "workbotDocuments";
       return { enabled, source: "everyone", everyone: enabled, killed: false, override: null, overrideApplies: true };
     }) : null,
     openworkWebAccess: {

@@ -2,7 +2,7 @@ import {
   createHeadlessRunnerClient,
   defaultHeadlessRunnerDeps,
   headlessRunnerConfig,
-  headlessStepTurnsEnabled,
+  headlessDurableTurnsEnabled,
   stepLabel,
   TERMINAL_TURN_STATUSES,
   type HeadlessRunnerActor,
@@ -22,9 +22,7 @@ export { headlessRunnerConfig, stepLabel }
 export type HeadlessDeps = HeadlessRunnerDeps
 
 type SlackModelDeps = {
-  gatewayEnabled: (organizationId: string) => Promise<boolean>
   cloudModel: (actor: HeadlessRunnerActor, fallback?: string | null) => Promise<string | null>
-  legacyModel: (installation: { organizationId: string; model: string | null }) => Promise<string | undefined>
 }
 
 /** Resolve only after the invoking member is known; gateway denials never select a deployment default. */
@@ -34,16 +32,11 @@ export async function slackTurnModel(
   suppliedDeps?: SlackModelDeps,
 ) {
   const deps: SlackModelDeps = suppliedDeps ?? await import("../workbot/model.js").then((policy) => ({
-    gatewayEnabled: policy.cloudAgentGatewayEnabled,
     cloudModel: policy.organizationCloudModelSelection,
-    legacyModel: policy.slackAssistantModel,
   }))
-  if (await deps.gatewayEnabled(installation.organizationId)) {
-    const model = await deps.cloudModel({ organizationId: installation.organizationId, userId: actor.userId }, installation.model)
-    if (!model) throw new Error("cloud_agent_model_unavailable")
-    return model
-  }
-  return deps.legacyModel(installation)
+  const model = await deps.cloudModel({ organizationId: installation.organizationId, userId: actor.userId }, installation.model)
+  if (!model) throw new Error("cloud_agent_model_unavailable")
+  return model
 }
 
 /** Slack answers only on a deployment with a headless runner (a self-hosted install may not have one). */
@@ -61,8 +54,7 @@ export function slackHeadlessDeps(base: HeadlessDeps | null = defaultHeadlessRun
     ...base,
     // Loaded lazily: the minter pulls in the auth and database modules.
     mintToken: async (input) => {
-      // A resume grant (feature `headlessDurableTurns`) and an index capability (`headlessSessionIndex`) pass through
-      // unchanged with the token.
+      // A resume grant (feature `headlessDurableTurns`) and an index capability pass through unchanged with the token.
       const minted = await (await import("../headless-runner/resume-grants.js")).mintHeadlessTurnCredentials({ ...input, indexKind: "slack" })
       try {
         const { recordSlackRunToken } = await import("./desktop-handoff.js")
@@ -184,15 +176,15 @@ const unknownSession: RunnerFailure = { ok: false, error: "unknown_session", ret
 
 export type SlackRunnerOptions = {
   /**
-   * Feature `headlessStepTurns` for the actor's organization, read before each send: on, turns go to the runner with
+   * Feature `headlessDurableTurns` for the actor's organization, read before each send: on, turns go to the runner with
    * `execution: "steps"`. Unset (or failing): turns are sent exactly as without the feature.
    */
   stepTurns?: () => Promise<boolean>
 }
 
-/** The Slack worker's runner: step-by-step turns follow `headlessStepTurns` for the actor's organization. */
+/** The Slack worker's runner: step-by-step turns follow `headlessDurableTurns` for the actor's organization. */
 export function slackRunnerForActor(actor: HeadlessRunnerActor, suppliedDeps: HeadlessDeps | null = slackHeadlessDeps()): SlackRunner {
-  return createSlackRunner(actor, suppliedDeps, { stepTurns: () => headlessStepTurnsEnabled(actor.organizationId) })
+  return createSlackRunner(actor, suppliedDeps, { stepTurns: () => headlessDurableTurnsEnabled(actor.organizationId) })
 }
 
 export function createSlackRunner(

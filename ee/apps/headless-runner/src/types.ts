@@ -105,9 +105,8 @@ export const turnCredentialsSchema = z
      */
     resumeGrant: z.string().regex(RESUME_GRANT).optional(),
     /**
-     * Den's index capability for this session (feature `headlessSessionIndex`): kept with the session
-     * (`store.setIndexCapability`) for the Den index flusher (den-index.ts), never held with the turn, logged or
-     * exported. Opaque to the runner: only its size and characters are checked.
+     * Den's index capability for this session: kept with the session (`store.setIndexCapability`) for the Den index
+     * flusher (den-index.ts), never held with the turn, logged or exported. Opaque to the runner: only its size and characters are checked.
      */
     indexCapability: z.string().regex(INDEX_CAPABILITY).optional(),
   })

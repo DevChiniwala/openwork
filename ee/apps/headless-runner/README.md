@@ -189,8 +189,8 @@ the organization) keep going on their own:
   `resume_sweep_failed`, `resume_grant_unreadable`, `resume_grant_store_failed`).
 - A resumed turn uses the runner's `HEADLESS_MODEL_API_KEY`: a caller's own per-turn model key is never stored.
 
-Callers keep their re-send logic as a fallback; sends are idempotent. Deploy a runner that accepts `resumeGrant`
-before turning `headlessDurableTurns` on: older runners refuse the unknown field.
+Callers keep their re-send logic as a fallback; sends are idempotent. Deploy a runner that accepts `resumeGrant` and
+`execution` before turning `headlessDurableTurns` on: older runners refuse the unknown fields.
 
 ## Den's session index
 
@@ -198,9 +198,10 @@ With `HEADLESS_DEN_API_URL` and `HEADLESS_DEN_CALLBACK_TOKEN` set, the backgroun
 reports each session's content-free totals and state (title, dates, hot and total bytes, segment count, when its
 running turn started, deleted) from the index outbox to Den (`POST $HEADLESS_DEN_API_URL/v1/internal/headless/index`,
 `Authorization: Bearer $HEADLESS_DEN_CALLBACK_TOKEN`), at most 50 per request. Each update carries the session's
-**index capability**: Den sends one with every turn (`credentials.indexCapability`) where `headlessSessionIndex` is on;
+**index capability**: Den sends one with every turn whose caller names the session (`credentials.indexCapability`);
 the runner keeps the latest with the session, never with the turn, in logs or in exports. Den answers per update:
-`ok`/`stale` are acknowledged; `index_disabled` and `rate_limited` are kept and retried; other rejections are dropped.
+`ok`/`stale` are acknowledged; `rate_limited` is kept and retried (so is `index_disabled`, which only Dens from before
+the index was always on send); other rejections are dropped.
 Failures back off (immediately, 30 s, 2 min, 10 min, then hourly); rows older than 7 days, or that never got a
 capability, are dropped. Once a day the cell queues a fresh snapshot of every session. A Den outage delays the
 index, never a turn.
@@ -208,7 +209,8 @@ index, never a turn.
 ## Step mode
 
 A turn sent with `execution: "steps"` runs one step at a time from what is stored, instead of in one go. Callers send
-it only when `headlessStepTurns` is on for the organization (Den's Slack runner and Automations, and Workbot); a turn
+it only when `headlessDurableTurns` is on for the organization (Den's Slack runner and Automations, and Workbot), the
+same feature that mints [resume grants](#self-resume), so step mode and self-resume turn on and off together; a turn
 sent without it runs exactly as before, and a resent turn keeps the mode it was admitted with. Its background tasks
 and their reports run in step mode too. Lanes, the queue, `HEADLESS_MAX_CONCURRENT_TURNS`, Stop, follow-ups that
 interrupt, the repeat check and `credentials_refresh` work the same way.
@@ -243,8 +245,10 @@ interrupt, the repeat check and `credentials_refresh` work the same way.
 - **Moving conversations.** Exports carry each turn's `execution`. A session with a running turn can't be exported,
   so the next-step schedule and checkpoints are never needed after an import, and never included.
 
-Turn `headlessStepTurns` on only after the runner deploy that accepts `execution` is live: older runners refuse the
-unknown field.
+Turn `headlessDurableTurns` on only after the runner deploy that accepts `execution` is live: older runners refuse the
+unknown field. Turning it off sends new turns without `execution` or a grant. A turn already admitted in step mode keeps
+its mode; if it loses its credentials, Den refuses its grant while the feature is off, so it waits `interrupted` for
+its caller to re-send it, as turns did before.
 
 ## Isolation
 

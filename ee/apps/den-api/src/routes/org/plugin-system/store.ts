@@ -6014,7 +6014,7 @@ export async function configureMarketplacePluginMcpRequirement(input: {
   oauthClient?: { clientId: string; clientSecret?: string }
   pluginId: PluginId
   serverName: string
-  /** Secure keys in chat: set up a shared API-key connection now; a person adds the key next. */
+  /** Set up a shared API-key connection now; a person adds the key in a private field next. */
   awaitKey?: boolean
 }) {
   const awaitingKey = input.awaitKey === true && input.authType === "apikey" && !normalizedPluginMcpApiKey(input.apiKey)

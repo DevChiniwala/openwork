@@ -22,7 +22,6 @@ export function classifySlackAuthTest(outcome: { ok: true; teamId: unknown } | {
 export type SlackConnectorInput = {
   id: string
   name: string
-  featureEnabled: boolean
   runnerAvailable: boolean
   enabled: boolean
   hasBotToken: boolean
@@ -32,8 +31,8 @@ export type SlackConnectorInput = {
 }
 
 /** Whether a Slack row's state depends on a live token check. */
-export function slackNeedsLiveCheck(input: Pick<SlackConnectorInput, "featureEnabled" | "runnerAvailable" | "enabled" | "hasBotToken">): boolean {
-  return input.featureEnabled && input.enabled && input.runnerAvailable && input.hasBotToken
+export function slackNeedsLiveCheck(input: Pick<SlackConnectorInput, "runnerAvailable" | "enabled" | "hasBotToken">): boolean {
+  return input.enabled && input.runnerAvailable && input.hasBotToken
 }
 
 export function slackConnectorCheck(input: SlackConnectorInput): ConnectorCheck {
@@ -42,7 +41,7 @@ export function slackConnectorCheck(input: SlackConnectorInput): ConnectorCheck 
     lastEventAt: input.lastEventAt ? input.lastEventAt.toISOString() : null,
     completed24h: input.completed24h,
   }
-  if (!input.featureEnabled || !input.enabled) return { ...base, state: "off", reason: "slack_assistant_off", checkedAt: null }
+  if (!input.enabled) return { ...base, state: "off", reason: "slack_assistant_off", checkedAt: null }
   if (!input.runnerAvailable) return { ...base, state: "off", reason: "slack_runner_missing", checkedAt: null }
   if (!input.hasBotToken) return { ...base, state: "attention", reason: "slack_not_installed", checkedAt: null }
   if (!input.live || input.live.result === "unavailable") {

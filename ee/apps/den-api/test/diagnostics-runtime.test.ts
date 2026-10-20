@@ -110,7 +110,7 @@ test("connectors: Slack results are shared per organization, Google results are 
   const h = harness({ targets: {
     slack: [{
       id: "slack:emc_1", name: "Slack", connectionId: "emc_1", version: "token-1", needsLiveCheck: true,
-      featureEnabled: true, runnerAvailable: true, enabled: true, hasBotToken: true, lastEventAt: null, completed24h: 2,
+      runnerAvailable: true, enabled: true, hasBotToken: true, lastEventAt: null, completed24h: 2,
     }],
     google: [{ id: "google:emc_2", name: "Google Workspace", credentialProviderId: "emc_2", features: ["gmailRead"], apis: [{ id: "gmail", name: "Gmail API" }] }],
   } })
