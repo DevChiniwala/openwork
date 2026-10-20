@@ -48,6 +48,7 @@ function observePage(id, query = null) {
     element.isContentEditable || ["textbox", "combobox"].includes(element.getAttribute("role"));
   const candidates = document.querySelectorAll('a[href],button,input,textarea,select,[role],h1,h2,h3,h4,p,label,tr,table,main,aside,section,div,[contenteditable]:not([contenteditable="false"])');
   const withheld = new Set();
+  const identities = new Set();
   for (const element of candidates) {
     if (!(element instanceof HTMLElement)) continue;
     const input = element instanceof HTMLInputElement, textarea = element instanceof HTMLTextAreaElement, select = element instanceof HTMLSelectElement;
@@ -58,10 +59,16 @@ function observePage(id, query = null) {
     if (value?.trim() && (sensitive || isTextValue(element) && entered.get(element) !== value)) withheld.add(value);
     // A public option label can itself be its backing value ("Plan 1" / "1").
     // Preserve that visible label; other backing identities remain private.
-    if (select) for (const option of element.options) if (option.value?.trim() && !option.label.includes(option.value)) withheld.add(option.value);
+    if (select) for (const option of element.options) if (option.value?.trim() && !option.label.includes(option.value)) identities.add(option.value);
   }
-  const privateValues = [...withheld].sort((a, b) => b.length - a.length);
-  const privatePattern = privateValues.length ? new RegExp(privateValues.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g") : null;
+  const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const privateValues = [...withheld].sort((a, b) => b.length - a.length).map(escape);
+  for (const value of [...identities].sort((a, b) => b.length - a.length)) {
+    // Short backing IDs are common fragments of unrelated public labels:
+    // "en" must not erase "French". They are private as complete tokens.
+    privateValues.push(value.length < 5 ? `(?<![\\p{L}\\p{N}_])${escape(value)}(?![\\p{L}\\p{N}_])` : escape(value));
+  }
+  const privatePattern = privateValues.length ? new RegExp(privateValues.join("|"), "gu") : null;
   const text = (value, limit = 200) => {
     // Labels, referenced nodes, body text and titles can all echo a field's
     // withheld content. Redact before truncation, throughout the observation.
