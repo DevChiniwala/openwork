@@ -104,6 +104,24 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
   const address = runner.address(); if (!address || typeof address === "string") throw new Error("Runner fixture did not start");
   const runnerUrl = `http://127.0.0.1:${address.port}`;
   try {
+    // The taught website has its own origin, just as a real public website does.
+    const registryServer = httpServer((request, response) => {
+      const url = new URL(request.url ?? "/", "http://registry");
+      if (url.pathname.startsWith("/privacy")) {
+        response.setHeader("content-type", "text/html");
+        response.end(url.pathname.startsWith("/privacy/next")
+          ? '<!doctype html><title>Privacy check after navigation</title><button>Echo example-private-credential-719</button><input type="hidden" id="oversized"><button onclick="document.getElementById(\'oversized\').value=\'x\'.repeat(5000)">Exceed privacy budget</button><a href="/privacy/done">Continue privacy check</a>'
+          : '<!doctype html><title>Privacy check</title><input id="credential" type="password" aria-label="Password" value="example-private-credential-719"><button onclick="document.getElementById(\'echo\').textContent=\'Echo \'+document.getElementById(\'credential\').value;document.getElementById(\'credential\').remove()">Copy and clear</button><button id="echo">Waiting for echo</button><a href="/privacy/next/unobserved-bearer-token-349">Next privacy page</a>');
+        return;
+      }
+      response.setHeader("content-type", "text/html");
+      response.end('<!doctype html><html><head><title>Example public registry</title></head><body><h1>Example public registry</h1><form action="/results"><label>Name<input name="name" aria-label="Name"></label><button onclick="document.getElementById(\'scripted\').click()"><span>Search</span></button></form><input type="password" aria-label="Password" value="fixture-secret-never-record"><h2>'+(url.searchParams.get("name") === "Example Two" ? 'Example Two' : 'Example One')+'</h2><dl><dt>Status</dt><dd aria-label="Registration status" onmousedown="document.getElementById(\'field-activation\').textContent=\'Field activated\'">'+(url.searchParams.get("name") === "Example Two" ? 'Active' : 'Pending')+'</dd></dl><output id="field-activation">Field not activated</output><button id="scripted">Scripted decoy</button></body></html>');
+    });
+    await new Promise<void>(resolve => registryServer.listen(0, "127.0.0.1", resolve));
+    resources.defer(() => new Promise<void>(resolve => { registryServer.closeAllConnections(); registryServer.close(() => resolve()); }));
+    const registryAddress = registryServer.address();
+    if (!registryAddress || typeof registryAddress === "string") throw new Error("Registry fixture did not start");
+    const registryUrl = `http://127.0.0.1:${registryAddress.port}/`;
     const vite = await createServer({ root: fileURLToPath(new URL("../../ee/apps/workbot/src/client", import.meta.url)), configFile: fileURLToPath(new URL("../../ee/apps/workbot/vite.config.ts", import.meta.url)), server: { host: "127.0.0.1", port: 0, strictPort: false }, plugins: [{ name: "browser-teaching-fixture", configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
         const url = new URL(request.url ?? "/", "http://fixture");
@@ -113,17 +131,6 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
           response.writeHead(result.status, { "content-type": "application/json" }).end(await result.text()); return;
         }
         if (url.pathname === "/fixture/result") { response.setHeader("content-type", "application/json"); response.end(JSON.stringify(runResult)); return; }
-        if (url.pathname.startsWith("/privacy")) {
-          response.setHeader("content-type", "text/html");
-          response.end(url.pathname === "/privacy/next"
-            ? '<!doctype html><title>Privacy check after navigation</title><button>Echo example-private-credential-719</button><input type="hidden" id="oversized"><button onclick="document.getElementById(\'oversized\').value=\'x\'.repeat(5000)">Exceed privacy budget</button><a href="/privacy/done">Continue privacy check</a>'
-            : '<!doctype html><title>Privacy check</title><input id="credential" type="password" aria-label="Password" value="example-private-credential-719"><button onclick="document.getElementById(\'echo\').textContent=\'Echo \'+document.getElementById(\'credential\').value;document.getElementById(\'credential\').remove()">Copy and clear</button><button id="echo">Waiting for echo</button><a href="/privacy/next">Next privacy page</a>');
-          return;
-        }
-        if (url.pathname.startsWith("/registry")) {
-          response.setHeader("content-type", "text/html");
-          response.end('<!doctype html><html><head><title>Example public registry</title></head><body><h1>Example public registry</h1><form action="/registry/results"><label>Name<input name="name" aria-label="Name"></label><button onclick="document.getElementById(\'scripted\').click()"><span>Search</span></button></form><input type="password" aria-label="Password" value="fixture-secret-never-record"><h2>'+(url.searchParams.get("name") === "Example Two" ? 'Example Two' : 'Example One')+'</h2><dl><dt>Status</dt><dd aria-label="Registration status" onmousedown="document.getElementById(\'field-activation\').textContent=\'Field activated\'">'+(url.searchParams.get("name") === "Example Two" ? 'Active' : 'Pending')+'</dd></dl><output id="field-activation">Field not activated</output><button id="scripted">Scripted decoy</button></body></html>'); return;
-        }
         if (url.pathname !== "/") return next();
         const html = await server.transformIndexHtml("/", `<!doctype html><html><head><title>Teach Workbot</title></head><body><div id="root"></div><script type="module" src="/@fs/${fixtureEntry}"></script></body></html>`);
         response.setHeader("content-type", "text/html"); response.end(html);
@@ -132,7 +139,7 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
     resources.defer(() => vite.close()); await vite.listen();
     const url = vite.resolvedUrls?.local[0]; if (!url) throw new Error("Teaching fixture did not start");
     const registry = resources.use(await chrome({ host: place.host(), name: "demonstrated-registry", startUrl: "about:blank", headless: true }));
-    recorder = createBrowserDemonstration({ path: join(directory, "demonstration.json"), endpoint: registry.handle.cdpUrl, allowed: async (value: string) => value === "about:blank" || new URL(value).origin === new URL(url).origin });
+    recorder = createBrowserDemonstration({ path: join(directory, "demonstration.json"), endpoint: registry.handle.cdpUrl, allowed: async (value: string) => value === "about:blank" || new URL(value).origin === new URL(registryUrl).origin });
     resources.defer(() => recorder?.close());
     // Local Chrome has no Linux guest UID/kernel filter; this fixture deliberately uses its own loopback site.
     browser = createCloudBrowser({ statePath: join(directory, "browser-tabs.json"), endpoint: registry.handle.cdpUrl, privateBrowsing: true, verifyEgress: async () => {}, assertActive() {}, enabled: () => true, beforeInput: async () => {} });
@@ -143,6 +150,6 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
     token = tokenSchema.parse(issued.body).token; denUrl = den.ref.apiUrl;
     app = await teachingServer({ denUrl, publicUrl: url, runnerUrl, token });
     const web = resources.use(await chrome({ host: place.host(), name: "teach-workbot", startUrl: url, headless: true }));
-    return { web, registry, url, registryUrl: `${url}registry`, turns: () => structuredClone(turns), state: () => structuredClone(state), recorded: () => readFile(join(directory, "demonstration.json"), "utf8"), savedSkill: async () => resultSchema.parse(await mcp("get_skill", { name: "registry-lookup" })).structuredContent.content, runResult: () => runResult, async [Symbol.asyncDispose]() { await resources.disposeAsync(); } };
+    return { web, registry, url, registryUrl, turns: () => structuredClone(turns), state: () => structuredClone(state), recorded: () => readFile(join(directory, "demonstration.json"), "utf8"), savedSkill: async () => resultSchema.parse(await mcp("get_skill", { name: "registry-lookup" })).structuredContent.content, runResult: () => runResult, async [Symbol.asyncDispose]() { await resources.disposeAsync(); } };
   } catch (error) { await resources.disposeAsync(); throw error; }
 }

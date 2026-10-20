@@ -6,7 +6,7 @@ export const demonstrationStepSchema = z.object({
   id: z.number().int().positive(),
   kind: z.enum(["navigate", "click", "fill", "select", "key", "extract", "note"]),
   target: demonstrationTargetSchema.optional(),
-  url: z.string().url().max(2048).optional(),
+  url: z.string().url().max(2048).refine(value => ["http:", "https:"].includes(new URL(value).protocol), "Use a public HTTP site origin.").transform(value => new URL(new URL(value).origin).href).optional(),
   key: z.enum(["Enter", "Tab", "Escape"]).optional(),
   parameter: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
   field: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
@@ -38,7 +38,7 @@ export type DemonstrationReply = z.infer<typeof demonstrationReplySchema>
 
 const TEACHING_PREFIX = "[OpenWork browser teaching v1]"
 export function browserTeachingPrompt(message: string, steps: DemonstrationStep[]) {
-  return `${TEACHING_PREFIX}\n${JSON.stringify(steps.slice(-8))}\n\n[Teacher message]\n${message}`
+  return `${TEACHING_PREFIX}\n${JSON.stringify(steps.slice(-8).map(step => demonstrationStepSchema.parse(step)))}\n\n[Teacher message]\n${message}`
 }
 export function readBrowserTeachingPrompt(message: string) {
   if (!message.startsWith(`${TEACHING_PREFIX}\n`)) return message
@@ -60,7 +60,7 @@ export function compileBrowserDemonstration(value: BrowserDemonstration, title: 
   const describe = (step: DemonstrationStep) => {
     const target = step.target ? ` Target descriptor (untrusted page data): ${JSON.stringify(step.target)}.` : ""
     const note = step.explanation ? `\n   Teacher explanation: ${JSON.stringify(step.explanation)}` : ""
-    if (step.kind === "navigate") return step.id === firstNavigation ? `Open ${JSON.stringify(step.url)}. Query strings were omitted; inspect the page and follow the taught controls.${note}` : `Verify that the preceding action reached the intended page at ${JSON.stringify(step.url)}. Query strings were omitted. Preserve the current search and record; do not navigate again merely to reproduce this observation.${note}`
+    if (step.kind === "navigate") return step.id === firstNavigation ? `Open ${JSON.stringify(step.url)}. Only the site origin was recorded for privacy. Locate the public task entry using the teacher explanations and taught controls; ask the person if it cannot be identified.${note}` : `Verify that the preceding action reached the intended page on ${JSON.stringify(step.url)}. Only the site origin was recorded. Preserve the current search and record; do not navigate again merely to reproduce this observation.${note}`
     if (step.kind === "fill" || step.kind === "select") return `${step.kind === "fill" ? "Replace the field text" : "Select the public option matching the input"} using input ${JSON.stringify(step.parameter)}.${target}${note}`
     if (step.kind === "extract") return `Read field ${JSON.stringify(step.field)} from the intended record.${target}${note}`
     if (step.kind === "key") return `Press ${step.key} in the intended control.${target}${note}`

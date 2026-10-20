@@ -179,13 +179,14 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
     let parsed; try { parsed = new URL(url); } catch { return; }
     if (!await allowed(url)) { demo.phase = "paused"; demo.notice = "The tab left the permitted browser destinations. Recording paused."; await persist(); return; }
     if (demo !== navigatedDemo || !active() || !["https:", "http:"].includes(parsed.protocol)) return;
-    parsed.username = ""; parsed.password = ""; parsed.search = ""; parsed.hash = "";
-    // A redaction marker is not a usable URL. Keep the draft valid and omit it.
-    if (privacy.redact(parsed.href) !== parsed.href || parsed.href.length > 2048) {
+    // Paths can contain opaque reset/bearer tokens that never appeared in a field.
+    // Record only the public entry origin; use taught controls to reach the task.
+    const entry = new URL(parsed.origin).href;
+    if (privacy.redact(entry) !== entry || entry.length > 2048) {
       demo.notice = "A navigation address was omitted for privacy. Teach a public entry page before saving.";
       await persist(); return;
     }
-    if (demo.steps.at(-1)?.url !== parsed.href) append({ kind: "navigate", url: parsed.href });
+    if (demo.steps.at(-1)?.url !== entry) append({ kind: "navigate", url: entry });
   };
   const setMode = async (pick = false) => {
     if (wire && contextId !== null) await wire.send("Runtime.evaluate", { contextId, expression: `${SCRIPT}; globalThis.__openworkTeaching?.set(${active()}, ${pick}, ${JSON.stringify(privacy.snapshot())})` });

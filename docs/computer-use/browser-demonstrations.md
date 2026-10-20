@@ -34,8 +34,10 @@ The draft includes input placeholders, the taught controls and extraction
 fields, teacher explanations, verification requirements, and interruption rules.
 The latest explicit correction takes precedence. Ambiguous people or records
 require clarification. Page-derived descriptors are quoted untrusted data.
-Navigation after an action describes the expected resulting page; replay must
-preserve the current search rather than reopening a URL with its query removed.
+Navigation records only the site's origin. Explain how to reach a deep-linked
+entry page, or demonstrate the navigation from the site's public home page.
+Navigation after an action describes its expected outcome; a rerun preserves
+the current search rather than reopening the origin after each action.
 
 ## Recording boundaries
 
@@ -50,8 +52,9 @@ across navigation. That history never enters draft storage or model context.
 When its limit is reached, page-derived descriptors are concealed instead of
 dropping older protections.
 
-URLs omit query strings, fragments and embedded credentials. Paths, public
-control labels, and teacher explanations remain in the private draft: review
+URLs retain only the site origin: paths, query strings, fragments and embedded
+credentials are omitted, including opaque tokens in navigation paths. Public
+control labels and teacher explanations remain in the private draft: review
 these before saving or sharing. The first version supports navigation, ordinary
 text inputs, public select controls, clicks, Enter/Tab/Escape, and explicit
 extraction targets. Frames, popups, canvas, contenteditable editors, file uploads,

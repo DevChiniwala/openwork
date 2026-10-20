@@ -96,6 +96,7 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun, suspen
       {error && <p role="alert" className="text-[13px]">{error}</p>}
       {demo?.notice && <p role="status" className="text-[13px]">{demo.notice}</p>}
       {!demo ? <>
+        <p className="text-[13px] text-[var(--wb-muted)]">Explain how to reach the task from the site's home page. Only the site origin is saved from navigation addresses.</p>
         <div className="text-[13px]">
           <span>Browser tab</span>
           <Select.Root items={tabs.map((item, index) => ({ value: item.id, label: `${item.origin === "null" ? "Blank page" : item.origin} · Tab ${index + 1}` }))} value={tab || null} onValueChange={value => setTab(value ?? "")} disabled={busy || !enabled} open={tabSurface.open} onOpenChange={value => { if (!tabSurface.blocked) setTabPickerOpen(value); }}>

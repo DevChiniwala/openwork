@@ -10,9 +10,9 @@ test("a member teaches a browser lookup, saves a private skill and runs it with 
     await user.click({ role: "button", label: "Teach Workbot" });
     await user.see({ role: "combobox", label: "Tab to teach" });
     await user.see({ text: "Blank page · Tab 1" });
+    await person.navigate(`${world.registryUrl}privacy/reset/unobserved-reset-token-8347`);
     await user.click({ role: "button", label: "Start teaching" });
     await user.see({ text: "You have browser control" });
-    await person.navigate(`${world.url}privacy`);
     await person.click({ role: "button", label: "Copy and clear" });
     await person.click({ role: "button", label: "Echo example-private-credential-719" });
     await person.click({ role: "link", label: "Next privacy page" });
@@ -21,9 +21,15 @@ test("a member teaches a browser lookup, saves a private skill and runs it with 
     await user.type({ role: "textbox", label: "Explain this step" }, "Keep credentials private while documenting the public workflow.", { replace: true });
     await user.click({ role: "button", label: "Send explanation" });
     await user.see({ text: "Explanation added to the conversation" });
-    expect(await world.recorded()).not.toContain("example-private-credential-719");
+    const privateDraft = await world.recorded();
+    expect(privateDraft).not.toContain("example-private-credential-719");
+    expect(privateDraft).not.toContain("unobserved-reset-token-8347");
+    expect(privateDraft).not.toContain("unobserved-bearer-token-349");
+    expect(world.state().demonstration?.steps.filter(step => step.kind === "navigate").every(step => step.url === world.registryUrl)).toBe(true);
     expect(world.turns().at(-1)?.prompt).not.toContain("example-private-credential-719");
     expect(world.turns().at(-1)?.prompt).toContain("Echo [private]");
+    expect(world.turns().at(-1)?.prompt).not.toContain("unobserved-reset-token-8347");
+    expect(world.turns().at(-1)?.prompt).not.toContain("unobserved-bearer-token-349");
     evidence.recordAssertionEvidence("Removed field values remain redacted after navigation", "Both trusted clicks retain only Echo [private]; the draft and teaching conversation contain no credential.", !JSON.stringify(world.state()).includes("example-private-credential-719") && !world.turns().at(-1)?.prompt.includes("example-private-credential-719"));
     await person.click({ role: "button", label: "Exceed privacy budget" });
     await person.click({ role: "link", label: "Continue privacy check" });
