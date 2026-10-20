@@ -43,6 +43,7 @@ import {
 import { getRequiredUserEmail } from "../../user.js"
 import { checkRateLimit } from "../../utils/rate-limit.js"
 import type { OrgRouteVariables } from "./shared.js"
+import { requestClientIpKey } from "../../request-client-ip.js"
 
 const createOrganizationSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -237,11 +238,6 @@ function getStoredSessionId(session: { id?: string | null } | null) {
   }
 }
 
-function getRequestAddress(headers: Headers) {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-  return forwarded || headers.get("x-real-ip")?.trim() || "unknown"
-}
-
 function sha256Hex(value: string) {
   return createHash("sha256").update(value).digest("hex")
 }
@@ -254,7 +250,7 @@ export function ssoResolveRateLimitKeys(headers: Headers, email: string) {
   const normalizedEmail = normalizeResolveEmail(email)
   const domainHash = sha256Hex(normalizedEmail.slice(normalizedEmail.lastIndexOf("@") + 1))
   return {
-    ip: `org-sso-resolve:ip:${sha256Hex(getRequestAddress(headers))}`,
+    ip: `org-sso-resolve:ip:${sha256Hex(requestClientIpKey(headers))}`,
     email: `org-sso-resolve:email:${sha256Hex(normalizedEmail)}`,
     domain: `org-sso-resolve:domain:${domainHash}`,
     domainMiss: `org-sso-resolve:domain-miss:${domainHash}`,

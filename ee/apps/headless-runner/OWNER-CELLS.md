@@ -227,7 +227,10 @@ Rehearse a restore into a throwaway bucket prefix before relying on it.
 Sealed segments and large bodies (README "Sealed history and large outputs") live under `sessions/<id>/segments/` and
 `sessions/<id>/bodies/` in the same bucket as kept files, so the daily backup covers them. Turning it on is a runner
 setting with no org context: deploy first, then set `HEADLESS_SEGMENTS=on` (it needs `HEADLESS_FILES=s3`, which cells
-require anyway). Defaults keep a cell's hot SQLite under 32 MiB (`HEADLESS_HOT_LIMIT_BYTES`), well under the 80 MiB
+require anyway). In production these are plain variables of the `celld-production` environment (`HEADLESS_SEGMENTS`,
+and optionally `HEADLESS_HOT_LIMIT_BYTES`, `HEADLESS_SEGMENT_TARGET_BYTES`, `HEADLESS_LARGE_BODY_BYTES`), which the
+deploy workflow merges over `CELLD_RUNNER_VARS`; change one, then run the workflow (a settings change is a new bundle,
+so cells switch to it). Its log says `sealing: enabled` or `disabled`. Defaults keep a cell's hot SQLite under 32 MiB (`HEADLESS_HOT_LIMIT_BYTES`), well under the 80 MiB
 past which a graceful handoff has no final snapshot and the 256 MiB past which a cell waking elsewhere pages its
 restore. The sealer and orphan cleanup run from the cell's alarm, between steps; the newest 30 turns and whatever the
 model's context reaches stay hot, so a turn never waits on the bucket for its context. Reads of sealed history fetch
