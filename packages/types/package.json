@@ -209,8 +209,7 @@
         "default": "./src/den/deployment-capabilities.ts"
       },
       "development": "./src/den/deployment-capabilities.ts",
-      "bun": "./src/den/deployment-capabilities.ts",
-      "default": "./dist/den/deployment-capabilities.js"
+      "default": "./src/den/deployment-capabilities.ts"
     },
     "./den/audit": {
       "types": {
