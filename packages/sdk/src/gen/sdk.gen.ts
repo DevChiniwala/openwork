@@ -569,6 +569,8 @@ import type {
   GetWellKnownOauthProtectedResourceResponses,
   GetWellKnownOpenidConfigurationApiAuthResponses,
   GetWellKnownOpenidConfigurationResponses,
+  GetWorkbotModelRecoveryErrors,
+  GetWorkbotModelRecoveryResponses,
   GetWorkbotSessionErrors,
   GetWorkbotSessionResponses,
   GoogleWorkspaceCreateCalendarEventBody,
@@ -16748,6 +16750,19 @@ export class DenClient extends HeyApiClient {
       ...options,
       ...params,
     });
+  }
+
+  /**
+   * Get my Workbot model recovery options
+   *
+   * Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.
+   */
+  public getWorkbotModelRecovery<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetWorkbotModelRecoveryResponses,
+      GetWorkbotModelRecoveryErrors,
+      ThrowOnError
+    >({ url: "/v1/workbot/model-recovery", ...options });
   }
 
   /**

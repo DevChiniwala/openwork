@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { hasGatewayUsageLimitHttpMarker } from "@openwork/types/den/gateway-usage-limits"
 import type { HeadlessModelAccess, Message, ToolCall, ToolSpec } from "./types.js"
 
 /** Constructed per run: never mutates the deployment adapter or retains another member's credentials. */
@@ -138,10 +139,20 @@ async function openResponse(input: {
     if (response.ok) return response
     const body = await response.text().catch(() => "")
     const requestId = response.headers.get("x-openwork-request-id") ?? response.headers.get("request-id")
+    // Only authoritative HTTP refusals select a recovery flow. Provider text or
+    // SSE fields never turn a transient failure into a purchase prompt.
+    const modelsRoute = /\/api\/v1\/(chat\/completions|responses)$/.test(new URL(input.url).pathname)
+    const freeLimit = response.status === 429 && modelsRoute
+      && response.headers.get("X-OpenWork-Error-Code") === "free_allowance_exhausted"
+      && response.headers.get("X-OpenWork-Usage-State") === "blocked"
+    const usageLimit = hasGatewayUsageLimitHttpMarker(response)
+      || (response.status === 429 && modelsRoute && response.headers.has("x-openwork-limit-bucket-id") && response.headers.has("x-openwork-limit-window-type"))
+    const recoveryCode = freeLimit ? "model_free_allowance_exhausted" : usageLimit ? "model_usage_limit_exceeded"
+      : modelsRoute && response.status === 402 ? "model_payment_required" : null
     lastError = new ModelError(
-      `model_http_${response.status}`,
+      recoveryCode ?? `model_http_${response.status}`,
       `The AI gateway returned ${response.status}${body ? `: ${body.slice(0, 500)}` : ""}`,
-      RETRYABLE_STATUS.has(response.status),
+      recoveryCode === null && RETRYABLE_STATUS.has(response.status),
       retryAfterMs(response),
       describeProviderError(body, requestId),
     )

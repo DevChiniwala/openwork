@@ -73,6 +73,7 @@ const turnSchema = z.object({
   parts: z.array(partSchema),
   modelSteps: z.number(),
   error: z.string().nullable(),
+  modelIssue: z.enum(["free_limit", "usage_limit", "payment_required"]).optional(),
   /** A failed message that can work if answered again: "Try again" answers it again in place. */
   retryable: z.boolean().default(true),
   /** Bigger jobs this message handed to background tasks: shown where they started until they report back. */

@@ -39,6 +39,7 @@ export const denSessionSchema = z.object({
   nativeDictation: z.boolean().default(false),
   workspaceAssistant: z.boolean().default(false),
   guidedNavigation: z.boolean().default(false),
+  usageRecovery: z.boolean().default(false),
   /** Side chats are on for this person. A Den from before side chats doesn't say: off. */
   sideChats: z.boolean().default(false),
   /** The organization's default model for Workbot's turns. Null, or a Den from before it, means the runner's default. */
@@ -148,6 +149,7 @@ export function createDen(options: { apiUrl: string; publicUrl: string; serviceT
 
   return {
     discover,
+    modelRecovery: (accessToken: string) => authorized("GET", "/v1/workbot/model-recovery", accessToken),
     /** Where to send the browser to sign in; Den returns it to /auth/callback with a code. */
     async authorizeUrl(input: { state: string; verifier: string; chooseWorkspace?: boolean }) {
       const { authorizationEndpoint, resource } = await discover()

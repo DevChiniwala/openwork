@@ -19,6 +19,7 @@ export const meSchema = z.object({
   nativeDictation: z.boolean().default(false),
   workspaceAssistant: z.boolean().default(false),
   guidedNavigation: z.boolean().default(false),
+  usageRecovery: z.boolean().default(false),
   /** The organization runs Automations in the cloud, so the Calendar can create them. */
   canSchedule: z.boolean().default(false),
   /** Side chats are on for this person (while Workbot is on). */
@@ -89,6 +90,7 @@ export function createHost(me: Me, recovery: { authorization?: WorkbotHost["docu
     nativeDictation: me.nativeDictation,
     workspaceAssistant: me.workspaceAssistant,
     guidedNavigation: me.workspaceAssistant && me.guidedNavigation,
+    usageRecovery: me.usageRecovery && me.denUrl && me.organizationId ? { denUrl: me.denUrl, organizationId: me.organizationId } : undefined,
     canSchedule: me.canSchedule,
     connectionsHref: me.denUrl ? `${me.denUrl}/dashboard/your-connections` : null,
     get signInHref() { return `/auth/login?return=${encodeURIComponent(window.location.pathname + window.location.search)}` },

@@ -31,6 +31,7 @@ import { documentLinks, WorkbotMarkdown } from "./markdown";
 import { OpenFileContext } from "./open-file";
 import { PreviewPanel } from "./preview";
 import { Welcome } from "./welcome";
+import { ModelRecovery } from "./model-recovery";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
 import { WorkbotComputer } from "./computer";
@@ -1622,7 +1623,9 @@ function TurnView(props: {
           ))}
         </ul>
       ) : null}
-      {turn.status === "failed" ? (
+      {turn.status === "failed" && turn.modelIssue && workbotHost().usageRecovery ? (
+        <ModelRecovery issue={turn.modelIssue} onRetry={props.latest ? props.onRetry : undefined} />
+      ) : turn.status === "failed" ? (
         <ErrorLine action={props.latest && (turn.greeting || turn.retryable) ? { label: "Try again", onClick: props.onRetry } : null}>{turn.greeting ? HELLO_FAILED : turn.error}</ErrorLine>
       ) : null}
       {/* Natural replies: an answer cut short by a follow-up or by Stop just ends where it was. */}

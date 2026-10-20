@@ -88,6 +88,16 @@
               ],
               "description": "Workbot: workspace assistant: Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Renders DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT."
             },
+            "workbotUsageRecovery": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: usage limits and upgrades: Signed-in members see when free model access is used up and can open their workspace's model or billing settings without losing the conversation. Renders DEN_FEATURE_WORKBOT_USAGE_RECOVERY."
+            },
             "automationCalendar": {
               "enum": [
                 "",

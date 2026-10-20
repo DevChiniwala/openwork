@@ -12,6 +12,16 @@ import { z } from "zod"
 export const WORKBOT_DEFAULT_MODEL_ID = "openai/gpt-6-luna"
 export const WORKBOT_DEFAULT_MODEL_NAME = "GPT-6 Luna"
 
+/** Navigation hints for the signed-in member. Destinations recheck policy, permissions and billing. */
+export const workbotModelRecoverySchema = z.object({
+  canUpgrade: z.boolean(),
+  canManageModels: z.boolean(),
+  canManageBilling: z.boolean(),
+  freeExhausted: z.boolean(),
+  freeResetsAt: z.iso.datetime().nullable(),
+})
+export type WorkbotModelRecovery = z.infer<typeof workbotModelRecoverySchema>
+
 /** Resolve only an exact Luna identity from the runner's own authorized route; never guess another provider. */
 export function workbotLunaAlias(catalog: { defaultModel: string; models: { id: string; name: string }[] }): string | null {
   const candidates = catalog.models.filter((model) => model.id === WORKBOT_DEFAULT_MODEL_ID || model.name === WORKBOT_DEFAULT_MODEL_NAME || model.name === `OpenWork: ${WORKBOT_DEFAULT_MODEL_NAME}`)

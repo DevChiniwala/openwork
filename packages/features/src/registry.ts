@@ -102,6 +102,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotUsageRecovery: {
+    label: "Workbot: usage limits and upgrades",
+    description: "Signed-in members see when free model access is used up and can open their workspace's model or billing settings without losing the conversation.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   automationCalendar: {
     label: "Calendar: desktop app",
     description: "Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.",
