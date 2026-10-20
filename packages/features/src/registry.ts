@@ -53,6 +53,13 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  organizationGrants: {
+    label: "Organization control panel and grants",
+    description: "Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   cloudAgentGateway: {
     label: "Cloud agents use the organization AI Gateway",
     description: "Choose and run cloud-agent models through the organization's AI Gateway access instead of the runner's shared model credentials.",

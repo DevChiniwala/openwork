@@ -374,6 +374,14 @@
       "development": "./src/den/service-readiness.ts",
       "default": "./src/den/service-readiness.ts"
     },
+    "./den/organization-grants": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/organization-grants.d.ts",
+        "default": "./src/den/organization-grants.ts"
+      },
+      "development": "./src/den/organization-grants.ts",
+      "default": "./src/den/organization-grants.ts"
+    },
     "./den/admin-organization": {
       "types": {
         "openwork-build": "./dist/types/src/den/admin-organization.d.ts",
