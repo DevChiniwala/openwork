@@ -24,9 +24,10 @@ a Linux VM needs only a machine binding (`run`, `read`).
 
 The helper takes approvals from the desktop over its private channel, so it
 serves that mode only to a parent signed by its own Apple team. A helper with no
-team (an ad-hoc local build) refuses it. To use computer use from a local
-desktop build, rebuild the helper for your own machine with
-`OPENWORK_COMPUTER_USE_UNSIGNED_DEV_HOST=1 node apps/desktop/scripts/prepare-computer-use-helper.mjs --force`.
+team (an ad-hoc local build) refuses it. Unsigned development uses the helper's
+standalone `mcp` mode, which retains native window approval and controls.
+The desktop's embedded integration requires the helper and host to be signed
+by the same Apple team.
 
 ## Feature flags
 
