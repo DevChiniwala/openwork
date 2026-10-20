@@ -38,6 +38,8 @@ test("a member teaches a browser lookup, saves a private skill and runs it with 
   await step("the member selects the information to collect without recording its example value", async () => {
     await user.click({ role: "button", label: "Select information" });
     await person.click({ text: "Pending" });
+    await person.see({ text: "Field not activated" });
+    await person.notSee({ text: /^Field activated$/ });
     await user.see({ role: "button", label: /Collect Registration status/ });
     await user.click({ role: "button", label: /Collect Registration status/ });
     await user.type({ role: "textbox", label: "Output field" }, "status", { replace: true });

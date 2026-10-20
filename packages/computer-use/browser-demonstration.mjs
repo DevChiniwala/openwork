@@ -44,6 +44,9 @@ function pageRecorder() {
     if (element.matches('input,textarea,select,label')) return;
     emit("click", element);
   };
+  const preventActivation = event => {
+    if (event.isTrusted && recording && picking) { event.preventDefault(); event.stopImmediatePropagation(); }
+  };
   const input = event => {
     if (!event.isTrusted || !(event.target instanceof Element) || !event.target.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea')) return;
     emit("fill", event.target);
@@ -57,13 +60,14 @@ function pageRecorder() {
     if (event.key === "Escape" && picking) { picking = false; return; }
     if (["Enter", "Tab", "Escape"].includes(event.key)) emit("key", event.target, { key: event.key });
   };
-  document.addEventListener("click", click, true);
+  window.addEventListener("click", click, true);
+  for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup"]) window.addEventListener(type, preventActivation, true);
   document.addEventListener("input", input, true);
   document.addEventListener("change", change, true);
   document.addEventListener("keydown", key, true);
   globalThis.__openworkTeaching = {
     set(active, pick = false) { recording = active; picking = active && pick; },
-    dispose() { recording = false; document.removeEventListener("click", click, true); document.removeEventListener("input", input, true); document.removeEventListener("change", change, true); document.removeEventListener("keydown", key, true); delete globalThis.__openworkTeaching; },
+    dispose() { recording = false; window.removeEventListener("click", click, true); for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup"]) window.removeEventListener(type, preventActivation, true); document.removeEventListener("input", input, true); document.removeEventListener("change", change, true); document.removeEventListener("keydown", key, true); delete globalThis.__openworkTeaching; },
   };
 }
 const SCRIPT = `(${pageRecorder.toString()})()`;
