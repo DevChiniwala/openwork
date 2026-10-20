@@ -56,10 +56,12 @@ test("a conversation completes a changing application form and verifies one subm
     expect(await act("Start date", { type: "fill", text: "2026-10-20" })).toMatchObject({ ok: true, control: { value: "2026-10-20" } });
     expect(await act("Notes", { type: "fill", text: "" })).toMatchObject({ ok: true, control: { value: "" } });
     expect(await act("Notes", { type: "fill", text: "Café studio\nSecond line" })).toMatchObject({ ok: true, control: { value: "Café studio\nSecond line" } });
-    expect(await act("Normalized code", { type: "fill", text: "lowercase" })).toMatchObject({ ok: false, code: "value_mismatch", control: { value: "LOWERCASE" } });
+    const normalized = await act("Normalized code", { type: "fill", text: "lowercase" });
+    expect(normalized).toMatchObject({ ok: false, code: "value_mismatch", control: { filled: true, valueWithheld: true } });
+    expect(normalized.control).not.toHaveProperty("value");
     expect(await act("Normalized code", { type: "fill", text: "READY" })).toMatchObject({ ok: true });
     await user.see({ role: "button", label: "Take over" });
-    evidence.recordAssertionEvidence("Field receipts reflect the page's retained values", "Old values replaced; notes cleared and filled with Unicode/multiline text; invalid email exposed; normalized value mismatch reported", (await witness()).formSubmissions.length === 0);
+    evidence.recordAssertionEvidence("Field receipts verify entries while withholding unmatched values", "Old values replaced; notes cleared and filled with Unicode/multiline text; invalid email exposed; normalized mismatch reported with its value withheld", (await witness()).formSubmissions.length === 0);
     await user.screenshot();
   });
 
