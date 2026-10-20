@@ -9,7 +9,7 @@ export const desktopFreeAccessStatusSchema = z.object({
   minimumVersion: z.string().nullable(),
   providerID: z.string(),
   modelID: z.string(),
-  allowance: z.object({ resetsAt: z.string(), limitUsd: z.number().finite().nonnegative(), usedUsd: z.number().finite().nonnegative(), remainingUsd: z.number().finite().nonnegative() }).nullable(),
+  allowance: z.object({ resetsAt: z.string(), limitUsd: z.number().finite().nonnegative(), usedUsd: z.number().finite().nonnegative(), remainingUsd: z.number().finite().nonnegative(), unlimited: z.boolean().optional() }).nullable(),
   defaultPinned: z.boolean().optional(),
   // The desktop server has already verified the version floor for guests; signed-in members have none.
 }).refine((status) => status.state !== "ready" || Boolean(status.allowance), "Ready Auto access requires a verified allowance");

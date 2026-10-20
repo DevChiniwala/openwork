@@ -12,6 +12,7 @@ import { AdminBreadcrumbs } from "./admin-breadcrumbs";
 import { ADMIN_LIST_PAGE_SIZE, useAdminListLocation } from "./admin-list-location";
 import { requestAdmin, withStoredBearer, type AdminResult } from "./admin-request";
 import { useAdminSessionCookie } from "./admin-shell";
+import { AdminOrganizationControlPanel } from "./admin-organization-control-panel";
 
 const AdminOrganizationInsights = lazy(() => import("./admin-organization-insights").then((module) => ({ default: module.AdminOrganizationInsights })));
 
@@ -29,7 +30,7 @@ function Coverage({ totals }: { totals: AdminOrganizationUsageTotals }) {
   return <p className="mt-1 text-xs text-gray-500">{totals.unreportedRequests === null ? "Token coverage unknown" : `${requests(totals.unreportedRequests)} without reported tokens`}; {totals.unpricedRequests === null ? "price coverage unknown" : `${requests(totals.unpricedRequests)} without a recorded price`}.</p>;
 }
 
-export function AdminOrganizationPage({ organizationId, section }: { organizationId: string; section: "members" | "usage" | "insights" | "features" }) {
+export function AdminOrganizationPage({ organizationId, section }: { organizationId: string; section: "members" | "usage" | "insights" | "features" | "control-panel" }) {
   const hasSessionCookie = useAdminSessionCookie();
   const { search, draftSearch, page, offset, setSearch, setPage, organizationsHref } = useAdminListLocation();
   const [state, setState] = useState<PageState>(() => hasSessionCookie ? { access: "checking" } : { access: "signed-out", message: "" });
@@ -56,10 +57,10 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
       setState((current) => result.access === "error" && current.access === "ready" ? current : result);
     };
     const timeout = window.setTimeout(() => {
-      const query = new URLSearchParams({ limit: (section === "insights" || section === "features") ? "1" : String(ADMIN_LIST_PAGE_SIZE), offset: (section === "insights" || section === "features") ? "0" : String(offset) });
+      const query = new URLSearchParams({ limit: (section === "insights" || section === "features" || section === "control-panel") ? "1" : String(ADMIN_LIST_PAGE_SIZE), offset: (section === "insights" || section === "features" || section === "control-panel") ? "0" : String(offset) });
       if (search.trim() && (section === "members" || section === "usage")) query.set("search", search.trim());
       const schema = section === "insights" ? adminOrganizationInsightsSchema : section === "usage" ? adminOrganizationUsageSchema : adminOrganizationDetailSchema;
-      void requestAdmin<PageData>(`/v1/admin/organizations/${encodeURIComponent(organizationId)}${(section === "members" || section === "features") ? "" : `/${section}`}?${query}`, (payload) => {
+      void requestAdmin<PageData>(`/v1/admin/organizations/${encodeURIComponent(organizationId)}${(section === "members" || section === "features" || section === "control-panel") ? "" : `/${section}`}?${query}`, (payload) => {
         const result = schema.safeParse(payload);
         return result.success ? result.data : null;
       }, controller.signal).then((result) => {
@@ -82,7 +83,7 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
     { id: "admin", label: "Admin", href: "/admin" },
     { id: "organizations", label: "Organizations", href: organizationsHref },
     { id: "organization", label: organizationName, href: section !== "members" ? `${base}${suffix}` : undefined },
-    ...(section !== "members" ? [{ id: section, label: section === "usage" ? "Usage" : section === "features" ? "Features" : "Insights" }] : []),
+    ...(section !== "members" ? [{ id: section, label: section === "usage" ? "Usage" : section === "features" ? "Features" : section === "control-panel" ? "Control panel" : "Insights" }] : []),
   ]} />;
 
   if (state.access !== "ready") {
@@ -138,6 +139,7 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
           <Link href={`${base}/usage${suffix}`} prefetch={false} aria-current={section === "usage" ? "page" : undefined} className={`border-b-2 px-1 py-2 text-sm font-medium ${section === "usage" ? "border-slate-900 text-slate-950" : "border-transparent text-slate-500 hover:text-slate-950"}`}>Usage</Link>
           <Link href={`${base}/insights${suffix}`} prefetch={false} aria-current={section === "insights" ? "page" : undefined} className={`border-b-2 px-1 py-2 text-sm font-medium ${section === "insights" ? "border-slate-900 text-slate-950" : "border-transparent text-slate-500 hover:text-slate-950"}`}>Insights</Link>
           <Link href={`${base}/features${suffix}`} prefetch={false} aria-current={section === "features" ? "page" : undefined} className={`border-b-2 px-1 py-2 text-sm font-medium ${section === "features" ? "border-slate-900 text-slate-950" : "border-transparent text-slate-500 hover:text-slate-950"}`}>Features</Link>
+          <Link href={`${base}/control-panel${suffix}`} prefetch={false} aria-current={section === "control-panel" ? "page" : undefined} className={`border-b-2 px-1 py-2 text-sm font-medium ${section === "control-panel" ? "border-slate-900 text-slate-950" : "border-transparent text-slate-500 hover:text-slate-950"}`}>Control panel</Link>
         </nav>
       </header>
 
@@ -155,6 +157,7 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
 
       {data.insights ? <Suspense fallback={<p role="status" className="py-6 text-sm text-slate-500">Loading insights charts…</p>}><AdminOrganizationInsights organization={organization} insights={data.insights} /></Suspense> : null}
       {section === "features" ? <AdminOrganizationFeatureControls key={organizationId} organizationId={organizationId} refreshKey={attempt} onAccessFailure={handleFeatureAccessFailure} /> : null}
+      {section === "control-panel" ? <AdminOrganizationControlPanel key={organizationId} organizationId={organizationId} onAccessFailure={handleFeatureAccessFailure} /> : null}
       {section === "members" || section === "usage" ?       <div className="py-5">
         <h2 className="text-sm font-semibold text-gray-900">{section === "usage" ? "Usage by member" : "Members"}</h2>
         <div className="mt-4 flex flex-wrap items-end justify-between gap-3">

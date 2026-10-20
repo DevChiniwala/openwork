@@ -26,7 +26,6 @@ import {
   getBillingRoute,
   getDesktopPoliciesRoute,
   getDiagnosticsRoute,
-  getServicesRoute,
   getDeploymentsRoute,
   getLibraryRoute,
   getMarketplacesRoute,
@@ -161,7 +160,6 @@ export function buildDashboardNavSections({
         ...[
           { href: getOrgSettingsRoute(orgSlug), label: "General" },
           { href: getDiagnosticsRoute(orgSlug), label: "Diagnostics" },
-          { href: getServicesRoute(orgSlug), label: "Services" },
           { href: getBillingRoute(orgSlug), label: "Billing" },
           { href: getApiKeysRoute(orgSlug), label: "API Keys" },
         ].filter((item) => canOpen(item.href)),
@@ -217,7 +215,7 @@ const PAGE_KEYWORDS: Record<string, string[]> = {
   "Desktop policies": ["policy", "mdm", "lock", "desktop"],
   Deployments: ["aws", "self-hosted", "byoc", "install", "health", "status"],
   Dashboards: ["boards", "apps"],
-  Diagnostics: ["health", "debug", "troubleshooting"],
+  Diagnostics: ["health", "status", "services", "readiness", "debug", "troubleshooting", "desktop startup"],
   General: ["organization", "workspace"],
   // Agent permissions live on Members › Teams (Everyone and each team's Agents tab).
   Members: ["people", "users", "invite", "teams", "roles", "agent permissions", "commands", "websites", "allow list", "block list", "desktop", "prompt suggestions"],
@@ -230,7 +228,6 @@ const PAGE_KEYWORDS: Record<string, string[]> = {
   Plugins: ["skills", "commands", "plugin directory"],
   SCIM: ["provisioning", "directory", "users"],
   Settings: ["organization", "workspace"],
-  Services: ["deployment", "readiness", "health", "check"],
   SSO: ["single sign on", "saml", "oidc"],
   "Tool Tester": ["tools", "test", "mcp"],
   Workbot: ["model", "default model", "assistant", "slack", "automations"],

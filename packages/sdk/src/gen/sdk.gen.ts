@@ -133,6 +133,7 @@ import type {
   DenDesktopPolicyDocumentWrite,
   DescribeHostGoogleDriveDownloadErrors,
   DescribeHostGoogleDriveDownloadResponses,
+  DesktopStartupReport,
   DownloadGoogleDriveFileByLinkErrors,
   DownloadGoogleDriveFileByLinkResponses,
   DownloadHostGoogleDriveFileErrors,
@@ -209,8 +210,12 @@ import type {
   GetV1AdminFreeAutoUsageResponses,
   GetV1AdminMetricsErrors,
   GetV1AdminMetricsResponses,
+  GetV1AdminOpportunitiesErrors,
+  GetV1AdminOpportunitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
+  GetV1AdminOrganizationsByOrganizationIdControlPanelErrors,
+  GetV1AdminOrganizationsByOrganizationIdControlPanelResponses,
   GetV1AdminOrganizationsByOrganizationIdErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsResponses,
@@ -487,8 +492,8 @@ import type {
   GetV1OrgDefaultModelOptionsErrors,
   GetV1OrgDefaultModelOptionsResponses,
   GetV1OrgDefaultModelResponses,
-  GetV1OrgDeploymentServicesErrors,
-  GetV1OrgDeploymentServicesResponses,
+  GetV1OrgDiagnosticsErrors,
+  GetV1OrgDiagnosticsResponses,
   GetV1OrgErrors,
   GetV1OrgInventoryRevisionErrors,
   GetV1OrgInventoryRevisionResponses,
@@ -680,6 +685,10 @@ import type {
   PostRegisterResponses,
   PostV1AdminAdminsErrors,
   PostV1AdminAdminsResponses,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses,
   PostV1AdminServicesCheckErrors,
   PostV1AdminServicesCheckResponses,
   PostV1AdminUsersByUserIdInferenceUsageResetErrors,
@@ -774,6 +783,8 @@ import type {
   PostV1ConnectorTargetsByConnectorTargetIdResyncResponses,
   PostV1DesktopPoliciesErrors,
   PostV1DesktopPoliciesResponses,
+  PostV1DiagnosticsDesktopStartupErrors,
+  PostV1DiagnosticsDesktopStartupResponses,
   PostV1DiagnosticsEgressErrors,
   PostV1DiagnosticsEgressResponses,
   PostV1DirectUploadsGoogleWorkspaceDriveFilesErrors,
@@ -897,8 +908,8 @@ import type {
   PostV1OauthProvidersByProviderIdDisconnectResponses,
   PostV1OrgBrandAssetsErrors,
   PostV1OrgBrandAssetsResponses,
-  PostV1OrgDeploymentServicesCheckErrors,
-  PostV1OrgDeploymentServicesCheckResponses,
+  PostV1OrgDiagnosticsCheckErrors,
+  PostV1OrgDiagnosticsCheckResponses,
   PostV1OrgsByOrganizationIdInstallLinksErrors,
   PostV1OrgsByOrganizationIdInstallLinksResponses,
   PostV1OrgsInvitationsAcceptErrors,
@@ -984,6 +995,8 @@ import type {
   PutV1AdminFeaturesByKeyResponses,
   PutV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
+  PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors,
+  PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessErrors,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessResponses,
   PutV1AgentPermissionsEveryoneErrors,
@@ -1335,6 +1348,172 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Read an organization's complimentary access and grants
+   *
+   * Returns effective complimentary access, usage balances and a cursor-paginated grants list. Include history to see revoked, expired and exhausted grants. Platform administrators only.
+   */
+  public getV1AdminOrganizationsByOrganizationIdControlPanel<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      history?: "0" | "1";
+      cursor?: string;
+      limit?: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "query", key: "history" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOrganizationsByOrganizationIdControlPanelResponses,
+      GetV1AdminOrganizationsByOrganizationIdControlPanelErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Set complimentary organization access
+   *
+   * Sets or restores the organization's complimentary access policy. An explicit disable blocks matching grants without deleting balances or history. Paid subscriptions are preserved. Platform administrators only.
+   */
+  public putV1AdminOrganizationsByOrganizationIdControlPanelAccess<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      feature: "freeAuto" | "openworkWeb";
+      setting: "default" | "enabled" | "disabled";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "body", key: "feature" },
+            { in: "body", key: "setting" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).put<
+      PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses,
+      PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel/access",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Grant organization access or Free Auto usage
+   *
+   * Creates an idempotent organization-scoped grant. A null expiry means until spent or revoked; unlimited usage is a separate grant kind. Does not change billing.
+   */
+  public postV1AdminOrganizationsByOrganizationIdControlPanelGrants<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      requestId: string;
+      feature: "freeAuto" | "openworkWeb";
+      kind: "access" | "usage" | "unlimited";
+      amountUsd: number | null;
+      startsAt: string | null;
+      expiresAt: string | null;
+      reason: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "body", key: "requestId" },
+            { in: "body", key: "feature" },
+            { in: "body", key: "kind" },
+            { in: "body", key: "amountUsd" },
+            { in: "body", key: "startsAt" },
+            { in: "body", key: "expiresAt" },
+            { in: "body", key: "reason" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses,
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel/grants",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Revoke an organization grant without removing its history
+   *
+   * Revokes a grant scoped to this organization and retains its usage and audit history. Repeated revocation succeeds without another change. Platform administrators only.
+   */
+  public postV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevoke<
+    ThrowOnError extends boolean = false,
+  >(
+    parameters: {
+      organizationId: string;
+      grantId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "path", key: "grantId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel/grants/{grantId}/revoke",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
    * Get bounded platform activity and AI usage
    *
    * Returns 30 UTC calendar days of completed gateway usage across organizations, using the same raw and retained accounting as organization reports. Includes accounting coverage, 30 daily totals, at most eight organizations ranked by requests, and distinct users with sign-in or telemetry activity. Does not hydrate features, billing or members.
@@ -1347,9 +1526,57 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Find organizations with observed app adoption
+   *
+   * Platform-admin-only, server-paginated organization signals. Defaults to two joined human users and observed organization-scoped telemetry in the last 30 days, most recent first. Company-email signals use verified addresses excluding known personal providers; they do not establish employment. Cloud setup counts active, non-deleted skill and MCP metadata. Missing telemetry does not imply inactivity. No content, credentials, billing lookups or external enrichment.
+   */
+  public getV1AdminOpportunities<ThrowOnError extends boolean = false>(
+    parameters?: {
+      days?: "7" | "30" | "90";
+      minMembers?: "1" | "2" | "5" | "10";
+      companyEmail?: "0" | "1";
+      setup?: "any" | "skills" | "mcp" | "both";
+      sort?: "recent" | "active" | "members";
+      search?: string;
+      limit?: number;
+      cursor?: string;
+      offset?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "days" },
+            { in: "query", key: "minMembers" },
+            { in: "query", key: "companyEmail" },
+            { in: "query", key: "setup" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesResponses,
+      GetV1AdminOpportunitiesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
    * Read cached deployment service readiness
    *
-   * Fixed deployment diagnostics only, not inference or delivery verification. Never waits for an outbound health probe. A stale snapshot remains explicitly stale.
+   * Fixed deployment diagnostics and the answering Den replica's version and start time. Never waits for an outbound check. A stale snapshot remains explicitly stale.
    */
   public getV1AdminServices<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GetV1AdminServicesResponses, GetV1AdminServicesErrors, ThrowOnError>({
@@ -1361,7 +1588,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Queue a deployment service readiness check
    *
-   * Queues bounded, read-only service probes. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new probes across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.
+   * Queues bounded, read-only service checks: a database query, service health endpoints, and a mail sign-in or mail-provider domain lookup. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new checks across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.
    */
   public postV1AdminServicesCheck<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<
@@ -3567,7 +3794,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Read minimal cached deployment service readiness
    *
-   * Member-safe deployment facts only. Does not inspect organization or member credentials, start a probe, or alter access decisions. Missing deployment settings and required-service policy are withheld.
+   * Member-safe deployment facts only. Does not inspect organization or member credentials, start a check, or alter access decisions. Missing deployment settings, notes, durations and required-service policy are withheld.
    */
   public getV1OrgServiceReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -3578,31 +3805,63 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Read local deployment service readiness
+   * Read Settings › Diagnostics
    *
-   * Self-hosted deployment operators with an active organization membership only. Organization ownership and permissions do not grant access. Shares the platform diagnostics snapshot and bounded refresh admission.
+   * One read for cloud, single-org and self-hosted Den: desktop startups (last 24 hours), model providers, connectors, installation services and network diagnostics, plus a summary of what needs attention. Each section is present for every caller; a section the caller's permissions do not open is `locked` and names the permission. Installation details are only for self-hosted installation administrators (local allowlist). Never returns credentials, upstream responses or another member's identity. Missing or expired provider and connector checks start in the background (rate limited); the read never waits for them.
    */
-  public getV1OrgDeploymentServices<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<
-      GetV1OrgDeploymentServicesResponses,
-      GetV1OrgDeploymentServicesErrors,
-      ThrowOnError
-    >({ url: "/v1/org/deployment-services", ...options });
+  public getV1OrgDiagnostics<ThrowOnError extends boolean = false>(
+    parameters?: {
+      strict?: "0" | "1" | "true" | "false";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "strict" }] }]);
+    return (options?.client ?? this.client).get<GetV1OrgDiagnosticsResponses, GetV1OrgDiagnosticsErrors, ThrowOnError>({
+      url: "/v1/org/diagnostics",
+      ...options,
+      ...params,
+    });
   }
 
   /**
-   * Queue a local deployment service readiness check
+   * Run the diagnostics checks the caller may run
    *
-   * Self-hosted deployment operators with an active organization membership only. Queues the same read-only, bounded probes as platform diagnostics; shares active checks, recent results and deployment-wide rate limits. Never sends email, calls a model or initiates Slack events.
+   * Starts, in the background, every live check the caller's sections allow: provider model listings with organization-held credentials (never a model request or a member's credential), the Slack assistant token, the caller's own Google API check, and installation services for installation administrators. Shares the rate limits of background checks (one per organization, or per member for connectors, every 30 seconds). Answers with the current diagnostics; poll GET /v1/org/diagnostics until `checking` is false.
    */
-  public postV1OrgDeploymentServicesCheck<ThrowOnError extends boolean = false>(
+  public postV1OrgDiagnosticsCheck<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<
+      PostV1OrgDiagnosticsCheckResponses,
+      PostV1OrgDiagnosticsCheckErrors,
+      ThrowOnError
+    >({ url: "/v1/org/diagnostics/check", ...options });
+  }
+
+  /**
+   * Report one desktop app launch
+   *
+   * Sent by the signed-in desktop app once per launch (a failed launch may be sent on the next one). Step timings and a fixed failure code only: no hostnames, error text, paths or device identifiers. Attributed to the caller's active organization and membership. Idempotent per attemptId; launches more than 7 days old or more than 5 minutes in the future are ignored.
+   */
+  public postV1DiagnosticsDesktopStartup<ThrowOnError extends boolean = false>(
+    parameters: {
+      desktopStartupReport: DesktopStartupReport;
+    },
     options?: Options<never, ThrowOnError>,
   ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "desktopStartupReport", map: "body" }] }]);
     return (options?.client ?? this.client).post<
-      PostV1OrgDeploymentServicesCheckResponses,
-      PostV1OrgDeploymentServicesCheckErrors,
+      PostV1DiagnosticsDesktopStartupResponses,
+      PostV1DiagnosticsDesktopStartupErrors,
       ThrowOnError
-    >({ url: "/v1/org/deployment-services/check", ...options });
+    >({
+      url: "/v1/diagnostics/desktop-startup",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
   }
 
   /**

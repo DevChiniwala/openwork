@@ -14,10 +14,39 @@ chmod 0700 /home/ubuntu /home/openwork-browser /home/openwork-app
 chmod 0700 /home/openwork-command
 # Provider file operations use ubuntu; model commands use a separate account
 # that cannot invoke the privileged bridge or inspect the GUI user's home.
-chown ubuntu:ubuntu /workspace /workspace/.jobs
-chmod 2775 /workspace
-chmod 2770 /workspace/.jobs
-install -d -o ubuntu -g openwork-workspace -m 2770 /workspace/files /workspace/out
-# Default ACLs keep new shared files editable across both accounts even though
-# command shells and application profiles use a private umask everywhere else.
-setfacl -m d:u::rwx,d:g::rwx,d:o::--- /workspace/files /workspace/out
+python3 - <<'PY'
+import grp
+import os
+import pwd
+import subprocess
+
+def configure_workspace(workspace, uid, gid, shared_gid):
+    # The command account can rename entries here. Open directories without
+    # following symlinks, then change the held inode rather than its pathname.
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    root = os.open(workspace, flags)
+    try:
+        os.fchown(root, uid, gid)
+        os.fchmod(root, 0o2775)
+        for name in ('.jobs', 'files', 'out'):
+            try:
+                os.mkdir(name, dir_fd=root)
+            except FileExistsError:
+                pass
+            directory = os.open(name, flags, dir_fd=root)
+            try:
+                os.fchown(directory, uid, gid if name == '.jobs' else shared_gid)
+                os.fchmod(directory, 0o2770)
+                if name != '.jobs':
+                    # Default ACLs follow this same held directory, even if the
+                    # command account replaces its original name concurrently.
+                    subprocess.run(['setfacl', '-m', 'd:u::rwx,d:g::rwx,d:o::---',
+                                    f'/proc/self/fd/{directory}'], pass_fds=(directory,), check=True)
+            finally:
+                os.close(directory)
+    finally:
+        os.close(root)
+
+owner = pwd.getpwnam('ubuntu')
+configure_workspace('/workspace', owner.pw_uid, owner.pw_gid, grp.getgrnam('openwork-workspace').gr_gid)
+PY

@@ -41,20 +41,26 @@ function setup(model: ModelClient, mcp?: McpConnector) {
 test("a follow-up stops an answer while it writes, keeps what it wrote, and is answered with it in view", async () => {
   const requests: ModelRequest[] = []
   const words = ["Here", " is", " your", " whole", " week,", " day", " by", " day."]
+  // The follow-up is sent once part of the answer is written, however long the runner took to start the model call.
+  let partlyWritten: () => void = () => undefined
+  const written = new Promise<void>((resolve) => {
+    partlyWritten = resolve
+  })
   const model: ModelClient = {
     async complete(request) {
       requests.push(request)
       if (promptOf(request) !== "Summarize my week") return { text: "Got it, just today.", toolCalls: [], usage }
-      for (const word of words) {
+      for (const [index, word] of words.entries()) {
         await sleep(40, request.signal)
         request.onText?.(word)
+        if (index === 2) partlyWritten()
       }
       return { text: words.join(""), toolCalls: [], usage }
     },
   }
   using world = setup(model)
   world.runner.send({ sessionId: world.session, messageId: "first", prompt: "Summarize my week", credentials: {} })
-  await sleep(130)
+  await written
   world.runner.send({ sessionId: world.session, messageId: "second", prompt: "Actually, just today.", credentials: {}, interrupt: true })
   await world.runner.idle()
 
@@ -70,6 +76,10 @@ test("a follow-up stops an answer while it writes, keeps what it wrote, and is a
 })
 
 test("a follow-up during an app step lets the step finish, then wraps up before the next model call", async () => {
+  let lookupStarted: () => void = () => undefined
+  const lookingUp = new Promise<void>((resolve) => {
+    lookupStarted = resolve
+  })
   let lookups = 0
   let firstCalls = 0
   const model: ModelClient = {
@@ -84,6 +94,7 @@ test("a follow-up during an app step lets the step finish, then wraps up before 
   const mcp: McpConnector = async () => ({
     tools: [{ name: "slow_lookup", description: "A lookup that takes a moment", inputSchema: { type: "object" } }],
     async call(_name, _input, signal) {
+      lookupStarted()
       await sleep(150, signal)
       lookups += 1
       return { output: "3:30 design review", isError: false }
@@ -92,7 +103,8 @@ test("a follow-up during an app step lets the step finish, then wraps up before 
   })
   using world = setup(model, mcp)
   world.runner.send({ sessionId: world.session, messageId: "first", prompt: "Check my calendar", credentials: { mcpToken: "token" } })
-  await sleep(60)
+  // The follow-up arrives while the lookup runs, however long the runner took to get there.
+  await lookingUp
   world.runner.send({ sessionId: world.session, messageId: "second", prompt: "Actually, just today.", credentials: { mcpToken: "token" }, interrupt: true })
   await world.runner.idle()
 
@@ -105,11 +117,16 @@ test("a follow-up during an app step lets the step finish, then wraps up before 
 })
 
 test("messages already waiting are answered together with the follow-up that interrupts", async () => {
+  let firstStarted: () => void = () => undefined
+  const answeringFirst = new Promise<void>((resolve) => {
+    firstStarted = resolve
+  })
   const requests: ModelRequest[] = []
   const model: ModelClient = {
     async complete(request) {
       requests.push(request)
       if (promptOf(request) === "First") {
+        firstStarted()
         await sleep(200, request.signal)
         return { text: "First answer.", toolCalls: [], usage }
       }
@@ -118,7 +135,8 @@ test("messages already waiting are answered together with the follow-up that int
   }
   using world = setup(model)
   world.runner.send({ sessionId: world.session, messageId: "a", prompt: "First", credentials: {} })
-  await sleep(30)
+  // The others arrive while the first answer is being written, however long the runner took to start it.
+  await answeringFirst
   world.runner.send({ sessionId: world.session, messageId: "b", prompt: "Second", credentials: {} })
   world.runner.send({ sessionId: world.session, messageId: "c", prompt: "Third", credentials: {}, interrupt: true })
   await world.runner.idle()

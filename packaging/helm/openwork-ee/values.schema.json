@@ -18,7 +18,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "serviceReadiness": {
+            "organizationGrants": {
               "enum": [
                 "",
                 "true",
@@ -26,7 +26,7 @@
                 true,
                 false
               ],
-              "description": "Deployment service readiness: Self-hosted installation operators can check optional services from Settings; internal platform diagnostics and minimal member readiness share the same checker without blocking core work. Renders DEN_FEATURE_SERVICE_READINESS."
+              "description": "Organization control panel and grants: Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration. Renders DEN_FEATURE_ORGANIZATION_GRANTS."
             },
             "cloudAgentGateway": {
               "enum": [
@@ -226,7 +226,7 @@
                 true,
                 false
               ],
-              "description": "Computer use: Let agents use Mac apps or a managed cloud desktop directly, with a live view and Take over and Stop controls. Enabling this rollout provides access without chat or window consent prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules. Renders DEN_FEATURE_COMPUTER_USE."
+              "description": "Computer use: Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. Personal and configured desktops require the person to choose a window; conversation-owned cloud desktops open directly. GUI access is experimental and is not sandboxed by structured-tool permission rules. Renders DEN_FEATURE_COMPUTER_USE."
             },
             "browserFloatingView": {
               "enum": [
@@ -246,7 +246,7 @@
                 true,
                 false
               ],
-              "description": "Desktop: computer use on remote computers: Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Access starts directly when the rollout is enabled; Take over and Stop stay available. Renders DEN_FEATURE_REMOTE_COMPUTERS."
+              "description": "Desktop: computer use on remote computers: Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Conversation-owned desktops open when enabled; configured desktops require a window choice. Take over and Stop stay available. Renders DEN_FEATURE_REMOTE_COMPUTERS."
             },
             "remoteSessionSubagents": {
               "enum": [
@@ -859,6 +859,16 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "managedDeploymentsMcp": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "serviceReadiness": {
               "enum": [
                 "",
                 "true",

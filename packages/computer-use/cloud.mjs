@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createComputerControl } from "./computer-control.mjs";
 import { createRemoteComputerAdapter } from "./computer-remote.mjs";
 import { createX11Driver } from "./computer-x11-driver.mjs";
-import { createCloudBrowser } from "./chromium.mjs";
+import { BROWSER_EGRESS_CHECK, createCloudBrowser } from "./chromium.mjs";
 
 const execute = promisify(execFile);
 const failure = (code, error) => Object.assign(new Error(error), { code });
@@ -49,6 +49,10 @@ export async function createCloudComputer({ directory, display = ":99", enabled,
   }
   const browser = createCloudBrowser({ statePath: join(directory, "browser-tabs.json"), endpoint: browserEndpoint, privateBrowsing,
     enabled: () => !closed && !paused, assertActive,
+    verifyEgress: async () => {
+      const result = await localMachine.run(BROWSER_EGRESS_CHECK, 5000);
+      if (result.exitCode !== 0) throw failure("egress_unavailable", "The cloud browser's private-network filter is unavailable. Reconnect the computer.");
+    },
     // Browser input invalidates every native observation. Ending the native
     // lease leaves the browser alive; the next computer call opens a fresh one.
     beforeInput: async () => { assertActive(); if (owner) await control.endTurn({ sessionId: owner }); assertActive(); },

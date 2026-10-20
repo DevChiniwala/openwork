@@ -14,8 +14,8 @@ absent("a self-hosted administrator verifies core services without deploying opt
     await admin.see({ testId: "service-status-workbot" });
     await admin.see({ testId: "service-check-now" });
     const rows = await adminProbe.dom('[data-testid^="service-status-"]');
-    expect(rows.elements).toHaveLength(7);
-    evidence.recordAssertionEvidence("One inventory covers core and optional services", `service rows=${rows.elements.length}; no optional infrastructure is deployed`, rows.elements.length === 7);
+    expect(rows.elements).toHaveLength(5);
+    evidence.recordAssertionEvidence("One inventory covers core and optional services", `service rows=${rows.elements.length}; no optional infrastructure is deployed`, rows.elements.length === 5);
     await admin.screenshot();
   });
   await step("after: Check now verifies the database while absent services stay optional", async () => {
@@ -67,7 +67,7 @@ absent("a self-hosted administrator verifies core services without deploying opt
   });
 });
 
-configured("an administrator verifies authenticated service health without claiming model or message delivery", async ({ world, user, probe, step, evidence }) => {
+configured("an administrator verifies authenticated service health and email sign-in without a model call or a sent message", async ({ world, user, probe, step, evidence }) => {
   const admin = user.on(world.admin), adminProbe = probe.on(world.admin);
   await step("the administrator checks configured Gateway, runner and Workbot services", async () => {
     await admin.see({ testId: "admin-services-page" }, { timeoutMs: 60_000 });
@@ -89,18 +89,39 @@ configured("an administrator verifies authenticated service health without claim
     evidence.recordAssertionEvidence("Ready is backed by service responses, not environment presence", `runner=${runner?.reason}; Workbot=${workbot?.reason}; health calls=${world.fixtureCalls()}; unauthorized calls=${world.unauthorizedFixtureCalls()}; non-health calls=${world.unexpectedFixtureCalls()}`, runner?.reason === "health_verified" && workbot?.reason === "health_verified" && world.unauthorizedFixtureCalls() === 0 && world.unexpectedFixtureCalls() === 0);
     await admin.screenshot();
   });
-  await step("optional delivery and recovery remain unverified rather than turning green from configuration alone", async () => {
-    await admin.see({ testId: "service-status-slack" });
-    await admin.see({ testId: "service-status-durableTurns" });
+  await step("email signs in to the mail server without sending a message, and every live check is timed", async () => {
+    await admin.see({ testId: "service-state-email" }, { text: "Ready", timeoutMs: 60_000 });
+    await admin.notSee({ testId: "service-status-slack" });
+    await admin.notSee({ testId: "service-status-durableTurns" });
     const response = await adminProbe.api(world.den.admin, "/v1/admin/services");
     const status = deploymentServiceReadinessSchema.parse(response.body);
-    const delivery = status.services.filter((service) => ["slack", "durableTurns", "email"].includes(service.id));
-    expect(delivery).toHaveLength(3);
-    expect(delivery.every((service) => service.state !== "ready")).toBe(true);
+    const email = status.services.find((service) => service.id === "email");
+    const runner = status.services.find((service) => service.id === "headlessRunner");
+    // The readiness check is its own SMTP connection: EHLO, AUTH, QUIT and nothing that starts a message.
+    const checkSessions = world.smtpSessions().filter((commands) => commands.includes("AUTH") && commands.includes("QUIT") && !commands.includes("MAIL"));
+    const commandsDuringCheck = checkSessions[0] ?? [];
+    expect(email?.reason).toBe("email_verified");
+    expect(email?.notes).toContain("email_smtp");
+    expect(world.smtpSignIns()).toBeGreaterThan(0);
+    expect(checkSessions.length).toBeGreaterThan(0);
+    expect(commandsDuringCheck).toContain("EHLO");
+    expect(commandsDuringCheck).not.toContain("DATA");
+    expect(runner?.notes).toContain("resume_not_configured");
+    expect(status.services.map((service) => service.id)).toEqual(["database", "gateway", "headlessRunner", "workbot", "email"]);
+    const timed = status.services.filter((service) => service.state === "ready");
+    expect(timed.every((service) => typeof service.durationMs === "number")).toBe(true);
+    expect(status.server?.version).toBeTruthy();
     const serialized = JSON.stringify(status);
     expect(serialized).not.toContain("readiness-fixture-service-token");
+    expect(serialized).not.toContain("readiness-fixture-smtp-pass");
     expect(serialized).not.toContain("http://127.0.0.1");
-    evidence.recordAssertionEvidence("Health checks neither send messages nor pretend to verify delivery", `delivery states=${delivery.map((service) => `${service.id}:${service.state}`).join(", ")}; no endpoint or token values in diagnostics`, delivery.length === 3 && delivery.every((service) => service.state !== "ready"));
+    evidence.recordAssertionEvidence(
+      "Email is verified by signing in, never by sending",
+      `email=${email?.state}/${email?.reason}; readiness SMTP session=${commandsDuringCheck.join(" ")}; durations=${timed.map((service) => `${service.id}:${service.durationMs}ms`).join(", ")}; Slack and resumable rows absent`,
+      email?.reason === "email_verified" && checkSessions.length > 0 && timed.every((service) => typeof service.durationMs === "number"),
+    );
+    await admin.click({ testId: "service-details-toggle-headlessRunner" });
+    await admin.see({ testId: "service-details-headlessRunner" }, { text: /Resumable answers/ });
     await admin.screenshot();
   });
   await step("members receive only the minimal shared snapshot, never deployment setting details", async () => {

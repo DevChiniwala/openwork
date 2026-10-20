@@ -1,7 +1,7 @@
 name: Feature registry check
 
 # The feature registry (packages/features/src/registry.ts) generates the Helm
-# chart's config.features block, values schema and README table. This job
+# chart's config.features block and values schema. This job
 # fails when those are stale, when the chart renders DEN_FEATURE_* names that
 # den-api does not read, when a Dockerfile misses a workspace package its
 # service needs, or when code adds a DEN_*_ENABLED switch or reads

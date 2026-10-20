@@ -31,8 +31,8 @@ guard_desktop_egress() {
   uid=$(id -u openwork-browser)
   tools=iptables
   if command -v ip6tables >/dev/null && ip6tables -w -S OUTPUT >/dev/null 2>&1; then tools="iptables ip6tables"; fi
-  if id openwork-app >/dev/null 2>&1 && [ -s /proc/net/if_inet6 ]; then
-    case " $tools " in *" ip6tables "*) ;; *) echo "The app network guard needs IPv6 filtering" >&2; exit 1 ;; esac
+  if [ -e /proc/net/if_inet6 ]; then
+    case " $tools " in *" ip6tables "*) ;; *) echo "The desktop network guard needs IPv6 filtering" >&2; exit 1 ;; esac
   fi
   for tool in $tools; do
     # The model's shell has public networking, but cannot bypass the guest's
