@@ -24,7 +24,8 @@ export function createWorkshopAuth({ origin, participants, storage }) {
   const byId = new Map(participants.map((participant) => [participant.id, participant]));
   const tables = { sessions, clients, codes, tokens, refreshes };
   const storageKey = "workshop-auth:v1";
-  let unavailable = false, closed = false, pendingResponse, queue = Promise.resolve();
+  let unavailable = false, closed = false, queue = Promise.resolve();
+  const pendingResponses = new WeakMap();
   function snapshot() {
     return { version: 1, origin, tables: Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, [...table].map(([key, entry]) => {
       const { participant, ...fields } = entry;
@@ -143,14 +144,14 @@ export function createWorkshopAuth({ origin, participants, storage }) {
   function send(res, status, body, type = "application/json") {
     // Chromium sends Origin: null for native form POSTs from no-referrer pages.
     // same-origin preserves CSRF validation without leaking referrers to OAuth callbacks.
-    pendingResponse = () => {
+    pendingResponses.set(res, () => {
       res.writeHead(status, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-store", "Pragma": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "Content-Security-Policy": res.getHeader("Content-Security-Policy") || "default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
       res.end(type === "application/json" ? JSON.stringify(body) : body);
-    };
+    });
   }
   const error = (res, status, name) => send(res, status, { error: name });
   function redirect(res, location) {
-    pendingResponse = () => { res.writeHead(303, { Location: location, "Cache-Control": "no-store", "Referrer-Policy": "same-origin" }); res.end(); };
+    pendingResponses.set(res, () => { res.writeHead(303, { Location: location, "Cache-Control": "no-store", "Referrer-Policy": "same-origin" }); res.end(); });
   }
   function setCookie(res, value, age) {
     res.setHeader("Set-Cookie", `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${base.protocol === "https:" ? "; Secure" : ""}`);
@@ -158,14 +159,27 @@ export function createWorkshopAuth({ origin, participants, storage }) {
   async function body(req, json = false) {
     const expected = json ? "application/json" : "application/x-www-form-urlencoded";
     if (String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase() !== expected) throw { status: 415 };
-    if (Number(req.headers["content-length"]) > 16384) { req.resume(); throw { status: 413 }; }
-    let size = 0; const chunks = [];
-    for await (const chunk of req.iterator({ destroyOnReturn: false })) {
-      size += chunk.length;
-      if (size > 16384) { req.resume(); throw { status: 413 }; }
-      chunks.push(chunk);
-    }
-    const text = Buffer.concat(chunks).toString("utf8");
+    if (Number(req.headers["content-length"]) > 16384) throw { status: 413 };
+    const text = await new Promise((resolve, reject) => {
+      let size = 0; const chunks = [];
+      const cleanup = () => {
+        clearTimeout(deadline);
+        req.removeListener("data", onData); req.removeListener("end", onEnd);
+        req.removeListener("error", onError); req.removeListener("aborted", onAborted);
+      };
+      const fail = (status) => { cleanup(); req.pause(); reject({ status }); };
+      const onData = (chunk) => {
+        size += chunk.length;
+        if (size > 16384) { fail(413); return; }
+        chunks.push(chunk);
+      };
+      const onEnd = () => { cleanup(); resolve(Buffer.concat(chunks).toString("utf8")); };
+      const onError = () => fail(400), onAborted = () => fail(400);
+      // An absolute deadline, never refreshed by trickled bytes.
+      const deadline = setTimeout(() => fail(408), 5000);
+      req.on("data", onData); req.once("end", onEnd);
+      req.once("error", onError); req.once("aborted", onAborted);
+    });
     if (json) { try { return JSON.parse(text); } catch { throw { status: 400 }; } }
     const result = new URLSearchParams(text);
     if ([...new Set(result.keys())].some((key) => result.getAll(key).length !== 1)) throw { status: 400 };
@@ -184,7 +198,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
     if (destination.pathname === "/oauth/authorize" && client?.redirect_uris.includes(callback)) res.setHeader("Content-Security-Policy", `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${new URL(callback).origin}; frame-ancestors 'none'; base-uri 'none'`);
     send(res, status, page("Sign in to Acme Workplace", `${participant ? `<div class="account"><span class="muted">Signed in as</span><strong>${escapeHtml(participant.name)}</strong></div>` : `<p class="muted">Use the password on your assigned workshop account card.</p>`}${message ? `<p class="error" role="alert">${escapeHtml(message)}</p>` : ""}<form action="/login" method="post"><input type="hidden" name="next" value="${escapeHtml(next)}"><p><label for="token">Workshop password</label><input id="token" name="token" type="password" autocomplete="current-password" aria-describedby="password-help" required></p><p id="password-help" class="muted">Your account name comes from the workshop roster. Do not use a work password.</p><div class="actions"><button type="submit">Sign in</button><button class="secondary" type="submit" name="decision" value="cancel" formnovalidate>Cancel</button></div></form>${participant ? `<form action="/logout" method="post"><button class="secondary" type="submit">Sign out</button></form>` : ""}`), "text/html");
   }
-  async function dispatch(req, res, url) {
+  function dispatch(req, res, url, parsedBody) {
     const path = url.pathname;
     const metadata = path === "/.well-known/oauth-authorization-server" || path === "/.well-known/oauth-protected-resource" || path.startsWith("/.well-known/oauth-protected-resource/");
     const clientEndpoint = path === "/oauth/register" || path === "/oauth/token" || path === "/oauth/revoke";
@@ -208,7 +222,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
       } else if ((path === "/login" || path === "/logout") && req.method === "POST") {
         if (!browserOrigin(req)) { error(res, 403, "Same-origin request required"); return true; }
         if (path === "/logout") { sessions.delete(cookieKey(req)); setCookie(res, "", 0); redirect(res, "/login"); return true; }
-        const form = await body(req);
+        const form = parsedBody;
         if (form.get("decision") === "cancel") {
           const next = new URL(safeNext(form.get("next")), origin);
           const client = clients.get(next.searchParams.get("client_id"));
@@ -234,7 +248,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
         setCookie(res, session, SESSION_MS / 1000); redirect(res, safeNext(form.get("next")));
       } else if (path === "/oauth/register" && req.method === "POST") {
         if (!budget(req, "register", 600)) { error(res, 429, "too_many_requests"); return true; }
-        const data = await body(req, true);
+        const data = parsedBody;
         if (!data || !Array.isArray(data.redirect_uris) || !data.redirect_uris.length || data.redirect_uris.length > 10 || !data.redirect_uris.every((uri) => typeof uri === "string" && uri.length <= 2048 && redirectAllowed(uri)) || (data.token_endpoint_auth_method !== undefined && data.token_endpoint_auth_method !== "none") || (data.grant_types !== undefined && (!Array.isArray(data.grant_types) || !data.grant_types.includes("authorization_code") || data.grant_types.some((grant) => !["authorization_code", "refresh_token"].includes(grant)) || new Set(data.grant_types).size !== data.grant_types.length)) || (data.response_types !== undefined && (!Array.isArray(data.response_types) || data.response_types.length !== 1 || data.response_types[0] !== "code")) || (data.scope !== undefined && data.scope !== "workplace")) { error(res, 400, "invalid_client_metadata"); return true; }
         prune(clients);
         if (clients.size >= 1024) { error(res, 503, "temporarily_unavailable"); return true; }
@@ -243,7 +257,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
       } else if (path === "/oauth/authorize" && ["GET", "POST"].includes(req.method)) {
         if (!requireMutationOrigin(req) || (req.method === "POST" && !browserOrigin(req))) { error(res, 403, "Same-origin request required"); return true; }
         if (!budget(req, "authorize", browserParticipant(req) ? 120 : 600)) { error(res, 429, "too_many_requests"); return true; }
-        const query = req.method === "POST" ? await body(req) : url.searchParams;
+        const query = req.method === "POST" ? parsedBody : url.searchParams;
         if ([...new Set(query.keys())].some((key) => query.getAll(key).length !== 1)) { error(res, 400, "invalid_request"); return true; }
         prune(clients); const client = clients.get(query.get("client_id"));
         const redirectUri = query.get("redirect_uri");
@@ -279,7 +293,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
         if (query.has("state")) target.searchParams.set("state", query.get("state"));
         redirect(res, target.href);
       } else if (path === "/oauth/token" && req.method === "POST") {
-        const form = await body(req);
+        const form = parsedBody;
         prune(codes); prune(clients); prune(tokens); prune(refreshes);
         if (form.get("grant_type") === "refresh_token") {
           const refresh = refreshes.get(digest(form.get("refresh_token") || ""));
@@ -306,7 +320,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
         if (tokens.size >= LIMIT * 2 || refreshes.size >= LIMIT * 2) { error(res, 503, "temporarily_unavailable"); return true; }
         issueTokens(res, { participant: code.participant, clientId: code.clientId, resource: code.resource, family: secret() }, Date.now() + SESSION_MS);
       } else if (path === "/oauth/revoke" && req.method === "POST") {
-        const form = await body(req);
+        const form = parsedBody;
         prune(clients); prune(tokens); prune(refreshes);
         if (!form.get("token")) { error(res, 400, "invalid_request"); return true; }
         if (!clients.has(form.get("client_id"))) { error(res, 400, "invalid_client"); return true; }
@@ -329,13 +343,41 @@ export function createWorkshopAuth({ origin, participants, storage }) {
     refreshes.set(digest(refresh), { ...fields, expires, used: false });
     send(res, 200, { access_token: access, refresh_token: refresh, token_type: "Bearer", expires_in: Math.floor((accessExpires - now) / 1000), scope: "workplace" });
   }
-  function handle(req, res, url) {
-    // Serialize mutations and commit one atomic snapshot before exposing codes, tokens or cookies.
+  function flush(res) {
+    const response = pendingResponses.get(res);
+    pendingResponses.delete(res); response?.();
+  }
+  function immediateError(req, res, status, name, closeConnection = false) {
+    // This writer is request-local, including while another request awaits its durable commit.
+    if (closeConnection) {
+      req.pause(); res.setHeader("Connection", "close");
+      res.once("finish", () => req.destroy());
+    }
+    error(res, status, name); flush(res);
+    return true;
+  }
+  async function handle(req, res, url) {
+    await ready;
+    if (unavailable || closed) return immediateError(req, res, 503, "authentication_unavailable");
+    const path = url.pathname;
+    const mutation = req.method === "POST" && ["/login", "/logout", "/oauth/authorize", "/oauth/register", "/oauth/token", "/oauth/revoke"].includes(path);
+    if (!mutation) {
+      // Normal MCP/UI traffic never joins the authentication mutation queue.
+      const handled = dispatch(req, res, url); flush(res); return handled;
+    }
+    if (["/login", "/logout", "/oauth/authorize"].includes(path) && !browserOrigin(req)) return immediateError(req, res, 403, "Same-origin request required", true);
+    if (["/oauth/register", "/oauth/token", "/oauth/revoke"].includes(path)) {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    }
+    let parsedBody;
+    try { parsedBody = await body(req, path === "/oauth/register"); }
+    catch (caught) { return immediateError(req, res, caught.status || 400, caught.status === 408 ? "request_timeout" : "invalid_request", true); }
+    // Only completed, bounded bodies may serialize mutation + atomic storage commit.
     const operation = queue.then(async () => {
-      await ready;
-      pendingResponse = undefined;
-      if (unavailable || closed) { error(res, 503, "authentication_unavailable"); pendingResponse(); return true; }
-      const handled = await dispatch(req, res, url);
+      if (unavailable || closed) return immediateError(req, res, 503, "authentication_unavailable");
+      const handled = dispatch(req, res, url, parsedBody);
       if (!handled || res.writableEnded) return handled;
       try { if (storage) await storage.write(storageKey, snapshot()); }
       catch {
@@ -343,7 +385,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
         res.removeHeader("Set-Cookie"); res.removeHeader("Location");
         error(res, 503, "authentication_unavailable");
       }
-      pendingResponse?.(); return handled;
+      flush(res); return handled;
     });
     queue = operation.catch(() => { unavailable = true; });
     return operation;

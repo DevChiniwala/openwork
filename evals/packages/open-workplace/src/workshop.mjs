@@ -68,6 +68,7 @@ function backend(path) {
 
 export async function startWorkshop({ participants, origin, host = "127.0.0.1", port = 3990, dataDir } = {}) {
   const roster = validateParticipants(participants);
+  const startedAt = new Date().toISOString();
   let publicOrigin = origin ? new URL(origin).origin : null;
   if (origin && (!/^https?:$/.test(new URL(origin).protocol) || new URL(origin).username || new URL(origin).password || new URL(origin).pathname !== "/" || new URL(origin).search || new URL(origin).hash)) throw new Error("PUBLIC_URL must be an HTTP(S) origin without credentials, path, query or fragment.");
   const loopbackListener = ["127.0.0.1", "localhost", "::1"].includes(host);
@@ -184,7 +185,7 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
       // Reject absolute-form targets, encoded separators and dot-segment aliases before routing.
       if (!req.url?.startsWith("/") || req.url.startsWith("//") || /\\|%2f|%5c|%2e|[\x00-\x20]/i.test(req.url.split("?")[0])) return send(res, 400, { error: "invalid_path" });
       const url = new URL(req.url, publicOrigin);
-      if (url.pathname === "/health" && req.method === "GET") return send(res, auth?.isReady() ? 200 : 503, { ok: Boolean(auth?.isReady()), service: "open-workplace-workshop", isolated: true, storage: dataDir ? "sqlite" : "memory" });
+      if (url.pathname === "/health" && req.method === "GET") return send(res, auth?.isReady() ? 200 : 503, { ok: Boolean(auth?.isReady()), service: "open-workplace-workshop", isolated: true, storage: dataDir ? "sqlite" : "memory", startedAt });
       if (await auth.handle(req, res, url)) return;
       participant = auth.authenticate(req);
       let uploadToken;

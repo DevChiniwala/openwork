@@ -2,7 +2,7 @@
 // node --test evals/packages/open-workplace/src/workshop-auth.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { once } from "node:events";
 import { createHash, randomBytes } from "node:crypto";
 import { createWorkshopAuth } from "./workshop-auth.mjs";
@@ -55,7 +55,7 @@ async function fixture(t, storage) {
     return { ...attempt, code: target.searchParams.get("code") };
   };
   const redeem = (client, attempt, extra = {}) => form("/oauth/token", { grant_type: "authorization_code", client_id: client.client_id, redirect_uri: client.redirectUri, code: attempt.code, code_verifier: attempt.verifier, resource: attempt.fields.resource, ...extra });
-  return { get auth() { return auth; }, origin, request, form, login, register, authorization, issue, redeem, restart };
+  return { get auth() { return auth; }, server, origin, request, form, login, register, authorization, issue, redeem, restart };
 }
 
 test("two browser identities, session rotation, logout, bearer precedence, and escaped persona", async (t) => {
@@ -378,4 +378,83 @@ test("malformed persisted credential records cannot authenticate or be silently 
     assert.equal(f.auth.authenticate({ headers: { cookie: alice.cookie }, url: "/who" }), null);
     assert.deepEqual(corrupt.data.get("workshop-auth:v1"), saved);
   }
+});
+
+async function unfinishedPost(t, f, path, { type = "application/x-www-form-urlencoded", chunk = "x=", length } = {}) {
+  const accepted = once(f.server, "request");
+  const req = httpRequest(f.origin + path, { method: "POST", agent: false, headers: { Origin: f.origin, "Content-Type": type, ...(length === undefined ? {} : { "Content-Length": length }) } });
+  const response = new Promise((resolve) => {
+    req.once("response", (res) => {
+      let text = ""; res.setEncoding("utf8"); res.on("data", (part) => { text += part; });
+      res.once("end", () => resolve({ status: res.statusCode, text, headers: res.headers }));
+    });
+    req.once("error", () => resolve({ status: 0 }));
+  });
+  t.after(() => req.destroy());
+  req.write(chunk); await accepted;
+  await new Promise((resolve) => setImmediate(resolve));
+  return { req, response };
+}
+
+test("unfinished public auth uploads cannot block another participant's API or completed sign-in", { timeout: 4000 }, async (t) => {
+  const f = await fixture(t), bob = await f.login(participants[1]);
+  const uploads = [];
+  for (const path of ["/login", "/logout", "/oauth/authorize", "/oauth/register", "/oauth/token", "/oauth/revoke"]) uploads.push(await unfinishedPost(t, f, path, { type: path === "/oauth/register" ? "application/json" : "application/x-www-form-urlencoded", chunk: path === "/oauth/register" ? "{" : "x=" }));
+  try {
+    const api = await f.request("/outlook/mcp", { headers: { Cookie: bob.cookie }, signal: AbortSignal.timeout(1000) });
+    assert.equal(api.status, 200); assert.equal((await api.json()).id, "bob");
+    const complete = await f.request("/login", { method: "POST", headers: { Origin: f.origin, "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token: participants[0].token, next: "/" }), signal: AbortSignal.timeout(1000) });
+    assert.equal(complete.status, 303); assert.ok(complete.headers.get("set-cookie"));
+    assert.equal(f.auth.isReady(), true);
+  } finally { for (const upload of uploads) upload.req.destroy(); }
+});
+
+test("auth bodies have an absolute five-second deadline even while bytes keep arriving", { timeout: 10000 }, async (t) => {
+  const f = await fixture(t), start = performance.now();
+  const uploads = [];
+  for (const path of ["/login", "/oauth/register", "/oauth/token", "/oauth/revoke"]) uploads.push(await unfinishedPost(t, f, path, { type: path === "/oauth/register" ? "application/json" : "application/x-www-form-urlencoded", chunk: path === "/oauth/register" ? "{" : "x=" }));
+  const trickle = setInterval(() => { for (const upload of uploads) if (!upload.req.destroyed) upload.req.write(" "); }, 100);
+  t.after(() => clearInterval(trickle));
+  try {
+    const responses = await Promise.all(uploads.map((upload) => upload.response));
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed >= 4500 && elapsed < 8000, "The deadline must not reset when more bytes arrive");
+    for (const response of responses) { assert.equal(response.status, 408); assert.deepEqual(JSON.parse(response.text), { error: "request_timeout" }); assert.equal(response.headers.connection, "close"); }
+    assert.equal((await f.login(participants[0])).response.status, 303);
+  } finally { clearInterval(trickle); for (const upload of uploads) upload.req.destroy(); }
+});
+
+test("incomplete declared and chunked oversized bodies fail before queueing, with bounded request-local errors", { timeout: 4000 }, async (t) => {
+  const f = await fixture(t);
+  for (const options of [{ length: 17000, chunk: "x=" }, { chunk: "x=" + "x".repeat(17000) }, { type: "text/plain", chunk: "x=" }]) {
+    const upload = await unfinishedPost(t, f, "/oauth/token", options);
+    const response = await Promise.race([upload.response, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error("Body rejection waited for end-of-upload")), 1000); timer.unref(); })]);
+    assert.equal(response.status, options.type ? 415 : 413);
+    assert.deepEqual(JSON.parse(response.text), { error: "invalid_request" });
+    assert.equal(response.headers.connection, "close"); upload.req.destroy();
+  }
+  const invalidJson = await f.request("/oauth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{invalid" });
+  assert.equal(invalidJson.status, 400);
+  const duplicate = await f.request("/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "grant_type=a&grant_type=b" });
+  assert.equal(duplicate.status, 400);
+  assert.equal((await f.login(participants[1])).response.status, 303);
+});
+
+test("pre-queue body failures and normal API reads cannot steal a pending auth commit response", { timeout: 4000 }, async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage), bob = await f.login(participants[1]);
+  const write = storage.write; let release, entered;
+  const blocked = new Promise((resolve) => { entered = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  storage.write = async (key, value) => { entered(); await gate; write(key, value); };
+  const complete = f.form("/login", { token: participants[0].token, next: "/drive" });
+  await blocked;
+  try {
+    const malformed = await f.request("/oauth/token", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "invalid", signal: AbortSignal.timeout(1000) });
+    assert.equal(malformed.status, 415);
+    const api = await f.request("/who", { headers: { Cookie: bob.cookie }, signal: AbortSignal.timeout(1000) });
+    assert.equal(api.status, 200); assert.equal((await api.json()).id, "bob");
+  } finally { release(); }
+  const signedIn = await complete;
+  assert.equal(signedIn.status, 303); assert.equal(signedIn.headers.get("location"), "/drive"); assert.ok(signedIn.headers.get("set-cookie"));
+  assert.equal((await f.request("/who", { headers: { Cookie: signedIn.headers.get("set-cookie").split(";")[0] } })).status, 200);
 });
