@@ -6,8 +6,28 @@ const test = spec.world(browserTeaching, { timeout: 240_000, needs: { placement:
 
 test("a member teaches a browser lookup, saves a private skill and runs it with a different input", async ({ world, user, probe, step, evidence }) => {
   const person = user.on(world.registry);
-  await step("before: the member chooses the browser tab to teach", async () => {
+  await step("credentials echoed after their field is removed stay private across navigation", async () => {
     await user.click({ role: "button", label: "Teach Workbot" });
+    await user.see({ role: "combobox", label: "Tab to teach" });
+    await user.click({ role: "button", label: "Start teaching" });
+    await user.see({ text: "You have browser control" });
+    await person.navigate(`${world.url}privacy`);
+    await person.click({ role: "button", label: "Copy and clear" });
+    await person.click({ role: "button", label: "Echo example-private-credential-719" });
+    await person.click({ role: "link", label: "Next privacy page" });
+    await person.click({ role: "button", label: "Echo example-private-credential-719" });
+    await probe.eventually(() => world.state(), { within: 10_000, label: "both stale echoes are redacted", until: value => value.demonstration?.steps.filter(step => step.target?.name === "Echo [private]").length === 2 });
+    await user.type({ role: "textbox", label: "Explain this step" }, "Keep credentials private while documenting the public workflow.", { replace: true });
+    await user.click({ role: "button", label: "Send explanation" });
+    await user.see({ text: "Explanation added to the conversation" });
+    expect(await world.recorded()).not.toContain("example-private-credential-719");
+    expect(world.turns().at(-1)?.prompt).not.toContain("example-private-credential-719");
+    expect(world.turns().at(-1)?.prompt).toContain("Echo [private]");
+    evidence.recordAssertionEvidence("Removed field values remain redacted after navigation", "Both trusted clicks retain only Echo [private]; the draft and teaching conversation contain no credential.", !JSON.stringify(world.state()).includes("example-private-credential-719") && !world.turns().at(-1)?.prompt.includes("example-private-credential-719"));
+    await user.click({ role: "button", label: "Discard demonstration" });
+    await person.navigate("about:blank");
+  });
+  await step("before: the member chooses the browser tab to teach", async () => {
     await user.see({ role: "combobox", label: "Tab to teach" });
     await user.click({ role: "button", label: "Start teaching" });
     await user.see({ text: "You have browser control" });

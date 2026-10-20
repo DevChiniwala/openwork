@@ -113,6 +113,13 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
           response.writeHead(result.status, { "content-type": "application/json" }).end(await result.text()); return;
         }
         if (url.pathname === "/fixture/result") { response.setHeader("content-type", "application/json"); response.end(JSON.stringify(runResult)); return; }
+        if (url.pathname.startsWith("/privacy")) {
+          response.setHeader("content-type", "text/html");
+          response.end(url.pathname === "/privacy/next"
+            ? '<!doctype html><title>Privacy check after navigation</title><button>Echo example-private-credential-719</button>'
+            : '<!doctype html><title>Privacy check</title><input id="credential" type="password" aria-label="Password" value="example-private-credential-719"><button onclick="document.getElementById(\'echo\').textContent=\'Echo \'+document.getElementById(\'credential\').value;document.getElementById(\'credential\').remove()">Copy and clear</button><button id="echo">Waiting for echo</button><a href="/privacy/next">Next privacy page</a>');
+          return;
+        }
         if (url.pathname.startsWith("/registry")) {
           response.setHeader("content-type", "text/html");
           response.end('<!doctype html><html><head><title>Example public registry</title></head><body><h1>Example public registry</h1><form action="/registry/results"><label>Name<input name="name" aria-label="Name"></label><button onclick="document.getElementById(\'scripted\').click()"><span>Search</span></button></form><input type="password" aria-label="Password" value="fixture-secret-never-record"><h2>'+(url.searchParams.get("name") === "Example Two" ? 'Example Two' : 'Example One')+'</h2><dl><dt>Status</dt><dd aria-label="Registration status" onmousedown="document.getElementById(\'field-activation\').textContent=\'Field activated\'">'+(url.searchParams.get("name") === "Example Two" ? 'Active' : 'Pending')+'</dd></dl><output id="field-activation">Field not activated</output><button id="scripted">Scripted decoy</button></body></html>'); return;

@@ -1,5 +1,6 @@
 // A chosen tab, trusted user events, and a private guest-owned demonstration.
-// Recording never reads field values across the CDP boundary.
+// Field values are used only by a bounded, ephemeral privacy filter.
+// They never enter demonstration steps, persisted drafts, or model context.
 import { readFile, writeFile, rename, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { demonstrationCommandSchema, demonstrationSchema } from "@openwork/types/browser-demonstration";
@@ -7,17 +8,53 @@ import { publicDestination } from "./chromium.mjs";
 
 const WORLD = "openwork-browser-demonstration";
 const BINDING = "__openworkDemonstrationEvent";
-function pageRecorder() {
+function privacyFilter() {
+  const values = new Map();
+  let bytes = 0, concealed = false;
+  return {
+    remember(value, sensitive = false) {
+      if (!value || concealed) return false;
+      if (values.has(value)) { if (sensitive && !values.get(value)) { values.set(value, true); return true; } return false; }
+      if (value.length > 4096 || values.size >= 256 || bytes + value.length > 32768) { concealed = true; values.clear(); return true; }
+      values.set(value, sensitive); bytes += value.length; return true;
+    },
+    conceal() { concealed = true; values.clear(); },
+    redact(text) {
+      if (concealed) return "[private]";
+      let result = text;
+      for (const [value, sensitive] of [...values].sort((a, b) => b[0].length - a[0].length)) {
+        const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        // Short ordinary typing prefixes must not erase unrelated control labels.
+        const pattern = !sensitive && value.length < 4 ? `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])` : escaped;
+        const expression = new RegExp(pattern, "giu");
+        result = result.split(/(\[private\])/g).map(part => part === "[private]" ? part : part.replace(expression, "[private]")).join("");
+      }
+      return result;
+    },
+    snapshot() { return { values: [...values], concealed }; },
+    clear() { values.clear(); bytes = 0; concealed = false; },
+  };
+}
+function pageRecorder(makePrivacyFilter) {
   if (window.top !== window || globalThis.__openworkTeaching) return;
-  let recording = true, picking = false, sequence = 0;
+  let recording = false, picking = false, sequence = 0;
+  const privacy = makePrivacyFilter();
   const controls = new WeakMap();
   const safeName = element => {
     let name = element.getAttribute("aria-label") || [...(element.labels || [])].map(label => label.textContent).join(" ") || (element.tagName === "INPUT" ? element.getAttribute("placeholder") : element.textContent) || "";
-    // Values can be echoed in labels. Redact here; the values never leave this world.
-    for (const input of document.querySelectorAll("input,textarea,select")) if (input.value) name = name.split(input.value).join("[private]");
-    return name.replace(/\s+/g, " ").trim().slice(0, 160);
+    return privacy.redact(name).replace(/\s+/g, " ").trim().slice(0, 160);
   };
   const protectedField = element => element.matches('input[type="password"],input[type="hidden"],[autocomplete="one-time-code"],[autocomplete^="cc-"]') || /password|secret|token|otp|verification.?code|card.?number/i.test(`${element.getAttribute("name") || ""} ${element.getAttribute("autocomplete") || ""} ${element.getAttribute("aria-label") || ""}`);
+  const collect = () => {
+    if (!recording) return;
+    for (const element of document.querySelectorAll("input,textarea,select")) {
+      if (privacy.remember(element.value, protectedField(element))) {
+        const snapshot = privacy.snapshot();
+        // A separate private message feeds only the guest's in-memory filter.
+        globalThis.__openworkDemonstrationEvent(JSON.stringify(snapshot.concealed ? { kind: "privacy", overflow: true } : { kind: "privacy", value: element.value, sensitive: protectedField(element) }));
+      }
+    }
+  };
   const describe = (element, extraction = false) => {
     const tag = element.tagName.toLowerCase();
     let name = safeName(element);
@@ -26,10 +63,12 @@ function pageRecorder() {
       const heading = cell?.closest("table")?.querySelectorAll("thead th")[cell.cellIndex];
       name = heading ? safeName(heading) : term?.tagName === "DT" ? safeName(term) : "";
     }
-    return { tag, role: element.getAttribute("role") || ({ a: "link", button: "button", input: "textbox", textarea: "textbox", select: "combobox", table: "table" }[tag] || "text"), name };
+    return { tag, role: privacy.redact(element.getAttribute("role") || ({ a: "link", button: "button", input: "textbox", textarea: "textbox", select: "combobox", table: "table" }[tag] || "text")).slice(0, 60), name };
   };
   const emit = (kind, element, extra = {}) => {
-    if (!recording || protectedField(element) || element.closest('[contenteditable="true"]')) return;
+    if (!recording) return;
+    collect();
+    if (protectedField(element) || element.closest('[contenteditable="true"]')) return;
     if (!controls.has(element)) controls.set(element, ++sequence);
     globalThis.__openworkDemonstrationEvent(JSON.stringify({ kind, control: controls.get(element), target: describe(element, kind === "extract"), ...extra }));
   };
@@ -62,15 +101,20 @@ function pageRecorder() {
   };
   window.addEventListener("click", click, true);
   for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup"]) window.addEventListener(type, preventActivation, true);
-  document.addEventListener("input", input, true);
-  document.addEventListener("change", change, true);
-  document.addEventListener("keydown", key, true);
+  window.addEventListener("beforeinput", collect, true);
+  window.addEventListener("input", input, true);
+  window.addEventListener("change", change, true);
+  window.addEventListener("keydown", key, true);
   globalThis.__openworkTeaching = {
-    set(active, pick = false) { recording = active; picking = active && pick; },
-    dispose() { recording = false; window.removeEventListener("click", click, true); for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup"]) window.removeEventListener(type, preventActivation, true); document.removeEventListener("input", input, true); document.removeEventListener("change", change, true); document.removeEventListener("keydown", key, true); delete globalThis.__openworkTeaching; },
+    set(active, pick = false, history = { values: [], concealed: false }) {
+      for (const [value, sensitive] of history.values) privacy.remember(value, sensitive);
+      if (history.concealed) privacy.conceal();
+      recording = active; picking = active && pick; collect();
+    },
+    dispose() { recording = false; window.removeEventListener("click", click, true); for (const type of ["pointerdown", "pointerup", "mousedown", "mouseup"]) window.removeEventListener(type, preventActivation, true); window.removeEventListener("beforeinput", collect, true); window.removeEventListener("input", input, true); window.removeEventListener("change", change, true); window.removeEventListener("keydown", key, true); privacy.clear(); delete globalThis.__openworkTeaching; },
   };
 }
-const SCRIPT = `(${pageRecorder.toString()})()`;
+const SCRIPT = `(${pageRecorder.toString()})(${privacyFilter.toString()})`;
 
 function connect(url, onEvent) {
   const socket = new WebSocket(url);
@@ -110,6 +154,7 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
   let until = 0, serial = Promise.resolve(), writing = Promise.resolve(), events = Promise.resolve(), loaded = false;
   const enqueue = work => { events = events.catch(() => {}).then(work).catch(() => {}); };
   const contexts = new Map();
+  const privacy = privacyFilter();
   const active = () => demo?.phase === "recording" && now() < until;
   const persist = () => {
     const snapshot = JSON.stringify({ owner, demonstration: demo });
@@ -135,10 +180,11 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
     if (!await allowed(url)) { demo.phase = "paused"; demo.notice = "The tab left the permitted browser destinations. Recording paused."; await persist(); return; }
     if (demo !== navigatedDemo || !active() || !["https:", "http:"].includes(parsed.protocol)) return;
     parsed.username = ""; parsed.password = ""; parsed.search = ""; parsed.hash = "";
-    if (demo.steps.at(-1)?.url !== parsed.href) append({ kind: "navigate", url: parsed.href });
+    const safeUrl = privacy.redact(parsed.href);
+    if (demo.steps.at(-1)?.url !== safeUrl) append({ kind: "navigate", url: safeUrl });
   };
   const setMode = async (pick = false) => {
-    if (wire && contextId !== null) await wire.send("Runtime.evaluate", { contextId, expression: `globalThis.__openworkTeaching?.set(${active()}, ${pick})` });
+    if (wire && contextId !== null) await wire.send("Runtime.evaluate", { contextId, expression: `${SCRIPT}; globalThis.__openworkTeaching?.set(${active()}, ${pick}, ${JSON.stringify(privacy.snapshot())})` });
   };
   async function attach(target) {
     const address = new URL(target.webSocketDebuggerUrl);
@@ -156,9 +202,15 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
       }
       if (event.method !== "Runtime.bindingCalled" || event.params.name !== BINDING) return;
       const context = contexts.get(event.params.executionContextId);
-      if (!active() || context?.name !== WORLD || context.auxData?.frameId !== frameId || event.params.payload.length > 2048) return;
+      if (!active() || context?.name !== WORLD || context.auxData?.frameId !== frameId || event.params.payload.length > 25000) return;
       let value; try { value = JSON.parse(event.params.payload); } catch { return; }
-      if (!["click", "fill", "select", "key", "extract"].includes(value.kind)) return;
+      if (value.kind === "privacy") {
+        if (value.overflow === true) privacy.conceal();
+        else if (typeof value.value === "string" && typeof value.sensitive === "boolean") privacy.remember(value.value, value.sensitive);
+        return;
+      }
+      if (event.params.payload.length > 2048 || !["click", "fill", "select", "key", "extract"].includes(value.kind)) return;
+      if (value.target && typeof value.target === "object") for (const key of ["name", "role", "tag"]) if (typeof value.target[key] === "string") value.target[key] = privacy.redact(value.target[key]);
       const { control, ...data } = value;
       const parsed = demonstrationSchema.shape.steps.element.safeParse({ ...data, id: 1, explanation: "", ...(value.kind === "fill" || value.kind === "select" ? { parameter: "input_1" } : {}), ...(value.kind === "extract" ? { field: "field_1" } : {}) });
       if (parsed.success) { const { id, explanation, parameter, field, ...step } = parsed.data; enqueue(() => append(step, Number.isSafeInteger(control) ? `${event.params.executionContextId}:${control}` : null)); }
@@ -187,7 +239,8 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
       try {
         const saved = JSON.parse(await readFile(path, "utf8"));
         demo = demonstrationSchema.parse(saved.demonstration); owner = saved.owner;
-        if (demo.phase === "recording") { demo.phase = "paused"; demo.notice = "Recording was interrupted. Resume to continue teaching."; }
+        // Redaction history deliberately does not survive a process restart.
+        if (demo.phase !== "draft") { demo.phase = "draft"; demo.notice = "Recording was interrupted. Review the captured steps or start a new demonstration."; }
       } catch (error) { if (error.code !== "ENOENT") throw error; }
       loaded = true;
     }
@@ -199,16 +252,16 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
       if (demo) throw new Error("Finish or discard the current demonstration first.");
       const target = (await tabs()).find(tab => tab.id === input.tabId);
       if (!target || !await allowed(target.url)) throw new Error("Choose a permitted browser tab.");
-      owner = sessionId; until = now() + 12_000;
+      privacy.clear(); owner = sessionId; until = now() + 12_000;
       demo = { id: randomUUID(), phase: "recording", tabId: target.id, steps: [] };
-      try { await attach(target); await navigation(target.url); } catch (error) { await detach(); demo = null; owner = null; throw error; }
+      try { await attach(target); await navigation(target.url); } catch (error) { await detach(); privacy.clear(); demo = null; owner = null; throw error; }
     } else if (input.action === "discard") {
-      await detach(); await writing; await unlink(path).catch(error => { if (error.code !== "ENOENT") throw error; }); demo = null; owner = null;
+      await detach(); await writing; await unlink(path).catch(error => { if (error.code !== "ENOENT") throw error; }); demo = null; owner = null; privacy.clear();
     } else if (demo) {
       if (demo.phase === "recording" && now() >= until) { demo.phase = "paused"; demo.notice = "Recording paused because the teaching connection expired."; await setMode(); }
       if (input.action === "pause" || input.action === "finish") {
         demo.phase = input.action === "finish" ? "draft" : "paused"; await setMode();
-        if (input.action === "finish") await detach();
+        if (input.action === "finish") { await detach(); privacy.clear(); }
       } else if (input.action === "resume") {
         if (demo.phase !== "paused") throw new Error("Only a paused demonstration can resume.");
         const target = (await tabs()).find(tab => tab.id === demo.tabId);
@@ -237,6 +290,6 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
   return {
     isTeaching() { return demo !== null && demo.phase !== "draft"; },
     command(sessionId, input) { const result = serial.then(() => command(sessionId, input)); serial = result.catch(() => {}); return result; },
-    async close() { await detach(); if (demo?.phase === "recording") { demo.phase = "paused"; await persist(); } await writing; },
+    async close() { await detach(); if (demo?.phase === "recording") { demo.phase = "paused"; await persist(); } await writing; privacy.clear(); },
   };
 }

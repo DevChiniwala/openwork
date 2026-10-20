@@ -43,7 +43,12 @@ Recording is limited to the chosen tab's top document and trusted user events.
 It does not record other tabs, raw keystroke streams, screenshots, entered field
 values, passwords, payment fields, or session credentials. Extraction captures
 an accessible field label or table heading rather than its example value.
-Page-script-generated clicks do not count as demonstrations.
+Page-script-generated clicks do not count as demonstrations. A bounded privacy
+filter remembers observed field values only in guest memory for the current
+demonstration, so labels that echo cleared or removed values remain redacted
+across navigation. That history never enters draft storage or model context.
+When its limit is reached, page-derived descriptors are concealed instead of
+dropping older protections.
 
 URLs omit query strings, fragments and embedded credentials. Paths, public
 control labels, and teacher explanations remain in the private draft: review
@@ -52,9 +57,11 @@ text inputs, public select controls, clicks, Enter/Tab/Escape, and explicit
 extraction targets. Frames, popups, canvas, contenteditable editors, file uploads,
 and complex widget gestures need explanation or a separately taught workflow.
 
-The guest stores the draft privately with its owning conversation. It pauses on
-restart, on a lost teaching connection (a 12-second renewable lease), or at 120
-steps. Passive draft checks never wake or recreate a paused computer.
+The guest stores the draft privately with its owning conversation. Recording
+pauses on a lost teaching connection (a 12-second renewable lease) or at 120
+steps. A guest process restart recovers a reviewable draft rather than resuming
+recording with lost privacy history. Finish reviewing it or discard it to teach
+again. Passive draft checks never wake or recreate a paused computer.
 Refreshing or reconnecting recovers the recorded steps. The existing
 conversation-computer retention policy applies to the draft. Cloud skills have
 normal library retention and access rules.
