@@ -117,7 +117,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
         <button type="button" className={button} aria-label="Full screen" onClick={() => void container.current?.requestFullscreen().catch(() => setError("Full screen isn't available in this browser."))}><Maximize2 size={14} aria-hidden /></button>
       </div>
     </div>
-    {view === "browser" && canTeach && <WorkbotTeaching onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? text => { void action("continue").then(continued => { if (continued) onRun(text); }); } : undefined} />}
+    {view === "browser" && canTeach && <WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? text => { void action("continue").then(continued => { if (continued) onRun(text); }); } : undefined} />}
     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#f5f6f7]">
       <div ref={screen} className={`h-full w-full ${paused || error ? "hidden" : ""}`} aria-label={`${view === "browser" ? "Browser" : "Computer"} live view`} />
       {paused || error ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">

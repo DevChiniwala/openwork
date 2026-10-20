@@ -12,7 +12,7 @@ const input = "w-full rounded-lg border border-[var(--wb-hairline)] bg-[var(--wb
 const saveSchema = z.object({ saved: skillCreatedPayloadSchema, markdown: z.string() });
 
 /** The same production panel is used beside the live browser and in its UI journey. */
-export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun }: { onTakeControl(): void; onTeachingChange?(id: string | undefined): void; onRun?(text: string): void }) {
+export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun, suspended = false }: { suspended?: boolean; onTakeControl(): void; onTeachingChange?(id: string | undefined): void; onRun?(text: string): void }) {
   const host = workbotHost();
   const [demo, setDemo] = useState<BrowserDemonstration | null>(null);
   const [tabs, setTabs] = useState<Array<{ id: string; origin: string }>>([]);
@@ -51,7 +51,7 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun }: { on
     finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   };
   useEffect(() => {
-    if ((!opened && !demo) || !host.browserDemonstrations || host.documentAuthorization) { onTeachingChange?.(undefined); return; }
+    if ((!opened && !demo) || !host.browserDemonstrations || host.documentAuthorization || suspended) { onTeachingChange?.(undefined); return; }
     let disposed = false;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -69,7 +69,7 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun }: { on
     };
     timer = setTimeout(() => void poll(), 3000);
     return () => { disposed = true; controller.abort(); clearTimeout(timer); };
-  }, [opened, host, accept, onTeachingChange, demo?.id]);
+  }, [opened, host, accept, onTeachingChange, demo?.id, suspended]);
   const save = async () => {
     if (!demo || inFlight.current) return;
     inFlight.current = true; changes.current++; setBusy(true); setError(null);
@@ -83,10 +83,10 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun }: { on
   const selected = demo?.steps.find(step => step.id === stepId);
   let preview = "";
   if (demo?.phase === "draft" && name.trim() && purpose.trim()) { try { preview = compileBrowserDemonstration(demo, name, purpose); } catch { /* An incomplete draft stays editable. */ } }
-  const enabled = host.browserDemonstrations === true && !host.documentAuthorization;
+  const enabled = host.browserDemonstrations === true && !host.documentAuthorization && !suspended;
   return <section aria-label="Teach Workbot" className="flex min-h-0 w-full flex-col border-b border-[var(--wb-hairline)] bg-[var(--wb-bg)] text-[var(--wb-text)]" data-testid="workbot-teaching">
     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-      <Button className={button} disabled={!enabled || busy} onClick={() => { setOpened(current => !current); if (!opened) void command({ action: "tabs" }); }} aria-expanded={opened}>{enabled ? "Teach Workbot" : "Teaching is off · Ask your admin"}</Button>
+      <Button className={button} disabled={!enabled || busy} onClick={() => { setOpened(current => !current); if (!opened) void command({ action: "tabs" }); }} aria-expanded={opened}>{suspended ? "Teaching paused · Resume the computer" : enabled ? "Teach Workbot" : "Teaching is off · Ask your admin"}</Button>
       {(opened || demo) && <span role="status" className="text-[12px] text-[var(--wb-muted)]">{saved ? "Saved · Not yet tested" : demo ? `${demo.phase === "recording" ? "Recording" : demo.phase === "paused" ? "Paused" : "Draft"} · ${demo.steps.length} steps` : "No demonstration"}</span>}
     </div>
     {opened && <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto px-4 pb-4">

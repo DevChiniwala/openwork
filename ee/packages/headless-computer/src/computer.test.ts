@@ -105,3 +105,16 @@ test("a new command waits for a pending idle pause and resumes before running", 
   assert.equal(pauses, 1)
   assert.equal(provider.fake.count("start"), 1)
 })
+
+test("passive teaching checks neither provision nor wake a paused conversation computer", async () => {
+  const f = fixture()
+  const computers = new Computers({ provider: f.provider, idlePauseMs: 1000, keepDays: 1, desktop: true }, { readFile: async () => ({ text: "" }) })
+  await assert.rejects(computers.browserDemonstration("missing", { action: "read" }), /Resume the computer/)
+  assert.equal(f.provider.fake.count("create"), 0)
+  const box = await computers.vm("paused-teaching")
+  await f.provider.stop(box, { timeoutMs: 1000 })
+  const starts = f.provider.fake.count("start")
+  await assert.rejects(computers.browserDemonstration("paused-teaching", { action: "read" }), /Resume the computer/)
+  assert.equal(f.provider.fake.count("start"), starts)
+  await computers.delete("paused-teaching")
+})

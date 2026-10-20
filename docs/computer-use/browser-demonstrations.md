@@ -54,7 +54,8 @@ and complex widget gestures need explanation or a separately taught workflow.
 
 The guest stores the draft privately with its owning conversation. It pauses on
 restart, on a lost teaching connection (a 12-second renewable lease), or at 120
-steps. Refreshing or reconnecting recovers the recorded steps. The existing
+steps. Passive draft checks never wake or recreate a paused computer.
+Refreshing or reconnecting recovers the recorded steps. The existing
 conversation-computer retention policy applies to the draft. Cloud skills have
 normal library retention and access rules.
 

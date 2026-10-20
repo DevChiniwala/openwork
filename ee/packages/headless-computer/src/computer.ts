@@ -123,6 +123,11 @@ export class Computers {
 
   async browserDemonstration(sessionId: string, command: DemonstrationCommand) {
     if (!this.desktop) throw new Error("Desktop access is not configured.")
+    if (command.action === "read") {
+      const pending = this.vms.get(sessionId)
+      const existing = pending ? await this.provider.inspect(await pending) : await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })
+      if (!existing || existing.state !== "running") throw new Error("Resume the computer before checking its demonstration.")
+    }
     const box = await this.vm(sessionId)
     try {
       await this.desktop.start(box)
