@@ -299,6 +299,39 @@ export async function seedOpencodePluginDeps(input: {
   }
 }
 
+/**
+ * Seed the standard config folders used by a fresh managed desktop engine,
+ * not only its global one. Ancestor project configs keep their normal installs.
+ * Project/home discovery folders are opt-in: never create `.opencode` for a
+ * workspace that did not already have one. Existing install state and user
+ * config files remain owned by OpenCode; a missing/broken bundle falls back
+ * to its normal dependency install.
+ */
+export async function seedManagedOpencodePluginDeps(input: {
+  archive: string;
+  cwd: string;
+  workspaceDirs?: readonly string[];
+  env: NodeJS.ProcessEnv;
+}): Promise<Array<{ configDir: string; result: PluginDepsSeedResult }>> {
+  if (!await isFile(input.archive)) return [];
+  const home = input.env.HOME?.trim() || homedir();
+  const discoveryHome = input.env.OPENCODE_TEST_HOME ?? home;
+  const configDirs = new Set([
+    resolve(input.cwd, opencodeGlobalConfigDir(input.env, home)),
+  ]);
+  const explicit = input.env.OPENCODE_CONFIG_DIR;
+  if (explicit) configDirs.add(resolve(input.cwd, explicit));
+  for (const directory of [input.cwd, ...(input.workspaceDirs ?? []), discoveryHome]) {
+    const configDir = resolve(input.cwd, directory, ".opencode");
+    if (await isDirectory(configDir)) configDirs.add(configDir);
+  }
+  const results: Array<{ configDir: string; result: PluginDepsSeedResult }> = [];
+  for (const configDir of configDirs) {
+    results.push({ configDir, result: await seedOpencodePluginDeps({ archive: input.archive, configDir }) });
+  }
+  return results;
+}
+
 type PersistedTokens = { token: string; hostToken: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

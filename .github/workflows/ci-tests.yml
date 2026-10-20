@@ -124,6 +124,7 @@ jobs:
         run: node --test scripts/ci/check-codeql-results.test.mjs
       - name: Test packaged smoke engine diagnosis and kept logs
         run: |
+          bun test apps/server/test/opencode-plugin-deps.test.ts
           node --test apps/desktop/test/engine-diagnosis.test.mjs
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr packages/hosts/src/local-surface-log.test.ts
       - name: Test the OpenCode engine new installs start on
