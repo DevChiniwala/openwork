@@ -38,16 +38,6 @@
               ],
               "description": "Live provider sync: Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. Renders DEN_FEATURE_LIVE_PROVIDER_SYNC."
             },
-            "offlineRecovery": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Connection failure presentation: Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations. Renders DEN_FEATURE_OFFLINE_RECOVERY."
-            },
             "managedDeployments": {
               "enum": [
                 "",
@@ -839,6 +829,16 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "taskAnalyticsUi": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "offlineRecovery": {
               "enum": [
                 "",
                 "true",

@@ -67,13 +67,6 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  offlineRecovery: {
-    label: "Connection failure presentation",
-    description: "Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
   managedDeployments: {
     label: "Managed deployments",
     description: "Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments.",

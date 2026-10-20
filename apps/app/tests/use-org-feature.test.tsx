@@ -24,7 +24,7 @@ beforeEach(() => {
   Reflect.deleteProperty(window, "__OPENWORK_ELECTRON__");
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   queryClient.setQueryData(["den", "org-features", orgId], {
-    engineV2ForceUpgrade: true, automationCalendar: true, offlineRecovery: true,
+    engineV2ForceUpgrade: true, automationCalendar: true,
   });
   const client = createDenClient({ baseUrl: "https://den.example.test", token: "test-token" });
   spyOn(client, "getOrgFeatures").mockResolvedValue({});

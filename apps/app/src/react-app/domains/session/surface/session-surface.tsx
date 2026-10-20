@@ -1,5 +1,4 @@
 /** @jsxImportSource react */
-import { OfflineRecoveryNotice } from "@/components/chat/offline-recovery-notice";
 import { openMemberApiKeyDialog } from "../../connections/member-api-key-dialog";
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { UIMessage } from "ai";
@@ -3562,7 +3561,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
       </div>
 
       <div ref={composerShellRef} className="shrink-0 px-0 pb-2 pt-2 max-lg:pb-0">
-        <OfflineRecoveryNotice active={props.isControlTarget && isOpencodeV2BaseUrl(props.opencodeBaseUrl)} />
         <GatewayUsageApprovalNotice />
         {gatewayNotice && gatewayScope ? <GatewayUsageNotice key={`${gatewayUsage.scopeKey}:${sessionOwner}:${gatewayCloudProviderId ?? ""}`} state={gatewayNotice} status={gatewayScope.status} stale={gatewayUsage.query.isError}
           providerName={gatewayScope.providerName} canSwitchProvider={gatewayCanSwitchProvider} /> : null}

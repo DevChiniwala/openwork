@@ -28,7 +28,6 @@ config:
   features:
     organizationGrants: ""        # default off · Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.
     liveProviderSync: ""          # default off · Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.
-    offlineRecovery: ""           # default off · Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations.
     managedDeployments: ""        # default off (cloud only) · Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments.
     workbotDocuments: ""          # default off · Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive.
     workbotDocumentEditing: ""    # default off · Members choose Edit from a document preview. Full Office editing starts their Cloud workspace only when requested. Requires Workbot Documents.
