@@ -1364,7 +1364,8 @@ export class DenClient extends HeyApiClient {
       setup?: "any" | "skills" | "mcp" | "both";
       sort?: "recent" | "active" | "members";
       search?: string;
-      limit?: string;
+      limit?: number;
+      cursor?: string;
       offset?: string;
     },
     options?: Options<never, ThrowOnError>,
@@ -1381,6 +1382,7 @@ export class DenClient extends HeyApiClient {
             { in: "query", key: "sort" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
             { in: "query", key: "offset" },
           ],
         },

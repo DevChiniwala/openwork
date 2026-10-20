@@ -33,9 +33,9 @@ test("a platform admin finds recent workplace adoption and opens the people behi
   });
 
   await step("the admin narrows to company-email signals with skills and MCPs", async () => {
-    await admin.click({ role: "combobox", label: "Email signal" });
+    await admin.click({ role: "button", label: "Email signal" });
     await admin.click({ role: "option", label: "Company-email signal" });
-    await admin.click({ role: "combobox", label: "Cloud setup" });
+    await admin.click({ role: "button", label: "Cloud setup" });
     await admin.click({ role: "option", label: "Has skills and MCPs" });
     await admin.see({ text: "1 matching organizations · page 1" });
     await admin.see({ text: "studio.example.test" });
@@ -62,9 +62,9 @@ test("a platform admin finds recent workplace adoption and opens the people behi
   });
 
   await step("the admin can identify an individual opportunity and inspect its members", async () => {
-    await admin.click({ role: "combobox", label: "Joined users" });
+    await admin.click({ role: "button", label: "Joined users" });
     await admin.click({ role: "option", label: "1 or more" });
-    await admin.click({ role: "combobox", label: "Cloud setup" });
+    await admin.click({ role: "button", label: "Cloud setup" });
     await admin.click({ role: "option", label: "Any setup" });
     await admin.see({ role: "link", label: "Solo workplace" });
     await admin.click({ role: "link", label: "Workplace example" });

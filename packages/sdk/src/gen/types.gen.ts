@@ -734,6 +734,10 @@ export type AdminOpportunities = {
   from: string;
   to: string;
   generatedAt: string;
+  /**
+   * Pass as cursor with the same filters and sort to continue; null on the last page.
+   */
+  nextCursor: string | null;
   organizations: Array<{
     id: string;
     name: string;
@@ -749,7 +753,6 @@ export type AdminOpportunities = {
   }>;
   page: {
     limit: number;
-    offset: number;
     total: number;
     returned: number;
     hasMore: boolean;
@@ -7397,7 +7400,19 @@ export type GetV1AdminOpportunitiesData = {
     setup?: "any" | "skills" | "mcp" | "both";
     sort?: "recent" | "active" | "members";
     search?: string;
-    limit?: string;
+    /**
+     * Maximum organizations per page, from 1 to 100. Defaults to 50.
+     */
+    limit?: number;
+    /**
+     * Opaque nextCursor from the preceding page. Keep the same filters and sort; omit for the first page.
+     */
+    cursor?: string;
+    /**
+     * Compatibility for numbered admin pages. Use cursor for continued traversal; do not combine with cursor.
+     *
+     * @deprecated
+     */
     offset?: string;
   };
   url: "/v1/admin/opportunities";

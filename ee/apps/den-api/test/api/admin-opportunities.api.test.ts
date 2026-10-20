@@ -106,6 +106,38 @@ test("filters, full-result pagination and domain search run before the page limi
   assert.equal(invalid.status, 400)
 })
 
+test("opaque cursors traverse every sort without duplicates and reject mismatched or invalid requests", async () => {
+  for (const sort of ["recent", "active", "members"]) {
+    const filters = new URLSearchParams({ minMembers: "1", limit: "1", sort })
+    const first = await report(filters.toString())
+    assert.ok(first.nextCursor)
+    filters.set("cursor", first.nextCursor)
+    const second = await report(filters.toString())
+    assert.ok(second.nextCursor)
+    filters.set("cursor", second.nextCursor)
+    const third = await report(filters.toString())
+    assert.equal(third.nextCursor, null)
+    assert.equal(third.page.hasMore, false)
+    const ids = [first, second, third].map(page => page.organizations[0]?.id)
+    assert.equal(new Set(ids).size, 3)
+    assert.deepEqual(ids, sort === "members" ? [work.orgId, personal.orgId, solo.orgId] : [work.orgId, solo.orgId, personal.orgId])
+    assert.equal(second.page.total, 3)
+    for (const suffix of ["&offset=0", "&search=changed", `&sort=${sort === "recent" ? "members" : "recent"}`]) {
+      assert.equal((await den.request(admin.token, "GET", `/v1/admin/opportunities?${filters}${suffix}`)).status, 400)
+    }
+  }
+  assert.equal((await den.request(admin.token, "GET", "/v1/admin/opportunities?cursor=invalid")).status, 400)
+  assert.equal((await den.request(admin.token, "GET", "/v1/admin/opportunities?limit=101")).status, 400)
+  // With identical activity timestamps, the stable organization-id tie break
+  // must still reach both organizations exactly once.
+  await query("UPDATE telemetry_event SET event_timestamp = DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 1 DAY) WHERE org_id IN (?, ?)", [work.orgId, personal.orgId])
+  const first = await report("limit=1")
+  assert.ok(first.nextCursor)
+  const second = await report(`limit=1&cursor=${encodeURIComponent(first.nextCursor)}`)
+  assert.deepEqual([first.organizations[0]?.id, second.organizations[0]?.id], [work.orgId, personal.orgId].sort())
+  assert.equal(second.nextCursor, null)
+})
+
 test("unverified company addresses do not qualify, and missing telemetry is not invented from sign-ins", async () => {
   await query("UPDATE user SET email_verified = false WHERE id IN (?, ?)", [owner.userId, peer.userId])
   assert.equal((await report("companyEmail=1")).page.total, 0)

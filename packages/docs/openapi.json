@@ -2447,6 +2447,17 @@
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
           },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as cursor with the same filters and sort to continue; null on the last page."
+          },
           "organizations": {
             "maxItems": 100,
             "type": "array",
@@ -2531,11 +2542,6 @@
                 "minimum": 0,
                 "maximum": 9007199254740991
               },
-              "offset": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
               "total": {
                 "type": "integer",
                 "minimum": 0,
@@ -2552,7 +2558,6 @@
             },
             "required": [
               "limit",
-              "offset",
               "total",
               "returned",
               "hasMore"
@@ -2563,6 +2568,7 @@
           "from",
           "to",
           "generatedAt",
+          "nextCursor",
           "organizations",
           "page"
         ]
@@ -30845,15 +30851,31 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "type": "string"
-            }
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Maximum organizations per page, from 1 to 100. Defaults to 50."
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "description": "Opaque nextCursor from the preceding page. Keep the same filters and sort; omit for the first page."
           },
           {
             "in": "query",
             "name": "offset",
             "schema": {
+              "deprecated": true,
               "type": "string"
-            }
+            },
+            "description": "Compatibility for numbered admin pages. Use cursor for continued traversal; do not combine with cursor."
           }
         ],
         "security": [

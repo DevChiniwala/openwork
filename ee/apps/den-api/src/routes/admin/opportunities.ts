@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNotNull, isNull, lte, sql } from "@openwork-ee/den-db/drizzle"
+import { and, asc, desc, eq, gt, gte, isNotNull, isNull, lt, lte, or, sql } from "@openwork-ee/den-db/drizzle"
 import { AuthUserTable, ConfigObjectTable, MemberTable, OrganizationTable, TelemetryEventTable } from "@openwork-ee/den-db/schema"
 import { adminOpportunitiesSchema } from "@openwork/types/den/admin-organization"
 import type { Hono } from "hono"
@@ -6,7 +6,7 @@ import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import { db } from "../../db.js"
 import { adminRoute, queryValidator } from "../../middleware/index.js"
-import { forbiddenSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
+import { denTypeIdSchema, forbiddenSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
 import { ADMIN_MAX_PAGE_OFFSET, normalizeAdminPageRequest, sanitizeAdminSearchForLike } from "./scale-performance.js"
 
@@ -22,17 +22,39 @@ const PERSONAL_EMAIL_DOMAINS = [
   "naver.com", "daum.net", "hanmail.net", "zoho.com", "rediffmail.com", "yopmail.com", "mailinator.com",
 ]
 
+function opportunityScope(input: { days: string; minMembers: string; companyEmail: string; setup: string; sort: string; search?: string }) {
+  return JSON.stringify([input.days, input.minMembers, input.companyEmail, input.setup, input.sort, input.search?.trim().toLowerCase() ?? ""])
+}
+
+const cursorPayloadSchema = z.object({
+  value: z.number().int().nonnegative().safe(), at: z.number().int().positive().safe(),
+  id: denTypeIdSchema("organization"), scope: z.string().max(512),
+})
+const cursorQuerySchema = z.string().min(1).max(1024).transform((value, context) => {
+  let payload: unknown
+  try { payload = /^[A-Za-z0-9_-]+$/.test(value) ? JSON.parse(Buffer.from(value, "base64url").toString("utf8")) : null } catch { payload = null }
+  const parsed = cursorPayloadSchema.safeParse(payload)
+  if (parsed.success) return parsed.data
+  context.addIssue({ code: "custom", message: "Invalid opportunity cursor." })
+  return z.NEVER
+}).meta({ description: "Opaque nextCursor from the preceding page. Keep the same filters and sort; omit for the first page." })
+
 const querySchema = z.object({
   days: z.enum(["7", "30", "90"]).default("30"),
   minMembers: z.enum(["1", "2", "5", "10"]).default("2"),
   companyEmail: z.enum(["0", "1"]).default("0"),
   setup: z.enum(["any", "skills", "mcp", "both"]).default("any"),
   sort: z.enum(["recent", "active", "members"]).default("recent"),
-  search: z.string().max(160).optional(), limit: z.string().optional(), offset: z.string().optional(),
+  search: z.string().max(160).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50).meta({ description: "Maximum organizations per page, from 1 to 100. Defaults to 50." }),
+  cursor: cursorQuerySchema.optional(),
+  offset: z.string().optional().meta({ deprecated: true, description: "Compatibility for numbered admin pages. Use cursor for continued traversal; do not combine with cursor." }),
+}).refine(input => !input.cursor || (input.offset === undefined && input.cursor.scope === opportunityScope(input)), {
+  path: ["cursor"], message: "Keep the cursor's filters and sort unchanged, and do not combine cursor with offset.",
 })
 
 export async function readAdminOpportunities(input: z.infer<typeof querySchema>, now = new Date()) {
-  const request = normalizeAdminPageRequest(input)
+  const request = normalizeAdminPageRequest({ ...input, limit: String(input.limit) })
   const from = new Date(now.getTime() - Number(input.days) * 86_400_000)
   const domain = sql<string>`lower(trim(substring_index(${AuthUserTable.email}, '@', -1)))`
   const personalDomains = sql.join(PERSONAL_EMAIL_DOMAINS.map((value) => sql`${value}`), sql`, `)
@@ -80,7 +102,12 @@ export async function readAdminOpportunities(input: z.infer<typeof querySchema>,
     request.search ? sql`(lower(${OrganizationTable.name}) like ${pattern} escape '|'
       or lower(${OrganizationTable.slug}) like ${pattern} escape '|' or ${teams.domainSearch} = 1)` : undefined,
   )
-  const order = input.sort === "members" ? desc(teams.members) : input.sort === "active" ? desc(teams.activeMembers) : desc(teams.lastActiveMs)
+  const primary = input.sort === "members" ? teams.members : input.sort === "active" ? teams.activeMembers : teams.lastActiveMs
+  const after = input.cursor ? or(
+    lt(primary, input.cursor.value),
+    and(eq(primary, input.cursor.value), lt(teams.lastActiveMs, input.cursor.at)),
+    and(eq(primary, input.cursor.value), eq(teams.lastActiveMs, input.cursor.at), gt(OrganizationTable.id, input.cursor.id)),
+  ) : undefined
   const base = () => db.with(people, teams, setup)
   const [rows, totals] = await Promise.all([
     base().select({ id: OrganizationTable.id, name: OrganizationTable.name, slug: OrganizationTable.slug,
@@ -88,19 +115,27 @@ export async function readAdminOpportunities(input: z.infer<typeof querySchema>,
       companyEmailMembers: teams.companyEmailMembers, companyDomain: teams.companyDomain, companyDomainCount: teams.companyDomainCount,
       skills, mcpConnections,
     }).from(teams).innerJoin(OrganizationTable, eq(OrganizationTable.id, teams.organizationId))
-      .leftJoin(setup, eq(setup.organizationId, teams.organizationId)).where(filter)
-      .orderBy(order, desc(teams.lastActiveMs), asc(OrganizationTable.id)).limit(request.limit).offset(request.offset),
+      .leftJoin(setup, eq(setup.organizationId, teams.organizationId)).where(and(filter, after))
+      .orderBy(desc(primary), desc(teams.lastActiveMs), asc(OrganizationTable.id)).limit(request.limit + 1).offset(request.offset),
     base().select({ total: sql<number>`count(*)` }).from(teams).innerJoin(OrganizationTable, eq(OrganizationTable.id, teams.organizationId))
       .leftJoin(setup, eq(setup.organizationId, teams.organizationId)).where(filter),
   ])
   const total = Number(totals[0]?.total ?? 0)
+  const visible = rows.slice(0, request.limit)
+  const last = visible.at(-1)
+  const hasMore = rows.length > request.limit && (input.cursor !== undefined || request.offset < ADMIN_MAX_PAGE_OFFSET)
+  const nextCursor = hasMore && last ? Buffer.from(JSON.stringify({
+    value: Number(input.sort === "members" ? last.members : input.sort === "active" ? last.activeMembers : last.lastActiveMs),
+    at: Number(last.lastActiveMs), id: last.id, scope: opportunityScope(input),
+  }), "utf8").toString("base64url") : null
   return {
     from: from.toISOString(), to: now.toISOString(), generatedAt: now.toISOString(),
-    organizations: rows.map(({ lastActiveMs, ...row }) => ({ ...row, members: Number(row.members), activeMembers: Number(row.activeMembers),
+    nextCursor,
+    organizations: visible.map(({ lastActiveMs, ...row }) => ({ ...row, members: Number(row.members), activeMembers: Number(row.activeMembers),
       companyEmailMembers: Number(row.companyEmailMembers), companyDomainCount: Number(row.companyDomainCount),
       skills: Number(row.skills), mcpConnections: Number(row.mcpConnections), lastActiveAt: new Date(Number(lastActiveMs)).toISOString(),
     })),
-    page: { limit: request.limit, offset: request.offset, total, returned: rows.length, hasMore: request.offset < ADMIN_MAX_PAGE_OFFSET && request.offset + rows.length < total },
+    page: { limit: request.limit, total, returned: visible.length, hasMore },
   }
 }
 
