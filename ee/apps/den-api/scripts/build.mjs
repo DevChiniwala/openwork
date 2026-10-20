@@ -198,6 +198,12 @@ function sourceServedTarget(specifier, packageDir = serviceDir) {
   return /\.(c|m)?tsx?$/.test(target ?? "") ? target : undefined
 }
 
+/** The whole environment of the import check's child process: no secrets, no NODE_OPTIONS, only PATH (and Windows' SystemRoot). */
+export function sourceExportCheckEnv(env = process.env) {
+  const allowed = process.platform === "win32" ? ["PATH", "Path", "SystemRoot"] : ["PATH"]
+  return Object.fromEntries(allowed.flatMap((key) => (typeof env[key] === "string" ? [[key, env[key]]] : [])))
+}
+
 /**
  * Loads every source-served workspace export the compiled service imports, in a plain Node process (no development
  * condition), the way production starts. A relative import Node can't resolve from source (for example one without a
@@ -210,10 +216,12 @@ export function unloadableSourceExports(specifiers, packageDir = serviceDir) {
     const result = spawnSync(process.execPath, ["--input-type=module", "-e", `await import(${JSON.stringify(specifier)})`], {
       cwd: packageDir,
       encoding: "utf8",
-      env: { ...process.env, NODE_OPTIONS: "" },
+      // Importing runs the modules' top-level code: give it nothing from the build's environment (Sentry upload
+      // token, registry credentials, …), only what Node needs to start.
+      env: sourceExportCheckEnv(),
     })
     if (result.status !== 0) {
-      const reason = /Error \[[A-Z_]+\]: [^\n]+/.exec(result.stderr ?? "")?.[0] ?? `exit ${result.status}`
+      const reason = /^\w*Error(?: \[[A-Z_]+\])?: [^\n]+/m.exec(result.stderr ?? "")?.[0] ?? `exit ${result.status}`
       failures.push(`${specifier}: ${reason}`)
     }
   }
