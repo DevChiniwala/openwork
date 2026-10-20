@@ -398,7 +398,7 @@
         "default": "./src/browser-demonstration.ts"
       },
       "development": "./src/browser-demonstration.ts",
-      "default": "./src/browser-demonstration.ts"
+      "default": "./dist/browser-demonstration.js"
     }
   },
   "files": [
