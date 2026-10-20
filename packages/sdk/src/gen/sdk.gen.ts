@@ -71,8 +71,6 @@ import type {
   DeleteV1DesktopPoliciesByKeyByExternalKeyResponses,
   DeleteV1GatewayUsageLimitPoliciesByPolicyIdAssignmentsByAssignmentIdErrors,
   DeleteV1GatewayUsageLimitPoliciesByPolicyIdAssignmentsByAssignmentIdResponses,
-  DeleteV1InferenceAnalyticsLangfuseErrors,
-  DeleteV1InferenceAnalyticsLangfuseResponses,
   DeleteV1InferenceProvidersByInferenceProviderIdAccessByGrantIdErrors,
   DeleteV1InferenceProvidersByInferenceProviderIdAccessByGrantIdResponses,
   DeleteV1InferenceProvidersByInferenceProviderIdAccessGrantsByGrantIdErrors,
@@ -133,6 +131,7 @@ import type {
   DenDesktopPolicyDocumentWrite,
   DescribeHostGoogleDriveDownloadErrors,
   DescribeHostGoogleDriveDownloadResponses,
+  DesktopStartupReport,
   DownloadGoogleDriveFileByLinkErrors,
   DownloadGoogleDriveFileByLinkResponses,
   DownloadHostGoogleDriveFileErrors,
@@ -209,8 +208,12 @@ import type {
   GetV1AdminFreeAutoUsageResponses,
   GetV1AdminMetricsErrors,
   GetV1AdminMetricsResponses,
+  GetV1AdminOpportunitiesErrors,
+  GetV1AdminOpportunitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
+  GetV1AdminOrganizationsByOrganizationIdControlPanelErrors,
+  GetV1AdminOrganizationsByOrganizationIdControlPanelResponses,
   GetV1AdminOrganizationsByOrganizationIdErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsResponses,
@@ -340,14 +343,6 @@ import type {
   GetV1HeadlessSessionsResponses,
   GetV1InferenceAccessErrors,
   GetV1InferenceAccessResponses,
-  GetV1InferenceAnalyticsActivityErrors,
-  GetV1InferenceAnalyticsActivityResponses,
-  GetV1InferenceAnalyticsConsumptionErrors,
-  GetV1InferenceAnalyticsConsumptionResponses,
-  GetV1InferenceAnalyticsSettingsErrors,
-  GetV1InferenceAnalyticsSettingsResponses,
-  GetV1InferenceAnalyticsUsageErrors,
-  GetV1InferenceAnalyticsUsageResponses,
   GetV1InferenceErrors,
   GetV1InferenceFreeProviderErrors,
   GetV1InferenceFreeProviderResponses,
@@ -487,8 +482,8 @@ import type {
   GetV1OrgDefaultModelOptionsErrors,
   GetV1OrgDefaultModelOptionsResponses,
   GetV1OrgDefaultModelResponses,
-  GetV1OrgDeploymentServicesErrors,
-  GetV1OrgDeploymentServicesResponses,
+  GetV1OrgDiagnosticsErrors,
+  GetV1OrgDiagnosticsResponses,
   GetV1OrgErrors,
   GetV1OrgInventoryRevisionErrors,
   GetV1OrgInventoryRevisionResponses,
@@ -637,8 +632,6 @@ import type {
   PatchV1DesktopPoliciesByDesktopPolicyIdResponses,
   PatchV1GatewayUsageLimitPoliciesByPolicyIdErrors,
   PatchV1GatewayUsageLimitPoliciesByPolicyIdResponses,
-  PatchV1InferenceAnalyticsSettingsErrors,
-  PatchV1InferenceAnalyticsSettingsResponses,
   PatchV1InferenceErrors,
   PatchV1InferenceFreePinsErrors,
   PatchV1InferenceFreePinsResponses,
@@ -680,6 +673,10 @@ import type {
   PostRegisterResponses,
   PostV1AdminAdminsErrors,
   PostV1AdminAdminsResponses,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses,
   PostV1AdminServicesCheckErrors,
   PostV1AdminServicesCheckResponses,
   PostV1AdminUsersByUserIdInferenceUsageResetErrors,
@@ -774,6 +771,8 @@ import type {
   PostV1ConnectorTargetsByConnectorTargetIdResyncResponses,
   PostV1DesktopPoliciesErrors,
   PostV1DesktopPoliciesResponses,
+  PostV1DiagnosticsDesktopStartupErrors,
+  PostV1DiagnosticsDesktopStartupResponses,
   PostV1DiagnosticsEgressErrors,
   PostV1DiagnosticsEgressResponses,
   PostV1DirectUploadsGoogleWorkspaceDriveFilesErrors,
@@ -796,10 +795,6 @@ import type {
   PostV1GatewayUsageLimitResetRequestsResponses,
   PostV1InferenceAnalyticsEventsErrors,
   PostV1InferenceAnalyticsEventsResponses,
-  PostV1InferenceAnalyticsLangfuseConnectErrors,
-  PostV1InferenceAnalyticsLangfuseConnectResponses,
-  PostV1InferenceAnalyticsLangfuseTestErrors,
-  PostV1InferenceAnalyticsLangfuseTestResponses,
   PostV1InferenceFreeCredentialErrors,
   PostV1InferenceFreeCredentialResponses,
   PostV1InferenceProvidersByInferenceProviderIdAccessGrantsErrors,
@@ -897,8 +892,8 @@ import type {
   PostV1OauthProvidersByProviderIdDisconnectResponses,
   PostV1OrgBrandAssetsErrors,
   PostV1OrgBrandAssetsResponses,
-  PostV1OrgDeploymentServicesCheckErrors,
-  PostV1OrgDeploymentServicesCheckResponses,
+  PostV1OrgDiagnosticsCheckErrors,
+  PostV1OrgDiagnosticsCheckResponses,
   PostV1OrgsByOrganizationIdInstallLinksErrors,
   PostV1OrgsByOrganizationIdInstallLinksResponses,
   PostV1OrgsInvitationsAcceptErrors,
@@ -984,6 +979,8 @@ import type {
   PutV1AdminFeaturesByKeyResponses,
   PutV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
+  PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors,
+  PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessErrors,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessResponses,
   PutV1AgentPermissionsEveryoneErrors,
@@ -1335,6 +1332,172 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Read an organization's complimentary access and grants
+   *
+   * Returns effective complimentary access, usage balances and a cursor-paginated grants list. Include history to see revoked, expired and exhausted grants. Platform administrators only.
+   */
+  public getV1AdminOrganizationsByOrganizationIdControlPanel<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      history?: "0" | "1";
+      cursor?: string;
+      limit?: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "query", key: "history" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOrganizationsByOrganizationIdControlPanelResponses,
+      GetV1AdminOrganizationsByOrganizationIdControlPanelErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Set complimentary organization access
+   *
+   * Sets or restores the organization's complimentary access policy. An explicit disable blocks matching grants without deleting balances or history. Paid subscriptions are preserved. Platform administrators only.
+   */
+  public putV1AdminOrganizationsByOrganizationIdControlPanelAccess<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      feature: "freeAuto" | "openworkWeb";
+      setting: "default" | "enabled" | "disabled";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "body", key: "feature" },
+            { in: "body", key: "setting" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).put<
+      PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses,
+      PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel/access",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Grant organization access or Free Auto usage
+   *
+   * Creates an idempotent organization-scoped grant. A null expiry means until spent or revoked; unlimited usage is a separate grant kind. Does not change billing.
+   */
+  public postV1AdminOrganizationsByOrganizationIdControlPanelGrants<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      requestId: string;
+      feature: "freeAuto" | "openworkWeb";
+      kind: "access" | "usage" | "unlimited";
+      amountUsd: number | null;
+      startsAt: string | null;
+      expiresAt: string | null;
+      reason: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "body", key: "requestId" },
+            { in: "body", key: "feature" },
+            { in: "body", key: "kind" },
+            { in: "body", key: "amountUsd" },
+            { in: "body", key: "startsAt" },
+            { in: "body", key: "expiresAt" },
+            { in: "body", key: "reason" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses,
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel/grants",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Revoke an organization grant without removing its history
+   *
+   * Revokes a grant scoped to this organization and retains its usage and audit history. Repeated revocation succeeds without another change. Platform administrators only.
+   */
+  public postV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevoke<
+    ThrowOnError extends boolean = false,
+  >(
+    parameters: {
+      organizationId: string;
+      grantId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "path", key: "grantId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
+      PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/control-panel/grants/{grantId}/revoke",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
    * Get bounded platform activity and AI usage
    *
    * Returns 30 UTC calendar days of completed gateway usage across organizations, using the same raw and retained accounting as organization reports. Includes accounting coverage, 30 daily totals, at most eight organizations ranked by requests, and distinct users with sign-in or telemetry activity. Does not hydrate features, billing or members.
@@ -1347,9 +1510,57 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Find organizations with observed app adoption
+   *
+   * Platform-admin-only, server-paginated organization signals. Defaults to two joined human users and observed organization-scoped telemetry in the last 30 days, most recent first. Company-email signals use verified addresses excluding known personal providers; they do not establish employment. Cloud setup counts active, non-deleted skill and MCP metadata. Missing telemetry does not imply inactivity. No content, credentials, billing lookups or external enrichment.
+   */
+  public getV1AdminOpportunities<ThrowOnError extends boolean = false>(
+    parameters?: {
+      days?: "7" | "30" | "90";
+      minMembers?: "1" | "2" | "5" | "10";
+      companyEmail?: "0" | "1";
+      setup?: "any" | "skills" | "mcp" | "both";
+      sort?: "recent" | "active" | "members";
+      search?: string;
+      limit?: number;
+      cursor?: string;
+      offset?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "days" },
+            { in: "query", key: "minMembers" },
+            { in: "query", key: "companyEmail" },
+            { in: "query", key: "setup" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesResponses,
+      GetV1AdminOpportunitiesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
    * Read cached deployment service readiness
    *
-   * Fixed deployment diagnostics only, not inference or delivery verification. Never waits for an outbound health probe. A stale snapshot remains explicitly stale.
+   * Fixed deployment diagnostics and the answering Den replica's version and start time. Never waits for an outbound check. A stale snapshot remains explicitly stale.
    */
   public getV1AdminServices<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GetV1AdminServicesResponses, GetV1AdminServicesErrors, ThrowOnError>({
@@ -1361,7 +1572,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Queue a deployment service readiness check
    *
-   * Queues bounded, read-only service probes. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new probes across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.
+   * Queues bounded, read-only service checks: a database query, service health endpoints, and a mail sign-in or mail-provider domain lookup. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new checks across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.
    */
   public postV1AdminServicesCheck<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<
@@ -3567,7 +3778,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Read minimal cached deployment service readiness
    *
-   * Member-safe deployment facts only. Does not inspect organization or member credentials, start a probe, or alter access decisions. Missing deployment settings and required-service policy are withheld.
+   * Member-safe deployment facts only. Does not inspect organization or member credentials, start a check, or alter access decisions. Missing deployment settings, notes, durations and required-service policy are withheld.
    */
   public getV1OrgServiceReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -3578,31 +3789,63 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Read local deployment service readiness
+   * Read Settings › Diagnostics
    *
-   * Self-hosted deployment operators with an active organization membership only. Organization ownership and permissions do not grant access. Shares the platform diagnostics snapshot and bounded refresh admission.
+   * One read for cloud, single-org and self-hosted Den: desktop startups (last 24 hours), model providers, connectors, installation services and network diagnostics, plus a summary of what needs attention. Each section is present for every caller; a section the caller's permissions do not open is `locked` and names the permission. Installation details are only for self-hosted installation administrators (local allowlist). Never returns credentials, upstream responses or another member's identity. Missing or expired provider and connector checks start in the background (rate limited); the read never waits for them.
    */
-  public getV1OrgDeploymentServices<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<
-      GetV1OrgDeploymentServicesResponses,
-      GetV1OrgDeploymentServicesErrors,
-      ThrowOnError
-    >({ url: "/v1/org/deployment-services", ...options });
+  public getV1OrgDiagnostics<ThrowOnError extends boolean = false>(
+    parameters?: {
+      strict?: "0" | "1" | "true" | "false";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "strict" }] }]);
+    return (options?.client ?? this.client).get<GetV1OrgDiagnosticsResponses, GetV1OrgDiagnosticsErrors, ThrowOnError>({
+      url: "/v1/org/diagnostics",
+      ...options,
+      ...params,
+    });
   }
 
   /**
-   * Queue a local deployment service readiness check
+   * Run the diagnostics checks the caller may run
    *
-   * Self-hosted deployment operators with an active organization membership only. Queues the same read-only, bounded probes as platform diagnostics; shares active checks, recent results and deployment-wide rate limits. Never sends email, calls a model or initiates Slack events.
+   * Starts, in the background, every live check the caller's sections allow: provider model listings with organization-held credentials (never a model request or a member's credential), the Slack assistant token, the caller's own Google API check, and installation services for installation administrators. Shares the rate limits of background checks (one per organization, or per member for connectors, every 30 seconds). Answers with the current diagnostics; poll GET /v1/org/diagnostics until `checking` is false.
    */
-  public postV1OrgDeploymentServicesCheck<ThrowOnError extends boolean = false>(
+  public postV1OrgDiagnosticsCheck<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<
+      PostV1OrgDiagnosticsCheckResponses,
+      PostV1OrgDiagnosticsCheckErrors,
+      ThrowOnError
+    >({ url: "/v1/org/diagnostics/check", ...options });
+  }
+
+  /**
+   * Report one desktop app launch
+   *
+   * Sent by the signed-in desktop app once per launch (a failed launch may be sent on the next one). Step timings and a fixed failure code only: no hostnames, error text, paths or device identifiers. Attributed to the caller's active organization and membership. Idempotent per attemptId; launches more than 7 days old or more than 5 minutes in the future are ignored.
+   */
+  public postV1DiagnosticsDesktopStartup<ThrowOnError extends boolean = false>(
+    parameters: {
+      desktopStartupReport: DesktopStartupReport;
+    },
     options?: Options<never, ThrowOnError>,
   ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "desktopStartupReport", map: "body" }] }]);
     return (options?.client ?? this.client).post<
-      PostV1OrgDeploymentServicesCheckResponses,
-      PostV1OrgDeploymentServicesCheckErrors,
+      PostV1DiagnosticsDesktopStartupResponses,
+      PostV1DiagnosticsDesktopStartupErrors,
       ThrowOnError
-    >({ url: "/v1/org/deployment-services/check", ...options });
+    >({
+      url: "/v1/diagnostics/desktop-startup",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
   }
 
   /**
@@ -5275,19 +5518,6 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Read Models analytics usage limits
-   *
-   * Returns Models usage limits for the analytics dashboard. Requires View OpenWork Models settings and the Models analytics surface feature.
-   */
-  public getV1InferenceAnalyticsUsage<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<
-      GetV1InferenceAnalyticsUsageResponses,
-      GetV1InferenceAnalyticsUsageErrors,
-      ThrowOnError
-    >({ url: "/v1/inference/analytics/usage", ...options });
-  }
-
-  /**
    * Get organization Free provider summary
    *
    * Requires the View OpenWork Models settings permission. Returns the organization's Auto pin policy, joined-member allowance counts and recorded free usage attributed to this organization. Allowances are person-wide; usage totals exclude other organizations, anonymous devices and paid inference. No individual balances or identities are returned.
@@ -5402,58 +5632,6 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Read the OpenWork Models task analytics choice
-   *
-   * Returns the organization's task analytics state for OpenWork Models: whether the feature is available and the organization has an active Models subscription, whether collection is enabled and when it was consented to, and whether export to a configured Langfuse host is on. Any member can read it.
-   */
-  public getV1InferenceAnalyticsSettings<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<
-      GetV1InferenceAnalyticsSettingsResponses,
-      GetV1InferenceAnalyticsSettingsErrors,
-      ThrowOnError
-    >({ url: "/v1/inference/analytics/settings", ...options });
-  }
-
-  /**
-   * Choose whether to collect task analytics included with OpenWork Models
-   *
-   * Turns task analytics collection on or off for the organization. Requires the Manage task analytics permission. Enabling requires the feature, an active OpenWork Models subscription, and consentVersion 1 (403 models_analytics_unavailable otherwise); repeating an already enabled choice keeps the original consent time as the collection cutoff, and disabling also switches export off.
-   */
-  public patchV1InferenceAnalyticsSettings<ThrowOnError extends boolean = false>(
-    parameters: {
-      enabled: boolean;
-      consentVersion?: 1;
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "body", key: "enabled" },
-            { in: "body", key: "consentVersion" },
-          ],
-        },
-      ],
-    );
-    return (options?.client ?? this.client).patch<
-      PatchV1InferenceAnalyticsSettingsResponses,
-      PatchV1InferenceAnalyticsSettingsErrors,
-      ThrowOnError
-    >({
-      url: "/v1/inference/analytics/settings",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    });
-  }
-
-  /**
    * Report task analytics events for the calling member's OpenWork Models calls
    *
    * Accepts runtime metadata for tasks the member actually ran through OpenWork Models; events for other members' tasks or BYOK calls are dropped. Answers 204 when the organization has not opted into task analytics.
@@ -5509,90 +5687,6 @@ export class DenClient extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
-    });
-  }
-
-  /**
-   * Read task activity collected after the analytics choice
-   *
-   * Returns the task analytics events recorded for the organization over the last `days` days (default 30, max 90), newest first, 200 per page with a `next` cursor made of before + beforeId. Filter by memberId, taskId, or sessionId. Requires the View task analytics permission; answers 403 models_analytics_unavailable while collection is disabled.
-   */
-  public getV1InferenceAnalyticsActivity<ThrowOnError extends boolean = false>(
-    parameters?: {
-      days?: number;
-      memberId?: string;
-      taskId?: string;
-      sessionId?: string;
-      before?: string;
-      beforeId?: string;
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "days" },
-            { in: "query", key: "memberId" },
-            { in: "query", key: "taskId" },
-            { in: "query", key: "sessionId" },
-            { in: "query", key: "before" },
-            { in: "query", key: "beforeId" },
-          ],
-        },
-      ],
-    );
-    return (options?.client ?? this.client).get<
-      GetV1InferenceAnalyticsActivityResponses,
-      GetV1InferenceAnalyticsActivityErrors,
-      ThrowOnError
-    >({
-      url: "/v1/inference/analytics/activity",
-      ...options,
-      ...params,
-    });
-  }
-
-  /**
-   * Read provider-reported consumption for OpenWork Models
-   *
-   * Aggregates provider-reported OpenWork Models calls per model, provider, member, and day over the last `days` days (default 30, max 90): call counts, failed and incomplete calls, input, output, and cache-read tokens, and cost in USD. Optionally filter by memberId. Requires the View task analytics permission; answers 403 models_analytics_unavailable while collection is disabled and 400 narrow_date_range when the range would produce more than 10,000 groups.
-   */
-  public getV1InferenceAnalyticsConsumption<ThrowOnError extends boolean = false>(
-    parameters?: {
-      days?: number;
-      memberId?: string;
-      taskId?: string;
-      sessionId?: string;
-      before?: string;
-      beforeId?: string;
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "days" },
-            { in: "query", key: "memberId" },
-            { in: "query", key: "taskId" },
-            { in: "query", key: "sessionId" },
-            { in: "query", key: "before" },
-            { in: "query", key: "beforeId" },
-          ],
-        },
-      ],
-    );
-    return (options?.client ?? this.client).get<
-      GetV1InferenceAnalyticsConsumptionResponses,
-      GetV1InferenceAnalyticsConsumptionErrors,
-      ThrowOnError
-    >({
-      url: "/v1/inference/analytics/consumption",
-      ...options,
-      ...params,
     });
   }
 
@@ -5667,7 +5761,7 @@ export class DenClient extends HeyApiClient {
   /**
    * List the organization's Workbot, Slack and Automation conversations (content-free)
    *
-   * The organization's conversations on the headless runner as Den's session index knows them, most recently updated first: the member (null when the conversation belongs to none), the kind (`workbot`, `slack` or `automation`), when it was created and last updated, its hot and total stored bytes and sealed segment count, when its running turn started (`activeTurnSince`, null when idle; a long-running value can mean a stuck turn), when it was deleted, and Den's retention class and legal hold. Never a title, a message or anything else a conversation contains. Filter by `memberId`, `kind`, `active` (`true`: a turn is running) and `deleted` (`exclude` by default, `include` or `only`). Paged: up to `limit` rows (default 50, at most 200), then pass `nextCursor` as `cursor`. Members with the View usage analytics permission only (owners and admins by default), while the session index is on for the organization.
+   * The organization's conversations on the headless runner as Den's session index knows them, most recently updated first: the member (null when the conversation belongs to none), the kind (`workbot`, `slack` or `automation`), when it was created and last updated, its hot and total stored bytes and sealed segment count, when its running turn started (`activeTurnSince`, null when idle; a long-running value can mean a stuck turn), when it was deleted, and Den's retention class and legal hold. Never a title, a message or anything else a conversation contains. Filter by `memberId`, `kind`, `active` (`true`: a turn is running) and `deleted` (`exclude` by default, `include` or `only`). Paged: up to `limit` rows (default 50, at most 200), then pass `nextCursor` as `cursor`. Members with the View usage analytics permission only (owners and admins by default).
    */
   public getV1HeadlessSessions<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -5704,103 +5798,6 @@ export class DenClient extends HeyApiClient {
       ...options,
       ...params,
     });
-  }
-
-  /**
-   * Test a Langfuse analytics export destination
-   *
-   * Sends an empty batch to the given Langfuse host with the project keys to verify connectivity. Nothing is stored.
-   */
-  public postV1InferenceAnalyticsLangfuseTest<ThrowOnError extends boolean = false>(
-    parameters: {
-      host: string;
-      publicKey: string;
-      secretKey: string;
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "body", key: "host" },
-            { in: "body", key: "publicKey" },
-            { in: "body", key: "secretKey" },
-          ],
-        },
-      ],
-    );
-    return (options?.client ?? this.client).post<
-      PostV1InferenceAnalyticsLangfuseTestResponses,
-      PostV1InferenceAnalyticsLangfuseTestErrors,
-      ThrowOnError
-    >({
-      url: "/v1/inference/analytics/langfuse/test",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    });
-  }
-
-  /**
-   * Connect a Langfuse analytics export destination
-   *
-   * Verifies connectivity, then stores the Langfuse destination and starts exporting task analytics recorded from now on. Requires the organization to have opted into task analytics.
-   */
-  public postV1InferenceAnalyticsLangfuseConnect<ThrowOnError extends boolean = false>(
-    parameters: {
-      host: string;
-      publicKey: string;
-      secretKey: string;
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "body", key: "host" },
-            { in: "body", key: "publicKey" },
-            { in: "body", key: "secretKey" },
-          ],
-        },
-      ],
-    );
-    return (options?.client ?? this.client).post<
-      PostV1InferenceAnalyticsLangfuseConnectResponses,
-      PostV1InferenceAnalyticsLangfuseConnectErrors,
-      ThrowOnError
-    >({
-      url: "/v1/inference/analytics/langfuse/connect",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    });
-  }
-
-  /**
-   * Disconnect the Langfuse analytics export destination
-   *
-   * Stops exporting and forgets the stored Langfuse host and project keys.
-   */
-  public deleteV1InferenceAnalyticsLangfuse<ThrowOnError extends boolean = false>(
-    options?: Options<never, ThrowOnError>,
-  ) {
-    return (options?.client ?? this.client).delete<
-      DeleteV1InferenceAnalyticsLangfuseResponses,
-      DeleteV1InferenceAnalyticsLangfuseErrors,
-      ThrowOnError
-    >({ url: "/v1/inference/analytics/langfuse", ...options });
   }
 
   /**
@@ -7569,7 +7566,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Create inference gateway provider
    *
-   * Creates an organization Gateway provider from the trusted catalog and returns its management details. Empty modelIds follows all supported catalog models; a nonempty list restricts the provider universe. Creates an initial model group; legacy credential and audience fields can also create a default credential set and grants. Agents never send keys: with secure keys in chat on, request access (allMembers, memberIds or teamIds) without a credential and the response carries credentialPrompt; a person then adds the shared API key in OpenWork. Requires the Manage Gateway providers permission and enabled Gateway management; session callers must recently reauthenticate.
+   * Creates an organization Gateway provider from the trusted catalog and returns its management details. Empty modelIds follows all supported catalog models; a nonempty list restricts the provider universe. Creates an initial model group; legacy credential and audience fields can also create a default credential set and grants. Agents never send keys: request access (allMembers, memberIds or teamIds) without a credential and the response carries credentialPrompt; a person then adds the shared API key in OpenWork. Requires the Manage Gateway providers permission and enabled Gateway management; session callers must recently reauthenticate.
    */
   public postV1InferenceProviders<ThrowOnError extends boolean = false>(
     parameters: {
@@ -16264,7 +16261,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Test Workbot's default model
    *
-   * Runs one bounded synthetic completion on the server-resolved organization default with the runner's configured key, or the signed-in member's AI Gateway access when cloudAgentGateway is on. No member content, tools, files, MCP access or conversation is used. May consume paid inference. Returns only status, a safe error code and requested/provider-reported model IDs. Requires a genuine user session, recent sign-in, Manage OpenWork Models. Limited durably to three checks per organization and three per member in a ten-minute inactivity-reset window. Never exposed to MCP.
+   * Runs one bounded synthetic completion on the server-resolved organization default with the signed-in member's AI Gateway access. No member content, tools, files, MCP access or conversation is used. May consume paid inference. Returns only status, a safe error code and requested/provider-reported model IDs. Requires a genuine user session, recent sign-in, Manage OpenWork Models. Limited durably to three checks per organization and three per member in a ten-minute inactivity-reset window. Never exposed to MCP.
    */
   public postV1OrgWorkbotSettingsTestDefaultModel<ThrowOnError extends boolean = false>(
     parameters: {
@@ -16294,7 +16291,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get Workbot settings
    *
-   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the headless runner's default), and the models the runner can serve. Workbot's null choice means explicit GPT-6 Luna, defaultModel identifies that default and defaultReadiness reports authenticated catalog availability; Slack and Automations keep their existing default policy. With cloudAgentGateway on, the catalog is the caller's credential-ready, supported AI Gateway assignments; an organization default never grants inference access. Requires View OpenWork Models settings or Manage OpenWork Models.
+   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the models that can be chosen: the caller's credential-ready, supported AI Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. Requires View OpenWork Models settings or Manage OpenWork Models.
    */
   public getV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -16307,7 +16304,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Set Workbot's default model
    *
-   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the headless runner's default, except Workbot uses explicit GPT-6 Luna. Automations with their own model keep it. Only models the runner serves are accepted, or the caller's supported, credential-ready Gateway aliases with cloudAgentGateway on. Each executing member still needs their own assignment and credentials. Requires the Manage OpenWork Models permission and a recent sign-in.
+   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. Requires the Manage OpenWork Models permission and a recent sign-in.
    */
   public putV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(
     parameters: {
@@ -16335,7 +16332,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Check whether Workbot has an AI provider
    *
-   * Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, true while cloudAgentGateway is on) and, only then, whether the organization has at least one active AI Gateway provider (hasGatewayProvider; false when not required). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.
+   * Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, always true) and whether the organization has at least one active AI Gateway provider (hasGatewayProvider). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.
    */
   public getV1OrgWorkbotReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -16464,7 +16461,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Configure Slack assistant installation
    *
-   * Save the connector's Slack assistant settings and optionally replace its signing secret. Enabling requires the platform capability and the deployment's headless runner. Requires the Manage connections permission, a browser session and recent verification.
+   * Save the connector's Slack assistant settings and optionally replace its signing secret. Enabling requires the deployment's headless runner. Requires the Manage connections permission, a browser session and recent verification.
    */
   public putV1McpConnectionsByConnectionIdSlackAssistant<ThrowOnError extends boolean = false>(
     parameters: {
@@ -16739,7 +16736,7 @@ export class DenClient extends HeyApiClient {
   /**
    * A short-lived token for one Workbot turn
    *
-   * For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. With cloudAgentGateway on, also returns the member's Gateway route and bearer credential for the selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.
+   * For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. Also returns the member's Gateway route and bearer credential for the selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.
    */
   public createWorkbotRunToken<ThrowOnError extends boolean = false>(
     parameters?: {

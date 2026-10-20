@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createCloudBrowser, publicDestination } from "./chromium.mjs";
 
-async function fixture({ rejectInterception = false, holdInterception = false, existing = true } = {}) {
+async function fixture({ rejectInterception = false, holdInterception = false, existing = true, missingEgress = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "openwork-browser-network-"));
   const commands = [], sockets = [], held = [];
   let origin;
@@ -38,7 +38,8 @@ async function fixture({ rejectInterception = false, holdInterception = false, e
   globalThis.WebSocket = Socket;
   const statePath = join(directory, "owners.json");
   await writeFile(statePath, JSON.stringify(existing ? [["tab", "chat"]] : []));
-  const browser = createCloudBrowser({ statePath, endpoint: origin, assertActive() {}, enabled: () => true, beforeInput: async () => {} });
+  const browser = createCloudBrowser({ statePath, endpoint: origin, assertActive() {}, enabled: () => true, beforeInput: async () => {},
+    verifyEgress: async () => { if (missingEgress) throw Object.assign(new Error("Missing kernel filter"), { code: "egress_unavailable" }); } });
   return { browser, commands, sockets, release() { for (const reply of held.splice(0)) reply(); },
     async close() {
       browser.close(); globalThis.WebSocket = OriginalWebSocket;
@@ -106,4 +107,14 @@ test("cloud destination checks reject private IPv4, IPv6 and translated addresse
     assert.equal(await publicDestination(url), false, url);
   }
   assert.equal(await publicDestination("https://8.8.8.8/"), true);
+});
+
+
+test("cloud browser refuses to connect without kernel egress enforcement", async () => {
+  const f = await fixture({ missingEgress: true, existing: false });
+  try {
+    await assert.rejects(f.browser.request({ sessionId: "chat", operation: "open", args: { url: "https://8.8.8.8/" } }), { code: "egress_unavailable" });
+    assert.equal(f.sockets.length, 0);
+    assert.equal(f.commands.length, 0);
+  } finally { await f.close(); }
 });

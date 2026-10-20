@@ -614,8 +614,8 @@ export class Runner {
       timestamp: turn.createdAt, model: turn.model ?? this.options.defaultModel, attachmentCount: input.attachments?.length ?? 0,
       hasContext: input.messageId !== "wb_hello" && input.credentials.readOnly === true }, input.credentials.mcpToken, input.credentials.modelAccess?.apiKey ?? input.credentials.modelApiKey, input.credentials.modelAccess?.baseUrl)
     if (input.interrupt && turn.kind === undefined) this.supersede(input.sessionId, input.messageId)
-    // The index capability belongs to the session, not the turn (feature `headlessSessionIndex`): kept with the
-    // session for the Den index flusher, never held with the turn or inherited by its tasks.
+    // The index capability belongs to the session, not the turn: kept with the session for the Den index flusher,
+    // never held with the turn or inherited by its tasks.
     const { indexCapability, ...turnCredentials } = input.credentials
     if (indexCapability) store.setIndexCapability(input.sessionId, indexCapability)
     // A grant is kept (encrypted) and held only with self-resume; without it the runner ignores grants.

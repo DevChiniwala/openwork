@@ -7,12 +7,14 @@ import { BlockList, isIP } from "node:net";
 import { createBrowserTaskHost } from "./browser-task.mjs";
 
 // Loopback, private, shared, link-local (including cloud metadata) and unspecified ranges.
+const IPV4_PRIVATE = [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.168.0.0", 16]];
+const IPV6_PRIVATE = [["::", 96], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["fc00::", 7], ["fe80::", 10]];
 const PRIVATE = new BlockList();
 const PRIVATE_V6 = new BlockList();
-for (const [network, prefix] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.168.0.0", 16]]) PRIVATE.addSubnet(network, prefix, "ipv4");
+for (const [network, prefix] of IPV4_PRIVATE) PRIVATE.addSubnet(network, prefix, "ipv4");
 // IPv4 translation is unsupported: both standardized NAT64 prefixes can
 // otherwise hide private IPv4 destinations from IPv6-only checks.
-for (const [network, prefix] of [["::", 96], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["fc00::", 7], ["fe80::", 10]]) PRIVATE_V6.addSubnet(network, prefix, "ipv6");
+for (const [network, prefix] of IPV6_PRIVATE) PRIVATE_V6.addSubnet(network, prefix, "ipv6");
 const privateAddress = (address) => {
   const family = isIP(address);
   return family === 4 ? PRIVATE.check(address, "ipv4") : family === 6 ? PRIVATE_V6.check(address, "ipv6") : true;
@@ -32,7 +34,23 @@ export async function publicDestination(value) {
   } catch { return false; }
 }
 
-export function createCloudBrowser({ statePath, assertActive, enabled, beforeInput, endpoint = "http://127.0.0.1:9222", privateBrowsing = false }) {
+// DNS admission is defense in depth. Chromium resolves independently, so the
+// per-browser-UID kernel filter must exist before any automation connects.
+export const BROWSER_EGRESS_CHECK = `set -eu
+uid=$(id -u openwork-browser)
+[ "$uid" -ne 0 ]
+iptables -w -C OUTPUT -m owner --uid-owner "$uid" -j OPENWORK_DESKTOP_EGRESS
+${IPV4_PRIVATE.map(([network, prefix]) => `iptables -w -C OPENWORK_DESKTOP_EGRESS -d ${network}/${prefix} -j REJECT`).join("\n")}
+if [ -e /proc/net/if_inet6 ]; then
+  ip6tables -w -C OUTPUT -m owner --uid-owner "$uid" -j OPENWORK_DESKTOP_EGRESS
+  ${IPV6_PRIVATE.map(([network, prefix]) => `ip6tables -w -C OPENWORK_DESKTOP_EGRESS -d ${network}/${prefix} -j REJECT`).join("\n  ")}
+fi`;
+const verifyLocalEgress = () => new Promise((resolve, reject) => {
+  execFile("/bin/sh", ["-c", BROWSER_EGRESS_CHECK], { timeout: 5000 }, error => error
+    ? reject(Object.assign(new Error("The cloud browser's private-network filter is unavailable. Reconnect the computer."), { code: "egress_unavailable" })) : resolve());
+});
+
+export function createCloudBrowser({ statePath, assertActive, enabled, beforeInput, endpoint = "http://127.0.0.1:9222", privateBrowsing = false, verifyEgress = verifyLocalEgress }) {
   // privateBrowsing is only for operator diagnostics on a dedicated VM.
   const allowedDestination = privateBrowsing ? async () => true : publicDestination;
   const tabs = new Map();
@@ -230,7 +248,7 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
     siteTools: async () => ({ ok: true, tools: [] }), runSiteTool: async () => ({ ok: false, dispatched: false, code: "unsupported" }),
   });
   return {
-    async request(input, options) { await refresh(); return host.request(input, options); },
+    async request(input, options) { await verifyEgress(); await refresh(); return host.request(input, options); },
     invalidate() { for (const id of tabs.keys()) host.invalidate(id); },
     pause() { for (const id of tabs.keys()) host.pause(id); },
     resume() { for (const id of tabs.keys()) host.resume(id); },

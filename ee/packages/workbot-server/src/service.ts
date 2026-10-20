@@ -63,7 +63,7 @@ export type WorkbotDeps = {
   verifyModel?: boolean
   workspaceAssistant?: (organizationId: string) => Promise<boolean>
   /**
-   * Feature `headlessStepTurns` (Den's session `stepTurns`): turns go to the runner with `execution: "steps"`, so a
+   * Feature `headlessDurableTurns` (Den's session `stepTurns`): turns go to the runner with `execution: "steps"`, so a
    * runner deploy switches between steps instead of cutting one off. Unset: turns are sent exactly as without it.
    */
   stepTurns?: boolean

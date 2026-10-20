@@ -2,8 +2,8 @@ import type { DeploymentCapabilities } from "@openwork/types/den/deployment-capa
 import { formatServiceTime, workbotDeploymentNotice } from "../_lib/service-readiness";
 import { DenNotice } from "./ui/notice";
 
-export function ServiceReadinessNotice({ capabilities, enabled }: { capabilities?: DeploymentCapabilities; enabled: boolean }) {
-  const notice = workbotDeploymentNotice(capabilities, enabled);
+export function ServiceReadinessNotice({ capabilities }: { capabilities?: DeploymentCapabilities }) {
+  const notice = workbotDeploymentNotice(capabilities);
   if (!notice) return null;
   return (
     <div data-testid="workbot-service-readiness" className="min-w-0">

@@ -47,6 +47,17 @@ export const RETIRED_FEATURE_KEYS = [
   "teamMembershipCache", "teamPageTabs", "teamRoles", "workbot", "workbotLunaDefault",
   // Folded into managedDeployments (2026-10), which stays off: Google Cloud and agent tools follow it.
   "managedDeploymentsGcp", "managedDeploymentsMcp",
+  // Replaced by Settings › Diagnostics (2026-10): always on, the checks are advisory and never block work.
+  "serviceReadiness",
+  // Generally available (2026-10, fourth pass): always on, on cloud and self-hosted.
+  "cloudAgentGateway", "secureSecretFields", "slackAssistant", "workbotFirstRun", "workbotInlineConnect",
+  "headlessSessionIndex",
+  // Folded (2026-10): workbotGuidedNavigation → workbotWorkspaceAssistant, engineV2Upgrade →
+  // engineV2ForceUpgrade, headlessStepTurns → headlessDurableTurns.
+  "workbotGuidedNavigation", "engineV2Upgrade", "headlessStepTurns",
+  // Removed (2026-10): Workbot team settings links, remote session events, and the deprecated
+  // Models and Task analytics screens.
+  "workbotTeamLinks", "remoteSessionEvents", "modelsAnalyticsUi", "taskAnalyticsUi",
 ] as const
 
 export function isFeatureKey(value: string): value is FeatureKey {

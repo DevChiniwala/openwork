@@ -5,7 +5,7 @@ import { LockKeyhole } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type DenOrgAccessFlags, type DenOrgContext, orgFeatureEnabled } from "../../_lib/den-org";
+import { type DenOrgAccessFlags, type DenOrgContext } from "../../_lib/den-org";
 import { buttonVariants } from "../../_components/ui/button";
 import { decideWorkbotEntry, WORKBOT_ENTRY_COPY, WORKBOT_ENTRY_HREF, type WorkbotEntry } from "../_lib/workbot-entry";
 import { useWorkbotReadiness } from "./workbot-readiness-data";
@@ -60,7 +60,7 @@ export function WorkbotEntryDialog({ entry, open, onOpenChange }: {
 
 /**
  * The dashboard's Workbot entry. Readiness loads with the dashboard (no "Checking…" step, P11), so a click either
- * goes to Workbot at once or opens the dialog. Off unless cloudAgentGateway is on and Workbot is offered.
+ * goes to Workbot at once or opens the dialog. Off unless Workbot is offered.
  */
 export function useWorkbotEntry({ orgId, orgSlug, orgContext, access, enabled }: {
   orgId: string | null;
@@ -70,9 +70,8 @@ export function useWorkbotEntry({ orgId, orgSlug, orgContext, access, enabled }:
   enabled: boolean;
 }) {
   const pathname = usePathname();
-  const gatewayFeatureEnabled = orgFeatureEnabled(orgContext, "cloudAgentGateway");
-  const readiness = useWorkbotReadiness(orgId, enabled && orgContext?.capabilities.workbot === true && gatewayFeatureEnabled);
-  const entry = decideWorkbotEntry({ gatewayFeatureEnabled, readiness: readiness.data, access, orgSlug });
+  const readiness = useWorkbotReadiness(orgId, enabled && orgContext?.capabilities.workbot === true);
+  const entry = decideWorkbotEntry({ readiness: readiness.data, access, orgSlug });
   const [dialogOpen, setDialogOpen] = useState(false);
   const blocked = entry.kind !== "open";
   const { refetch } = readiness;

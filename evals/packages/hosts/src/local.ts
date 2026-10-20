@@ -538,6 +538,9 @@ export function electronSurfaceEnv(
     OPENWORK_DEV_MODE: "1",
     OPENWORK_ENV_STORE: paths.envStorePath,
     OPENCODE_CONFIG_DIR: paths.opencodeConfigDir,
+    // The bundled engine resolves its discovery home separately from HOME.
+    // Do not read/install into the runner's or developer's real ~/.opencode.
+    OPENCODE_TEST_HOME: paths.homeDir,
     VITE_DISABLE_OPENWORK_MODELS: "1",
     OPENWORK_ELECTRON_APP_IDENTIFIER: options.appIdentifier,
     OPENWORK_ELECTRON_APP_NAME: options.appName,

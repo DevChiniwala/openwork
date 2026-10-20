@@ -150,7 +150,7 @@ function connect(url, onEvent) {
 
 export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:9222", allowed = publicDestination, now = Date.now }) {
   let demo = null, owner = null, wire = null, scriptId = null, contextId = null, frameId = null;
-  let lastField = null;
+  let lastField = null, connectionGeneration = 0;
   let until = 0, serial = Promise.resolve(), writing = Promise.resolve(), events = Promise.resolve(), loaded = false;
   const enqueue = work => { events = events.catch(() => {}).then(work).catch(() => {}); };
   const contexts = new Map();
@@ -189,7 +189,9 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
   async function attach(target) {
     const address = new URL(target.webSocketDebuggerUrl);
     if (address.protocol !== "ws:" || !["127.0.0.1", "localhost"].includes(address.hostname) || address.port !== new URL(endpoint).port) throw new Error("Invalid browser endpoint.");
+    const generation = ++connectionGeneration;
     wire = connect(address.href, event => {
+      if (generation !== connectionGeneration) return;
       if (event.method === "Runtime.executionContextCreated") {
         const context = event.params.context;
         contexts.set(context.id, context);
@@ -224,6 +226,7 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
   }
   async function detach() {
     if (!wire) return;
+    connectionGeneration++;
     await wire.send("Runtime.evaluate", { contextId, expression: "globalThis.__openworkTeaching?.dispose()" }).catch(() => {});
     if (scriptId) await wire.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: scriptId }).catch(() => {});
     wire.close(); wire = null; contextId = null; scriptId = null; contexts.clear();

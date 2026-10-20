@@ -6,11 +6,10 @@ import type { IndexFields } from "./storage/index-outbox.js"
 /**
  * The Den index flusher (background job `den-index`): sends the index outbox (storage/index-outbox.ts) to Den's
  * content-free session index, `POST {HEADLESS_DEN_API_URL}/v1/internal/headless/index`, with the runner's callback
- * token and each session's index capability (minted by Den with the session's turn tokens, feature
- * `headlessSessionIndex`). Off unless HEADLESS_DEN_API_URL and HEADLESS_DEN_CALLBACK_TOKEN are set.
+ * token and each session's index capability (minted by Den with the session's turn tokens). Off unless HEADLESS_DEN_API_URL and HEADLESS_DEN_CALLBACK_TOKEN are set.
  *
  * - Only rows with a capability are sent, at most 50 per request. `ok` and `stale` are acknowledged; `rejected` rows
- *   are dropped, except `index_disabled` and `rate_limited`, which are kept and retried (the feature may come back).
+ *   are dropped, except `index_disabled` and `rate_limited`, which are kept and retried (`index_disabled` only comes from Dens from before the index was always on).
  * - Failures back off per row: immediately, 30 s, 2 min, 10 min, then hourly. A Den outage delays the index, never a
  *   turn: nothing here runs inside a turn.
  * - Rows older than 7 days are dropped (also those that never got a capability). Once a day the whole cell is

@@ -7,8 +7,12 @@
  */
 import { randomUUID } from "node:crypto";
 import { stopTaskRecovery } from "./task-recovery.js";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import constants from "../../../constants.json" with { type: "json" };
+import { readBinaryVersion, seedManagedOpencodePluginDeps } from "./selfhost-web.js";
 import { resolveServerConfig, type CliArgs } from "./config.js";
 import {
   buildEngineAuthProbeHeader,
@@ -222,6 +226,28 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
     const opencodeModelsUrl = await duringStartup(() => resolveOpencodeModelsUrl());
 
     const opencodeBin = options.opencodeBin || process.env.OPENWORK_OPENCODE_BIN;
+    // A listening engine still blocks its first folder request on npm installs
+    // for plugin dependencies. Ship the same exact-version install the web CLI
+    // already uses, rather than making a fresh desktop wait on the registry.
+    // tar is an external process: it needs the real unpacked file, not an ASAR
+    // virtual path. Custom engine versions keep their own dependency lifecycle.
+    const pluginDepsArchive = fileURLToPath(new URL(
+      `./opencode-plugin-deps-${constants.opencodeVersion.replace(/^v/, "")}.tgz`, import.meta.url,
+    )).replace(/([\\/])app\.asar([\\/])/, "$1app.asar.unpacked$2");
+    if (!config.readOnly && existsSync(pluginDepsArchive) && opencodeBin
+      && readBinaryVersion(opencodeBin) === constants.opencodeVersion.replace(/^v/, "")) {
+      const seeded = await duringStartup(() => seedManagedOpencodePluginDeps({
+        archive: pluginDepsArchive, cwd, env: process.env,
+        // Desktop deliberately spawns in a scratch cwd, separate from the
+        // folders its first scoped engine requests will actually initialize.
+        workspaceDirs: config.workspaces.map((workspace) => workspace.path).filter((path) => path.trim()),
+      }));
+      for (const { result } of seeded) {
+        if (!result.seeded && result.reason === "failed") {
+          logger.log("warn", "Bundled engine dependencies could not be prepared; using the engine installer.");
+        }
+      }
+    }
     // Shared by the first spawn and by any later rollover standby, so a
     // replacement engine is identical apart from its port.
     const engineEnv: Record<string, string | undefined> = {

@@ -23,21 +23,19 @@ export const WORKBOT_ENTRY_COPY = {
 } as const;
 
 /**
- * Only while cloudAgentGateway is on does a Workbot turn need the organization's AI Gateway. The check fails open:
- * readiness that hasn't loaded, or failed to load, never stops someone from opening Workbot.
+ * A Workbot turn needs the organization's AI Gateway. The check fails open: readiness that hasn't loaded, or failed
+ * to load, never stops someone from opening Workbot.
  */
 export function decideWorkbotEntry({
-  gatewayFeatureEnabled,
   readiness,
   access,
   orgSlug,
 }: {
-  gatewayFeatureEnabled: boolean;
   readiness: WorkbotReadiness | null | undefined;
   access: DenOrgAccessFlags;
   orgSlug: string | null;
 }): WorkbotEntry {
-  if (!gatewayFeatureEnabled || !readiness) return { kind: "open" };
+  if (!readiness) return { kind: "open" };
   if (!readiness.gatewayRequired || readiness.hasGatewayProvider) return { kind: "open" };
   if (orgSlug && canOpenGatewayArea(access, "manage-providers")) {
     return { kind: "add-provider", href: getNewAiGatewayProviderRoute(orgSlug) };

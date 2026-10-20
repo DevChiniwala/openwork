@@ -34,18 +34,32 @@ test("invalid origins and metadata targets never enter or benefit from operator 
 test("IP literals cannot bypass the transport's DNS protection with IPv6 transition addresses", () => {
   for (const origin of ["https://[2002:a9fe:a9fe::]", "https://[64:ff9b::a9fe:a9fe]", "https://[::ffff:a9fe:a9fe]", "https://0.0.0.0"]) assert.throws(() => readinessServiceOrigin(origin))
 })
-test("partial durable callback setup does not mint a credential or claim callback success", async () => {
+test("partial resume callback setup does not mint a credential or claim callback success", async () => {
   let fetched = 0
   const facts = await probeDeploymentServices({ env: { DEN_HEADLESS_RUNNER_CALLBACK_TOKEN: "callback-token-not-for-production".repeat(2) }, database: async () => undefined, fetch: async () => { fetched++; throw new Error("not called") } })
-  assert.notEqual(facts.services.get("durableTurns")?.state, "ready")
+  const runner = facts.services.get("headlessRunner")
+  assert.equal(runner?.state, "misconfigured")
+  assert.ok(!runner?.notes.includes("resume_ready"))
   assert.equal(fetched, 0)
+})
+test("email checks never reflect provider or SMTP error text and never run without complete settings", async () => {
+  const secret = "535 5.7.8 Username and Password not accepted for synthetic-user@example.test"
+  let verified = 0
+  const facts = await probeDeploymentServices({ env: { SMTP_HOST: "smtp.internal", EMAIL_FROM: "den@example.test", SMTP_USER: "synthetic-user", SMTP_PASS: "synthetic-pass" }, database: async () => undefined, fetch: async () => { throw new Error("not called") },
+    verifyEmail: async () => { verified++; throw new Error(secret) } })
+  assert.equal(verified, 1)
+  assert.ok(!JSON.stringify(facts.services.get("email")).includes("synthetic"))
+  const partial = await probeDeploymentServices({ env: { SMTP_HOST: "smtp.internal", SMTP_USER: "synthetic-user" }, database: async () => undefined, fetch: async () => { throw new Error("not called") },
+    verifyEmail: async () => { verified++; return { provider: "smtp", outcome: "verified" } } })
+  assert.equal(partial.services.get("email")?.state, "misconfigured")
+  assert.equal(verified, 1)
 })
 test("a database timeout is not process health; a late resolve does not flip the failed status", async () => {
   let finish: (() => void) | undefined
   const promise = new Promise<void>((resolve) => { finish = resolve })
   let admissions = 0
   let queries = 0
-  const controller = createReadinessController({ enabled: async () => true, admit: async () => { admissions++; return null }, probe: () => probeDeploymentServices({ env: {}, database: () => { queries++; return promise }, timeoutMs: 5, fetch: async () => { throw new Error("not called") } }) })
+  const controller = createReadinessController({ admit: async () => { admissions++; return null }, probe: () => probeDeploymentServices({ env: {}, database: () => { queries++; return promise }, timeoutMs: 5, fetch: async () => { throw new Error("not called") } }) })
   await controller.refresh()
   for (let attempt = 0; attempt < 100 && !controller.snapshot().checkedAt; attempt++) await new Promise((resolve) => setTimeout(resolve, 1))
   assert.equal(controller.snapshot().services[0].reason, "timeout")
@@ -63,7 +77,7 @@ test("a replica retains the previous replica's last success after a fresh failed
   const previous = initialReadiness()
   previous.checkedAt = "2026-10-19T00:00:00.000Z"
   previous.services[0] = { ...previous.services[0], configured: true, state: "ready", reason: "database_verified", checkedAt: previous.checkedAt, lastSuccessAt: previous.checkedAt, stale: false }
-  const controller = createReadinessController({ now: () => Date.parse("2026-10-19T00:01:00Z"), enabled: async () => true, admit: async () => null, load: async () => previous,
+  const controller = createReadinessController({ now: () => Date.parse("2026-10-19T00:01:00Z"), admit: async () => null, load: async () => previous,
     probe: () => probeDeploymentServices({ env: {}, database: async () => { throw new Error("secret database connection string") }, fetch: async () => { throw new Error("not called") } }),
   })
   await controller.refresh()

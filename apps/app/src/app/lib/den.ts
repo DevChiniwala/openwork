@@ -8,6 +8,7 @@ import {
   AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER,
 } from "@openwork/types/automations";
 import type { GatewayProviderSummary } from "@openwork/types/den/gateway";
+import type { DesktopStartupReport } from "@openwork/types/den/diagnostics";
 import {
   parseModelRemovalInventory,
   type ModelRemovalInventory,
@@ -2802,6 +2803,8 @@ type DenRequestOptions = {
   automationModelAttentionCapable?: boolean;
   /** Cancels the request, e.g. a waiting status call when the window hides. */
   signal?: AbortSignal;
+  /** Leave the request out of connection diagnostics: its failure is not a connection problem. */
+  unobserved?: boolean;
 };
 
 async function fetchWithTimeout(fetchImpl: FetchLike, url: string, init: RequestInit, timeoutMs: number, onTimeout?: () => void) {
@@ -2862,7 +2865,7 @@ async function requestJsonRaw<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  return observeDenRequest(async (onTimeout) => {
+  const send = async (onTimeout?: () => void): Promise<RawJsonResponse<T>> => {
     const response = await fetchWithTimeout(
       resolveFetch(url),
       url,
@@ -2886,7 +2889,8 @@ async function requestJsonRaw<T>(
       json = null;
     }
     return { ok: response.ok, status: response.status, json };
-  });
+  };
+  return options.unobserved ? send() : observeDenRequest(send);
 }
 
 async function requestJson<T>(
@@ -3018,6 +3022,27 @@ export function createDenClient(options: {
         throw new DenApiError(500, "invalid_session_payload", "Session response did not include a user.");
       }
       return user;
+    },
+
+    /**
+     * Sends this launch's startup report (one per launch, idempotent by
+     * attemptId) and resolves to the HTTP status. Rejects when the request
+     * does not complete. Telemetry: never retried here and never recorded as
+     * a connection failure.
+     */
+    async reportDesktopStartup(
+      report: DesktopStartupReport,
+      options: { organizationId?: string | null; timeoutMs?: number } = {},
+    ): Promise<number> {
+      const response = await requestJsonRaw<unknown>(baseUrls, "/v1/diagnostics/desktop-startup", {
+        method: "POST",
+        token,
+        body: report,
+        organizationId: options.organizationId ?? null,
+        timeoutMs: options.timeoutMs,
+        unobserved: true,
+      });
+      return response.status;
     },
 
     async getAppVersionMetadata(): Promise<DenAppVersionMetadata> {

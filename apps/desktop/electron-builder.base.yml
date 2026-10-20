@@ -27,6 +27,8 @@ extraResources:
       - "docs.json"
 asar: true
 asarUnpack:
+  # External tar cannot read an archive through Electron's virtual ASAR paths.
+  - server/dist/opencode-plugin-deps-*.tgz
   - node_modules/.pnpm/@lydell+node-pty*/**
   - node_modules/node-pty/**
 npmRebuild: false

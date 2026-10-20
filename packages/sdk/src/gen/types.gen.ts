@@ -730,8 +730,43 @@ export type AdminDashboard = {
   }>;
 };
 
+export type AdminOpportunities = {
+  from: string;
+  to: string;
+  generatedAt: string;
+  /**
+   * Pass as cursor with the same filters and sort to continue; null on the last page.
+   */
+  nextCursor: string | null;
+  organizations: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    members: number;
+    activeMembers: number;
+    lastActiveAt: string;
+    companyEmailMembers: number;
+    companyDomain: string | null;
+    companyDomainCount: number;
+    skills: number;
+    mcpConnections: number;
+  }>;
+  page: {
+    limit: number;
+    total: number;
+    returned: number;
+    hasMore: boolean;
+  };
+};
+
+export type DenServerFacts = {
+  version: string;
+  startedAt: string;
+  startupMs: number | null;
+};
+
 export type DeploymentServiceStatus = {
-  id: "database" | "gateway" | "headlessRunner" | "workbot" | "slack" | "durableTurns" | "email";
+  id: "database" | "gateway" | "headlessRunner" | "workbot" | "email";
   required: boolean;
   configured: boolean;
   state: "ready" | "not_configured" | "misconfigured" | "unreachable" | "unknown";
@@ -748,56 +783,46 @@ export type DeploymentServiceStatus = {
     | "timeout"
     | "dependency_unavailable"
     | "configuration_only"
-    | "provider_access_unverified"
-    | "organization_setup_required"
-    | "callback_unverified"
-    | "delivery_unverified"
-    | "incompatible_service";
+    | "incompatible_service"
+    | "email_verified"
+    | "email_key_verified"
+    | "email_sender_unverified"
+    | "resume_misconfigured";
   missingSettings: Array<string>;
-  dependencies: Array<"database" | "gateway" | "headlessRunner" | "workbot" | "slack" | "durableTurns" | "email">;
+  dependencies: Array<"database" | "gateway" | "headlessRunner" | "workbot" | "email">;
+  notes: Array<"resume_ready" | "resume_not_configured" | "resume_misconfigured" | "email_smtp" | "email_resend">;
+  durationMs: number | null;
   checkedAt: string | null;
   lastSuccessAt: string | null;
   stale: boolean;
 };
 
 export type DeploymentServiceReadiness = {
-  version: 1;
+  version: 2;
   checkedAt: string | null;
   checking: boolean;
+  server: DenServerFacts | null;
   services: Array<DeploymentServiceStatus>;
 };
 
 export type AdminFeature = {
   key:
-    | "serviceReadiness"
-    | "cloudAgentGateway"
+    | "organizationGrants"
     | "liveProviderSync"
     | "offlineRecovery"
-    | "secureSecretFields"
-    | "modelsAnalyticsUi"
-    | "taskAnalyticsUi"
     | "managedDeployments"
-    | "slackAssistant"
-    | "workbotTeamLinks"
-    | "workbotFirstRun"
-    | "workbotInlineConnect"
     | "workbotDocuments"
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
-    | "workbotGuidedNavigation"
     | "automationCalendar"
     | "engineV2ForceUpgrade"
-    | "engineV2Upgrade"
-    | "remoteSessionEvents"
     | "computerUse"
     | "browserDemonstrations"
     | "browserFloatingView"
     | "remoteComputers"
     | "remoteSessionSubagents"
     | "headlessDurableTurns"
-    | "headlessStepTurns"
-    | "headlessSessionCells"
-    | "headlessSessionIndex";
+    | "headlessSessionCells";
   label: string;
   description: string;
   since: string;
@@ -836,35 +861,22 @@ export type AdminUsersPageResponse = {
 export type AdminOrganizationsPageResponse = {
   organizations: Array<{
     capabilities?: {
-      serviceReadiness: boolean;
-      cloudAgentGateway: boolean;
+      organizationGrants: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -876,16 +888,7 @@ export type AdminOrganizationsPageResponse = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates?: {
-      serviceReadiness: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
+      organizationGrants: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -912,70 +915,7 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1011,15 +951,6 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -1030,24 +961,6 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1110,25 +1023,7 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1200,35 +1095,22 @@ export type AdminOverviewResponse = {
   }>;
   organizations: Array<{
     capabilities: {
-      serviceReadiness: boolean;
-      cloudAgentGateway: boolean;
+      organizationGrants: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1240,16 +1122,7 @@ export type AdminOverviewResponse = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates: {
-      serviceReadiness: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
+      organizationGrants: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1276,70 +1149,7 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1375,15 +1185,6 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -1394,24 +1195,6 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1474,25 +1257,7 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -2119,11 +1884,11 @@ export type OrganizationOwner = {
 };
 
 export type OrganizationServiceReadiness = {
-  version: 1;
+  version: 2;
   checkedAt: string | null;
   checking: boolean;
   services: Array<{
-    id: "database" | "gateway" | "headlessRunner" | "workbot" | "slack" | "durableTurns" | "email";
+    id: "database" | "gateway" | "headlessRunner" | "workbot" | "email";
     configured: boolean;
     state: "ready" | "not_configured" | "misconfigured" | "unreachable" | "unknown";
     reason:
@@ -2139,12 +1904,12 @@ export type OrganizationServiceReadiness = {
       | "timeout"
       | "dependency_unavailable"
       | "configuration_only"
-      | "provider_access_unverified"
-      | "organization_setup_required"
-      | "callback_unverified"
-      | "delivery_unverified"
-      | "incompatible_service";
-    dependencies: Array<"database" | "gateway" | "headlessRunner" | "workbot" | "slack" | "durableTurns" | "email">;
+      | "incompatible_service"
+      | "email_verified"
+      | "email_key_verified"
+      | "email_sender_unverified"
+      | "resume_misconfigured";
+    dependencies: Array<"database" | "gateway" | "headlessRunner" | "workbot" | "email">;
     checkedAt: string | null;
     lastSuccessAt: string | null;
     stale: boolean;
@@ -2241,7 +2006,7 @@ export type OrganizationContextResponse = {
     [key: string]: boolean;
   };
   /**
-   * Whether this signed-in caller may manage deployment services: an allowlisted self-hosted operator with serviceReadiness enabled for both this organization and the deployment. Organization ownership and permissions never grant it. False for API keys, hosted deployments, disabled or killed rollout, and capability lookup failures.
+   * Whether this caller may open installation diagnostics: a self-hosted installation administrator (local allowlist), signed in or using an API key they own. Organization ownership and permissions never grant it. False on hosted deployments and when the lookup fails.
    */
   canManageDeploymentServices: boolean;
   deploymentCapabilities: {
@@ -2257,6 +2022,211 @@ export type OrganizationContextResponse = {
     auditLogs: boolean;
   };
   [key: string]: unknown;
+};
+
+export type OrgDiagnostics = {
+  version: 1;
+  generatedAt: string;
+  deployment: "cloud" | "self_hosted";
+  checking: boolean;
+  attention: Array<{
+    section: "desktop" | "providers" | "connectors" | "installation" | "network";
+    targetId: string;
+    severity: "warning" | "error";
+    code:
+      | "provider_key_rejected"
+      | "provider_unreachable"
+      | "provider_model_missing"
+      | "provider_misconfigured"
+      | "desktop_startup_failures"
+      | "connector_slack_token_rejected"
+      | "connector_slack_not_installed"
+      | "connector_google_api_disabled"
+      | "service_misconfigured"
+      | "service_unreachable";
+    subject: string;
+    count: number | null;
+    detail: string | null;
+  }>;
+  desktop:
+    | {
+        access: "granted";
+        windowHours: 24;
+        startups: number;
+        connected: number;
+        failed: number;
+        people: number;
+        typicalMs: number | null;
+        slowestMs: number | null;
+        steps: Array<{
+          step: "window" | "engine" | "signed_in" | "org_tools";
+          typicalMs: number | null;
+        }>;
+        failures: Array<{
+          step: "window" | "engine" | "signed_in" | "org_tools";
+          reason:
+            | "certificate"
+            | "dns"
+            | "offline"
+            | "timeout"
+            | "connection_refused"
+            | "server_error"
+            | "signed_out"
+            | "session_expired"
+            | "engine_failed"
+            | "org_unavailable"
+            | "unknown";
+          count: number;
+          people: number;
+          lastSeenAt: string;
+        }>;
+        versions: Array<{
+          version: string;
+          startups: number;
+        }>;
+      }
+    | {
+        access: "locked";
+        permission: string;
+      };
+  providers:
+    | {
+        access: "granted";
+        checkedAt: string | null;
+        checking: boolean;
+        items: Array<{
+          id: string;
+          source: "gateway" | "legacy" | "openwork";
+          providerId: string;
+          name: string;
+          credentialName: string | null;
+          state:
+            | "ready"
+            | "key_rejected"
+            | "unreachable"
+            | "model_missing"
+            | "misconfigured"
+            | "member_credentials"
+            | "managed"
+            | "not_checked";
+          reason:
+            | "models_listed"
+            | "key_accepted"
+            | "no_live_check"
+            | "member_sign_in"
+            | "endpoint_not_found"
+            | "network_error"
+            | "timeout"
+            | "configuration_error"
+            | "credential_missing"
+            | "sync_error"
+            | "managed_by_openwork"
+            | "not_checked_yet"
+            | "credential_rejected"
+            | "credential_expired"
+            | "unexpected_response";
+          httpStatus: number | null;
+          durationMs: number | null;
+          checkedAt: string | null;
+          lastSuccessAt: string | null;
+          models: {
+            configured: number;
+            served: number | null;
+            missing: Array<string>;
+          };
+          members: {
+            connected: number;
+            needsAttention: number;
+          } | null;
+        }>;
+      }
+    | {
+        access: "locked";
+        permission: string;
+      };
+  connectors:
+    | {
+        access: "granted";
+        checkedAt: string | null;
+        items: Array<{
+          id: string;
+          kind: "slack_assistant" | "google_workspace";
+          name: string;
+          state: "ready" | "attention" | "off" | "not_checked";
+          reason:
+            | "slack_token_accepted"
+            | "slack_token_rejected"
+            | "slack_not_installed"
+            | "slack_assistant_off"
+            | "slack_runner_missing"
+            | "google_apis_enabled"
+            | "google_api_disabled"
+            | "google_sign_in_required"
+            | "not_checked_yet";
+          checkedAt: string | null;
+          lastEventAt: string | null;
+          completed24h: number | null;
+          apis: Array<{
+            id: string;
+            name: string;
+            status: "enabled" | "disabled" | "unknown";
+          }>;
+        }>;
+      }
+    | {
+        access: "locked";
+        permission: string;
+      };
+  installation:
+    | {
+        access: "operator";
+        server: DenServerFacts;
+        services: DeploymentServiceReadiness;
+      }
+    | {
+        access: "managed";
+      }
+    | {
+        access: "locked";
+        reason: "installation_admin_required";
+      };
+  network:
+    | {
+        access: "granted";
+        canRun: boolean;
+      }
+    | {
+        access: "locked";
+        permission: string;
+      };
+};
+
+export type DesktopStartupReport = {
+  attemptId: string;
+  appVersion: string;
+  platform: "darwin" | "win32" | "linux" | "other";
+  observedAt: string;
+  success: boolean;
+  steps: {
+    window: number | null;
+    engine: number | null;
+    signed_in: number | null;
+    org_tools: number | null;
+  };
+  failedStep: "window" | "engine" | "signed_in" | "org_tools" | null;
+  reason:
+    | "certificate"
+    | "dns"
+    | "offline"
+    | "timeout"
+    | "connection_refused"
+    | "server_error"
+    | "signed_out"
+    | "session_expired"
+    | "engine_failed"
+    | "org_unavailable"
+    | "unknown"
+    | null;
 };
 
 export type DashboardActivityTarget =
@@ -2601,26 +2571,6 @@ export type AgentPermissionPolicyWrite = {
   settings: AgentPermissionSettings;
 };
 
-export type InferenceStatus = {
-  enabled: boolean;
-  tier: "tier1" | "tier2";
-  memberCount: number;
-  proxyBaseUrl: string;
-  upstreamProviderConfigured: boolean;
-  subscribed?: boolean;
-  buckets: Array<{
-    windowType: "five_hour" | "weekly" | "monthly";
-    windowStartAt: string;
-    windowEndAt: string;
-    limitAmount: number;
-    usedAmount: number;
-  }>;
-};
-
-export type InferenceStatusResponse = {
-  inference: InferenceStatus;
-};
-
 export type InferenceAccessResponse = {
   access: {
     kind: "free" | "paid" | "exhausted" | "unavailable";
@@ -2652,6 +2602,26 @@ export type InferenceAccessResponse = {
       capabilities: Array<string>;
     }>;
   };
+};
+
+export type InferenceStatus = {
+  enabled: boolean;
+  tier: "tier1" | "tier2";
+  memberCount: number;
+  proxyBaseUrl: string;
+  upstreamProviderConfigured: boolean;
+  subscribed?: boolean;
+  buckets: Array<{
+    windowType: "five_hour" | "weekly" | "monthly";
+    windowStartAt: string;
+    windowEndAt: string;
+    limitAmount: number;
+    usedAmount: number;
+  }>;
+};
+
+export type InferenceStatusResponse = {
+  inference: InferenceStatus;
 };
 
 export type InferenceProviderMissingError = {
@@ -6777,8 +6747,6 @@ export type WorkbotSession = {
   };
   memberId: string;
   enabled: boolean;
-  firstRun?: boolean;
-  canEnableWorkbot?: boolean;
   canSchedule: boolean;
   computer?: boolean;
   browserDemonstrations?: boolean;
@@ -6787,11 +6755,6 @@ export type WorkbotSession = {
   documentEditing?: boolean;
   workspaceAssistant?: boolean;
   guidedNavigation?: boolean;
-  teamLinks?: {
-    enabled: boolean;
-    settings: boolean;
-    apps: boolean;
-  };
   sideChats: boolean;
   model?: string | null;
   verifyModel?: boolean;
@@ -7225,6 +7188,267 @@ export type GetV1AdminOrganizationsByOrganizationIdInsightsResponses = {
 export type GetV1AdminOrganizationsByOrganizationIdInsightsResponse =
   GetV1AdminOrganizationsByOrganizationIdInsightsResponses[keyof GetV1AdminOrganizationsByOrganizationIdInsightsResponses];
 
+export type GetV1AdminOrganizationsByOrganizationIdControlPanelData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: {
+    history?: "0" | "1";
+    /**
+     * Opaque cursor returned as nextCursor by the previous page. Omit for the first page.
+     */
+    cursor?: string;
+    /**
+     * Maximum grants per page, from 1 to 100; defaults to 50.
+     */
+    limit?: number;
+  };
+  url: "/v1/admin/organizations/{organizationId}/control-panel";
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdControlPanelErrors = {
+  /**
+   * Invalid organization, grant or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization, grant or rollout not available.
+   */
+  404: NotFoundError;
+  /**
+   * The request conflicts with an existing grant or paid Web subscription.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdControlPanelError =
+  GetV1AdminOrganizationsByOrganizationIdControlPanelErrors[keyof GetV1AdminOrganizationsByOrganizationIdControlPanelErrors];
+
+export type GetV1AdminOrganizationsByOrganizationIdControlPanelResponses = {
+  /**
+   * Organization control panel.
+   */
+  200: {
+    enabled: boolean;
+    generatedAt: string;
+    access: {
+      freeAuto: {
+        setting: "default" | "enabled" | "disabled";
+        enabled: boolean;
+        source: string;
+      };
+      openworkWeb: {
+        setting: "default" | "enabled" | "disabled";
+        enabled: boolean;
+        source: string;
+      };
+    };
+    freeAuto: {
+      weeklyLimitUsd: number;
+      extraRemainingUsd: number;
+      unlimited: boolean;
+    };
+    grants: Array<{
+      id: string;
+      feature: "freeAuto" | "openworkWeb";
+      kind: "access" | "usage" | "unlimited";
+      amountUsd: number | null;
+      usedUsd: number;
+      remainingUsd: number | null;
+      startsAt: string;
+      expiresAt: string | null;
+      createdAt: string;
+      revokedAt: string | null;
+      createdByUserId: string;
+      reason: string;
+      state: "scheduled" | "active" | "expired" | "exhausted" | "revoked" | "blocked";
+    }>;
+    legacyWebAccess: boolean;
+    /**
+     * Pass as cursor to fetch the next grants page; null on the last page.
+     */
+    nextCursor: string | null;
+  };
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdControlPanelResponse =
+  GetV1AdminOrganizationsByOrganizationIdControlPanelResponses[keyof GetV1AdminOrganizationsByOrganizationIdControlPanelResponses];
+
+export type PutV1AdminOrganizationsByOrganizationIdControlPanelAccessData = {
+  body: {
+    feature: "freeAuto" | "openworkWeb";
+    setting: "default" | "enabled" | "disabled";
+  };
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/control-panel/access";
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors = {
+  /**
+   * Invalid organization, grant or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization, grant or rollout not available.
+   */
+  404: NotFoundError;
+  /**
+   * The request conflicts with an existing grant or paid Web subscription.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdControlPanelAccessError =
+  PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors[keyof PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors];
+
+export type PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses = {
+  /**
+   * Access setting saved.
+   */
+  200: {
+    ok: true;
+  };
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponse =
+  PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses[keyof PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses];
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsData = {
+  body: {
+    requestId: string;
+    feature: "freeAuto" | "openworkWeb";
+    kind: "access" | "usage" | "unlimited";
+    amountUsd: number | null;
+    startsAt: string | null;
+    expiresAt: string | null;
+    reason: string;
+  };
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/control-panel/grants";
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors = {
+  /**
+   * Invalid organization, grant or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization, grant or rollout not available.
+   */
+  404: NotFoundError;
+  /**
+   * The request conflicts with an existing grant or paid Web subscription.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsError =
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors[keyof PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors];
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses = {
+  /**
+   * Grant created or original retry returned.
+   */
+  200: {
+    ok: true;
+    grantId: string;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponse =
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses[keyof PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses];
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeData = {
+  body?: never;
+  path: {
+    organizationId: string;
+    grantId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/control-panel/grants/{grantId}/revoke";
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors = {
+  /**
+   * Invalid organization, grant or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization, grant or rollout not available.
+   */
+  404: NotFoundError;
+  /**
+   * The request conflicts with an existing grant or paid Web subscription.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeError =
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors[keyof PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors];
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses = {
+  /**
+   * Grant revoked.
+   */
+  200: {
+    ok: true;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponse =
+  PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses[keyof PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses];
+
 export type GetV1AdminDashboardData = {
   body?: never;
   path?: never;
@@ -7254,6 +7478,60 @@ export type GetV1AdminDashboardResponses = {
 
 export type GetV1AdminDashboardResponse = GetV1AdminDashboardResponses[keyof GetV1AdminDashboardResponses];
 
+export type GetV1AdminOpportunitiesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    days?: "7" | "30" | "90";
+    minMembers?: "1" | "2" | "5" | "10";
+    companyEmail?: "0" | "1";
+    setup?: "any" | "skills" | "mcp" | "both";
+    sort?: "recent" | "active" | "members";
+    search?: string;
+    /**
+     * Maximum organizations per page, from 1 to 100. Defaults to 50.
+     */
+    limit?: number;
+    /**
+     * Opaque nextCursor from the preceding page. Keep the same filters and sort; omit for the first page.
+     */
+    cursor?: string;
+    /**
+     * Compatibility for numbered admin pages. Use cursor for continued traversal; do not combine with cursor.
+     *
+     * @deprecated
+     */
+    offset?: string;
+  };
+  url: "/v1/admin/opportunities";
+};
+
+export type GetV1AdminOpportunitiesErrors = {
+  /**
+   * Invalid report filters.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesError = GetV1AdminOpportunitiesErrors[keyof GetV1AdminOpportunitiesErrors];
+
+export type GetV1AdminOpportunitiesResponses = {
+  /**
+   * Organization opportunities returned.
+   */
+  200: AdminOpportunities;
+};
+
+export type GetV1AdminOpportunitiesResponse = GetV1AdminOpportunitiesResponses[keyof GetV1AdminOpportunitiesResponses];
+
 export type GetV1AdminServicesData = {
   body?: never;
   path?: never;
@@ -7270,10 +7548,6 @@ export type GetV1AdminServicesErrors = {
    * Deployment operator access required.
    */
   403: ForbiddenError;
-  /**
-   * Service readiness is disabled.
-   */
-  404: NotFoundError;
   /**
    * Diagnostic admission is unavailable; no upstream detail is exposed.
    */
@@ -7309,10 +7583,6 @@ export type PostV1AdminServicesCheckErrors = {
    * Deployment operator access required.
    */
   403: ForbiddenError;
-  /**
-   * Service readiness is disabled.
-   */
-  404: NotFoundError;
   /**
    * No recent matching snapshot is available and another replica recently admitted a check; Retry-After indicates the admission window.
    */
@@ -7844,35 +8114,22 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
    */
   200: {
     capabilities: {
-      serviceReadiness: boolean;
-      cloudAgentGateway: boolean;
+      organizationGrants: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -7884,16 +8141,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates: {
-      serviceReadiness: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
+      organizationGrants: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -7920,70 +8168,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8019,15 +8204,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -8038,24 +8214,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8118,25 +8276,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8196,35 +8336,22 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       id: string;
     };
     capabilities: {
-      serviceReadiness: boolean;
-      cloudAgentGateway: boolean;
+      organizationGrants: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8236,16 +8363,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates: {
-      serviceReadiness: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
+      organizationGrants: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8272,70 +8390,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8371,15 +8426,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -8390,24 +8436,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8470,25 +8498,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -11223,9 +11233,11 @@ export type GetV1OrgServiceReadinessData = {
 
 export type GetV1OrgServiceReadinessErrors = {
   /**
-   * Service readiness is disabled.
+   * The cached snapshot is unavailable; no detail is exposed.
    */
-  404: NotFoundError;
+  503: {
+    error: "service_readiness_unavailable";
+  };
 };
 
 export type GetV1OrgServiceReadinessError = GetV1OrgServiceReadinessErrors[keyof GetV1OrgServiceReadinessErrors];
@@ -11240,90 +11252,122 @@ export type GetV1OrgServiceReadinessResponses = {
 export type GetV1OrgServiceReadinessResponse =
   GetV1OrgServiceReadinessResponses[keyof GetV1OrgServiceReadinessResponses];
 
-export type GetV1OrgDeploymentServicesData = {
+export type GetV1OrgDiagnosticsData = {
   body?: never;
   path?: never;
-  query?: never;
-  url: "/v1/org/deployment-services";
+  query?: {
+    /**
+     * With 1 or true, answer 503 (same body) when any attention item is an error. For post-deploy smoke tests.
+     */
+    strict?: "0" | "1" | "true" | "false";
+  };
+  url: "/v1/org/diagnostics";
 };
 
-export type GetV1OrgDeploymentServicesErrors = {
+export type GetV1OrgDiagnosticsErrors = {
   /**
-   * Authentication required.
+   * The query was invalid.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
    */
   401: UnauthorizedError;
   /**
-   * Deployment operator access required.
-   */
-  403: ForbiddenError;
-  /**
-   * Service readiness is disabled.
+   * No active organization.
    */
   404: NotFoundError;
   /**
-   * Diagnostic admission is unavailable; no upstream detail is exposed.
+   * With strict=1: something needs attention at error severity. Same body.
    */
-  503: {
-    error: "service_readiness_unavailable";
-  };
+  503: OrgDiagnostics;
 };
 
-export type GetV1OrgDeploymentServicesError = GetV1OrgDeploymentServicesErrors[keyof GetV1OrgDeploymentServicesErrors];
+export type GetV1OrgDiagnosticsError = GetV1OrgDiagnosticsErrors[keyof GetV1OrgDiagnosticsErrors];
 
-export type GetV1OrgDeploymentServicesResponses = {
+export type GetV1OrgDiagnosticsResponses = {
   /**
-   * Cached deployment readiness.
+   * Diagnostics for this caller.
    */
-  200: DeploymentServiceReadiness;
+  200: OrgDiagnostics;
 };
 
-export type GetV1OrgDeploymentServicesResponse =
-  GetV1OrgDeploymentServicesResponses[keyof GetV1OrgDeploymentServicesResponses];
+export type GetV1OrgDiagnosticsResponse = GetV1OrgDiagnosticsResponses[keyof GetV1OrgDiagnosticsResponses];
 
-export type PostV1OrgDeploymentServicesCheckData = {
+export type PostV1OrgDiagnosticsCheckData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/v1/org/deployment-services/check";
+  url: "/v1/org/diagnostics/check";
 };
 
-export type PostV1OrgDeploymentServicesCheckErrors = {
+export type PostV1OrgDiagnosticsCheckErrors = {
   /**
-   * Authentication required.
+   * The caller must be signed in.
    */
   401: UnauthorizedError;
   /**
-   * Deployment operator access required.
-   */
-  403: ForbiddenError;
-  /**
-   * Service readiness is disabled.
+   * No active organization.
    */
   404: NotFoundError;
   /**
-   * No recent matching snapshot is available and another replica recently admitted a check; Retry-After indicates the admission window.
+   * Every requested check ran recently; Retry-After says when another may start. Same body.
    */
-  429: DeploymentServiceReadiness;
+  429: OrgDiagnostics;
+};
+
+export type PostV1OrgDiagnosticsCheckError = PostV1OrgDiagnosticsCheckErrors[keyof PostV1OrgDiagnosticsCheckErrors];
+
+export type PostV1OrgDiagnosticsCheckResponses = {
   /**
-   * Diagnostic admission is unavailable; no upstream detail is exposed.
+   * Checks started, already running, or nothing to check.
    */
-  503: {
-    error: "service_readiness_unavailable";
+  202: OrgDiagnostics;
+};
+
+export type PostV1OrgDiagnosticsCheckResponse =
+  PostV1OrgDiagnosticsCheckResponses[keyof PostV1OrgDiagnosticsCheckResponses];
+
+export type PostV1DiagnosticsDesktopStartupData = {
+  body: DesktopStartupReport;
+  path?: never;
+  query?: never;
+  url: "/v1/diagnostics/desktop-startup";
+};
+
+export type PostV1DiagnosticsDesktopStartupErrors = {
+  /**
+   * The report was invalid.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * No active organization.
+   */
+  404: NotFoundError;
+  /**
+   * Too many reports from this member; Retry-After says when to send again.
+   */
+  429: {
+    error: "rate_limited";
   };
 };
 
-export type PostV1OrgDeploymentServicesCheckError =
-  PostV1OrgDeploymentServicesCheckErrors[keyof PostV1OrgDeploymentServicesCheckErrors];
+export type PostV1DiagnosticsDesktopStartupError =
+  PostV1DiagnosticsDesktopStartupErrors[keyof PostV1DiagnosticsDesktopStartupErrors];
 
-export type PostV1OrgDeploymentServicesCheckResponses = {
+export type PostV1DiagnosticsDesktopStartupResponses = {
   /**
-   * Check queued, already in progress, or completed recently with matching configuration.
+   * Recorded, already recorded, or ignored.
    */
-  202: DeploymentServiceReadiness;
+  204: void;
 };
 
-export type PostV1OrgDeploymentServicesCheckResponse =
-  PostV1OrgDeploymentServicesCheckResponses[keyof PostV1OrgDeploymentServicesCheckResponses];
+export type PostV1DiagnosticsDesktopStartupResponse =
+  PostV1DiagnosticsDesktopStartupResponses[keyof PostV1DiagnosticsDesktopStartupResponses];
 
 export type GetV1OrgActivityData = {
   body?: never;
@@ -15768,33 +15812,6 @@ export type PutV1DiagnosticsEgressTokenResponses = {
 export type PutV1DiagnosticsEgressTokenResponse =
   PutV1DiagnosticsEgressTokenResponses[keyof PutV1DiagnosticsEgressTokenResponses];
 
-export type GetV1InferenceAnalyticsUsageData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/usage";
-};
-
-export type GetV1InferenceAnalyticsUsageErrors = {
-  /**
-   * Models analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsUsageError =
-  GetV1InferenceAnalyticsUsageErrors[keyof GetV1InferenceAnalyticsUsageErrors];
-
-export type GetV1InferenceAnalyticsUsageResponses = {
-  /**
-   * Models usage limits.
-   */
-  200: InferenceStatusResponse;
-};
-
-export type GetV1InferenceAnalyticsUsageResponse =
-  GetV1InferenceAnalyticsUsageResponses[keyof GetV1InferenceAnalyticsUsageResponses];
-
 export type GetV1InferenceFreeProviderData = {
   body?: never;
   path?: never;
@@ -16067,83 +16084,6 @@ export type PatchV1InferenceResponses = {
 
 export type PatchV1InferenceResponse = PatchV1InferenceResponses[keyof PatchV1InferenceResponses];
 
-export type GetV1InferenceAnalyticsSettingsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/settings";
-};
-
-export type GetV1InferenceAnalyticsSettingsErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsSettingsError =
-  GetV1InferenceAnalyticsSettingsErrors[keyof GetV1InferenceAnalyticsSettingsErrors];
-
-export type GetV1InferenceAnalyticsSettingsResponses = {
-  /**
-   * Task analytics settings
-   */
-  200: {
-    available: boolean;
-    subscribed: boolean;
-    modelsEnabled: boolean;
-    enabled: boolean;
-    consentedAt: string | null;
-    consentVersion: number | null;
-    exportEnabled: boolean;
-    langfuseHost: string | null;
-    langfuseConfigured: boolean;
-  };
-};
-
-export type GetV1InferenceAnalyticsSettingsResponse =
-  GetV1InferenceAnalyticsSettingsResponses[keyof GetV1InferenceAnalyticsSettingsResponses];
-
-export type PatchV1InferenceAnalyticsSettingsData = {
-  body: {
-    enabled: boolean;
-    consentVersion?: 1;
-  };
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/settings";
-};
-
-export type PatchV1InferenceAnalyticsSettingsErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type PatchV1InferenceAnalyticsSettingsError =
-  PatchV1InferenceAnalyticsSettingsErrors[keyof PatchV1InferenceAnalyticsSettingsErrors];
-
-export type PatchV1InferenceAnalyticsSettingsResponses = {
-  /**
-   * Updated task analytics choice
-   */
-  200: {
-    available: boolean;
-    subscribed: boolean;
-    modelsEnabled: boolean;
-    enabled: boolean;
-    consentedAt: string | null;
-    consentVersion: number | null;
-    exportEnabled: boolean;
-    langfuseHost: string | null;
-    langfuseConfigured: boolean;
-  };
-};
-
-export type PatchV1InferenceAnalyticsSettingsResponse =
-  PatchV1InferenceAnalyticsSettingsResponses[keyof PatchV1InferenceAnalyticsSettingsResponses];
-
 export type PostV1InferenceAnalyticsEventsData = {
   body: {
     events: Array<{
@@ -16213,127 +16153,6 @@ export type PostV1InferenceAnalyticsEventsResponses = {
 
 export type PostV1InferenceAnalyticsEventsResponse =
   PostV1InferenceAnalyticsEventsResponses[keyof PostV1InferenceAnalyticsEventsResponses];
-
-export type GetV1InferenceAnalyticsActivityData = {
-  body?: never;
-  path?: never;
-  query?: {
-    days?: number;
-    memberId?: string;
-    taskId?: string;
-    sessionId?: string;
-    before?: string;
-    beforeId?: string;
-  };
-  url: "/v1/inference/analytics/activity";
-};
-
-export type GetV1InferenceAnalyticsActivityErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsActivityError =
-  GetV1InferenceAnalyticsActivityErrors[keyof GetV1InferenceAnalyticsActivityErrors];
-
-export type GetV1InferenceAnalyticsActivityResponses = {
-  /**
-   * Task activity
-   */
-  200: {
-    events: Array<{
-      id: string;
-      type:
-        | "task.started"
-        | "task.completed"
-        | "task.failed"
-        | "task.cancelled"
-        | "tool.executed"
-        | "skill.loaded"
-        | "model.call";
-      timestamp: string;
-      sessionId: string;
-      taskId: string;
-      callId?: string;
-      durationMs?: number;
-      status?: "completed" | "failed" | "cancelled";
-      model?: string;
-      provider?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      cacheReadTokens?: number;
-      cacheWriteTokens?: number;
-      costUsd?: number;
-      usageComplete?: boolean;
-      tool?: string;
-      skill?: string;
-      skillVersion?: string;
-      mcp?: string;
-      metadata?: {
-        [key: string]: string | number | boolean;
-      };
-      memberId: string;
-      source: "app" | "inference";
-    }>;
-    next: {
-      before: string;
-      beforeId: string;
-    } | null;
-  };
-};
-
-export type GetV1InferenceAnalyticsActivityResponse =
-  GetV1InferenceAnalyticsActivityResponses[keyof GetV1InferenceAnalyticsActivityResponses];
-
-export type GetV1InferenceAnalyticsConsumptionData = {
-  body?: never;
-  path?: never;
-  query?: {
-    days?: number;
-    memberId?: string;
-    taskId?: string;
-    sessionId?: string;
-    before?: string;
-    beforeId?: string;
-  };
-  url: "/v1/inference/analytics/consumption";
-};
-
-export type GetV1InferenceAnalyticsConsumptionErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsConsumptionError =
-  GetV1InferenceAnalyticsConsumptionErrors[keyof GetV1InferenceAnalyticsConsumptionErrors];
-
-export type GetV1InferenceAnalyticsConsumptionResponses = {
-  /**
-   * Model consumption
-   */
-  200: {
-    groups: Array<{
-      model: string | null;
-      provider: string | null;
-      memberId: string;
-      day: string;
-      calls: number;
-      failedCalls: number;
-      incompleteCalls: number;
-      inputTokens: number | null;
-      outputTokens: number | null;
-      cacheReadTokens: number | null;
-      costUsd: number | null;
-    }>;
-  };
-};
-
-export type GetV1InferenceAnalyticsConsumptionResponse =
-  GetV1InferenceAnalyticsConsumptionResponses[keyof GetV1InferenceAnalyticsConsumptionResponses];
 
 export type GetV1LibraryUsageData = {
   body?: never;
@@ -16433,10 +16252,6 @@ export type GetV1HeadlessSessionsErrors = {
    * View usage analytics permission required.
    */
   403: ForbiddenError;
-  /**
-   * The session index is off for this organization.
-   */
-  404: NotFoundError;
 };
 
 export type GetV1HeadlessSessionsError = GetV1HeadlessSessionsErrors[keyof GetV1HeadlessSessionsErrors];
@@ -16449,139 +16264,6 @@ export type GetV1HeadlessSessionsResponses = {
 };
 
 export type GetV1HeadlessSessionsResponse = GetV1HeadlessSessionsResponses[keyof GetV1HeadlessSessionsResponses];
-
-export type PostV1InferenceAnalyticsLangfuseTestData = {
-  body: {
-    host: string;
-    publicKey: string;
-    secretKey: string;
-  };
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/langfuse/test";
-};
-
-export type PostV1InferenceAnalyticsLangfuseTestErrors = {
-  /**
-   * Invalid request, or Langfuse could not be reached with these credentials.
-   */
-  400: InvalidRequestError;
-  /**
-   * Sign-in required.
-   */
-  401: UnauthorizedError;
-  /**
-   * The caller lacks the Manage task analytics permission, or task analytics are not enabled.
-   */
-  403: {
-    error: string;
-    message?: string;
-  };
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type PostV1InferenceAnalyticsLangfuseTestError =
-  PostV1InferenceAnalyticsLangfuseTestErrors[keyof PostV1InferenceAnalyticsLangfuseTestErrors];
-
-export type PostV1InferenceAnalyticsLangfuseTestResponses = {
-  /**
-   * The destination is reachable.
-   */
-  200: {
-    ok: true;
-  };
-};
-
-export type PostV1InferenceAnalyticsLangfuseTestResponse =
-  PostV1InferenceAnalyticsLangfuseTestResponses[keyof PostV1InferenceAnalyticsLangfuseTestResponses];
-
-export type PostV1InferenceAnalyticsLangfuseConnectData = {
-  body: {
-    host: string;
-    publicKey: string;
-    secretKey: string;
-  };
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/langfuse/connect";
-};
-
-export type PostV1InferenceAnalyticsLangfuseConnectErrors = {
-  /**
-   * Invalid request, or Langfuse could not be reached with these credentials.
-   */
-  400: InvalidRequestError;
-  /**
-   * Sign-in required.
-   */
-  401: UnauthorizedError;
-  /**
-   * The caller lacks the Manage task analytics permission, or task analytics are not enabled.
-   */
-  403: {
-    error: string;
-    message?: string;
-  };
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type PostV1InferenceAnalyticsLangfuseConnectError =
-  PostV1InferenceAnalyticsLangfuseConnectErrors[keyof PostV1InferenceAnalyticsLangfuseConnectErrors];
-
-export type PostV1InferenceAnalyticsLangfuseConnectResponses = {
-  /**
-   * The destination is reachable and was saved.
-   */
-  200: {
-    ok: true;
-  };
-};
-
-export type PostV1InferenceAnalyticsLangfuseConnectResponse =
-  PostV1InferenceAnalyticsLangfuseConnectResponses[keyof PostV1InferenceAnalyticsLangfuseConnectResponses];
-
-export type DeleteV1InferenceAnalyticsLangfuseData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/langfuse";
-};
-
-export type DeleteV1InferenceAnalyticsLangfuseErrors = {
-  /**
-   * Sign-in required.
-   */
-  401: UnauthorizedError;
-  /**
-   * The caller lacks the Manage task analytics permission.
-   */
-  403: ForbiddenError;
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type DeleteV1InferenceAnalyticsLangfuseError =
-  DeleteV1InferenceAnalyticsLangfuseErrors[keyof DeleteV1InferenceAnalyticsLangfuseErrors];
-
-export type DeleteV1InferenceAnalyticsLangfuseResponses = {
-  /**
-   * Export disconnected.
-   */
-  200: {
-    ok: true;
-  };
-};
-
-export type DeleteV1InferenceAnalyticsLangfuseResponse =
-  DeleteV1InferenceAnalyticsLangfuseResponses[keyof DeleteV1InferenceAnalyticsLangfuseResponses];
 
 export type DeleteV1ScimData = {
   body?: never;
@@ -34380,7 +34062,6 @@ export type GetV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34399,7 +34080,6 @@ export type GetV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34420,10 +34100,6 @@ export type GetV1McpConnectionsByConnectionIdSlackAssistantResponses = {
     enabled: boolean;
     installed: boolean;
     teamId: string | null;
-    /**
-     * Whether the platform admin enabled Slack Assistant for this organization.
-     */
-    rolloutEnabled: boolean;
     hasSigningSecret: boolean;
     eligible: boolean;
     /**
@@ -34517,7 +34193,6 @@ export type PutV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34536,7 +34211,6 @@ export type PutV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34589,7 +34263,6 @@ export type PostV1McpConnectionsByConnectionIdSlackAssistantInstallErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34608,7 +34281,6 @@ export type PostV1McpConnectionsByConnectionIdSlackAssistantInstallErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34969,7 +34641,7 @@ export type StartWorkbotConnectionErrors = {
     message?: string;
   };
   /**
-   * The feature or connection is unavailable.
+   * Connecting from Workbot is not configured, or the connection is unavailable.
    */
   404: {
     error: string;

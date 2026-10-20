@@ -19,6 +19,7 @@ from com.sun.star.beans import PropertyValue
 from com.sun.star.connection import NoConnectException
 
 DESKTOP_PIPE = "openwork-office"
+OUTPUT_DIRECTORY = "/workspace/out"
 LIMIT = 200
 # Cell text often comes from untrusted pages and files. Formulas must be asked for explicitly,
 # and none may reach outside the workbook: the desktop can still reach public sites.
@@ -103,6 +104,22 @@ def values(cells):
     return [list(row) for row in cells.getDataArray()]
 
 
+def pdf_output(output):
+    if (not isinstance(output, str) or len(output) > 4096 or "\0" in output
+            or not os.path.isabs(output) or not output.endswith(".pdf")):
+        raise Failure("Provide an absolute .pdf output path inside /workspace/out.")
+    # Resolve existing symlinks as well as '..'; never hand LibreOffice the
+    # original alias after checking its canonical destination.
+    resolved = os.path.realpath(output)
+    if (os.path.realpath(OUTPUT_DIRECTORY) != OUTPUT_DIRECTORY
+            or os.path.commonpath([OUTPUT_DIRECTORY, resolved]) != OUTPUT_DIRECTORY
+            or resolved == OUTPUT_DIRECTORY or not resolved.endswith(".pdf")):
+        raise Failure("PDF exports must stay inside /workspace/out.")
+    if os.path.exists(resolved) and os.stat(resolved).st_nlink > 1:
+        raise Failure("PDF exports cannot overwrite a file shared through a hard link.")
+    return resolved
+
+
 def operate(document, args):
     operation = args["operation"]
     if operation == "read_range":
@@ -159,9 +176,7 @@ def operate(document, args):
         content = body.getString()
         return {"inserted": len(text), "at": args.get("at", "end"), "charactersBefore": before, "charactersAfter": len(content), "tail": content[-300:]}
     if operation == "export_pdf":
-        output = args.get("output")
-        if not isinstance(output, str) or not os.path.isabs(output) or not output.endswith(".pdf"):
-            raise Failure("Provide an absolute output path ending in .pdf, usually in /workspace/out.")
+        output = pdf_output(args.get("output"))
         document.storeToURL(uno.systemPathToFileUrl(output), (prop("FilterName", PDF_FILTERS[kind(document)]),))
         return {"exported": output, "bytes": os.path.getsize(output)}
     raise Failure("Use read_range, write_range, insert_text or export_pdf.")

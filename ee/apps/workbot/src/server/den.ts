@@ -29,8 +29,6 @@ export const denSessionSchema = z.object({
   organization: z.object({ id: z.string(), name: z.string(), brandAppName: z.string().nullable() }),
   memberId: z.string(),
   enabled: z.boolean(),
-  firstRun: z.boolean().optional(),
-  canEnableWorkbot: z.boolean().optional(),
   canSchedule: z.boolean(),
   computer: z.boolean().default(false),
   browserDemonstrations: z.boolean().default(false),
@@ -40,7 +38,6 @@ export const denSessionSchema = z.object({
   documentEditing: z.boolean().default(false),
   workspaceAssistant: z.boolean().default(false),
   guidedNavigation: z.boolean().default(false),
-  teamLinks: z.object({ enabled: z.boolean(), settings: z.boolean(), apps: z.boolean() }).optional(),
   /** Side chats are on for this person. A Den from before side chats doesn't say: off. */
   sideChats: z.boolean().default(false),
   /** The organization's default model for Workbot's turns. Null, or a Den from before it, means the runner's default. */
@@ -48,7 +45,7 @@ export const denSessionSchema = z.object({
   verifyModel: z.boolean().default(false),
   /** Den validates the exact gateway alias and mints model access for each turn. Older Dens stay on runner credentials. */
   gatewayModels: z.boolean().default(false),
-  /** Turns run one step at a time on the runner (`headlessStepTurns`). A Den from before it doesn't say: off. */
+  /** Turns run one step at a time on the runner (`headlessDurableTurns`). A Den from before it doesn't say: off. */
   stepTurns: z.boolean().default(false),
   /** New chats get their own session cell on the runner (`headlessSessionCells`). A Den from before it doesn't say: off. */
   sessionCells: z.boolean().default(false),
@@ -58,7 +55,7 @@ const runTokenSchema = z.object({
   token: z.string(),
   resumeGrant: z.string().optional(),
   modelAccess: headlessModelAccessSchema.optional(),
-  /** Where the session index is on (`headlessSessionIndex`): passed to the runner with the turn, never to the browser. */
+  /** Den's session index capability: passed to the runner with the turn, never to the browser. */
   indexCapability: z.string().optional(),
 })
 export type DenSession = z.infer<typeof denSessionSchema>
