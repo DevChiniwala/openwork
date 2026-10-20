@@ -59,16 +59,24 @@ export async function modelProbeFixture(options: {
     if (mode === "payment_required") { response.writeHead(402).end(JSON.stringify({ error: "fixture-private-billing-detail" })); return }
     if (mode === "unavailable") { response.writeHead(503).end(JSON.stringify({ error: "fixture-private-provider-detail" })); return }
     if (mode === "timeout") return
+    const protocol = request.url?.endsWith("/chat/completions") ? "openai" : options.protocol;
     const text = mode === "empty" ? "" : options.answer ?? "READY. fixture-answer-must-stay-private"
-    if (options.protocol === "openai-responses" && typeof body === "object" && body !== null && "stream" in body && body.stream === true) {
+    if (protocol === "openai" && typeof body === "object" && body !== null && "stream" in body && body.stream === true) {
+      response.setHeader("content-type", "text/event-stream")
+      response.end([{ model: reportedModel, choices: [{ delta: { content: text }, finish_reason: null }] },
+        { model: reportedModel, choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } }]
+        .map(event => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n")
+      return
+    }
+    if (protocol === "openai-responses" && typeof body === "object" && body !== null && "stream" in body && body.stream === true) {
       response.setHeader("content-type", "text/event-stream")
       const result = { model: reportedModel, status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }], usage: { input_tokens: 1, output_tokens: 1 } }
       response.end([{ type: "response.output_text.delta", delta: text }, { type: "response.completed", response: result }].map(event => `data: ${JSON.stringify(event)}\n\n`).join(""))
       return
     }
-    response.end(JSON.stringify(options.protocol === "anthropic"
+    response.end(JSON.stringify(protocol === "anthropic"
       ? { model: reportedModel, content: [{ type: "text", text }], usage: { input_tokens: 1, output_tokens: 1 } }
-      : options.protocol === "openai-responses"
+      : protocol === "openai-responses"
         ? { model: reportedModel, status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }], usage: { input_tokens: 1, output_tokens: 1 } }
         : { model: reportedModel, choices: [{ message: { role: "assistant", content: text } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }))
   }, options.providerPort)

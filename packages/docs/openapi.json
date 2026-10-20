@@ -2811,6 +2811,7 @@
               "workbotDocuments",
               "workbotDocumentEditing",
               "workbotWorkspaceAssistant",
+              "workbotUsageRecovery",
               "automationCalendar",
               "engineV2ForceUpgrade",
               "computerUse",
@@ -3013,6 +3014,9 @@
                     "workbotWorkspaceAssistant": {
                       "type": "boolean"
                     },
+                    "workbotUsageRecovery": {
+                      "type": "boolean"
+                    },
                     "automationCalendar": {
                       "type": "boolean"
                     },
@@ -3049,6 +3053,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotUsageRecovery",
                     "automationCalendar",
                     "engineV2ForceUpgrade",
                     "computerUse",
@@ -3461,6 +3466,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "workbotUsageRecovery": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "automationCalendar": {
                       "type": "object",
                       "properties": {
@@ -3869,6 +3931,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotUsageRecovery",
                     "automationCalendar",
                     "engineV2ForceUpgrade",
                     "computerUse",
@@ -4266,6 +4329,9 @@
                     "workbotWorkspaceAssistant": {
                       "type": "boolean"
                     },
+                    "workbotUsageRecovery": {
+                      "type": "boolean"
+                    },
                     "automationCalendar": {
                       "type": "boolean"
                     },
@@ -4302,6 +4368,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotUsageRecovery",
                     "automationCalendar",
                     "engineV2ForceUpgrade",
                     "computerUse",
@@ -4714,6 +4781,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "workbotUsageRecovery": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "automationCalendar": {
                       "type": "object",
                       "properties": {
@@ -5122,6 +5246,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotUsageRecovery",
                     "automationCalendar",
                     "engineV2ForceUpgrade",
                     "computerUse",
@@ -28904,6 +29029,9 @@
           "guidedNavigation": {
             "type": "boolean"
           },
+          "usageRecovery": {
+            "type": "boolean"
+          },
           "sideChats": {
             "type": "boolean"
           },
@@ -28975,6 +29103,11 @@
                   "openai",
                   "openai-responses"
                 ]
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
               }
             },
             "required": [
@@ -30370,6 +30503,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotUsageRecovery": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "automationCalendar": {
                           "type": "object",
                           "properties": {
@@ -30778,6 +30968,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotUsageRecovery",
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
@@ -31280,6 +31471,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotUsageRecovery": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "automationCalendar": {
                           "type": "object",
                           "properties": {
@@ -31688,6 +31936,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotUsageRecovery",
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
@@ -31817,6 +32066,16 @@
                         ]
                       },
                       "workbotWorkspaceAssistant": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "workbotUsageRecovery": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -34586,6 +34845,9 @@
                         "workbotWorkspaceAssistant": {
                           "type": "boolean"
                         },
+                        "workbotUsageRecovery": {
+                          "type": "boolean"
+                        },
                         "automationCalendar": {
                           "type": "boolean"
                         },
@@ -34622,6 +34884,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotUsageRecovery",
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
@@ -35034,6 +35297,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotUsageRecovery": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "automationCalendar": {
                           "type": "object",
                           "properties": {
@@ -35442,6 +35762,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotUsageRecovery",
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
@@ -35588,6 +35909,9 @@
                         "workbotWorkspaceAssistant": {
                           "type": "boolean"
                         },
+                        "workbotUsageRecovery": {
+                          "type": "boolean"
+                        },
                         "automationCalendar": {
                           "type": "boolean"
                         },
@@ -35624,6 +35948,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotUsageRecovery",
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
@@ -36036,6 +36361,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotUsageRecovery": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "automationCalendar": {
                           "type": "object",
                           "properties": {
@@ -36444,6 +36826,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotUsageRecovery",
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
@@ -105210,7 +105593,7 @@
           "Organizations"
         ],
         "summary": "Get Workbot settings",
-        "description": "Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the models that can be chosen: the caller's credential-ready, supported AI Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. Requires View OpenWork Models settings or Manage OpenWork Models.",
+        "description": "Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.",
         "responses": {
           "200": {
             "description": "Workbot settings returned.",
@@ -105281,7 +105664,7 @@
           "Organizations"
         ],
         "summary": "Set Workbot's default model",
-        "description": "Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. Requires the Manage OpenWork Models permission and a recent sign-in.",
+        "description": "Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.",
         "responses": {
           "200": {
             "description": "Workbot settings saved.",
@@ -105391,7 +105774,7 @@
           "Organizations"
         ],
         "summary": "Check whether Workbot has an AI provider",
-        "description": "Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, always true) and whether the organization has at least one active AI Gateway provider (hasGatewayProvider). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.",
+        "description": "Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. The managed Luna default with workbotUsageRecovery uses the member's Models access and needs no custom Gateway provider. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.",
         "x-mcp": false,
         "responses": {
           "200": {
@@ -106851,6 +107234,151 @@
         ]
       }
     },
+    "/v1/workbot/model-recovery": {
+      "get": {
+        "operationId": "getWorkbotModelRecovery",
+        "tags": [
+          "Workbot"
+        ],
+        "x-mcp": false,
+        "summary": "Get my Workbot model recovery options",
+        "description": "Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.",
+        "responses": {
+          "200": {
+            "description": "The member's recovery options.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "canUpgrade": {
+                      "type": "boolean"
+                    },
+                    "purchaseEligible": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "managedLuna": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "hasModelsSubscription": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "paidContinuation": {
+                      "default": "unavailable",
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "after_upgrade",
+                        "authorized"
+                      ]
+                    },
+                    "upgradeBlockedReason": {
+                      "default": "paid_workbot_route_unavailable",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "paid_workbot_route_unavailable"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canManageModels": {
+                      "type": "boolean"
+                    },
+                    "canManageBilling": {
+                      "type": "boolean"
+                    },
+                    "freeExhausted": {
+                      "type": "boolean"
+                    },
+                    "freeResetsAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "canUpgrade",
+                    "canManageModels",
+                    "canManageBilling",
+                    "freeExhausted",
+                    "freeResetsAt"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The token or membership is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Read scope is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "insufficient_scope"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Usage recovery is off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "feature_disabled"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/workbot/telemetry": {
       "post": {
         "operationId": "recordWorkbotTelemetry",
@@ -107368,7 +107896,7 @@
         ],
         "x-mcp": false,
         "summary": "A short-lived token for one Workbot turn",
-        "description": "For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. Also returns the member's Gateway route and bearer credential for the selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.",
+        "description": "For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. With scoped model access, also returns the member’s Gateway or managed Models route and bearer credential for the exact selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.",
         "responses": {
           "200": {
             "description": "The token.",
@@ -107391,21 +107919,58 @@
             }
           },
           "403": {
-            "description": "Workbot is off or the sign-in grant cannot start a turn.",
+            "description": "Workbot or model access cannot start a turn.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
                     },
-                    "message": {
-                      "type": "string"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "const": "workbot_turn_access_denied"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "gateway_not_configured",
+                            "gateway_provider_missing",
+                            "gateway_member_access_missing",
+                            "gateway_model_unavailable",
+                            "gateway_authentication_required",
+                            "gateway_credentials_unavailable",
+                            "oauth_scope_missing",
+                            "model_access_unavailable",
+                            "managed_models_setup_required",
+                            "rate_limited"
+                          ]
+                        },
+                        "retryAfter": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 3600
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "reason"
+                      ]
                     }
-                  },
-                  "required": [
-                    "error"
                   ]
                 }
               }

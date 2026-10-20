@@ -16,30 +16,39 @@ test("a signed-in member can recover from a model limit without losing the conve
     expect(witness).toEqual({ attempts: 1, retryable: false });
     await user.screenshot();
   });
-  await step("after: an eligible purchaser sees the reset and no checkout without a paid Workbot route", async () => {
+  await step("after: an eligible purchaser can upgrade from exhausted Auto to paid Luna", async () => {
     await user.navigate(`${world.url}?recovery=on`);
     await user.see({ text: /You've used the free model allowance for now/ });
     await user.see({ text: /It resets/ });
-    await user.notSee({ role: "link", label: /^Upgrade models/ });
-    await user.see({ text: /A subscription won’t refill Auto’s weekly allowance/ });
+    await user.see({ role: "link", label: /^Upgrade models/ });
+    await user.see({ text: /Upgrade to keep using Luna through your Models subscription/ });
     await user.notSee({ text: /Sign in for/ });
     await user.type({ role: "textbox", label: "Message Workbot" }, "Keep this draft");
     await user.click({ role: "button", label: "Check access" });
     await user.notSee({ role: "button", label: "Try again" });
-    const links = await probe.dom('a[href="https://den.example.test/dashboard/workbot-settings?workbotOrganizationId=org_recovery"][target="_blank"][rel~="noopener"]');
+    const links = await probe.dom('a[href="https://den.example.test/dashboard/ai-gateway?tab=openwork-models&workbotOrganizationId=org_recovery"][target="_blank"][rel~="noopener"]');
     await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Keep this draft" });
-    evidence.recordAssertionEvidence("Model settings open for the exact workspace and keep the draft; checkout is suppressed", `Exact workspace/new-tab links=${links.elements.length}; draft remains visible`, links.elements.length === 1);
+    evidence.recordAssertionEvidence("Checkout opens for the exact workspace and keeps the draft", `Exact workspace/new-tab links=${links.elements.length}; draft remains visible`, links.elements.length === 1);
     expect(links.elements.length).toBe(1);
     await user.screenshot();
   });
   await step("a member without billing access gets an admin next step", async () => {
     await user.navigate(`${world.url}?recovery=on&persona=member`);
-    await user.see({ text: "Auto keeps its weekly free allowance on paid plans. Ask a workspace admin to choose an available model to keep going." });
+    await user.see({ text: "Ask someone with billing access to upgrade Models, or wait for Auto’s free allowance to reset." });
     await user.notSee({ role: "link", label: /^Upgrade models/ });
     await user.notSee({ role: "link", label: /^Manage billing/ });
     const actions = await probe.dom('[data-testid="workbot-model-recovery"] a');
     evidence.recordAssertionEvidence("A member cannot open purchase or management actions", `Recovery links=${actions.elements.length}`, actions.elements.length === 0);
     expect(actions.elements.length).toBe(0);
+    await user.screenshot();
+  });
+  await step("an existing subscriber waits for usable Models access without another checkout", async () => {
+    await user.navigate(`${world.url}?recovery=on&persona=subscriber`);
+    await user.see({ text: /Your Models access isn’t ready yet/ });
+    await user.notSee({ role: "link", label: /^Upgrade models/ });
+    const purchase = await probe.dom('[data-testid="workbot-model-recovery"] a[href*="openwork-models"]');
+    evidence.recordAssertionEvidence("An existing subscriber is never sent through a second purchase", `Checkout links=${purchase.elements.length}`, purchase.elements.length === 0);
+    expect(purchase.elements.length).toBe(0);
     await user.screenshot();
   });
   await step("a workspace cap offers a model change while a payment problem offers billing", async () => {
@@ -91,8 +100,25 @@ test("a signed-in member can recover from a model limit without losing the conve
     await user.notSee({ testId: "workbot-access-recovery" });
     await user.screenshot();
   });
+  await step("after Models activation the next message uses paid Luna in the same conversation", async () => {
+    await user.navigate(`${world.url}?recovery=on`);
+    world.activateModels();
+    await user.click({ role: "button", label: "Check access" });
+    await user.see({ text: /Paid Luna is ready. Your next message in this conversation uses your Models subscription/ });
+    await user.notSee({ role: "link", label: /^Upgrade models/ });
+    await user.see({ text: /You've used the free model allowance for now/ });
+    await user.type({ role: "textbox", label: "Message Workbot" }, "Continue on my Models subscription");
+    await user.click({ role: "button", label: "Send" });
+    await probe.eventually(() => world.managedRecovery(), { within: 5000, label: "Paid Luna completes the next turn without replaying the free failure", until: turn => turn.status === "done" });
+    expect(await world.repeatManagedSend()).toBe(202);
+    const recovered = await world.managedRecovery();
+    expect(recovered).toEqual({ copies: 1, status: "done", earlier: true, calls: 1, paidPath: "/api/v1/chat/completions", upstreamModel: "openai/gpt-6-luna" });
+    evidence.recordAssertionEvidence("The same Luna runs through paid Models once, while the free allowance and conversation remain intact", JSON.stringify(recovered), recovered.copies === 1 && recovered.calls === 1 && recovered.earlier);
+    await user.see({ text: "Keep our earlier work" });
+    await user.screenshot();
+  });
   await step("after the allowance resets the member explicitly retries the same message", async () => {
-    await user.navigate(`${world.url}?recovery=on&cleared=1`);
+    await user.navigate(`${world.url}?recovery=on&issue=reset&cleared=1`);
     await user.resizeViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
     await user.see({ role: "button", label: "Try again" });
     await user.click({ role: "button", label: "Try again" });

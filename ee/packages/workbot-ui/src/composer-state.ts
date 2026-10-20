@@ -95,7 +95,12 @@ export function createComposerState(uploadFile: Uploader) {
       const entry = state.pending.find(entry => entry.id === id);
       if (!entry || sending.has(id)) return;
       sending.add(id);
-      publish({ ...state, pending: state.pending.map(entry => entry.id === id ? { ...entry, failed: null, accessIssue: undefined } : entry) });
+      publish({ ...state, pending: state.pending.map(entry => {
+        if (entry.id !== id) return entry;
+        const next = { ...entry, failed: null };
+        delete next.accessIssue;
+        return next;
+      }) });
       try {
         if (retry) for (const upload of entry.uploads) {
           // Only explicitly failed uploads retry. Successful ones keep their saved ids, even after send failure.
@@ -108,7 +113,7 @@ export function createComposerState(uploadFile: Uploader) {
         if (saved.some(file => !file)) throw new Error("A file didn't upload. Send again to retry it.");
         await sender(entry, [...entry.attachments.map(file => file.id), ...saved.flatMap(file => file ? [file.id] : [])]);
       } catch (error: unknown) {
-        publish({ ...state, pending: state.pending.map(entry => entry.id === id ? { ...entry, failed: error instanceof Error ? error.message : "That didn't send.", accessIssue: error instanceof WorkbotSendError ? error.accessReason : undefined } : entry) });
+        publish({ ...state, pending: state.pending.map(entry => entry.id === id ? { ...entry, failed: error instanceof Error ? error.message : "That didn't send.", ...(error instanceof WorkbotSendError && error.accessReason ? { accessIssue: error.accessReason } : {}) } : entry) });
       } finally { sending.delete(id); }
     },
     acknowledge: (ids: ReadonlySet<string>) => {

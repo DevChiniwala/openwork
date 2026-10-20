@@ -17,6 +17,7 @@ function useRecoveryOptions() {
       return workbotModelRecoverySchema.parse(payload);
     },
     staleTime: 0,
+    refetchOnWindowFocus: "always",
     retry: false,
   });
 }
@@ -35,10 +36,11 @@ export function ModelRecovery({ issue, onRetry }: { issue: NonNullable<WorkbotTu
   if (!host.usageRecovery || host.documentAuthorization !== undefined) return null;
   const options = recovery.isError ? undefined : recovery.data;
   const confirmedFree = issue === "free_limit" && options?.freeExhausted === true;
-  const offerUpgrade = confirmedFree && options?.canUpgrade && options.purchaseEligible && options.paidContinuation === "authorized" && options.upgradeBlockedReason === null;
+  const offerUpgrade = confirmedFree && options?.canUpgrade && options.purchaseEligible && options.paidContinuation === "after_upgrade" && options.upgradeBlockedReason === null;
+  const paidReady = issue === "free_limit" && options?.managedLuna && options.paidContinuation === "authorized";
   const action = offerUpgrade ? { label: "Upgrade models", path: "ai-gateway?tab=openwork-models" }
     : issue === "payment_required" && options?.canManageBilling ? { label: "Manage billing", path: "billing" }
-    : options?.canManageModels ? { label: "Change Workbot's model", path: "workbot-settings" } : null;
+    : !options?.managedLuna && options?.canManageModels ? { label: "Change Workbot's model", path: "workbot-settings" } : null;
   const url = action ? managementUrl(action.path) : null;
   const reset = issue === "free_limit" && options?.freeExhausted && options.freeResetsAt
     ? new Date(options.freeResetsAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : null;
@@ -49,8 +51,8 @@ export function ModelRecovery({ issue, onRetry }: { issue: NonNullable<WorkbotTu
     <Lock size={14} className="mt-1 shrink-0" aria-hidden />
     <div className="min-w-0">
       <p>{message}</p>
-      {issue === "free_limit" && options && <p className="mt-1 text-[12px]">{offerUpgrade ? "Paid models have separate limits. After upgrading, a workspace admin must select an authorized paid model for Workbot." : options.purchaseEligible ? "A subscription won’t refill Auto’s weekly allowance or enable Workbot’s paid model access. Choose an available model or wait for the reset." : "Auto keeps its weekly free allowance on paid plans. Ask a workspace admin to choose an available model to keep going."}</p>}
-      {options?.canManageModels && <p className="mt-1 text-[12px]">After changing models, send a new message in this conversation. Retrying an answer keeps its original model.</p>}
+      {issue === "free_limit" && options && <p className="mt-1 text-[12px]">{paidReady ? "Paid Luna is ready. Your next message in this conversation uses your Models subscription. Auto’s free allowance stays separate." : offerUpgrade ? "Upgrade to keep using Luna through your Models subscription. Return here and check access before continuing." : options.managedLuna && options.hasModelsSubscription ? "Your Models access isn’t ready yet. Check access again shortly, or ask someone with billing access to review your subscription." : options.managedLuna ? "Ask someone with billing access to upgrade Models, or wait for Auto’s free allowance to reset." : "Ask a workspace admin to choose an available model to keep going."}</p>}
+      {!options?.managedLuna && options?.canManageModels && <p className="mt-1 text-[12px]">After changing models, send a new message in this conversation. Retrying an answer keeps its original model.</p>}
       {issue === "payment_required" && options && !action && <p className="mt-1 text-[12px]">Someone with billing access can update the payment details.</p>}
       <div className="-ml-2 mt-1 flex flex-wrap items-center gap-1">
         {action && url && <a className={linkClass} href={url} target="_blank" rel="noopener noreferrer">{action.label}<ExternalLink size={12} aria-label="Opens in a new tab" /></a>}
@@ -77,14 +79,16 @@ export function AccessRecovery({ reason, onRetry }: { reason: WorkbotAccessReaso
     gateway_authentication_required: "Workbot’s model needs an account connection. Ask a workspace admin to check the model’s connection requirements.",
     gateway_credentials_unavailable: "Workbot’s model credentials need attention. Ask a workspace admin to check the model connection.",
     oauth_scope_missing: "Your sign-in doesn’t include permission to run Workbot. Sign in again to review access.",
+    managed_models_setup_required: "Your Models access isn’t ready. Check access again shortly, or ask a workspace admin to review Models setup.",
     model_access_unavailable: "Workbot can’t access its selected model. Ask a workspace admin to check model access.",
     rate_limited: "Model access is temporarily limited. Wait a minute, then try again.",
   };
-  const settings = recovery.data?.canManageModels ? managementUrl("workbot-settings") : null;
+  const managed = recovery.data?.managedLuna === true;
+  const settings = recovery.data?.canManageModels ? managementUrl(managed ? "ai-gateway?tab=openwork-models" : "workbot-settings") : null;
   const signIn = host.signInHref ? new URL(host.signInHref, window.location.href) : null;
   if (signIn) signIn.searchParams.set("workspace", "choose");
   const action = reason === "oauth_scope_missing" && signIn ? { href: signIn.toString(), label: "Review sign-in access" }
-    : reason !== "rate_limited" && settings ? { href: settings, label: "Review Workbot’s model" } : null;
+    : reason !== "rate_limited" && settings ? { href: settings, label: managed ? "Review Models access" : "Review Workbot’s model" } : null;
   return <div role="status" data-testid="workbot-access-recovery" className="mt-3 text-[13px] text-[var(--wb-muted)]">
     <p>{copy[reason]}</p>
     <div className="-ml-2 mt-1 flex flex-wrap items-center gap-1">

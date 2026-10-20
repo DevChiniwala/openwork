@@ -104,7 +104,7 @@ export const FEATURES = defineFeatures({
   },
   workbotUsageRecovery: {
     label: "Workbot: usage limits and upgrades",
-    description: "Signed-in members see when free model access is used up and can open their workspace's model or billing settings without losing the conversation.",
+    description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

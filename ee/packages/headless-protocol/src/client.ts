@@ -58,6 +58,8 @@ export const headlessModelAccessSchema = z.strictObject({
   }),
   apiKey: z.string().min(1).max(4096),
   protocol: z.enum(["anthropic", "openai", "openai-responses"]),
+  /** Trusted route's upstream identity. The persisted selection still pins its free/paid access domain. */
+  model: z.string().trim().min(1).max(512).optional(),
 })
 export type HeadlessModelAccess = z.infer<typeof headlessModelAccessSchema>
 

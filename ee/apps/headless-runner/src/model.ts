@@ -4,9 +4,10 @@ import type { HeadlessModelAccess, Message, ToolCall, ToolSpec } from "./types.j
 /** Constructed per run: never mutates the deployment adapter or retains another member's credentials. */
 export function createModelAdapter(access: HeadlessModelAccess, options: { maxOutputTokens: number; fetch?: typeof fetch }): ModelClient {
   const config = { ...options, baseUrl: access.baseUrl }
-  return access.protocol === "anthropic" ? anthropicModel(config)
+  const client = access.protocol === "anthropic" ? anthropicModel(config)
     : access.protocol === "openai-responses" ? openAIResponsesModel(config)
     : openAIModel(config)
+  return access.model ? { ...client, complete: request => client.complete({ ...request, model: access.model ?? request.model }) } : client
 }
 
 export type ModelRequest = {

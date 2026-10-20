@@ -96,7 +96,7 @@
                 true,
                 false
               ],
-              "description": "Workbot: usage limits and upgrades: Signed-in members see when free model access is used up and can open their workspace's model or billing settings without losing the conversation. Renders DEN_FEATURE_WORKBOT_USAGE_RECOVERY."
+              "description": "Workbot: usage limits and upgrades: Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation. Renders DEN_FEATURE_WORKBOT_USAGE_RECOVERY."
             },
             "automationCalendar": {
               "enum": [
