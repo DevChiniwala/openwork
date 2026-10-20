@@ -1,9 +1,11 @@
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import types
+import tempfile
 import unittest
 from unittest.mock import patch
 sys.dont_write_bytecode = True
@@ -71,6 +73,47 @@ class AppScriptingSafety(unittest.TestCase):
                 self.assertEqual(document.store.call_count, 0 if already_open else 1)
                 self.assertEqual(document.close.call_count, 0 if already_open else 1)
                 self.assertEqual(result['target'], 'open window' if already_open else 'file')
+
+    def test_pdf_export_confines_real_destination_and_preserves_uploads(self):
+        office = self.office()
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            out = root / 'out'
+            files = root / 'files'
+            out.mkdir(); files.mkdir()
+            upload = files / 'original.pdf'
+            upload.write_bytes(b'original upload')
+            (out / 'file-link.pdf').symlink_to(upload)
+            (out / 'directory-link').symlink_to(files, target_is_directory=True)
+            os.link(upload, out / 'hard-link.pdf')
+            document = types.SimpleNamespace(storeToURL=Mock(), supportsService=lambda service: True)
+            with patch.object(office, 'OUTPUT_DIRECTORY', str(out)):
+                for destination in [str(upload), str(out / '../files/original.pdf'),
+                                    str(out / 'file-link.pdf'), str(out / 'directory-link/original.pdf'),
+                                    str(out / 'hard-link.pdf'), str(root / 'out-other/result.pdf'),
+                                    'relative.pdf', str(out / 'result.txt')]:
+                    with self.subTest(destination=destination), self.assertRaises(office.Failure):
+                        office.operate(document, {'operation': 'export_pdf', 'output': destination})
+                document.storeToURL.assert_not_called()
+                self.assertEqual(upload.read_bytes(), b'original upload')
+                destination = out / 'result.pdf'
+                document.storeToURL.side_effect = lambda *args: destination.write_bytes(b'%PDF-proof')
+                result = office.operate(document, {'operation': 'export_pdf', 'output': str(destination)})
+                self.assertEqual(result['exported'], str(destination))
+                self.assertEqual(result['bytes'], 10)
+                self.assertEqual(document.storeToURL.call_args.args[0], 'file://' + str(destination))
+
+    def test_pdf_export_rejects_replaced_output_root(self):
+        office = self.office()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            files = root / 'files'
+            files.mkdir()
+            out = root / 'out'
+            out.symlink_to(files, target_is_directory=True)
+            with patch.object(office, 'OUTPUT_DIRECTORY', str(out)), self.assertRaises(office.Failure):
+                office.pdf_output(str(out / 'result.pdf'))
 
 
 if __name__ == '__main__':
