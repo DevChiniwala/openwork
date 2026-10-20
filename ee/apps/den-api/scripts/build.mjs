@@ -228,7 +228,7 @@ export function unloadableSourceExports(specifiers, packageDir = serviceDir) {
   return failures
 }
 
-function verifySourceExportsLoad() {
+export function verifySourceExportsLoad() {
   const failures = unloadableSourceExports(workspaceSpecifiersIn(distDir))
   if (failures.length > 0) {
     throw new Error(`Workspace exports the service imports fail to load in production:\n${failures.map((entry) => `- ${entry}`).join("\n")}`)
@@ -275,7 +275,11 @@ function main() {
   run(pnpmCommand, ["run", "build:workspace-dependencies"])
   verifyProductionWorkspaceExports()
   run(pnpmCommand, ["exec", "tsc", "-p", "tsconfig.build.json"], tscBuildEnv())
-  verifySourceExportsLoad()
+  // The check runs the imported modules' code. A build that uploads source maps has the Sentry token on hand
+  // (environment or /run/secrets), so there it runs as its own step instead (`check:runtime-imports`, a separate
+  // Dockerfile.den step with no secrets mounted).
+  if (shouldUploadSentrySourcemaps()) console.log("Skipping the runtime import check during a source-map upload build; run check:runtime-imports separately.")
+  else verifySourceExportsLoad()
   maybeUploadSentrySourcemaps()
 }
 

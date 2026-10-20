@@ -109,6 +109,10 @@ RUN --mount=type=secret,id=sentry_auth_token,required=false \
   fi; \
   pnpm --dir /app/ee/apps/den-api run build
 
+# Load the workspace exports the built service imports, the way production starts. Its own step: it runs those
+# modules' code, so no build secrets are mounted here.
+RUN pnpm --dir /app/ee/apps/den-api run check:runtime-imports
+
 EXPOSE 8788
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '8788') + '/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
