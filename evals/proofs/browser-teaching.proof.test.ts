@@ -9,6 +9,7 @@ test("a member teaches a browser lookup, saves a private skill and runs it with 
   await step("credentials echoed after their field is removed stay private across navigation", async () => {
     await user.click({ role: "button", label: "Teach Workbot" });
     await user.see({ role: "combobox", label: "Tab to teach" });
+    await user.see({ text: "Blank page · Tab 1" });
     await user.click({ role: "button", label: "Start teaching" });
     await user.see({ text: "You have browser control" });
     await person.navigate(`${world.url}privacy`);
@@ -34,6 +35,7 @@ test("a member teaches a browser lookup, saves a private skill and runs it with 
   });
   await step("before: the member chooses the browser tab to teach", async () => {
     await user.see({ role: "combobox", label: "Tab to teach" });
+    await user.see({ text: "Blank page · Tab 1" });
     await user.click({ role: "button", label: "Start teaching" });
     await user.see({ text: "You have browser control" });
     evidence.recordAssertionEvidence("Recording starts only for the chosen tab", `phase=${world.state().demonstration?.phase}`, world.state().demonstration?.phase === "recording");
