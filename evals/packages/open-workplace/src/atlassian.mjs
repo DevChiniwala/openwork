@@ -1767,7 +1767,7 @@ const server = createServer(async (req, res) => {
     const raw = ["POST", "PUT", "PATCH"].includes(req.method ?? "") ? await readBody(req) : "";
     let body;
     if (raw) { try { body = JSON.parse(raw); } catch { return send(res, 400, { errorMessages: ["Unexpected character in JSON body."], errors: {} }); } }
-    const ctx = { restBase: `http://${req.headers.host}/${kind}` };
+    const ctx = { restBase: `${process.env.PUBLIC_URL ? new URL(process.env.PUBLIC_URL).origin : `http://${req.headers.host}`}/${kind}` };
     try {
       const result = await (kind === "jira" ? jiraRest : confluenceRest)(req.method ?? "GET", rest, url.searchParams, body, ctx);
       if (req.method !== "GET") touched = true;
@@ -1785,5 +1785,9 @@ const server = createServer(async (req, res) => {
     if (!res.headersSent) send(res, 500, { error: "internal_error" });
   }
 });
-server.listen(PORT, HOST, () => log(`listening on http://${HOST}:${PORT} (/mcp, /jira/rest/..., /confluence/rest/...)`));
+server.listen(PORT, HOST, () => {
+  log(`listening on http://${HOST}:${server.address().port} (/mcp, /jira/rest/..., /confluence/rest/...)`);
+  process.send?.({ type: "ready", port: server.address().port });
+});
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.close(() => process.exit(0)));
+if (process.send) process.once("disconnect", () => process.exit(0));

@@ -365,5 +365,9 @@ const server = createServer(async (req, res) => {
     return send(res, 502, { message: "The service is unavailable. Start atlassian.mjs and retry." });
   }
 });
-server.listen(PORT, HOST, () => console.log(`Open Jira and Open Confluence: http://${HOST}:${PORT}/jira`));
+server.listen(PORT, HOST, () => {
+  console.log(`Open Jira and Open Confluence: http://${HOST}:${server.address().port}/jira`);
+  process.send?.({ type: "ready", port: server.address().port });
+});
 for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { server.close(); server.closeIdleConnections(); });
+if (process.send) process.once("disconnect", () => process.exit(0));

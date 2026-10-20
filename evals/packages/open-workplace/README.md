@@ -14,6 +14,10 @@ Each app has a web UI and an MCP endpoint, so OpenWork connects to them like any
 
 Everything is seeded with the **Acme Robotics** sample organization: people, customers, mail, files, issues and pages. Data lives in memory; restarting restores the seed.
 
+## Multi-participant workshops
+
+Use the opt-in authenticated [workshop gateway](WORKSHOP.md) for individual exercises. It provides per-participant private service processes, browser sign-in and workshop OAuth for MCP. Publishing the standalone entry points below does **not** provide participant isolation.
+
 ## Run
 
 ```bash
