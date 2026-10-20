@@ -4,6 +4,12 @@ import ApplicationServices
 @testable import ComputerUse
 
 final class BoundaryTests: XCTestCase {
+    func testUnsignedHelperCannotTrustAParentAsItsApprovalHost() {
+        // SwiftPM's unsigned test process cannot authenticate an embedded host,
+        // including when compiled with the former development bypass flag.
+        XCTAssertFalse(HostTrust.embeddedHostIsTrusted())
+    }
+
     func testEditableAccessibilityValuesAreNeverSerializedToTheModel() throws {
         let frame = CGRect(x: 0, y: 0, width: 320, height: 240)
         for role in ElementRecord.textRoles.union(["AXUnknown", "AXCell"]) {
