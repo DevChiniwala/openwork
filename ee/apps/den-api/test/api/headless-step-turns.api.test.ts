@@ -1,17 +1,21 @@
 /**
- * Step-by-step headless turns (feature headlessStepTurns): Den reports `stepTurns` to Workbot, and Slack's runner and
- * the Automations executor send `execution: "steps"` with a turn, only while the feature is on for the organization.
- * Off, nothing changes: no `execution` field anywhere and `stepTurns: false`.
+ * Step-by-step headless turns (feature headlessDurableTurns, which also mints resume grants): Den reports `stepTurns`
+ * to Workbot, and Slack's runner and the Automations executor send `execution: "steps"` with a turn, only while the
+ * feature is on for the organization. Off, nothing changes: no `execution` field anywhere, `stepTurns: false` and no
+ * resume grant. Resume grants themselves are covered in headless-resume-grants.api.test.ts.
  */
 import assert from "node:assert/strict"
 import { after, before, test } from "node:test"
 import { AUTOMATION_CLOUD_DEFAULT_MODEL } from "@openwork/types/automations"
 import { bootDen, field, isRecord, summary, type Member } from "./harness.js"
+import { gatewayFixtureEnv, grantGatewayModels, stubPublicModelCatalog } from "./gateway-fixture.js"
 
-const den = await bootDen()
-after(() => den.close())
+// Every turn gets its model through the member's AI Gateway access, so the owner here holds a Gateway grant.
+const restoreFetch = stubPublicModelCatalog()
+const den = await bootDen({ env: gatewayFixtureEnv })
+after(async () => { restoreFetch(); await den.close() })
 
-const { createHeadlessRunnerClient, headlessStepTurnsEnabled } = await import("../../src/headless-runner/client.js")
+const { createHeadlessRunnerClient, headlessDurableTurnsEnabled } = await import("../../src/headless-runner/client.js")
 const { slackRunnerForActor } = await import("../../src/slack-assistant/headless.js")
 const { executeHeadlessAgent } = await import("../../src/automations/headless-agent-executor.js")
 
@@ -24,14 +28,15 @@ before(async () => {
   const created = await den.createOrg(await den.signUp("Stella Owner"), "Step turns org")
   orgId = created.orgId
   owner = created.owner
+  await grantGatewayModels(den, owner, orgId, [owner])
   otherOrgId = (await den.createOrg(await den.signUp("Oscar Other"), "Other step turns org")).orgId
   const workbot = await den.setFeature(orgId, "workbot", true)
   assert.equal(workbot.status, 200, summary(workbot))
   mcpToken = await den.mintMcpToken(owner, orgId)
 })
 
-async function setStepTurns(enabled: boolean) {
-  const changed = await den.setFeature(orgId, "headlessStepTurns", enabled)
+async function setDurableTurns(enabled: boolean) {
+  const changed = await den.setFeature(orgId, "headlessDurableTurns", enabled)
   assert.equal(changed.status, 200, summary(changed))
 }
 
@@ -63,33 +68,45 @@ function recordingRunner() {
   return { deps, client: createHeadlessRunnerClient(deps), turns }
 }
 
-test("GET /v1/workbot/session reports stepTurns per the organization's feature", async () => {
+test("one feature turns step turns and resume grants on and off together", async () => {
   const session = () => den.request(mcpToken, "GET", "/v1/workbot/session")
-  await setStepTurns(false)
+  let turn = 0
+  const runToken = () => {
+    turn += 1
+    return den.request(mcpToken, "POST", "/v1/workbot/run-token", { body: { sessionId: `hs_durable_turns_test_${turn}`, messageId: `msg-${turn}` } })
+  }
+  await setDurableTurns(false)
   const off = await session()
   assert.equal(off.status, 200, summary(off))
   assert.equal(field(off.body, "stepTurns"), false)
+  const offToken = await runToken()
+  assert.equal(offToken.status, 200, summary(offToken))
+  assert.equal(field(offToken.body, "resumeGrant"), undefined, "no grant while the feature is off")
 
-  await setStepTurns(true)
+  await setDurableTurns(true)
   const on = await session()
   assert.equal(on.status, 200, summary(on))
   assert.equal(field(on.body, "stepTurns"), true)
-  assert.equal(await headlessStepTurnsEnabled(otherOrgId), false, "another organization keeps continuous turns")
+  const onToken = await runToken()
+  assert.equal(onToken.status, 200, summary(onToken))
+  assert.equal(typeof field(onToken.body, "resumeGrant"), "string", "a grant while the feature is on")
+  assert.equal(await headlessDurableTurnsEnabled(otherOrgId), false, "another organization keeps continuous turns")
 
-  await setStepTurns(false)
+  await setDurableTurns(false)
   assert.equal(field((await session()).body, "stepTurns"), false, "turning it off is seen at once")
+  assert.equal(field((await runToken()).body, "resumeGrant"), undefined, "and stops grants at once")
 })
 
-test("Slack's runner sends execution: steps only while headlessStepTurns is on", async () => {
+test("Slack's runner sends execution: steps only while headlessDurableTurns is on", async () => {
   const runner = recordingRunner()
   const slack = slackRunnerForActor({ userId: owner.userId, organizationId: orgId }, runner.deps)
 
-  await setStepTurns(false)
+  await setDurableTurns(false)
   const off = await slack.send({ sessionId: "hs_slack_step_turns", messageId: "msg_slack_off", prompt: "hello" })
   assert.equal(off.ok, true)
   assert.equal("execution" in (runner.turns[0] ?? {}), false, "turn body unchanged while the feature is off")
 
-  await setStepTurns(true)
+  await setDurableTurns(true)
   const on = await slack.send({ sessionId: "hs_slack_step_turns", messageId: "msg_slack_on", prompt: "hello" })
   assert.equal(on.ok, true)
   assert.equal(runner.turns[1]?.execution, "steps")
@@ -98,10 +115,10 @@ test("Slack's runner sends execution: steps only while headlessStepTurns is on",
   await slackRunnerForActor({ userId: owner.userId, organizationId: otherOrgId }, elsewhere.deps)
     .send({ sessionId: "hs_slack_step_turns", messageId: "msg_slack_other", prompt: "hello" })
   assert.equal("execution" in (elsewhere.turns[0] ?? {}), false, "only the organization with the feature")
-  await setStepTurns(false)
+  await setDurableTurns(false)
 })
 
-test("the Automations executor sends execution: steps only while headlessStepTurns is on", async () => {
+test("the Automations executor sends execution: steps only while headlessDurableTurns is on", async () => {
   const run = async (runId: string) => {
     const runner = recordingRunner()
     const result = await executeHeadlessAgent({
@@ -118,7 +135,6 @@ test("the Automations executor sends execution: steps only while headlessStepTur
       client: runner.client,
       ownerUserId: async () => owner.userId,
       stillHeadless: async () => true,
-      defaultModel: async () => null,
       sleep: async () => {},
       pollIntervalMs: 0,
     })
@@ -127,9 +143,9 @@ test("the Automations executor sends execution: steps only while headlessStepTur
     return runner.turns[0] ?? {}
   }
 
-  await setStepTurns(false)
+  await setDurableTurns(false)
   assert.equal("execution" in (await run("run_step_turns_off")), false, "turn body unchanged while the feature is off")
-  await setStepTurns(true)
+  await setDurableTurns(true)
   assert.equal((await run("run_step_turns_on")).execution, "steps")
-  await setStepTurns(false)
+  await setDurableTurns(false)
 })

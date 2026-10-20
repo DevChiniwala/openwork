@@ -6,17 +6,17 @@ import { z } from "zod"
 import { writePlatformAuditEvent } from "../audit/request-capture.js"
 import { db } from "../db.js"
 import { env } from "../env.js"
-import { organizationFeatureEnabled, readOrganizationForAuthorization } from "../features.js"
+import { readOrganizationForAuthorization } from "../features.js"
 import { appLogger } from "../observability/logger.js"
 import { captureException } from "../observability/runtime.js"
 
 /**
- * The Den session index (feature `headlessSessionIndex`): a content-free row per headless runner conversation
+ * The Den session index: a content-free row per headless runner conversation
  * (Workbot, Slack, Automations) with its sizes, activity and state, for admin views, retention, size reporting and
  * stuck-turn detection. The only module that reads or writes `headless_session_index`.
  *
  * Writes come from the runner, never from a person:
- * 1. When Den mints a turn's credentials and the feature is on, it also mints an **index capability**: a signed string
+ * 1. When Den mints a turn's credentials, it also mints an **index capability**: a signed string
  *    bound to the organization, member (or none), session, kind and the one operation `index-update`, valid 30 days
  *    and minted again with every turn. Den keeps nothing for it.
  * 2. The runner keeps the capability next to the session and sends its outbox to `POST /v1/internal/headless/index`
@@ -133,8 +133,8 @@ async function activeMemberId(organizationId: string, userId: string) {
 }
 
 /**
- * The index capability to send with one turn, or undefined: when the caller named no kind or session, when
- * `headlessSessionIndex` is off for the organization, or when minting fails (the turn runs exactly as without it).
+ * The index capability to send with one turn, or undefined: when the caller named no kind or session, or when
+ * minting fails (the turn runs exactly as without it).
  */
 export async function indexCapabilityForTurn(input: {
   organizationId: string
@@ -147,7 +147,6 @@ export async function indexCapabilityForTurn(input: {
   const { sessionId, indexKind } = input
   if (!indexKind || !sessionId || !SESSION_ID.test(sessionId)) return undefined
   try {
-    if (!(await organizationFeatureEnabled(input.organizationId, "headlessSessionIndex"))) return undefined
     const memberId = input.memberId ?? (await activeMemberId(input.organizationId, input.userId))
     return mintHeadlessIndexCapability({ organizationId: input.organizationId, memberId, sessionId, kind: indexKind })
   } catch (error) {
@@ -189,6 +188,7 @@ export type HeadlessIndexRejection =
   | "capability_invalid"
   | "capability_expired"
   | "capability_mismatch"
+  /** No longer sent (the index is always on); kept so the wire enum and older runners' retry list stay valid. */
   | "index_disabled"
   | "rate_limited"
   | "session_conflict"
@@ -368,7 +368,7 @@ export async function ingestHeadlessIndexUpdates(updates: readonly unknown[], op
   const nowMs = options.now ?? Date.now()
   const now = new Date(nowMs)
   const requestId = options.requestId ?? null
-  const organizations = new Map<string, "on" | "off" | "deleted">()
+  const organizations = new Map<string, "active" | "deleted">()
   const results: HeadlessIndexResult[] = []
   for (const raw of updates) {
     const parsed = headlessIndexUpdateSchema.safeParse(raw)
@@ -397,17 +397,11 @@ export async function ingestHeadlessIndexUpdates(updates: readonly unknown[], op
     let state = organizations.get(claims.organizationId)
     if (state === undefined) {
       // A deleted organization's capabilities stay signed until they expire: its rows must never come back.
-      state = !(await readOrganizationForAuthorization(claims.organizationId))
-        ? "deleted"
-        : (await organizationFeatureEnabled(claims.organizationId, "headlessSessionIndex")) ? "on" : "off"
+      state = (await readOrganizationForAuthorization(claims.organizationId)) ? "active" : "deleted"
       organizations.set(claims.organizationId, state)
     }
     if (state === "deleted") {
       await reject("capability_invalid", null)
-      continue
-    }
-    if (state === "off") {
-      await reject("index_disabled", claims.organizationId)
       continue
     }
     if (!sessionBuckets.take(sessionId, nowMs) || !orgBuckets.take(claims.organizationId, nowMs)) {

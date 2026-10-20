@@ -15,7 +15,7 @@ const server = await import("../src/app/lib/openwork-server");
 const { isDesktopRuntime } = await import("../src/app/lib/runtime-env");
 const automations = await import("../src/react-app/domains/automations/use-automations");
 const connection = await import("../src/react-app/shell/openwork-connection");
-const { EngineMigrationOverlay, observeEngineMigration, resetEngineMigrationForTest, useEngineMigrationStore } = await import("../src/react-app/shell/engine-migration");
+const { EngineMigrationOverlay, observeEngineMigration, requestEngineMigration, resetEngineMigrationForTest, useEngineMigrationStore } = await import("../src/react-app/shell/engine-migration");
 const { useOpencodeEngineControls } = await import("../src/react-app/shell/opencode-engine-controls");
 const previousAct = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -36,7 +36,7 @@ beforeEach(() => {
   resetEngineMigrationForTest();
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   // This is the same cache entry populated by Calendar and other org-feature consumers.
-  queryClient.setQueryData(["den", "org-features", orgId], { engineV2Upgrade: true });
+  queryClient.setQueryData(["den", "org-features", orgId], { engineV2ForceUpgrade: true });
   spyOn(automations, "useAutomationsDenContext").mockReturnValue({
     client: createDenClient({ baseUrl: "https://den.example.test", token: "test-token" }),
     organizationId: orgId, ready: true, queryRoot: ["den", "automations", orgId],
@@ -84,12 +84,11 @@ async function renderOverlay() {
   });
 }
 
-test("web never offers an engine upgrade from another consumer's enabled feature cache", async () => {
+test("web never upgrades the engine from another consumer's enabled feature cache", async () => {
   const client = engineClient();
   expect(isDesktopRuntime()).toBe(false);
   await renderOverlay();
-  expect(queryClient.getQueryData(["den", "org-features", orgId])).toEqual({ engineV2Upgrade: true });
-  expect(document.querySelector('[data-testid="engine-upgrade-notice"]') === null).toBe(true);
+  expect(queryClient.getQueryData(["den", "org-features", orgId])).toEqual({ engineV2ForceUpgrade: true });
   expect(document.querySelector('[data-testid="engine-migration-consent"]')).toBeNull();
   // A render-only guard is insufficient: the feature hook must not start engine reads on web either.
   expect(connection.resolveOpenworkConnection).not.toHaveBeenCalled();
@@ -105,16 +104,15 @@ test("web palette omits the hidden engine settings destination, desktop retains 
   expect(buildCommandPaletteSettingsItems(input).some(item => item.id === "settings:advanced/experimental-engine")).toBe(true);
 });
 
-test("desktop still offers the cached upgrade and opens its consent", async () => {
+test("desktop with the upgrade off still opens consent for a manual upgrade", async () => {
   Reflect.set(window, "__OPENWORK_ELECTRON__", {});
-  engineClient();
+  const client = engineClient();
+  await setFeatures(false);
   await renderOverlay();
-  const notice = document.querySelector('[data-testid="engine-upgrade-notice"]');
-  expect(notice).not.toBeNull();
-  const upgrade = notice?.querySelectorAll("button")[1];
-  if (!(upgrade instanceof HTMLButtonElement)) throw new Error("Missing upgrade action");
-  await act(async () => upgrade.click());
+  expect(document.body.textContent).toBe("");
+  await act(async () => requestEngineMigration(client, "upgrade"));
   expect(document.querySelector('[data-testid="engine-migration-consent"]')?.getAttribute("data-mode")).toBe("upgrade");
+  expect(client.migrateOpencodeHistory).not.toHaveBeenCalled();
 });
 
 test("web hides consent and engine-switch prompts already in the shared store", async () => {
@@ -206,25 +204,22 @@ test("web omits the Advanced engine section entirely", async () => {
   expect(client.getEngineV2PreviewStatus).not.toHaveBeenCalled();
 });
 
-async function setFeatures(upgrade: boolean, offer = true) {
+async function setFeatures(upgrade: boolean) {
   await act(async () => {
-    queryClient.setQueryData(["den", "org-features", orgId], {
-      engineV2Upgrade: offer, engineV2ForceUpgrade: upgrade,
-    });
+    queryClient.setQueryData(["den", "org-features", orgId], { engineV2ForceUpgrade: upgrade });
     // TanStack observer notifications are scheduled, not synchronous with cache writes.
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 
-test("desktop forwards the off force flag without starting a migration or invitation", async () => {
+test("desktop forwards the off upgrade flag without starting a migration", async () => {
   Reflect.set(window, "__OPENWORK_ELECTRON__", {});
   const client = engineClient();
-  await setFeatures(false, false);
+  await setFeatures(false);
   await renderOverlay();
   expect(client.setEngineV2ForcePolicy).toHaveBeenCalledWith({ upgrade: false });
   expect(client.migrateOpencodeHistory).not.toHaveBeenCalled();
   expect(client.switchOpencodeEngine).not.toHaveBeenCalled();
-  expect(document.querySelector('[data-testid="engine-upgrade-notice"]')).toBeNull();
 });
 
 for (const upgrade of [false, true]) {
@@ -253,7 +248,6 @@ test("pending force upgrade shows only a banner before ownership moves, without 
   expect(document.querySelector('[data-testid="engine-migration-banner"]')).not.toBeNull();
   expect(document.querySelector('[data-testid="engine-migration-consent"]')).toBeNull();
   expect(document.querySelector('[data-testid="engine-migration-progress"]')).toBeNull();
-  expect(document.querySelector('[data-testid="engine-upgrade-notice"]')).toBeNull();
   expect(useEngineMigrationStore.getState().progress?.serverManaged).toBe(true);
   expect(client.migrateOpencodeHistory).not.toHaveBeenCalled();
   expect(client.switchOpencodeEngine).not.toHaveBeenCalled();
@@ -273,7 +267,7 @@ for (const origin of ["forced", "manual"] satisfies Array<"forced" | "manual">) 
     const changed = mock(() => {});
     window.addEventListener("openwork-engine-changed", changed);
     try {
-      await setFeatures(false, false);
+      await setFeatures(false);
       await renderOverlay();
       expect(client.setEngineV2ForcePolicy).toHaveBeenCalledWith({ upgrade: false });
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_100)); });
@@ -288,14 +282,13 @@ for (const origin of ["forced", "manual"] satisfies Array<"forced" | "manual">) 
   });
 }
 
-test("force turning off is forwarded for host-owned revert and suppresses optional offers while on", async () => {
+test("upgrade turning off is forwarded for host-owned revert", async () => {
   Reflect.set(window, "__OPENWORK_ELECTRON__", {});
   const client = engineClient();
-  await setFeatures(true, true);
+  await setFeatures(true);
   await renderOverlay();
   expect(client.setEngineV2ForcePolicy).toHaveBeenLastCalledWith({ upgrade: true });
-  expect(document.querySelector('[data-testid="engine-upgrade-notice"]')).toBeNull();
-  await setFeatures(false, false);
+  await setFeatures(false);
   expect(client.setEngineV2ForcePolicy).toHaveBeenLastCalledWith({ upgrade: false });
   expect(client.switchOpencodeEngine).not.toHaveBeenCalled();
   expect(client.migrateOpencodeHistory).not.toHaveBeenCalled();
@@ -353,10 +346,9 @@ test("signed-out desktop cannot activate cached force flags", async () => {
   spyOn(automations, "useAutomationsDenContext").mockReturnValue({
     client: null, organizationId: orgId, ready: false, queryRoot: ["den", "automations", orgId],
   });
-  await setFeatures(true, true);
+  await setFeatures(true);
   await renderOverlay();
   expect(client.setEngineV2ForcePolicy).not.toHaveBeenCalled();
-  expect(document.querySelector('[data-testid="engine-upgrade-notice"]')).toBeNull();
   expect(client.migrateOpencodeHistory).not.toHaveBeenCalled();
 });
 
@@ -382,7 +374,7 @@ test("a newer off policy waits for an in-flight upgrade policy and discards its 
   await setFeatures(true);
   await renderOverlay();
   expect(policy).toHaveBeenCalledTimes(1);
-  await setFeatures(false, false);
+  await setFeatures(false);
   expect(policy).toHaveBeenCalledTimes(1);
   await act(async () => pending.resolve({
     ...status, engineOrigin: "forced", engineForced: true,
@@ -393,7 +385,7 @@ test("a newer off policy waits for an in-flight upgrade policy and discards its 
   expect(document.querySelector('[data-testid="engine-migration-banner"]')).toBeNull();
 });
 
-test("enabling force removes an optional upgrade consent without confirming it", async () => {
+test("enabling the upgrade removes a manual upgrade consent without confirming it", async () => {
   Reflect.set(window, "__OPENWORK_ELECTRON__", {});
   const client = engineClient();
   useEngineMigrationStore.setState({ consent: {

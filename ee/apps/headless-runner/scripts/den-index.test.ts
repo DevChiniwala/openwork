@@ -1,5 +1,5 @@
 /**
- * The Den index flusher (den-index.ts, background job `den-index`, feature `headlessSessionIndex`): sends the outbox
+ * The Den index flusher (den-index.ts, background job `den-index`): sends the outbox
  * in batches of at most 50 with each session's capability, acknowledges `ok`/`stale`, keeps `index_disabled` and
  * `rate_limited`, drops other rejections, backs off (immediately, 30 s, 2 min, 10 min, hourly), drops rows older than
  * 7 days and snapshots the cell daily. The turn route takes `credentials.indexCapability` and keeps it with the

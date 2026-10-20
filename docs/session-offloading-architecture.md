@@ -144,17 +144,9 @@ and permission state rather than an in-memory event alone.
 Runner unload/account switch stops its control loop and releases ownership;
 normal native permission handling is never bypassed.
 
-## MCP events: optional observation, separate rollout
+## Following progress: polling, not events
 
-A separate stacked `remoteSessionEvents` feature adds caller-facing receipt
-resource invalidations, not runner dispatch. Current MCP `subscriptions/listen`
-uses a POST-response SSE stream with explicit URI filters; it is not a durable
-queue and has no `Last-Event-ID` replay. After acknowledgement or reconnect,
-read the current durable receipt. Polling remains a fallback.
-
-Notifications contain only an authorized resource URI. Ownership and live
-credential/membership checks are required for both subscription and read.
-Process-local notifications alone cannot establish multi-replica delivery;
-active watchers must observe the shared durable receipt. The OpenCode plugin's
-public MCP API does not expose arbitrary URI subscriptions, so this layer does
-not turn native runners into an event-driven dispatch system.
+MCP callers follow a remote session by polling its durable receipt
+(`remote-session:status` with `waitMs`, or `remote-session:read`). There are no
+receipt resource subscriptions or change notifications; reads always return the
+current durable state, which also covers reconnects and other replicas.

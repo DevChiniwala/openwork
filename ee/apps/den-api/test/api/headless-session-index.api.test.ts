@@ -1,9 +1,9 @@
 /**
- * Den's session index (feature headlessSessionIndex) and Workbot's session cells flag (headlessSessionCells):
- * - index capabilities are minted with turn tokens (Workbot run token, Slack, Automations) only with the feature on;
+ * Den's session index (always on) and Workbot's session cells flag (headlessSessionCells):
+ * - index capabilities are minted with turn tokens (Workbot run token, Slack, Automations) when the session is named;
  * - POST /v1/internal/headless/index takes organization, member and kind only from the verified capability, refuses a
  *   wrong session, expired, forged or other-organization capability, is idempotent on (sessionId, version), rate
- *   limited, rejects with index_disabled while the feature is off, and audits every rejection;
+ *   limited, and audits every rejection;
  * - the org-admin list is content-free and scoped to the organization;
  * - GET /v1/workbot/session reports sessionCells (and keeps stepTurns);
  * - rows go with their organization, and stay attributable (member id only) when a member is removed.
@@ -12,13 +12,16 @@ import assert from "node:assert/strict"
 import { randomBytes } from "node:crypto"
 import { after, before, beforeEach, test } from "node:test"
 import { bootDen, field, list, summary, text, type Call, type Member } from "./harness.js"
+import { gatewayFixtureEnv, grantGatewayModels, stubPublicModelCatalog } from "./gateway-fixture.js"
 
 const CALLBACK_TOKEN = `callback-${randomBytes(24).toString("hex")}`
 const RUNNER_TOKEN = `runner-${randomBytes(24).toString("hex")}`
 const CAPABILITY = /^hic1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 
-const den = await bootDen({ env: { DEN_HEADLESS_RUNNER_CALLBACK_TOKEN: CALLBACK_TOKEN, DEN_AUDIT_SELF_HOSTED_ENABLED: "true" } })
-after(() => den.close())
+// Every turn gets its model through the member's AI Gateway access, so the member here holds a Gateway grant.
+const restoreFetch = stubPublicModelCatalog()
+const den = await bootDen({ env: { ...gatewayFixtureEnv, DEN_HEADLESS_RUNNER_CALLBACK_TOKEN: CALLBACK_TOKEN, DEN_AUDIT_SELF_HOSTED_ENABLED: "true" } })
+after(async () => { restoreFetch(); await den.close() })
 
 const { client } = await import("../../src/db.js")
 const { defaultHeadlessRunnerDeps } = await import("../../src/headless-runner/client.js")
@@ -44,6 +47,7 @@ before(async () => {
   orgId = created.orgId
   owner = created.owner
   member = await den.newMember(owner, orgId, "Nico Member")
+  await grantGatewayModels(den, owner, orgId, [member])
   const other = await den.createOrg(await den.signUp("Olga Other"), "Other session index org")
   otherOrgId = other.orgId
   otherOwner = other.owner
@@ -52,11 +56,6 @@ before(async () => {
 })
 
 beforeEach(() => resetHeadlessIndexRateLimits())
-
-async function setIndex(id: string, enabled: boolean) {
-  const changed = await den.setFeature(id, "headlessSessionIndex", enabled)
-  assert.equal(changed.status, 200, summary(changed))
-}
 
 function report(updates: unknown[], token: string | null = CALLBACK_TOKEN): Promise<Call> {
   return den.request(null, "POST", "/v1/internal/headless/index", {
@@ -82,13 +81,7 @@ async function indexRow(sessionId: string) {
   return row
 }
 
-test("Workbot run-token returns an index capability only with the feature on and the session named", async () => {
-  await setIndex(orgId, false)
-  const off = await den.request(memberMcpToken, "POST", "/v1/workbot/run-token", { body: { sessionId: nextSession(), messageId: "m1" } })
-  assert.equal(off.status, 200, summary(off))
-  assert.equal(field(off.body, "indexCapability"), undefined, "no capability while headlessSessionIndex is off")
-
-  await setIndex(orgId, true)
+test("Workbot run-token returns an index capability only with the session named", async () => {
   const sessionId = nextSession()
   const on = await den.request(memberMcpToken, "POST", "/v1/workbot/run-token", { body: { sessionId, messageId: "m2" } })
   assert.equal(on.status, 200, summary(on))
@@ -105,10 +98,9 @@ test("Workbot run-token returns an index capability only with the feature on and
 
   const unnamed = await den.request(memberMcpToken, "POST", "/v1/workbot/run-token", { body: {} })
   assert.equal(field(unnamed.body, "indexCapability"), undefined, "no capability without a session")
-  await setIndex(orgId, false)
 })
 
-test("Slack and Automations deps mint a capability of their kind only with the feature on", async () => {
+test("Slack and Automations deps mint a capability of their kind", async () => {
   const automation = defaultHeadlessRunnerDeps({ DEN_HEADLESS_RUNNER_URL: "http://127.0.0.1:9", DEN_HEADLESS_RUNNER_TOKEN: RUNNER_TOKEN }, { indexKind: "automation" })
   const plain = defaultHeadlessRunnerDeps({ DEN_HEADLESS_RUNNER_URL: "http://127.0.0.1:9", DEN_HEADLESS_RUNNER_TOKEN: RUNNER_TOKEN })
   assert.ok(automation && plain)
@@ -116,11 +108,6 @@ test("Slack and Automations deps mint a capability of their kind only with the f
   assert.ok(slack)
   const actor = { userId: member.userId, organizationId: orgId }
 
-  await setIndex(orgId, false)
-  assert.deepEqual(Object.keys(await automation.mintToken({ ...actor, sessionId: nextSession(), messageId: "a1" })), ["token"], "nothing extra while off")
-  assert.equal((await slack.mintToken({ ...actor, sessionId: nextSession(), messageId: "s1" })).indexCapability, undefined)
-
-  await setIndex(orgId, true)
   const automationSession = nextSession()
   const minted = await automation.mintToken({ ...actor, sessionId: automationSession, messageId: "a2" })
   const automationCheck = verifyHeadlessIndexCapability(minted.indexCapability ?? "")
@@ -134,12 +121,10 @@ test("Slack and Automations deps mint a capability of their kind only with the f
   assert.ok(slackCheck.ok)
   assert.equal(slackCheck.claims.kind, "slack")
 
-  assert.deepEqual(Object.keys(await plain.mintToken({ ...actor, sessionId: nextSession(), messageId: "p1" })), ["token"], "no kind, no capability")
-  await setIndex(orgId, false)
+  assert.deepEqual(Object.keys(await plain.mintToken({ ...actor, sessionId: nextSession(), messageId: "p1" })).sort(), ["modelAccess", "token"], "no kind, no capability")
 })
 
 test("the endpoint needs the runner callback token and a well-formed body", async () => {
-  await setIndex(orgId, true)
   assert.equal((await report([], null)).status, 401)
   assert.equal((await report([], "wrong-token-wrong-token-wrong-token")).status, 401)
   assert.equal((await report([])).status, 400, "at least one update")
@@ -149,7 +134,6 @@ test("the endpoint needs the runner callback token and a well-formed body", asyn
 })
 
 test("organization, member and kind come only from the capability; wrong session, expired and forged capabilities are refused", async () => {
-  await setIndex(orgId, true)
   const sessionId = nextSession()
   const capability = mintHeadlessIndexCapability({ organizationId: orgId, memberId: member.memberId, sessionId, kind: "slack" })
 
@@ -190,8 +174,6 @@ test("organization, member and kind come only from the capability; wrong session
 })
 
 test("another organization's capability can't touch a session already indexed for this one", async () => {
-  await setIndex(orgId, true)
-  await setIndex(otherOrgId, true)
   const sessionId = nextSession()
   const mine = mintHeadlessIndexCapability({ organizationId: orgId, memberId: member.memberId, sessionId, kind: "workbot" })
   assert.equal(results(await report([{ capability: mine, sessionId, version: 1, fields: fields() }]))[0]?.status, "ok")
@@ -203,11 +185,9 @@ test("another organization's capability can't touch a session already indexed fo
   assert.equal(row?.org_id, orgId)
   assert.equal(row?.title, "Planning")
   assert.equal(Number(row?.version), 1)
-  await setIndex(otherOrgId, false)
 })
 
 test("updates are idempotent on (sessionId, version)", async () => {
-  await setIndex(orgId, true)
   const sessionId = nextSession()
   const capability = mintHeadlessIndexCapability({ organizationId: orgId, memberId: member.memberId, sessionId, kind: "workbot" })
   const send = (version: number, extra: Record<string, unknown> = {}) => report([{ capability, sessionId, version, fields: fields(extra) }])
@@ -233,18 +213,7 @@ test("updates are idempotent on (sessionId, version)", async () => {
   assert.equal(Number((await indexRow(sessionId))?.hot_bytes), 8)
 })
 
-test("while the feature is off every update is rejected with index_disabled and nothing is written", async () => {
-  await setIndex(orgId, false)
-  const sessionId = nextSession()
-  const capability = mintHeadlessIndexCapability({ organizationId: orgId, memberId: member.memberId, sessionId, kind: "workbot" })
-  const [refused] = results(await report([{ capability, sessionId, version: 1, fields: fields() }]))
-  assert.equal(refused?.status, "rejected")
-  assert.equal(refused?.error, "index_disabled")
-  assert.equal(await indexRow(sessionId), undefined)
-})
-
 test("updates are rate limited per session", async () => {
-  await setIndex(orgId, true)
   const sessionId = nextSession()
   const capability = mintHeadlessIndexCapability({ organizationId: orgId, memberId: member.memberId, sessionId, kind: "workbot" })
   const updates = Array.from({ length: HEADLESS_INDEX_SESSION_BURST + 2 }, (_, index) => ({ capability, sessionId, version: index + 1, fields: fields() }))
@@ -258,7 +227,6 @@ test("updates are rate limited per session", async () => {
 })
 
 test("rejections are audited by code, and capabilities are never stored", async () => {
-  await setIndex(orgId, true)
   const sessionId = nextSession()
   const capability = mintHeadlessIndexCapability({ organizationId: orgId, memberId: member.memberId, sessionId, kind: "workbot" })
   await report([{ capability, sessionId: nextSession(), version: 1, fields: fields() }])
@@ -274,7 +242,7 @@ test("rejections are audited by code, and capabilities are never stored", async 
   const forged = rows.find((row) => row.reason_code === "capability_invalid")
   assert.ok(forged)
   assert.equal(forged.target_id, null, "an unverified capability names no organization")
-  for (const reason of ["index_disabled", "rate_limited", "invalid_update", "capability_expired", "session_conflict"]) {
+  for (const reason of ["rate_limited", "invalid_update", "capability_expired", "session_conflict"]) {
     assert.ok(rows.some((row) => row.reason_code === reason), `audited: ${reason}`)
   }
   const stored = JSON.stringify(await sql("SELECT * FROM platform_audit_event")) + (await den.auditStorageText())
@@ -282,8 +250,6 @@ test("rejections are audited by code, and capabilities are never stored", async 
 })
 
 test("the admin list is content-free, filtered, paged and scoped to the organization", async () => {
-  await setIndex(orgId, true)
-  await setIndex(otherOrgId, true)
   const mine = Array.from({ length: 3 }, () => nextSession())
   for (const [index, sessionId] of mine.entries()) {
     const capability = mintHeadlessIndexCapability({ organizationId: orgId, memberId: index === 2 ? null : member.memberId, sessionId, kind: index === 2 ? "automation" : "workbot" })
@@ -321,10 +287,6 @@ test("the admin list is content-free, filtered, paged and scoped to the organiza
 
   const asMember = await den.as(member, orgId)("GET", "/v1/headless/sessions")
   assert.equal(asMember.status, 403, "members without the usage analytics permission are refused")
-
-  await setIndex(orgId, false)
-  assert.equal((await asOwner("GET", "/v1/headless/sessions")).status, 404, "off: no list")
-  await setIndex(otherOrgId, false)
 })
 
 test("GET /v1/workbot/session reports sessionCells per the organization's feature and keeps stepTurns", async () => {
@@ -343,8 +305,6 @@ test("removing a member keeps their rows attributable by member id only; deletin
   const created = await den.createOrg(await den.signUp("Dana Deleting"), "Deleted session index org")
   const doomedOrg = created.orgId
   const leaving = await den.newMember(created.owner, doomedOrg, "Leo Leaving")
-  await setIndex(doomedOrg, true)
-  await setIndex(orgId, true)
   const theirSession = nextSession()
   const ownerSession = nextSession()
   const keptSession = nextSession()
@@ -381,5 +341,4 @@ test("removing a member keeps their rows attributable by member id only; deletin
   assert.equal(late?.status, "rejected")
   assert.equal(late?.error, "capability_invalid")
   assert.equal(await indexRow(theirSession), undefined)
-  await setIndex(orgId, false)
 })

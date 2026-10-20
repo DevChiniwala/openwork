@@ -808,33 +808,20 @@ export type DeploymentServiceReadiness = {
 export type AdminFeature = {
   key:
     | "organizationGrants"
-    | "cloudAgentGateway"
     | "liveProviderSync"
     | "offlineRecovery"
-    | "secureSecretFields"
-    | "modelsAnalyticsUi"
-    | "taskAnalyticsUi"
     | "managedDeployments"
-    | "slackAssistant"
-    | "workbotTeamLinks"
-    | "workbotFirstRun"
-    | "workbotInlineConnect"
     | "workbotDocuments"
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
-    | "workbotGuidedNavigation"
     | "automationCalendar"
     | "engineV2ForceUpgrade"
-    | "engineV2Upgrade"
-    | "remoteSessionEvents"
     | "computerUse"
     | "browserFloatingView"
     | "remoteComputers"
     | "remoteSessionSubagents"
     | "headlessDurableTurns"
-    | "headlessStepTurns"
-    | "headlessSessionCells"
-    | "headlessSessionIndex";
+    | "headlessSessionCells";
   label: string;
   description: string;
   since: string;
@@ -874,33 +861,20 @@ export type AdminOrganizationsPageResponse = {
   organizations: Array<{
     capabilities?: {
       organizationGrants: boolean;
-      cloudAgentGateway: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -913,15 +887,6 @@ export type AdminOrganizationsPageResponse = {
      */
     featureStates?: {
       organizationGrants: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -948,70 +913,7 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1047,15 +949,6 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -1066,24 +959,6 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1137,25 +1012,7 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1228,33 +1085,20 @@ export type AdminOverviewResponse = {
   organizations: Array<{
     capabilities: {
       organizationGrants: boolean;
-      cloudAgentGateway: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1267,15 +1111,6 @@ export type AdminOverviewResponse = {
      */
     featureStates: {
       organizationGrants: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1302,70 +1137,7 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1401,15 +1173,6 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -1420,24 +1183,6 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1491,25 +1236,7 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -2823,26 +2550,6 @@ export type AgentPermissionPolicyWrite = {
   settings: AgentPermissionSettings;
 };
 
-export type InferenceStatus = {
-  enabled: boolean;
-  tier: "tier1" | "tier2";
-  memberCount: number;
-  proxyBaseUrl: string;
-  upstreamProviderConfigured: boolean;
-  subscribed?: boolean;
-  buckets: Array<{
-    windowType: "five_hour" | "weekly" | "monthly";
-    windowStartAt: string;
-    windowEndAt: string;
-    limitAmount: number;
-    usedAmount: number;
-  }>;
-};
-
-export type InferenceStatusResponse = {
-  inference: InferenceStatus;
-};
-
 export type InferenceAccessResponse = {
   access: {
     kind: "free" | "paid" | "exhausted" | "unavailable";
@@ -2874,6 +2581,26 @@ export type InferenceAccessResponse = {
       capabilities: Array<string>;
     }>;
   };
+};
+
+export type InferenceStatus = {
+  enabled: boolean;
+  tier: "tier1" | "tier2";
+  memberCount: number;
+  proxyBaseUrl: string;
+  upstreamProviderConfigured: boolean;
+  subscribed?: boolean;
+  buckets: Array<{
+    windowType: "five_hour" | "weekly" | "monthly";
+    windowStartAt: string;
+    windowEndAt: string;
+    limitAmount: number;
+    usedAmount: number;
+  }>;
+};
+
+export type InferenceStatusResponse = {
+  inference: InferenceStatus;
 };
 
 export type InferenceProviderMissingError = {
@@ -6999,8 +6726,6 @@ export type WorkbotSession = {
   };
   memberId: string;
   enabled: boolean;
-  firstRun?: boolean;
-  canEnableWorkbot?: boolean;
   canSchedule: boolean;
   computer?: boolean;
   calendar?: boolean;
@@ -7008,11 +6733,6 @@ export type WorkbotSession = {
   documentEditing?: boolean;
   workspaceAssistant?: boolean;
   guidedNavigation?: boolean;
-  teamLinks?: {
-    enabled: boolean;
-    settings: boolean;
-    apps: boolean;
-  };
   sideChats: boolean;
   model?: string | null;
   verifyModel?: boolean;
@@ -8373,33 +8093,20 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
   200: {
     capabilities: {
       organizationGrants: boolean;
-      cloudAgentGateway: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8412,15 +8119,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
      */
     featureStates: {
       organizationGrants: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8447,70 +8145,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8546,15 +8181,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -8565,24 +8191,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8636,25 +8244,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8715,33 +8305,20 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     };
     capabilities: {
       organizationGrants: boolean;
-      cloudAgentGateway: boolean;
       liveProviderSync: boolean;
       offlineRecovery: boolean;
-      secureSecretFields: boolean;
-      modelsAnalyticsUi: boolean;
-      taskAnalyticsUi: boolean;
       managedDeployments: boolean;
-      slackAssistant: boolean;
-      workbotTeamLinks: boolean;
-      workbotFirstRun: boolean;
-      workbotInlineConnect: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
-      workbotGuidedNavigation: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
-      engineV2Upgrade: boolean;
-      remoteSessionEvents: boolean;
       computerUse: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       headlessDurableTurns: boolean;
-      headlessStepTurns: boolean;
       headlessSessionCells: boolean;
-      headlessSessionIndex: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8754,15 +8331,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
      */
     featureStates: {
       organizationGrants: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      cloudAgentGateway: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8789,70 +8357,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      secureSecretFields: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      modelsAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      taskAnalyticsUi: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       managedDeployments: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      slackAssistant: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotTeamLinks: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotFirstRun: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      workbotInlineConnect: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8888,15 +8393,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      workbotGuidedNavigation: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
@@ -8907,24 +8403,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      engineV2Upgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      remoteSessionEvents: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8978,25 +8456,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessStepTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionIndex: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -16310,33 +15770,6 @@ export type PutV1DiagnosticsEgressTokenResponses = {
 export type PutV1DiagnosticsEgressTokenResponse =
   PutV1DiagnosticsEgressTokenResponses[keyof PutV1DiagnosticsEgressTokenResponses];
 
-export type GetV1InferenceAnalyticsUsageData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/usage";
-};
-
-export type GetV1InferenceAnalyticsUsageErrors = {
-  /**
-   * Models analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsUsageError =
-  GetV1InferenceAnalyticsUsageErrors[keyof GetV1InferenceAnalyticsUsageErrors];
-
-export type GetV1InferenceAnalyticsUsageResponses = {
-  /**
-   * Models usage limits.
-   */
-  200: InferenceStatusResponse;
-};
-
-export type GetV1InferenceAnalyticsUsageResponse =
-  GetV1InferenceAnalyticsUsageResponses[keyof GetV1InferenceAnalyticsUsageResponses];
-
 export type GetV1InferenceFreeProviderData = {
   body?: never;
   path?: never;
@@ -16609,83 +16042,6 @@ export type PatchV1InferenceResponses = {
 
 export type PatchV1InferenceResponse = PatchV1InferenceResponses[keyof PatchV1InferenceResponses];
 
-export type GetV1InferenceAnalyticsSettingsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/settings";
-};
-
-export type GetV1InferenceAnalyticsSettingsErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsSettingsError =
-  GetV1InferenceAnalyticsSettingsErrors[keyof GetV1InferenceAnalyticsSettingsErrors];
-
-export type GetV1InferenceAnalyticsSettingsResponses = {
-  /**
-   * Task analytics settings
-   */
-  200: {
-    available: boolean;
-    subscribed: boolean;
-    modelsEnabled: boolean;
-    enabled: boolean;
-    consentedAt: string | null;
-    consentVersion: number | null;
-    exportEnabled: boolean;
-    langfuseHost: string | null;
-    langfuseConfigured: boolean;
-  };
-};
-
-export type GetV1InferenceAnalyticsSettingsResponse =
-  GetV1InferenceAnalyticsSettingsResponses[keyof GetV1InferenceAnalyticsSettingsResponses];
-
-export type PatchV1InferenceAnalyticsSettingsData = {
-  body: {
-    enabled: boolean;
-    consentVersion?: 1;
-  };
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/settings";
-};
-
-export type PatchV1InferenceAnalyticsSettingsErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type PatchV1InferenceAnalyticsSettingsError =
-  PatchV1InferenceAnalyticsSettingsErrors[keyof PatchV1InferenceAnalyticsSettingsErrors];
-
-export type PatchV1InferenceAnalyticsSettingsResponses = {
-  /**
-   * Updated task analytics choice
-   */
-  200: {
-    available: boolean;
-    subscribed: boolean;
-    modelsEnabled: boolean;
-    enabled: boolean;
-    consentedAt: string | null;
-    consentVersion: number | null;
-    exportEnabled: boolean;
-    langfuseHost: string | null;
-    langfuseConfigured: boolean;
-  };
-};
-
-export type PatchV1InferenceAnalyticsSettingsResponse =
-  PatchV1InferenceAnalyticsSettingsResponses[keyof PatchV1InferenceAnalyticsSettingsResponses];
-
 export type PostV1InferenceAnalyticsEventsData = {
   body: {
     events: Array<{
@@ -16755,127 +16111,6 @@ export type PostV1InferenceAnalyticsEventsResponses = {
 
 export type PostV1InferenceAnalyticsEventsResponse =
   PostV1InferenceAnalyticsEventsResponses[keyof PostV1InferenceAnalyticsEventsResponses];
-
-export type GetV1InferenceAnalyticsActivityData = {
-  body?: never;
-  path?: never;
-  query?: {
-    days?: number;
-    memberId?: string;
-    taskId?: string;
-    sessionId?: string;
-    before?: string;
-    beforeId?: string;
-  };
-  url: "/v1/inference/analytics/activity";
-};
-
-export type GetV1InferenceAnalyticsActivityErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsActivityError =
-  GetV1InferenceAnalyticsActivityErrors[keyof GetV1InferenceAnalyticsActivityErrors];
-
-export type GetV1InferenceAnalyticsActivityResponses = {
-  /**
-   * Task activity
-   */
-  200: {
-    events: Array<{
-      id: string;
-      type:
-        | "task.started"
-        | "task.completed"
-        | "task.failed"
-        | "task.cancelled"
-        | "tool.executed"
-        | "skill.loaded"
-        | "model.call";
-      timestamp: string;
-      sessionId: string;
-      taskId: string;
-      callId?: string;
-      durationMs?: number;
-      status?: "completed" | "failed" | "cancelled";
-      model?: string;
-      provider?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      cacheReadTokens?: number;
-      cacheWriteTokens?: number;
-      costUsd?: number;
-      usageComplete?: boolean;
-      tool?: string;
-      skill?: string;
-      skillVersion?: string;
-      mcp?: string;
-      metadata?: {
-        [key: string]: string | number | boolean;
-      };
-      memberId: string;
-      source: "app" | "inference";
-    }>;
-    next: {
-      before: string;
-      beforeId: string;
-    } | null;
-  };
-};
-
-export type GetV1InferenceAnalyticsActivityResponse =
-  GetV1InferenceAnalyticsActivityResponses[keyof GetV1InferenceAnalyticsActivityResponses];
-
-export type GetV1InferenceAnalyticsConsumptionData = {
-  body?: never;
-  path?: never;
-  query?: {
-    days?: number;
-    memberId?: string;
-    taskId?: string;
-    sessionId?: string;
-    before?: string;
-    beforeId?: string;
-  };
-  url: "/v1/inference/analytics/consumption";
-};
-
-export type GetV1InferenceAnalyticsConsumptionErrors = {
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type GetV1InferenceAnalyticsConsumptionError =
-  GetV1InferenceAnalyticsConsumptionErrors[keyof GetV1InferenceAnalyticsConsumptionErrors];
-
-export type GetV1InferenceAnalyticsConsumptionResponses = {
-  /**
-   * Model consumption
-   */
-  200: {
-    groups: Array<{
-      model: string | null;
-      provider: string | null;
-      memberId: string;
-      day: string;
-      calls: number;
-      failedCalls: number;
-      incompleteCalls: number;
-      inputTokens: number | null;
-      outputTokens: number | null;
-      cacheReadTokens: number | null;
-      costUsd: number | null;
-    }>;
-  };
-};
-
-export type GetV1InferenceAnalyticsConsumptionResponse =
-  GetV1InferenceAnalyticsConsumptionResponses[keyof GetV1InferenceAnalyticsConsumptionResponses];
 
 export type GetV1LibraryUsageData = {
   body?: never;
@@ -16975,10 +16210,6 @@ export type GetV1HeadlessSessionsErrors = {
    * View usage analytics permission required.
    */
   403: ForbiddenError;
-  /**
-   * The session index is off for this organization.
-   */
-  404: NotFoundError;
 };
 
 export type GetV1HeadlessSessionsError = GetV1HeadlessSessionsErrors[keyof GetV1HeadlessSessionsErrors];
@@ -16991,139 +16222,6 @@ export type GetV1HeadlessSessionsResponses = {
 };
 
 export type GetV1HeadlessSessionsResponse = GetV1HeadlessSessionsResponses[keyof GetV1HeadlessSessionsResponses];
-
-export type PostV1InferenceAnalyticsLangfuseTestData = {
-  body: {
-    host: string;
-    publicKey: string;
-    secretKey: string;
-  };
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/langfuse/test";
-};
-
-export type PostV1InferenceAnalyticsLangfuseTestErrors = {
-  /**
-   * Invalid request, or Langfuse could not be reached with these credentials.
-   */
-  400: InvalidRequestError;
-  /**
-   * Sign-in required.
-   */
-  401: UnauthorizedError;
-  /**
-   * The caller lacks the Manage task analytics permission, or task analytics are not enabled.
-   */
-  403: {
-    error: string;
-    message?: string;
-  };
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type PostV1InferenceAnalyticsLangfuseTestError =
-  PostV1InferenceAnalyticsLangfuseTestErrors[keyof PostV1InferenceAnalyticsLangfuseTestErrors];
-
-export type PostV1InferenceAnalyticsLangfuseTestResponses = {
-  /**
-   * The destination is reachable.
-   */
-  200: {
-    ok: true;
-  };
-};
-
-export type PostV1InferenceAnalyticsLangfuseTestResponse =
-  PostV1InferenceAnalyticsLangfuseTestResponses[keyof PostV1InferenceAnalyticsLangfuseTestResponses];
-
-export type PostV1InferenceAnalyticsLangfuseConnectData = {
-  body: {
-    host: string;
-    publicKey: string;
-    secretKey: string;
-  };
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/langfuse/connect";
-};
-
-export type PostV1InferenceAnalyticsLangfuseConnectErrors = {
-  /**
-   * Invalid request, or Langfuse could not be reached with these credentials.
-   */
-  400: InvalidRequestError;
-  /**
-   * Sign-in required.
-   */
-  401: UnauthorizedError;
-  /**
-   * The caller lacks the Manage task analytics permission, or task analytics are not enabled.
-   */
-  403: {
-    error: string;
-    message?: string;
-  };
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type PostV1InferenceAnalyticsLangfuseConnectError =
-  PostV1InferenceAnalyticsLangfuseConnectErrors[keyof PostV1InferenceAnalyticsLangfuseConnectErrors];
-
-export type PostV1InferenceAnalyticsLangfuseConnectResponses = {
-  /**
-   * The destination is reachable and was saved.
-   */
-  200: {
-    ok: true;
-  };
-};
-
-export type PostV1InferenceAnalyticsLangfuseConnectResponse =
-  PostV1InferenceAnalyticsLangfuseConnectResponses[keyof PostV1InferenceAnalyticsLangfuseConnectResponses];
-
-export type DeleteV1InferenceAnalyticsLangfuseData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/v1/inference/analytics/langfuse";
-};
-
-export type DeleteV1InferenceAnalyticsLangfuseErrors = {
-  /**
-   * Sign-in required.
-   */
-  401: UnauthorizedError;
-  /**
-   * The caller lacks the Manage task analytics permission.
-   */
-  403: ForbiddenError;
-  /**
-   * Task analytics surface is disabled.
-   */
-  404: NotFoundError;
-};
-
-export type DeleteV1InferenceAnalyticsLangfuseError =
-  DeleteV1InferenceAnalyticsLangfuseErrors[keyof DeleteV1InferenceAnalyticsLangfuseErrors];
-
-export type DeleteV1InferenceAnalyticsLangfuseResponses = {
-  /**
-   * Export disconnected.
-   */
-  200: {
-    ok: true;
-  };
-};
-
-export type DeleteV1InferenceAnalyticsLangfuseResponse =
-  DeleteV1InferenceAnalyticsLangfuseResponses[keyof DeleteV1InferenceAnalyticsLangfuseResponses];
 
 export type DeleteV1ScimData = {
   body?: never;
@@ -34922,7 +34020,6 @@ export type GetV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34941,7 +34038,6 @@ export type GetV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -34962,10 +34058,6 @@ export type GetV1McpConnectionsByConnectionIdSlackAssistantResponses = {
     enabled: boolean;
     installed: boolean;
     teamId: string | null;
-    /**
-     * Whether the platform admin enabled Slack Assistant for this organization.
-     */
-    rolloutEnabled: boolean;
     hasSigningSecret: boolean;
     eligible: boolean;
     /**
@@ -35059,7 +34151,6 @@ export type PutV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -35078,7 +34169,6 @@ export type PutV1McpConnectionsByConnectionIdSlackAssistantErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -35131,7 +34221,6 @@ export type PostV1McpConnectionsByConnectionIdSlackAssistantInstallErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -35150,7 +34239,6 @@ export type PostV1McpConnectionsByConnectionIdSlackAssistantInstallErrors = {
           | "signing_secret_required"
           | "setup_required"
           | "browser_session_required"
-          | "slack_assistant_not_enabled"
           | "slack_runner_unavailable";
         message?: string;
       };
@@ -35511,7 +34599,7 @@ export type StartWorkbotConnectionErrors = {
     message?: string;
   };
   /**
-   * The feature or connection is unavailable.
+   * Connecting from Workbot is not configured, or the connection is unavailable.
    */
   404: {
     error: string;

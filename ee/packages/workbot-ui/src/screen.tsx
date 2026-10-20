@@ -31,7 +31,6 @@ import { documentLinks, WorkbotMarkdown } from "./markdown";
 import { OpenFileContext } from "./open-file";
 import { PreviewPanel } from "./preview";
 import { Welcome } from "./welcome";
-import { TeamControls } from "./team-controls";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
 import { WorkbotComputer } from "./computer";
@@ -616,7 +615,6 @@ function WorkbotHeader(props: {
       )}
       <div className="flex shrink-0 items-center gap-2.5 sm:gap-3.5">
         {props.remove}
-        <TeamControls />
         {files}
         {apps.length > 0 ? (
           <span className="flex h-7 items-center gap-[7px] rounded-full bg-[var(--wb-chip)] pl-2 pr-2.5" title={names.join(", ")} aria-label={`Connected: ${names.join(", ")}`}>

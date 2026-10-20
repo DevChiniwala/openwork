@@ -1,5 +1,5 @@
 /**
- * Step-by-step headless turns (feature headlessStepTurns), without a database: the protocol client sends
+ * Step-by-step headless turns (feature headlessDurableTurns), without a database: the protocol client sends
  * `execution: "steps"` only when given, and Slack's runner and the Automations executor ask for it only when their
  * feature check says so (a failing check sends the turn as before). The organization wiring is covered with a real
  * database in test/api/headless-step-turns.api.test.ts.
@@ -118,10 +118,8 @@ test("the Automations executor asks for step mode only when its check says so", 
       client: runner.client,
       ownerUserId: async () => "usr_1",
       stillHeadless: async () => true,
-      defaultModel: async () => null,
-      gatewayEnabled: async () => false,
-      cloudModel: async () => null,
-      gatewayCatalog: async () => ({ defaultModel: alias, models: [] }),
+      cloudModel: async () => alias,
+      gatewayCatalog: async () => ({ defaultModel: alias, models: [{ id: alias, name: "Member model" }] }),
       stepTurns: entry.stepTurns,
       sleep: async () => {},
       pollIntervalMs: 0,
@@ -169,8 +167,6 @@ test("with the AI Gateway on, step mode and scoped model access travel together"
       client: runner.client,
       ownerUserId: async () => "usr_1",
       stillHeadless: async () => true,
-      defaultModel: async () => null,
-      gatewayEnabled: async () => true,
       cloudModel: async () => alias,
       gatewayCatalog: async () => ({ defaultModel: alias, models: [{ id: alias, name: "Member model" }] }),
       stepTurns: async () => stepTurns,

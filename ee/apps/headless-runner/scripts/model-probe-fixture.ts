@@ -21,9 +21,12 @@ export async function modelProbeFixture(options: { mode?: ProbeFixtureMode; luna
   const modelKey = options.modelKey ?? "fixture-model-key"
   const reportedModel = options.reportedModel ?? "gpt-6-luna-fixture-snapshot"
   const calls: { path: string; body: unknown; authorized: boolean }[] = []
+  // Keys the synthetic provider accepts: the runner's configured key, plus any scoped per-member key a test adds.
+  const acceptedKeys = new Set([modelKey])
   const provider = await listen(async (request, response) => {
     let raw = ""; for await (const chunk of request) raw += chunk
-    const authorized = (options.protocol === "anthropic" ? request.headers["x-api-key"] : request.headers.authorization) === (options.protocol === "anthropic" ? modelKey : `Bearer ${modelKey}`)
+    const presented = options.protocol === "anthropic" ? request.headers["x-api-key"] : request.headers.authorization?.match(/^Bearer (.+)$/)?.[1]
+    const authorized = typeof presented === "string" && acceptedKeys.has(presented)
     response.setHeader("content-type", "application/json")
     if (request.url === "/models") {
       if (!authorized || options.catalogVerified === false) { response.writeHead(401).end(JSON.stringify({ error: "catalog_denied" })); return }
@@ -55,6 +58,10 @@ export async function modelProbeFixture(options: { mode?: ProbeFixtureMode; luna
     })
     return {
       url: runner.url,
+      /** The synthetic provider, e.g. as a scoped modelAccess base URL. */
+      providerUrl: provider.url,
+      /** Accept one more provider key, e.g. the per-member Gateway key a scoped modelAccess presents. */
+      acceptModelKey: (key: string) => { acceptedKeys.add(key) },
       app: runtime.app,
       calls: () => [...calls],
       setMode: (next: ProbeFixtureMode) => { mode = next },

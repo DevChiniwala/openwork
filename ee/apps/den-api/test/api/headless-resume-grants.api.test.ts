@@ -8,13 +8,16 @@ import assert from "node:assert/strict"
 import { createHash, randomBytes } from "node:crypto"
 import { after, before, test } from "node:test"
 import { bootDen, field, summary, text, type Call, type Member } from "./harness.js"
+import { gatewayFixtureEnv, grantGatewayModels, stubPublicModelCatalog } from "./gateway-fixture.js"
 
 const CALLBACK_TOKEN = `callback-${randomBytes(24).toString("hex")}`
 const RUNNER_TOKEN = `runner-${randomBytes(24).toString("hex")}`
 const GRANT = /^hrg_[A-Za-z0-9_-]{43}$/
 
-const den = await bootDen({ env: { DEN_HEADLESS_RUNNER_CALLBACK_TOKEN: CALLBACK_TOKEN, DEN_AUDIT_SELF_HOSTED_ENABLED: "true" } })
-after(() => den.close())
+// Every turn gets its model through the member's AI Gateway access, so members here hold a Gateway grant.
+const restoreFetch = stubPublicModelCatalog()
+const den = await bootDen({ env: { ...gatewayFixtureEnv, DEN_HEADLESS_RUNNER_CALLBACK_TOKEN: CALLBACK_TOKEN, DEN_AUDIT_SELF_HOSTED_ENABLED: "true" } })
+after(async () => { restoreFetch(); await den.close() })
 
 const { client } = await import("../../src/db.js")
 const { env } = await import("../../src/env.js")
@@ -60,6 +63,7 @@ before(async () => {
   orgId = created.orgId
   owner = created.owner
   member = await den.newMember(owner, orgId, "Milo Member")
+  await grantGatewayModels(den, owner, orgId, [member])
   const workbot = await den.setFeature(orgId, "workbot", true)
   assert.equal(workbot.status, 200, summary(workbot))
   memberMcpToken = await den.mintMcpToken(member, orgId)
@@ -127,13 +131,13 @@ test("defaultHeadlessRunnerDeps (Slack, Automations) mints a grant only with the
 
   await setDurable(false)
   const off = await deps.mintToken({ ...actor, ...nextTurn() })
-  assert.deepEqual(Object.keys(off), ["token"], "no resumeGrant field while the feature is off")
+  assert.deepEqual(Object.keys(off).sort(), ["modelAccess", "token"], "no resumeGrant field while the feature is off")
 
   await setDurable(true)
   const on = await deps.mintToken({ ...actor, ...nextTurn() })
   assert.match(on.resumeGrant ?? "", GRANT)
   const unnamed = await deps.mintToken({ ...actor, messageId: "msg-only" })
-  assert.deepEqual(Object.keys(unnamed), ["token"], "no grant without sessionId")
+  assert.deepEqual(Object.keys(unnamed).sort(), ["modelAccess", "token"], "no grant without sessionId")
 
   const slack = slackHeadlessDeps(deps)
   assert.ok(slack)
@@ -143,6 +147,8 @@ test("defaultHeadlessRunnerDeps (Slack, Automations) mints a grant only with the
   // sendTurn names the turn to mintToken and sends the grant as credentials.resumeGrant.
   const bodies: unknown[] = []
   const recordingFetch: typeof fetch = async (_input, init) => {
+    // The client first reads the turn's persisted model (none yet: a new session), then sends the turn.
+    if ((init?.method ?? "GET") === "GET") return Response.json({ error: "not_found" }, { status: 404 })
     bodies.push(typeof init?.body === "string" ? JSON.parse(init.body) : null)
     return Response.json({ state: "accepted" }, { status: 202 })
   }
@@ -158,7 +164,7 @@ test("defaultHeadlessRunnerDeps (Slack, Automations) mints a grant only with the
   await setDurable(false)
   bodies.length = 0
   await createHeadlessRunnerClient({ ...deps, fetch: recordingFetch }).sendTurn(actor, { ...nextTurn(), prompt: "hello" })
-  assert.deepEqual(Object.keys(Object(field(bodies[0], "credentials"))), ["mcpToken"], "turn body unchanged while the feature is off")
+  assert.deepEqual(Object.keys(Object(field(bodies[0], "credentials"))).sort(), ["mcpToken", "modelAccess"], "no resume grant in the turn body while the feature is off")
   await setDurable(true)
 })
 
@@ -304,6 +310,7 @@ test("exchanges are rate limited per grant", async () => {
 test("a member whose membership ended cannot exchange, and removing a member revokes their grants", async () => {
   await setDurable(true)
   const leaving = await den.newMember(owner, orgId, "Lena Leaving")
+  await grantGatewayModels(den, owner, orgId, [leaving])
   const token = await den.mintMcpToken(leaving, orgId)
   const stayingIds = nextTurn()
   const stayingGrant = await grantFor(stayingIds)

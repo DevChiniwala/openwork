@@ -191,7 +191,7 @@ Names and defaults are from [celld's docs](https://celld.dev/docs) (v0.6.2):
 ## Step mode: turns that outlast a deploy
 
 A turn sent with `execution: "steps"` ([README](./README.md#step-mode); Den and Workbot send it when
-`headlessStepTurns` is on) doesn't hold its cell busy. Admitting it writes its first step to the cell's
+`headlessDurableTurns` is on) doesn't hold its cell busy. Admitting it writes its first step to the cell's
 `step_schedule` table and sets the cell's alarm; it is not run under `waitUntil`. The cell keeps one alarm, at the
 earliest of its due steps and the self-resume sweep. `alarm()` runs every due step to completion (one per lane, lanes
 in parallel; a failure stays with its turn), then sets the alarm again. Between two alarms the cell is idle, which is

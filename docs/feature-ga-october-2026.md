@@ -19,6 +19,29 @@ organization override, deployment rollout row, or operator feature lock.
 | Invitations | `inviteLinkVerifiesEmail` |
 | Sign-in navigation | `rememberLastOrganization` |
 | Team membership lookup | `teamMembershipCache` |
+| Cloud-agent models through the AI Gateway | `cloudAgentGateway` |
+| Secure keys in chat | `secureSecretFields` |
+| Slack Assistant (still needs the Slack connector set up) | `slackAssistant` |
+| Workbot sign-in and account connection | `workbotFirstRun`, `workbotInlineConnect` |
+| Content-free chat index for admins | `headlessSessionIndex` |
+
+## Folded into another switch
+
+| Retired switch | Now controlled by |
+| --- | --- |
+| `workbotGuidedNavigation` | `workbotWorkspaceAssistant` |
+| `engineV2Upgrade` (the optional desktop invitation is gone) | `engineV2ForceUpgrade` ("Upgrade to OpenCode v2") |
+| `headlessStepTurns` | `headlessDurableTurns` ("Cloud tasks survive restarts and updates") |
+
+The remaining switches stay off by default. An old override for a folded key
+does not turn on its new switch.
+
+## Removed with their feature
+
+`workbotTeamLinks` (Workbot's team settings links), `remoteSessionEvents` (MCP
+resource subscriptions for remote session receipts; poll with
+`remote-session:status` instead), and the deprecated `modelsAnalyticsUi` and
+`taskAnalyticsUi` screens with the API routes only they used.
 
 Removing a rollout does not remove authorization, connector consent, model
 availability checks, or operator configuration. Self-hosted installations must
