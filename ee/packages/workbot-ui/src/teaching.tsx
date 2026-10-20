@@ -96,7 +96,7 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun, suspen
       {error && <p role="alert" className="text-[13px]">{error}</p>}
       {demo?.notice && <p role="status" className="text-[13px]">{demo.notice}</p>}
       {!demo ? <>
-        <p className="text-[13px] text-[var(--wb-muted)]">Explain how to reach the task from the site's home page. Only the site origin is saved from navigation addresses.</p>
+        <p className="text-[13px] text-[var(--wb-muted)]">Navigation addresses are omitted. When running the saved skill, supply its public starting URL as start_url.</p>
         <div className="text-[13px]">
           <span>Browser tab</span>
           <Select.Root items={tabs.map((item, index) => ({ value: item.id, label: `${item.origin === "null" ? "Blank page" : item.origin} · Tab ${index + 1}` }))} value={tab || null} onValueChange={value => setTab(value ?? "")} disabled={busy || !enabled} open={tabSurface.open} onOpenChange={value => { if (!tabSurface.blocked) setTabPickerOpen(value); }}>
@@ -117,7 +117,7 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun, suspen
           <Button className={button} disabled={!enabled || busy || demo.phase !== "recording"} onClick={() => void command({ action: "pick" })}>Select information</Button>
           <Button className={button} disabled={!enabled || busy || !demo.steps.length} onClick={() => void command({ action: "finish" })}>Finish teaching</Button>
         </div>}
-        <ol className="space-y-1" aria-label="Demonstrated steps">{demo.steps.map(step => <li key={step.id}><Button className={`${button} h-auto min-h-8 w-full justify-start text-left ${stepId === step.id ? "bg-[var(--wb-chip)]" : ""}`} onClick={() => { setStepId(step.id); setExplanation(step.explanation); setVariable(step.parameter ?? step.field ?? ""); }}>{step.id}. {step.kind === "navigate" ? `Open ${step.url}` : `${step.kind === "extract" ? "Collect" : step.kind} ${step.target?.name || step.target?.role || "information"}`}{step.parameter ? ` · ${step.parameter}` : step.field ? ` · ${step.field}` : ""}</Button></li>)}</ol>
+        <ol className="space-y-1" aria-label="Demonstrated steps">{demo.steps.map(step => <li key={step.id}><Button className={`${button} h-auto min-h-8 w-full justify-start text-left ${stepId === step.id ? "bg-[var(--wb-chip)]" : ""}`} onClick={() => { setStepId(step.id); setExplanation(step.explanation); setVariable(step.parameter ?? step.field ?? ""); }}>{step.id}. {step.kind === "navigate" ? "Navigate to the task page" : `${step.kind === "extract" ? "Collect" : step.kind} ${step.target?.name || step.target?.role || "information"}`}{step.parameter ? ` · ${step.parameter}` : step.field ? ` · ${step.field}` : ""}</Button></li>)}</ol>
         {selected && !saved && <div className="flex flex-col gap-2">
           <label className="text-[13px]">Explain step {selected.id}<textarea className={input} value={explanation} maxLength={2000} onChange={event => setExplanation(event.target.value)} /></label>
           {(selected.parameter || selected.field) && <label className="text-[13px]">{selected.parameter ? "Input name" : "Output field"}<input className={input} value={variable} onChange={event => setVariable(event.target.value)} pattern="[a-z][a-z0-9_]{0,63}" /></label>}

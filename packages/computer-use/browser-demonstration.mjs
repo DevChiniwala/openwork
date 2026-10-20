@@ -40,8 +40,8 @@ function pageRecorder(makePrivacyFilter) {
   let recording = false, picking = false, sequence = 0;
   const privacy = makePrivacyFilter();
   const controls = new WeakMap();
-  const safeName = element => {
-    let name = element.getAttribute("aria-label") || [...(element.labels || [])].map(label => label.textContent).join(" ") || (element.tagName === "INPUT" ? element.getAttribute("placeholder") : element.textContent) || "";
+  const safeName = (element, controlText = false) => {
+    let name = element.getAttribute("aria-label") || [...(element.labels || [])].map(label => label.textContent).join(" ") || (element.tagName === "INPUT" ? element.getAttribute("placeholder") : controlText ? element.textContent : "") || "";
     return privacy.redact(name).replace(/\s+/g, " ").trim().slice(0, 160);
   };
   const protectedField = element => element.matches('input[type="password"],input[type="hidden"],[autocomplete="one-time-code"],[autocomplete^="cc-"]') || /password|secret|token|otp|verification.?code|card.?number/i.test(`${element.getAttribute("name") || ""} ${element.getAttribute("autocomplete") || ""} ${element.getAttribute("aria-label") || ""}`);
@@ -57,11 +57,11 @@ function pageRecorder(makePrivacyFilter) {
   };
   const describe = (element, extraction = false) => {
     const tag = element.tagName.toLowerCase();
-    let name = safeName(element);
+    let name = safeName(element, !extraction && element.matches('button,a,[role="button"],[role="link"]'));
     if (extraction && !element.hasAttribute("aria-label")) {
       const cell = element.closest("td"), term = element.closest("dd")?.previousElementSibling;
       const heading = cell?.closest("table")?.querySelectorAll("thead th")[cell.cellIndex];
-      name = heading ? safeName(heading) : term?.tagName === "DT" ? safeName(term) : "";
+      name = heading ? safeName(heading, true) : term?.tagName === "DT" ? safeName(term, true) : "";
     }
     return { tag, role: privacy.redact(element.getAttribute("role") || ({ a: "link", button: "button", input: "textbox", textarea: "textbox", select: "combobox", table: "table" }[tag] || "text")).slice(0, 60), name };
   };
@@ -74,7 +74,7 @@ function pageRecorder(makePrivacyFilter) {
   };
   const click = event => {
     if (!event.isTrusted || !recording) return;
-    const element = event.target instanceof Element ? event.target.closest('button,a,input,select,textarea,[role="button"],[role="link"]') || event.target.closest('td,th,dd,dt,label,p,span,[role]') || event.target : null;
+    const element = event.target instanceof Element ? event.target.closest('button,a,input,select,textarea,[role="button"],[role="link"]') || (picking ? event.target : null) : null;
     if (!element) return;
     if (picking) {
       event.preventDefault(); event.stopImmediatePropagation(); picking = false;
@@ -170,7 +170,10 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
     const id = (previous?.id ?? 0) + 1;
     const entry = { ...step, id, explanation: "" };
     if (["fill", "select"].includes(step.kind)) entry.parameter = `input_${id}`;
-    if (step.kind === "extract") entry.field = `field_${id}`;
+    if (step.kind === "extract") {
+      entry.field = `field_${id}`;
+      if (!step.target?.name) demo.notice = "The selected information has no label. Explain how to locate it before saving.";
+    }
     demo.steps.push(entry); void persist().catch(() => {});
   };
   const navigation = async url => {
@@ -179,14 +182,9 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
     let parsed; try { parsed = new URL(url); } catch { return; }
     if (!await allowed(url)) { demo.phase = "paused"; demo.notice = "The tab left the permitted browser destinations. Recording paused."; await persist(); return; }
     if (demo !== navigatedDemo || !active() || !["https:", "http:"].includes(parsed.protocol)) return;
-    // Paths can contain opaque reset/bearer tokens that never appeared in a field.
-    // Record only the public entry origin; use taught controls to reach the task.
-    const entry = new URL(parsed.origin).href;
-    if (privacy.redact(entry) !== entry || entry.length > 2048) {
-      demo.notice = "A navigation address was omitted for privacy. Teach a public entry page before saving.";
-      await persist(); return;
-    }
-    if (demo.steps.at(-1)?.url !== entry) append({ kind: "navigate", url: entry });
+    // Even a hostname can carry a bearer token. Addresses stay out of recordings;
+    // the saved skill asks for a public entry URL as an input to each run.
+    if (demo.steps.at(-1)?.kind !== "navigate") append({ kind: "navigate" });
   };
   const setMode = async (pick = false) => {
     if (wire && contextId !== null) await wire.send("Runtime.evaluate", { contextId, expression: `${SCRIPT}; globalThis.__openworkTeaching?.set(${active()}, ${pick}, ${JSON.stringify(privacy.snapshot())})` });

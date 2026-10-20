@@ -25,7 +25,7 @@ it is never replaced automatically.
    Pause recording for activity that should not enter the skill.
 5. Finish teaching, name the skill, describe when to use it, and review its
    instructions. Save private skill creates an ordinary private Cloud skill.
-6. Supply new inputs and choose Run skill, or ask for the saved skill in chat.
+6. Supply the public starting URL as `start_url`, provide new inputs, and choose Run skill, or ask for the saved skill in chat.
    Workbot reads the skill and operates through its existing browser tools.
    A saved demonstration is labeled Not yet tested; saving does not claim a
    successful autonomous rerun.
@@ -34,10 +34,11 @@ The draft includes input placeholders, the taught controls and extraction
 fields, teacher explanations, verification requirements, and interruption rules.
 The latest explicit correction takes precedence. Ambiguous people or records
 require clarification. Page-derived descriptors are quoted untrusted data.
-Navigation records only the site's origin. Explain how to reach a deep-linked
-entry page, or demonstrate the navigation from the site's public home page.
-Navigation after an action describes its expected outcome; a rerun preserves
-the current search rather than reopening the origin after each action.
+Navigation addresses are never recorded: even a hostname can carry a bearer
+token. The compiled skill asks for a public `start_url` with each run. Explain
+how to reach the task from that public starting page. Navigation after an
+action describes its expected outcome; a rerun preserves the current search
+rather than reopening the starting page after each action.
 
 ## Recording boundaries
 
@@ -45,6 +46,8 @@ Recording is limited to the chosen tab's top document and trusted user events.
 It does not record other tabs, raw keystroke streams, screenshots, entered field
 values, passwords, payment fields, or session credentials. Extraction captures
 an accessible field label or table heading rather than its example value.
+An unlabeled selection keeps only its structural descriptor and asks for an
+explanation; plain page-text clicks are not recorded as controls.
 Page-script-generated clicks do not count as demonstrations. A bounded privacy
 filter remembers observed field values only in guest memory for the current
 demonstration, so labels that echo cleared or removed values remain redacted
@@ -52,10 +55,9 @@ across navigation. That history never enters draft storage or model context.
 When its limit is reached, page-derived descriptors are concealed instead of
 dropping older protections.
 
-URLs retain only the site origin: paths, query strings, fragments and embedded
-credentials are omitted, including opaque tokens in navigation paths. Public
-control labels and teacher explanations remain in the private draft: review
-these before saving or sharing. The first version supports navigation, ordinary
+Navigation addresses, including hosts, paths, query strings, fragments and
+embedded credentials, are omitted. Public control labels and teacher
+explanations remain in the private draft: review these before saving or sharing. The first version supports navigation, ordinary
 text inputs, public select controls, clicks, Enter/Tab/Escape, and explicit
 extraction targets. Frames, popups, canvas, contenteditable editors, file uploads,
 and complex widget gestures need explanation or a separately taught workflow.
