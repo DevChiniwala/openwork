@@ -13,6 +13,8 @@ export default defineConfig({
     "den/agent-permissions": "src/den/agent-permissions.ts",
     "den/gateway": "src/den/gateway.ts",
     "den/gateway-usage-limits": "src/den/gateway-usage-limits.ts",
+    // Imports schemas from ./service-readiness, which Node cannot resolve from source without an extension.
+    "den/deployment-capabilities": "src/den/deployment-capabilities.ts",
   },
   tsconfig: "./tsconfig.json",
   format: ["esm"],
