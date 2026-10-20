@@ -145,6 +145,9 @@ struct ElementRecord {
         guard Geometry.valid(frame), Geometry.valid(bounds), (1...1_000_000).contains(width), (1...1_000_000).contains(height) else {
             throw UseError("invalid_geometry", "The observation geometry is invalid.", next: "observe")
         }
+        guard bounds.contains(frame) else {
+            throw UseError("outside_window", "The accessible element is not fully inside the approved window. Scroll it into view and observe again.", next: "observe")
+        }
         let x = (frame.minX - bounds.minX) * Double(width) / bounds.width
         let y = (frame.minY - bounds.minY) * Double(height) / bounds.height
         let w = frame.width * Double(width) / bounds.width

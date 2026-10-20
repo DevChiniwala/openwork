@@ -67,7 +67,7 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       try { message = JSON.parse(String(event.data)); } catch { return; }
       if (!message.id) {
         if (["Page.frameNavigated", "Runtime.executionContextsCleared", "Runtime.executionContextDestroyed"].includes(message.method)) tabChanged();
-        // Every document request, redirect hops included, is checked before it loads.
+        // Every network resource and redirect hop is checked before it loads.
         if (message.method === "Fetch.requestPaused") void admitRequest(message.params);
         return;
       }
@@ -82,8 +82,10 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
     async function admitRequest({ requestId, request }) {
       let allowed = false;
       try {
-        const protocol = new URL(request.url).protocol;
-        allowed = !["http:", "https:"].includes(protocol) || await allowedDestination(request.url);
+        const url = new URL(request.url);
+        if (["ws:", "wss:"].includes(url.protocol)) url.protocol = url.protocol === "ws:" ? "http:" : "https:";
+        allowed = ["http:", "https:"].includes(url.protocol) ? await allowedDestination(url.href)
+          : ["about:", "data:", "blob:"].includes(url.protocol);
       } catch { allowed = false; }
       if (allowed) reply("Fetch.continueRequest", { requestId });
       else reply("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
@@ -119,8 +121,9 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       getURL: () => currentUrl,
       getTitle: () => title,
       stop: () => { void wire.send("Page.stopLoading", {}, false).catch(() => {}); },
-      async prepareInput() { await beforeInput(); await wire.send("Page.bringToFront"); },
+      async prepareInput() { await guarded; await beforeInput(); await wire.send("Page.bringToFront"); },
       async executeJavaScriptInIsolatedWorld(_world, scripts) {
+        await guarded;
         assertActive();
         if (context === null) {
           const tree = await wire.send("Page.getFrameTree");
@@ -131,6 +134,7 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
         return result.result.value;
       },
       async captureObservation(viewport) {
+        await guarded;
         if (![viewport.width, viewport.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= 8192)) throw new Error("The browser viewport is unavailable.");
         const result = await wire.send("Page.captureScreenshot", { format: "png" });
         const png = Buffer.from(result.data, "base64");
@@ -154,6 +158,7 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       debugger: { isAttached: () => true, sendCommand: async (method, params) => { await beforeInput(); await wire.send("Page.bringToFront"); return wire.send(method, params); } },
     } },
       async navigate(url) {
+        await guarded;
         await beforeInput();
         await wire.send("Page.bringToFront");
         const navigation = await wire.send("Page.navigate", { url });
@@ -173,10 +178,14 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       close() { destroyed = true; wire.close(); },
     };
     wire.changed(() => { context = null; tab.webMcpRevision++; host.invalidate(tab.tabId); });
-    void wire.send("Page.enable", {}, false).catch(() => {});
-    void wire.send("Runtime.enable", {}, false).catch(() => {});
-    // Sent before any navigation on this socket, so redirects to private hosts never load.
-    void wire.send("Fetch.enable", { patterns: [{ resourceType: "Document", requestStage: "Request" }] }, false).catch(() => {});
+    // Omitting resourceType covers images, scripts, fetches and other resources,
+    // not just documents. Navigation and observation must wait for enforcement.
+    const guarded = Promise.all([
+      wire.send("Page.enable", {}, false),
+      wire.send("Runtime.enable", {}, false),
+      wire.send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] }, false),
+    ]);
+    void guarded.catch(() => {});
     return tab;
   }
   async function refresh() {
