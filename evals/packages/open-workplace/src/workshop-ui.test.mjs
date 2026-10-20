@@ -40,6 +40,7 @@ test("Alice and Bob sign in normally and keep mail, Drive and sign-out isolated 
     ];
   assert.equal(participants.length, 2, "Use exactly two dedicated verification accounts, not the attendee roster");
   if (process.env.OPEN_WORKPLACE_TEST_URL && !process.env.OPEN_WORKPLACE_TEST_PARTICIPANTS_FILE) throw new Error("A hosted proof requires a private test-account roster file");
+  const runId = randomBytes(4).toString("hex");
   const directory = await mkdtemp(join(process.env.TMPDIR || tmpdir(), "open-workplace-workshop-browser-"));
   let workshop, browser, socket;
   const contexts = [], pending = new Map();
@@ -182,7 +183,7 @@ test("Alice and Bob sign in normally and keep mail, Drive and sign-out isolated 
   assert.deepEqual((await rest(participants[0], `/me/messages/${encodeURIComponent(sharedId)}`)).categories, ["Alice private category"]);
   assert.deepEqual((await rest(participants[1], `/me/messages/${encodeURIComponent(sharedId)}`)).categories, ["Bob private category"]);
 
-  const draftSubject = "Alice-only browser workshop notes";
+  const draftSubject = `Alice-only browser workshop notes ${runId}`;
   await alice.click("#compose");
   await alice.fill("#to", "reviewer@acme.test");
   await alice.fill("#subject", draftSubject);
@@ -206,7 +207,7 @@ test("Alice and Bob sign in normally and keep mail, Drive and sign-out isolated 
   }
 
   await alice.navigate("/drive", "!!document.querySelector('#upload') && document.querySelectorAll('.filetable tbody tr').length>0");
-  const uploadName = "alice-workshop-private.txt", contents = "Alice's private workshop upload.\n";
+  const uploadName = `alice-workshop-private-${runId}.txt`, contents = "Alice's private workshop upload.\n";
   const uploadPath = join(directory, uploadName); await writeFile(uploadPath, contents);
   const dom = await alice.command("DOM.getDocument");
   const input = await alice.command("DOM.querySelector", { nodeId: dom.root.nodeId, selector: "#upload" });
