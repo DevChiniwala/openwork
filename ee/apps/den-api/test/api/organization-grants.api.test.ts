@@ -58,6 +58,36 @@ test("retrying an award creates one record, conflicts do not double grant, and v
   await admin("POST", `${base()}/grants/${field(first.body, "grantId")}/revoke`)
 })
 
+test("grant cursors keep pages stable when a newer grant is awarded and reject invalid pagination", async () => {
+  const paged = await den.createOrg(await den.signUp("Paginated Grant Owner"), "Paginated grant organization")
+  await den.setFeature(paged.orgId, "organizationGrants", true)
+  const ids: string[] = []
+  for (let index = 0; index < 3; index++) {
+    const created = await admin("POST", `${base(paged.orgId)}/grants`, award())
+    assert.equal(created.status, 200, summary(created))
+    ids.push(text(field(created.body, "grantId"), "grant id"))
+  }
+  // Exercise the id tie-breaker as well as the timestamp order.
+  await client.execute("UPDATE organization_grant SET created_at = '2026-01-01 00:00:00.000' WHERE organization_id = ?", [paged.orgId])
+  const readPage = async (cursor?: string) => {
+    const response = await admin("GET", `${base(paged.orgId)}?history=1&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`)
+    assert.equal(response.status, 200, summary(response))
+    return organizationControlPanelSchema.parse(response.body)
+  }
+  const first = await readPage()
+  assert.deepEqual(first.grants.map(grant => grant.id), ids.toSorted().reverse().slice(0, 2))
+  assert.ok(first.nextCursor)
+  const newer = await admin("POST", `${base(paged.orgId)}/grants`, award())
+  assert.equal(newer.status, 200, summary(newer))
+  const second = await readPage(first.nextCursor)
+  assert.deepEqual([...first.grants, ...second.grants].map(grant => grant.id), ids.toSorted().reverse())
+  assert.equal(second.nextCursor, null)
+  assert.equal((await readPage()).grants[0]?.id, field(newer.body, "grantId"))
+  for (const query of ["cursor=invalid", "limit=0", "limit=101"]) {
+    assert.equal((await admin("GET", `${base(paged.orgId)}?${query}`)).status, 400)
+  }
+})
+
 test("Web access follows start, expiry, explicit disable and revoke; legacy access is replaced deliberately", async () => {
   const future = await admin("POST", `${base()}/grants`, award({ feature: "openworkWeb", kind: "access", amountUsd: null, startsAt: new Date(Date.now() + 86_400_000).toISOString() }))
   assert.equal(future.status, 200, summary(future))

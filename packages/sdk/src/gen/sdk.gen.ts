@@ -1347,12 +1347,15 @@ export class DenClient extends HeyApiClient {
 
   /**
    * Read an organization's complimentary access and grants
+   *
+   * Returns effective complimentary access, usage balances and a cursor-paginated grants list. Include history to see revoked, expired and exhausted grants. Platform administrators only.
    */
   public getV1AdminOrganizationsByOrganizationIdControlPanel<ThrowOnError extends boolean = false>(
     parameters: {
       organizationId: string;
       history?: "0" | "1";
-      offset?: number;
+      cursor?: string;
+      limit?: number;
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1363,7 +1366,8 @@ export class DenClient extends HeyApiClient {
           args: [
             { in: "path", key: "organizationId" },
             { in: "query", key: "history" },
-            { in: "query", key: "offset" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
           ],
         },
       ],
@@ -1381,6 +1385,8 @@ export class DenClient extends HeyApiClient {
 
   /**
    * Set complimentary organization access
+   *
+   * Sets or restores the organization's complimentary access policy. An explicit disable blocks matching grants without deleting balances or history. Paid subscriptions are preserved. Platform administrators only.
    */
   public putV1AdminOrganizationsByOrganizationIdControlPanelAccess<ThrowOnError extends boolean = false>(
     parameters: {
@@ -1471,6 +1477,8 @@ export class DenClient extends HeyApiClient {
 
   /**
    * Revoke an organization grant without removing its history
+   *
+   * Revokes a grant scoped to this organization and retains its usage and audit history. Repeated revocation succeeds without another change. Platform administrators only.
    */
   public postV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevoke<
     ThrowOnError extends boolean = false,

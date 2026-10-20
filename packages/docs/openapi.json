@@ -30658,6 +30658,7 @@
           "Admin"
         ],
         "summary": "Read an organization's complimentary access and grants",
+        "description": "Returns effective complimentary access, usage balances and a cursor-paginated grants list. Include history to see revoked, expired and exhausted grants. Platform administrators only.",
         "responses": {
           "200": {
             "description": "Organization control panel.",
@@ -30670,7 +30671,9 @@
                       "type": "boolean"
                     },
                     "generatedAt": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                     },
                     "access": {
                       "type": "object",
@@ -30795,12 +30798,16 @@
                             ]
                           },
                           "startsAt": {
-                            "type": "string"
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                           },
                           "expiresAt": {
                             "anyOf": [
                               {
-                                "type": "string"
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                               },
                               {
                                 "type": "null"
@@ -30808,12 +30815,16 @@
                             ]
                           },
                           "createdAt": {
-                            "type": "string"
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                           },
                           "revokedAt": {
                             "anyOf": [
                               {
-                                "type": "string"
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                               },
                               {
                                 "type": "null"
@@ -30858,13 +30869,16 @@
                     "legacyWebAccess": {
                       "type": "boolean"
                     },
-                    "hasMore": {
-                      "type": "boolean"
-                    },
-                    "offset": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Pass as cursor to fetch the next grants page; null on the last page."
                     }
                   },
                   "required": [
@@ -30874,8 +30888,7 @@
                     "freeAuto",
                     "grants",
                     "legacyWebAccess",
-                    "hasMore",
-                    "offset"
+                    "nextCursor"
                   ]
                 }
               }
@@ -30959,13 +30972,24 @@
           },
           {
             "in": "query",
-            "name": "offset",
+            "name": "cursor",
             "schema": {
-              "default": 0,
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "description": "Opaque cursor returned as nextCursor by the previous page. Omit for the first page."
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
               "type": "integer",
-              "minimum": 0,
-              "maximum": 1000000
-            }
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Maximum grants per page, from 1 to 100; defaults to 50."
           },
           {
             "schema": {
@@ -30983,12 +31007,7 @@
           {
             "bearerAuth": []
           }
-        ],
-        "x-mint": {
-          "metadata": {
-            "og:description": "Read an organization's complimentary access and grants API reference in OpenWork Docs."
-          }
-        }
+        ]
       }
     },
     "/v1/admin/organizations/{organizationId}/control-panel/access": {
@@ -30998,6 +31017,7 @@
           "Admin"
         ],
         "summary": "Set complimentary organization access",
+        "description": "Sets or restores the organization's complimentary access policy. An explicit disable blocks matching grants without deleting balances or history. Paid subscriptions are preserved. Platform administrators only.",
         "responses": {
           "200": {
             "description": "Access setting saved.",
@@ -31130,12 +31150,7 @@
           {
             "bearerAuth": []
           }
-        ],
-        "x-mint": {
-          "metadata": {
-            "og:description": "Set complimentary organization access API reference in OpenWork Docs."
-          }
-        }
+        ]
       }
     },
     "/v1/admin/organizations/{organizationId}/control-panel/grants": {
@@ -31344,6 +31359,7 @@
           "Admin"
         ],
         "summary": "Revoke an organization grant without removing its history",
+        "description": "Revokes a grant scoped to this organization and retains its usage and audit history. Repeated revocation succeeds without another change. Platform administrators only.",
         "responses": {
           "200": {
             "description": "Grant revoked.",
@@ -31452,12 +31468,7 @@
           {
             "bearerAuth": []
           }
-        ],
-        "x-mint": {
-          "metadata": {
-            "og:description": "Revoke an organization grant without removing its history API reference in OpenWork Docs."
-          }
-        }
+        ]
       }
     },
     "/v1/admin/dashboard": {

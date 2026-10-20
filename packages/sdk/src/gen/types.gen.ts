@@ -7360,7 +7360,14 @@ export type GetV1AdminOrganizationsByOrganizationIdControlPanelData = {
   };
   query?: {
     history?: "0" | "1";
-    offset?: number;
+    /**
+     * Opaque cursor returned as nextCursor by the previous page. Omit for the first page.
+     */
+    cursor?: string;
+    /**
+     * Maximum grants per page, from 1 to 100; defaults to 50.
+     */
+    limit?: number;
   };
   url: "/v1/admin/organizations/{organizationId}/control-panel";
 };
@@ -7434,8 +7441,10 @@ export type GetV1AdminOrganizationsByOrganizationIdControlPanelResponses = {
       state: "scheduled" | "active" | "expired" | "exhausted" | "revoked" | "blocked";
     }>;
     legacyWebAccess: boolean;
-    hasMore: boolean;
-    offset: number;
+    /**
+     * Pass as cursor to fetch the next grants page; null on the last page.
+     */
+    nextCursor: string | null;
   };
 };
 

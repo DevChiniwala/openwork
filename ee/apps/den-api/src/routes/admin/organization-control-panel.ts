@@ -21,9 +21,14 @@ import { auditChangeCapture } from "../../audit/request-capture.js"
 import { auditChangeEvent, targetResource } from "../../audit/domain/snapshot.js"
 import { logLegacyOrChanges, writeLegacyOrChangesInTx } from "../../audit/domain/legacy.js"
 import { ORGANIZATION_AUDIT_ACTIONS } from "../../audit-events.js"
+import { keysetAfter, keysetCursorQuerySchema, keysetPage } from "../../list-pagination.js"
 
 const base = "/v1/admin/organizations/:organizationId/control-panel"
-const pageSchema = z.object({ history: z.enum(["0", "1"]).default("0"), offset: z.coerce.number().int().min(0).max(1_000_000).default(0) })
+const pageSchema = z.object({
+  history: z.enum(["0", "1"]).default("0"),
+  cursor: keysetCursorQuerySchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50).meta({ description: "Maximum grants per page, from 1 to 100; defaults to 50." }),
+})
 const settingSchema = z.object({ feature: organizationBenefitSchema, setting: organizationAccessSettingSchema }).strict()
 const errors = {
   400: jsonResponse("Invalid organization, grant or request.", invalidRequestSchema),
@@ -52,7 +57,7 @@ function serializeGrant(grant: BenefitGrant, now: Date, blocked: boolean): Organ
   }
 }
 
-async function panel(organizationId: string, history = false, offset = 0): Promise<OrganizationControlPanel | null> {
+async function panel(organizationId: string, { history, cursor, limit }: z.output<typeof pageSchema>): Promise<OrganizationControlPanel | null> {
   const id = normalizeDenTypeId("organization", organizationId)
   const [org] = await db.select({ metadata: OrganizationTable.metadata }).from(OrganizationTable).where(eq(OrganizationTable.id, id)).limit(1)
   if (!org) return null
@@ -66,30 +71,32 @@ async function panel(organizationId: string, history = false, offset = 0): Promi
     : legacyWebAccess ? "Existing complimentary access; no expiration" : benefits.settings.openworkWeb === "enabled" ? "Enabled for this organization"
       : webGrants.length ? "Enabled by an access grant" : "No complimentary access; paid subscriptions are separate"
   const grants = benefits.enabled ? await db.select().from(OrganizationGrantTable).where(and(
-    eq(OrganizationGrantTable.organizationId, id), history ? undefined : and(
+    eq(OrganizationGrantTable.organizationId, id), history === "1" ? undefined : and(
       isNull(OrganizationGrantTable.revokedAt), or(isNull(OrganizationGrantTable.expiresAt), gt(OrganizationGrantTable.expiresAt, benefits.now)),
       or(isNull(OrganizationGrantTable.amount), sql`${OrganizationGrantTable.usedAmount} < ${OrganizationGrantTable.amount}`),
     ),
-  )).orderBy(desc(OrganizationGrantTable.createdAt), desc(OrganizationGrantTable.id)).limit(51).offset(offset) : []
+    cursor ? keysetAfter({ at: OrganizationGrantTable.createdAt, id: OrganizationGrantTable.id }, cursor) : undefined,
+  )).orderBy(desc(OrganizationGrantTable.createdAt), desc(OrganizationGrantTable.id)).limit(limit + 1) : []
+  const page = keysetPage(grants, limit, grant => ({ at: grant.createdAt, id: grant.id }))
   const allowance = freeAutoGrantAllowance(benefits)
   return { enabled: benefits.enabled, generatedAt: benefits.now.toISOString(),
     access: { freeAuto: { setting: benefits.settings.freeAuto, ...auto }, openworkWeb: { setting: webSetting, enabled: webEnabled, source } },
     freeAuto: { weeklyLimitUsd: env.inferenceFree.weeklyBudgetUsd, extraRemainingUsd: grantUsd(allowance.remainingAmount), unlimited: allowance.unlimited },
-    grants: grants.slice(0, 50).map(grant => serializeGrant(grant, benefits.now, grant.feature === "freeAuto" ? !auto.enabled : !webEnabled)),
-    legacyWebAccess, hasMore: grants.length > 50, offset }
+    grants: page.items.map(grant => serializeGrant(grant, benefits.now, grant.feature === "freeAuto" ? !auto.enabled : !webEnabled)),
+    legacyWebAccess, nextCursor: page.nextCursor }
 }
 
 export function registerAdminOrganizationControlPanelRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
-  app.get(base, describeRoute({ tags: ["Admin"], summary: "Read an organization's complimentary access and grants", responses: { 200: jsonResponse("Organization control panel.", organizationControlPanelSchema), ...errors } }), adminRoute(), queryValidator(pageSchema), async c => {
+  app.get(base, describeRoute({ tags: ["Admin"], summary: "Read an organization's complimentary access and grants", description: "Returns effective complimentary access, usage balances and a cursor-paginated grants list. Include history to see revoked, expired and exhausted grants. Platform administrators only.", responses: { 200: jsonResponse("Organization control panel.", organizationControlPanelSchema), ...errors } }), adminRoute(), queryValidator(pageSchema), async c => {
     const id = c.req.param("organizationId")
     if (!isDenTypeId("organization", id)) return c.json({ error: "invalid_request", message: "Invalid organization id." }, 400)
     const query = c.req.valid("query")
-    const result = await panel(id, query.history === "1", query.offset)
+    const result = await panel(id, query)
     c.header("Cache-Control", "no-store")
     return result ? c.json(result) : c.json({ error: "not_found", message: "Organization not found." }, 404)
   })
 
-  app.put(`${base}/access`, describeRoute({ tags: ["Admin"], summary: "Set complimentary organization access", responses: { 200: jsonResponse("Access setting saved.", z.object({ ok: z.literal(true) })), ...errors } }), adminRoute(), jsonValidator(settingSchema), async c => {
+  app.put(`${base}/access`, describeRoute({ tags: ["Admin"], summary: "Set complimentary organization access", description: "Sets or restores the organization's complimentary access policy. An explicit disable blocks matching grants without deleting balances or history. Paid subscriptions are preserved. Platform administrators only.", responses: { 200: jsonResponse("Access setting saved.", z.object({ ok: z.literal(true) })), ...errors } }), adminRoute(), jsonValidator(settingSchema), async c => {
     const id = c.req.param("organizationId")
     if (!isDenTypeId("organization", id)) return c.json({ error: "invalid_request", message: "Invalid organization id." }, 400)
     if (!await organizationFeatureEnabled(id, "organizationGrants")) return c.json({ error: "feature_disabled", message: "Enable organization grants for this organization first." }, 404)
@@ -148,7 +155,7 @@ export function registerAdminOrganizationControlPanelRoutes<T extends { Variable
     return c.json({ ok: true, grantId: result.grantId })
   })
 
-  app.post(`${base}/grants/:grantId/revoke`, describeRoute({ tags: ["Admin"], summary: "Revoke an organization grant without removing its history", responses: { 200: jsonResponse("Grant revoked.", z.object({ ok: z.literal(true) })), ...errors } }), adminRoute(), async c => {
+  app.post(`${base}/grants/:grantId/revoke`, describeRoute({ tags: ["Admin"], summary: "Revoke an organization grant without removing its history", description: "Revokes a grant scoped to this organization and retains its usage and audit history. Repeated revocation succeeds without another change. Platform administrators only.", responses: { 200: jsonResponse("Grant revoked.", z.object({ ok: z.literal(true) })), ...errors } }), adminRoute(), async c => {
     const id = c.req.param("organizationId"), grantId = c.req.param("grantId")
     if (!isDenTypeId("organization", id) || !isDenTypeId("organizationGrant", grantId)) return c.json({ error: "invalid_request", message: "Invalid organization or grant id." }, 400)
     if (!await organizationFeatureEnabled(id, "organizationGrants")) return c.json({ error: "feature_disabled", message: "Enable organization grants for this organization first." }, 404)

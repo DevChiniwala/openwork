@@ -22,12 +22,12 @@ export const organizationGrantInputSchema = z.object({
 export const organizationGrantSchema = z.object({
   id: z.string(), feature: organizationBenefitSchema, kind: z.enum(ORGANIZATION_GRANT_TYPES),
   amountUsd: z.number().nullable(), usedUsd: z.number(), remainingUsd: z.number().nullable(),
-  startsAt: z.string(), expiresAt: z.string().nullable(), createdAt: z.string(),
-  revokedAt: z.string().nullable(), createdByUserId: z.string(), reason: z.string(),
+  startsAt: z.iso.datetime({ offset: true }), expiresAt: z.iso.datetime({ offset: true }).nullable(), createdAt: z.iso.datetime({ offset: true }),
+  revokedAt: z.iso.datetime({ offset: true }).nullable(), createdByUserId: z.string(), reason: z.string(),
   state: z.enum(["scheduled", "active", "expired", "exhausted", "revoked", "blocked"]),
 });
 export const organizationControlPanelSchema = z.object({
-  enabled: z.boolean(), generatedAt: z.string(),
+  enabled: z.boolean(), generatedAt: z.iso.datetime({ offset: true }),
   access: z.object({
     freeAuto: z.object({ setting: organizationAccessSettingSchema, enabled: z.boolean(), source: z.string() }),
     openworkWeb: z.object({ setting: organizationAccessSettingSchema, enabled: z.boolean(), source: z.string() }),
@@ -36,8 +36,7 @@ export const organizationControlPanelSchema = z.object({
   grants: z.array(organizationGrantSchema),
   /** Old complimentary access remains effective until explicitly returned to default. */
   legacyWebAccess: z.boolean(),
-  hasMore: z.boolean(),
-  offset: z.number().int().nonnegative(),
+  nextCursor: z.string().nullable().meta({ description: "Pass as cursor to fetch the next grants page; null on the last page." }),
 });
 export type OrganizationGrantInput = z.infer<typeof organizationGrantInputSchema>;
 export type OrganizationGrant = z.infer<typeof organizationGrantSchema>;

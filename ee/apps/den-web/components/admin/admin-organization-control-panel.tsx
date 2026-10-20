@@ -31,7 +31,8 @@ export function AdminOrganizationControlPanel({ organizationId, onAccessFailure 
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [history, setHistory] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const [cursors, setCursors] = useState<string[]>([]);
+  const cursor = cursors.at(-1);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [notice, setNotice] = useState("");
   const [legacyReason, setLegacyReason] = useState("");
@@ -39,7 +40,7 @@ export function AdminOrganizationControlPanel({ organizationId, onAccessFailure 
   const load = useCallback(async (signal?: AbortSignal) => {
     setRefreshing(true);
     try {
-      const result = await requestAdmin(`${path}?history=${history ? "1" : "0"}&offset=${offset}`, parsePanel, signal);
+      const result = await requestAdmin(`${path}?history=${history ? "1" : "0"}&limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, parsePanel, signal);
       if (signal?.aborted) return;
       if (result.access === "ready") { setData(result.data); setError(null); }
       else if (result.access === "signed-out" || result.access === "forbidden") { setData(null); onAccessFailure({ access: result.access, message: result.message }); }
@@ -47,7 +48,7 @@ export function AdminOrganizationControlPanel({ organizationId, onAccessFailure 
     } catch (failure: unknown) {
       if (!signal?.aborted) setError(failure instanceof Error ? failure.message : "Could not refresh this organization’s access. Retry to verify it.");
     } finally { if (!signal?.aborted) setRefreshing(false); }
-  }, [path, history, offset, onAccessFailure]);
+  }, [path, history, cursor, onAccessFailure]);
 
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
 
@@ -62,7 +63,7 @@ export function AdminOrganizationControlPanel({ organizationId, onAccessFailure 
       }
       setNotice(success);
       if (suffix === "/grants") setDraft(null);
-      if (suffix === "/grants" && (history || offset > 0)) { setHistory(false); setOffset(0); }
+      if (suffix === "/grants" && (history || cursor)) { setHistory(false); setCursors([]); }
       else await load();
     } catch (failure: unknown) { setError(failure instanceof Error ? failure.message : "Could not confirm the save. Retry to verify the current state."); }
     finally { savingRef.current = false; setSaving(false); }
@@ -127,9 +128,9 @@ export function AdminOrganizationControlPanel({ organizationId, onAccessFailure 
         </section>
 
         <section className="mt-6 border-t border-[var(--dls-border)] pt-4" aria-labelledby="admin-grants-title">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 id="admin-grants-title" className="text-sm font-medium">Grants</h3><DenButton variant="ghost" size="inline" disabled={busy} onClick={() => { setHistory(value => !value); setOffset(0); }}>{history ? "Hide history" : "Show history"}</DenButton></div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 id="admin-grants-title" className="text-sm font-medium">Grants</h3><DenButton variant="ghost" size="inline" disabled={busy} onClick={() => { setHistory(value => !value); setCursors([]); }}>{history ? "Hide history" : "Show history"}</DenButton></div>
           {data.grants.length ? data.grants.map(grant => <GrantRow key={grant.id} grant={grant} busy={busy} onRevoke={() => void mutate(`/grants/${encodeURIComponent(grant.id)}/revoke`, "POST", undefined, "Grant revoked. History and usage retained.")} />) : <p className="py-4 text-sm text-[color:var(--dls-text-secondary)]">{history ? "No grants recorded." : "No active grants. Create a grant to add usage or feature access."}</p>}
-          {data.hasMore || offset > 0 ? <div className="mt-3 flex justify-end gap-2"><DenButton variant="secondary" size="sm" disabled={busy || offset === 0} onClick={() => setOffset(value => Math.max(0, value - 50))}>Previous grants</DenButton><DenButton variant="secondary" size="sm" disabled={busy || !data.hasMore} onClick={() => setOffset(value => value + 50)}>Next grants</DenButton></div> : null}
+          {data.nextCursor || cursors.length > 0 ? <div className="mt-3 flex justify-end gap-2"><DenButton variant="secondary" size="sm" disabled={busy || cursors.length === 0} onClick={() => setCursors(value => value.slice(0, -1))}>Previous grants</DenButton><DenButton variant="secondary" size="sm" disabled={busy || !data.nextCursor} onClick={() => { const next = data.nextCursor; if (next) setCursors(value => [...value, next]); }}>Next grants</DenButton></div> : null}
         </section>
         <p role="status" data-testid="admin-control-panel-status" aria-live="polite" className="mt-4 text-xs text-[color:var(--dls-text-secondary)]">{notice}</p>
       </div>
