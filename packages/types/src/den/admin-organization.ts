@@ -53,3 +53,15 @@ export const adminOrganizationInsightsSchema = adminOrganizationDetailSchema.ext
   }),
 }).meta({ ref: "AdminOrganizationInsights" })
 export type AdminOrganizationInsights = z.infer<typeof adminOrganizationInsightsSchema>
+
+export const adminOpportunitiesSchema = z.object({
+  from: z.string().datetime(), to: z.string().datetime(), generatedAt: z.string().datetime(),
+  organizations: z.array(z.object({
+    id: z.string(), name: z.string(), slug: z.string(),
+    members: count, activeMembers: count, lastActiveAt: z.string().datetime(),
+    companyEmailMembers: count, companyDomain: z.string().nullable(), companyDomainCount: count,
+    skills: count, mcpConnections: count,
+  })).max(100),
+  page: z.object({ limit: count, offset: count, total: count, returned: count, hasMore: z.boolean() }),
+}).meta({ ref: "AdminOpportunities" })
+export type AdminOpportunities = z.infer<typeof adminOpportunitiesSchema>

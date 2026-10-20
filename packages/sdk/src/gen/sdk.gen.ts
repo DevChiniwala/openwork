@@ -210,6 +210,8 @@ import type {
   GetV1AdminFreeAutoUsageResponses,
   GetV1AdminMetricsErrors,
   GetV1AdminMetricsResponses,
+  GetV1AdminOpportunitiesErrors,
+  GetV1AdminOpportunitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdErrors,
@@ -1346,6 +1348,52 @@ export class DenClient extends HeyApiClient {
     return (options?.client ?? this.client).get<GetV1AdminDashboardResponses, GetV1AdminDashboardErrors, ThrowOnError>({
       url: "/v1/admin/dashboard",
       ...options,
+    });
+  }
+
+  /**
+   * Find organizations with observed app adoption
+   *
+   * Platform-admin-only, server-paginated organization signals. Defaults to two joined human users and observed organization-scoped telemetry in the last 30 days, most recent first. Company-email signals use verified addresses excluding known personal providers; they do not establish employment. Cloud setup counts active, non-deleted skill and MCP metadata. Missing telemetry does not imply inactivity. No content, credentials, billing lookups or external enrichment.
+   */
+  public getV1AdminOpportunities<ThrowOnError extends boolean = false>(
+    parameters?: {
+      days?: "7" | "30" | "90";
+      minMembers?: "1" | "2" | "5" | "10";
+      companyEmail?: "0" | "1";
+      setup?: "any" | "skills" | "mcp" | "both";
+      sort?: "recent" | "active" | "members";
+      search?: string;
+      limit?: string;
+      offset?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "days" },
+            { in: "query", key: "minMembers" },
+            { in: "query", key: "companyEmail" },
+            { in: "query", key: "setup" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesResponses,
+      GetV1AdminOpportunitiesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities",
+      ...options,
+      ...params,
     });
   }
 

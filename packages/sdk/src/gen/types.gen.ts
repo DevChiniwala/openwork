@@ -730,6 +730,32 @@ export type AdminDashboard = {
   }>;
 };
 
+export type AdminOpportunities = {
+  from: string;
+  to: string;
+  generatedAt: string;
+  organizations: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    members: number;
+    activeMembers: number;
+    lastActiveAt: string;
+    companyEmailMembers: number;
+    companyDomain: string | null;
+    companyDomainCount: number;
+    skills: number;
+    mcpConnections: number;
+  }>;
+  page: {
+    limit: number;
+    offset: number;
+    total: number;
+    returned: number;
+    hasMore: boolean;
+  };
+};
+
 export type DenServerFacts = {
   version: string;
   startedAt: string;
@@ -7360,6 +7386,48 @@ export type GetV1AdminDashboardResponses = {
 };
 
 export type GetV1AdminDashboardResponse = GetV1AdminDashboardResponses[keyof GetV1AdminDashboardResponses];
+
+export type GetV1AdminOpportunitiesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    days?: "7" | "30" | "90";
+    minMembers?: "1" | "2" | "5" | "10";
+    companyEmail?: "0" | "1";
+    setup?: "any" | "skills" | "mcp" | "both";
+    sort?: "recent" | "active" | "members";
+    search?: string;
+    limit?: string;
+    offset?: string;
+  };
+  url: "/v1/admin/opportunities";
+};
+
+export type GetV1AdminOpportunitiesErrors = {
+  /**
+   * Invalid report filters.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesError = GetV1AdminOpportunitiesErrors[keyof GetV1AdminOpportunitiesErrors];
+
+export type GetV1AdminOpportunitiesResponses = {
+  /**
+   * Organization opportunities returned.
+   */
+  200: AdminOpportunities;
+};
+
+export type GetV1AdminOpportunitiesResponse = GetV1AdminOpportunitiesResponses[keyof GetV1AdminOpportunitiesResponses];
 
 export type GetV1AdminServicesData = {
   body?: never;

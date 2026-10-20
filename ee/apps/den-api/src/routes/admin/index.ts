@@ -44,6 +44,7 @@ import { adminRoute, jsonValidator, queryValidator } from "../../middleware/inde
 import { registerAdminFreeAutoConversionsRoutes } from "./free-auto-conversions.js"
 import { registerAdminFreeAutoUsageRoutes } from "./free-auto-usage.js"
 import { registerAdminDashboardRoute } from "./dashboard.js"
+import { registerAdminOpportunitiesRoute } from "./opportunities.js"
 import { registerAdminServiceReadinessRoutes } from "./services.js"
 import { registerAdminOrganizationDetailRoutes } from "./organization-detail.js"
 import { denTypeIdSchema, forbiddenSchema, invalidRequestSchema, jsonResponse, notFoundSchema, unauthorizedSchema } from "../../openapi.js"
@@ -1402,6 +1403,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
   registerAdminFreeAutoConversionsRoutes(app)
   registerAdminOrganizationDetailRoutes(app)
   registerAdminDashboardRoute(app)
+  registerAdminOpportunitiesRoute(app)
   registerAdminServiceReadinessRoutes(app)
   app.post(
     "/v1/admin/admins",
