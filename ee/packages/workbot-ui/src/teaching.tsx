@@ -1,11 +1,12 @@
 "use client";
 
 import { Button } from "@base-ui/react/button";
+import { Select } from "@base-ui/react/select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { compileBrowserDemonstration, demonstrationReplySchema, type BrowserDemonstration, type DemonstrationCommand } from "@openwork/types/browser-demonstration";
 import { skillCreatedPayloadSchema, type SkillCreatedPayload } from "@openwork/types/skill-created-app";
-import { errorMessage, workbotHost } from "./host";
+import { errorMessage, workbotHost, useRetainedSurface } from "./host";
 
 const button = "inline-flex h-8 items-center justify-center rounded-lg px-3 text-[13px] font-medium text-[var(--wb-text)] hover:bg-[var(--wb-chip)] disabled:opacity-50 focus-visible:shadow-[var(--wb-focus)]";
 const input = "w-full rounded-lg border border-[var(--wb-hairline)] bg-[var(--wb-surface)] px-3 py-2 text-[13px] text-[var(--wb-text)] focus-visible:shadow-[var(--wb-focus)]";
@@ -17,6 +18,8 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun, suspen
   const [demo, setDemo] = useState<BrowserDemonstration | null>(null);
   const [tabs, setTabs] = useState<Array<{ id: string; origin: string }>>([]);
   const [tab, setTab] = useState("");
+  const [tabPickerOpen, setTabPickerOpen] = useState(false);
+  const tabSurface = useRetainedSurface(tabPickerOpen && !suspended && host.browserDemonstrations === true);
   const [opened, setOpened] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +96,19 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun, suspen
       {error && <p role="alert" className="text-[13px]">{error}</p>}
       {demo?.notice && <p role="status" className="text-[13px]">{demo.notice}</p>}
       {!demo ? <>
-        <label className="text-[13px]">Browser tab<select aria-label="Tab to teach" className={input} value={tab} disabled={busy} onChange={event => setTab(event.target.value)}>{tabs.map((tab, index) => <option key={tab.id} value={tab.id}>{tab.origin === "null" ? "Blank page" : tab.origin} · Tab {index + 1}</option>)}</select></label>
+        <div className="text-[13px]">
+          <span>Browser tab</span>
+          <Select.Root items={tabs.map((item, index) => ({ value: item.id, label: `${item.origin === "null" ? "Blank page" : item.origin} · Tab ${index + 1}` }))} value={tab || null} onValueChange={value => setTab(value ?? "")} disabled={busy || !enabled} open={tabSurface.open} onOpenChange={value => { if (!tabSurface.blocked) setTabPickerOpen(value); }}>
+            <Select.Trigger aria-label="Tab to teach" className={`${input} text-left`}><Select.Value placeholder="Choose a browser tab" /></Select.Trigger>
+            <Select.Portal {...tabSurface.portal}>
+              <Select.Positioner sideOffset={4} collisionPadding={8} alignItemWithTrigger={false} className="z-50">
+                <Select.Popup className="workbot w-[var(--anchor-width)] max-w-[var(--available-width)] rounded-lg bg-[var(--wb-surface)] p-1 text-[var(--wb-text)] shadow-[var(--wb-panel-shadow)]">
+                  <Select.List className="max-h-[var(--available-height)] overflow-y-auto">{tabs.map((item, index) => <Select.Item key={item.id} value={item.id} className={`${button} w-full justify-start data-[highlighted]:bg-[var(--wb-chip)]`}><Select.ItemText>{item.origin === "null" ? "Blank page" : item.origin} · Tab {index + 1}</Select.ItemText></Select.Item>)}</Select.List>
+                </Select.Popup>
+              </Select.Positioner>
+            </Select.Portal>
+          </Select.Root>
+        </div>
         <div className="flex gap-2"><Button className={button} disabled={!enabled || busy || !tab} onClick={() => void command({ action: "start", tabId: tab })}>Start teaching</Button><Button className={button} disabled={!enabled || busy} onClick={() => void command({ action: "tabs" })}>Refresh tabs</Button></div>
       </> : <>
         {demo.phase !== "draft" && <div className="flex flex-wrap gap-1">

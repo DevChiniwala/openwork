@@ -15,6 +15,11 @@ test("a member teaches a browser lookup, saves a private skill and runs it with 
     await user.screenshot();
   });
   await step("the member demonstrates a search and explains the changing input alongside it", async () => {
+    await user.type({ role: "textbox", label: "Explain this step" }, "I will show you how to search this registry and collect its status.", { replace: true });
+    await user.click({ role: "button", label: "Send explanation" });
+    await user.see({ text: "Explanation added to the conversation" });
+    expect(world.state().demonstration?.steps[0]?.kind).toBe("note");
+    await person.navigate(world.registryUrl);
     await person.type({ role: "textbox", label: "Name" }, "example one", { replace: true });
     await person.click({ role: "button", label: "Search" });
     await person.see({ text: "Pending" });

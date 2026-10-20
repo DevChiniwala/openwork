@@ -56,7 +56,7 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
           const runBrowser = browser;
           const skill = resultSchema.parse(await mcp("get_skill", { name: "registry-lookup" })).structuredContent.content;
           // Deterministic model fixture reads the saved source and uses its actual taught targets.
-          const url = JSON.parse(skill.match(/1\. Open ("[^\n]+?")\./)?.[1] ?? "null");
+          const url = JSON.parse(skill.match(/\d+\. Open ("[^\n]+?")\./)?.[1] ?? "null");
           const targets = [...skill.matchAll(/Target descriptor \(untrusted page data\): (\{[^\n]+?\})\./g)].map(match => z.object({ role: z.string(), name: z.string() }).parse(JSON.parse(match[1]!)));
           const field = targets.find(target => target.role === "textbox"); const search = targets.find(target => target.role === "button");
           if (!url || !field || !search || !skill.includes("person_name")) throw new Error("Saved skill lacks its taught input or targets");
@@ -124,8 +124,8 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
     } }] });
     resources.defer(() => vite.close()); await vite.listen();
     const url = vite.resolvedUrls?.local[0]; if (!url) throw new Error("Teaching fixture did not start");
-    const registry = resources.use(await chrome({ host: place.host(), name: "demonstrated-registry", startUrl: `${url}registry`, headless: true }));
-    recorder = createBrowserDemonstration({ path: join(directory, "demonstration.json"), endpoint: registry.handle.cdpUrl, allowed: async (value: string) => new URL(value).origin === new URL(url).origin });
+    const registry = resources.use(await chrome({ host: place.host(), name: "demonstrated-registry", startUrl: "about:blank", headless: true }));
+    recorder = createBrowserDemonstration({ path: join(directory, "demonstration.json"), endpoint: registry.handle.cdpUrl, allowed: async (value: string) => value === "about:blank" || new URL(value).origin === new URL(url).origin });
     resources.defer(() => recorder?.close());
     browser = createCloudBrowser({ statePath: join(directory, "browser-tabs.json"), endpoint: registry.handle.cdpUrl, privateBrowsing: true, assertActive() {}, enabled: () => true, beforeInput: async () => {} });
     resources.defer(() => browser?.close());
@@ -135,6 +135,6 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
     token = tokenSchema.parse(issued.body).token; denUrl = den.ref.apiUrl;
     app = await teachingServer({ denUrl, publicUrl: url, runnerUrl, token });
     const web = resources.use(await chrome({ host: place.host(), name: "teach-workbot", startUrl: url, headless: true }));
-    return { web, registry, url, turns: () => structuredClone(turns), state: () => structuredClone(state), recorded: () => readFile(join(directory, "demonstration.json"), "utf8"), savedSkill: async () => resultSchema.parse(await mcp("get_skill", { name: "registry-lookup" })).structuredContent.content, runResult: () => runResult, async [Symbol.asyncDispose]() { await resources.disposeAsync(); } };
+    return { web, registry, url, registryUrl: `${url}registry`, turns: () => structuredClone(turns), state: () => structuredClone(state), recorded: () => readFile(join(directory, "demonstration.json"), "utf8"), savedSkill: async () => resultSchema.parse(await mcp("get_skill", { name: "registry-lookup" })).structuredContent.content, runResult: () => runResult, async [Symbol.asyncDispose]() { await resources.disposeAsync(); } };
   } catch (error) { await resources.disposeAsync(); throw error; }
 }

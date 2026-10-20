@@ -214,7 +214,8 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
       } else if (input.action === "pick") {
         if (!active()) throw new Error("Resume teaching before selecting information."); await setMode(true);
       } else if (input.action === "annotate") {
-        const step = input.stepId ? demo.steps.find(step => step.id === input.stepId) : demo.steps.at(-1);
+        let step = input.stepId ? demo.steps.find(step => step.id === input.stepId) : demo.steps.at(-1);
+        if (!step && !input.stepId && active()) { append({ kind: "note" }); step = demo.steps.at(-1); }
         if (!step) throw new Error("Record a browser action before explaining it.");
         step.explanation = `${step.explanation}${step.explanation ? "\n" : ""}${input.text}`.slice(0, 2000);
       } else if (input.action === "edit") {
