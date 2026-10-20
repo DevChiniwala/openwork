@@ -1,15 +1,22 @@
 import type { Seed } from "@openwork/env";
 import { bootWorkbot, enableWorkbot, signInWorkbot } from "../../worlds/lib/workbot.ts";
-import { ACME_MODEL } from "../../worlds/lib/acme-gateway.ts";
+import { ACME_MODEL, gatewayEnvironment, seedAcmeGateway, startAcmeGateway, startAcmeUpstream } from "../../worlds/lib/acme-gateway.ts";
 import { denFetch } from "../packages/behaviors/src/den.ts";
 
 /** The real signed-in Workbot and Den; no paid VM is created by this rollout/recovery journey. */
 export async function workbotComputerWorld(seed: Seed) {
   const stack = new AsyncDisposableStack();
   try {
-    const workbot = await bootWorkbot(stack, undefined, { live: false, features: { workbotDocuments: true } });
-    // Workbot verifies the organization's model against the runner before a turn; choose the one this runner serves.
-    const model = await denFetch(workbot.den.admin, "/v1/org/workbot-settings", { method: "PUT", headers: { authorization: `Bearer ${workbot.den.admin.token}` }, body: JSON.stringify({ model: ACME_MODEL }) });
+    const upstream = await startAcmeUpstream(stack);
+    const gateway = await gatewayEnvironment(upstream.baseUrl);
+    const workbot = await bootWorkbot(stack, undefined, { live: false, features: { workbotDocuments: true },
+      upstream: { baseUrl: upstream.baseUrl, key: upstream.key, model: ACME_MODEL }, denEnv: gateway.env });
+    if (!workbot.den.database) throw new Error("The Workbot fixture needs its disposable local database");
+    await startAcmeGateway(stack, workbot.den.database.url, gateway);
+    const provider = await seedAcmeGateway(workbot.den.admin, upstream);
+    // Cloud agents now select a member-authorized Gateway alias, including in
+    // this local fixture; its only inference upstream is the deterministic mock.
+    const model = await denFetch(workbot.den.admin, "/v1/org/workbot-settings", { method: "PUT", headers: { authorization: `Bearer ${workbot.den.admin.token}` }, body: JSON.stringify({ model: provider.modelId }) });
     if (!model.response.ok) throw new Error(`Could not choose Workbot's model: HTTP ${model.response.status} ${model.text.slice(0, 200)}`);
     const signed = await signInWorkbot(workbot);
     // A conversation must exist, or Workbot opens on its first-run welcome instead of Home.
