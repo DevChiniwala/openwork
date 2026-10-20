@@ -816,9 +816,7 @@ export type AdminFeature = {
     | "workbotWorkspaceAssistant"
     | "automationCalendar"
     | "engineV2ForceUpgrade"
-    | "remoteSessionSubagents"
-    | "headlessDurableTurns"
-    | "headlessSessionCells";
+    | "remoteSessionSubagents";
   label: string;
   description: string;
   since: string;
@@ -867,8 +865,6 @@ export type AdminOrganizationsPageResponse = {
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       remoteSessionSubagents: boolean;
-      headlessDurableTurns: boolean;
-      headlessSessionCells: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -970,24 +966,6 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      headlessDurableTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionCells: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
     };
     [key: string]: unknown;
   }>;
@@ -1061,8 +1039,6 @@ export type AdminOverviewResponse = {
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       remoteSessionSubagents: boolean;
-      headlessDurableTurns: boolean;
-      headlessSessionCells: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1156,24 +1132,6 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessDurableTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionCells: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8038,8 +7996,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       remoteSessionSubagents: boolean;
-      headlessDurableTurns: boolean;
-      headlessSessionCells: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8133,24 +8089,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessDurableTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionCells: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8220,8 +8158,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       remoteSessionSubagents: boolean;
-      headlessDurableTurns: boolean;
-      headlessSessionCells: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8315,24 +8251,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessDurableTurns: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      headlessSessionCells: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;

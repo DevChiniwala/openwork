@@ -8,7 +8,6 @@ import {
   ACTIVE_TURN_STATUSES,
   createHeadlessRunnerClient,
   defaultHeadlessRunnerDeps,
-  headlessDurableTurnsEnabled,
   type HeadlessRunnerClient,
   type RunnerMessage,
   type RunnerRepeatLimits,
@@ -62,7 +61,7 @@ export type HeadlessAgentExecutorDeps = {
   stillHeadless: (organizationId: string) => Promise<boolean>
   cloudModel: typeof organizationCloudModel
   gatewayCatalog: typeof cloudAgentGatewayCatalog
-  /** Feature `headlessDurableTurns`: the run's turn goes to the runner with `execution: "steps"`. */
+  /** Test injection for protocol compatibility; production always uses saved steps. */
   stepTurns: (organizationId: string) => Promise<boolean>
   sleep: (ms: number, signal: AbortSignal) => Promise<void>
   pollIntervalMs: number
@@ -116,7 +115,7 @@ function defaultDeps(): HeadlessAgentExecutorDeps {
     stillHeadless: async (organizationId) => (await cloudAutomationRuntime(organizationId)) === "headless",
     cloudModel: organizationCloudModel,
     gatewayCatalog: cloudAgentGatewayCatalog,
-    stepTurns: headlessDurableTurnsEnabled,
+    stepTurns: async () => true,
     sleep: abortableSleep,
     pollIntervalMs: POLL_INTERVAL_MS,
   }

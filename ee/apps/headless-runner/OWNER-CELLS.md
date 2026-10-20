@@ -23,7 +23,7 @@ Workbot ── + owner header ────┘   (src/worker/index.ts)  └─ ce
 
 ## Session cells: each Workbot chat in its own cell
 
-With `headlessSessionCells` on, Workbot gives each new chat an id `hs_c_<32 hex>` and `memoryScope: "owner"`, and asks
+Workbot connected to a current Den gives each new chat an id `hs_c_<32 hex>` and `memoryScope: "owner"`, and asks
 the runner once per person to split their owner cell (`POST /v1/owner/split`). The owner cell keeps only the chat list,
 the shared memory and forwarding rows, so each cell stays small however many chats a person has.
 
@@ -121,13 +121,14 @@ a celld version switch (`POST /reload`) and keeps receiving events. Not verified
 owner cell moves to another node (celld closes WebSockets of a cell that moves; the client reconnects, as after any
 close).
 
-Rollout: deploy the runner, then turn `headlessSessionCells` on. With the flag off nothing creates `hs_c_` chats or
-starts a split, and chats already in session cells keep working.
+Session cells are generally available. Deploy a runner supporting session cells before GA Den. New chats use
+`hs_c_` ids; existing chats retain their ids and move only through the lossless split with forwarding.
+Workbot connected to older Dens still honors their optional `sessionCells` field (missing means false).
 
 **Rollback rule: never roll back to a runner from before session cells.** It can't serve `hs_c_` chats or moved legacy
 chats (an older owner cell has no forwarding rows and ignores owner memory), and it pages only the hot part of sealed
-chats. If something goes wrong, turn `headlessSessionCells` off and set `HEADLESS_SEGMENTS=off` (no new splits, seals
-or large bodies; everything already moved or sealed keeps working), then roll forward with a fix.
+chats. If something goes wrong, roll forward with a fix. `HEADLESS_SEGMENTS=off` can prevent new seals and large bodies;
+it is storage configuration, not a session-cell rollout switch. Already moved or sealed data stays readable.
 
 ## Deploy (replaces the Node runner)
 
@@ -190,8 +191,8 @@ Names and defaults are from [celld's docs](https://celld.dev/docs) (v0.6.2):
 
 ## Step mode: turns that outlast a deploy
 
-A turn sent with `execution: "steps"` ([README](./README.md#step-mode); Den and Workbot send it when
-`headlessDurableTurns` is on) doesn't hold its cell busy. Admitting it writes its first step to the cell's
+A turn sent with `execution: "steps"` ([README](./README.md#step-mode); current Den and Workbot send it for all new
+turns) doesn't hold its cell busy. Admitting it writes its first step to the cell's
 `step_schedule` table and sets the cell's alarm; it is not run under `waitUntil`. The cell keeps one alarm, at the
 earliest of its due steps and the self-resume sweep. `alarm()` runs every due step to completion (one per lane, lanes
 in parallel; a failure stays with its turn), then sets the alarm again. Between two alarms the cell is idle, which is

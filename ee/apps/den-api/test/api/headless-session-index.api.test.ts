@@ -1,5 +1,5 @@
 /**
- * Den's session index (always on) and Workbot's session cells flag (headlessSessionCells):
+ * Den's session index and Workbot's GA session cells:
  * - index capabilities are minted with turn tokens (Workbot run token, Slack, Automations) when the session is named;
  * - POST /v1/internal/headless/index takes organization, member and kind only from the verified capability, refuses a
  *   wrong session, expired, forged or other-organization capability, is idempotent on (sessionId, version), rate
@@ -121,7 +121,9 @@ test("Slack and Automations deps mint a capability of their kind", async () => {
   assert.ok(slackCheck.ok)
   assert.equal(slackCheck.claims.kind, "slack")
 
-  assert.deepEqual(Object.keys(await plain.mintToken({ ...actor, sessionId: nextSession(), messageId: "p1" })).sort(), ["modelAccess", "token"], "no kind, no capability")
+  const plainToken = await plain.mintToken({ ...actor, sessionId: nextSession(), messageId: "p1" })
+  assert.equal(plainToken.indexCapability, undefined, "no kind, no capability")
+  assert.equal(typeof plainToken.resumeGrant, "string", "named turns always receive a resume grant")
 })
 
 test("the endpoint needs the runner callback token and a well-formed body", async () => {
@@ -289,16 +291,15 @@ test("the admin list is content-free, filtered, paged and scoped to the organiza
   assert.equal(asMember.status, 403, "members without the usage analytics permission are refused")
 })
 
-test("GET /v1/workbot/session reports sessionCells per the organization's feature and keeps stepTurns", async () => {
-  const session = () => den.request(memberMcpToken, "GET", "/v1/workbot/session")
-  const off = await session()
-  assert.equal(off.status, 200, summary(off))
-  assert.equal(field(off.body, "sessionCells"), false)
-  assert.equal(typeof field(off.body, "stepTurns"), "boolean")
-  assert.equal((await den.setFeature(orgId, "headlessSessionCells", true)).status, 200)
-  assert.equal(field((await session()).body, "sessionCells"), true)
-  assert.equal((await den.setFeature(orgId, "headlessSessionCells", false)).status, 200)
-  assert.equal(field((await session()).body, "sessionCells"), false)
+test("Workbot session reports GA cells and steps despite legacy disabled rows", async () => {
+  for (const key of ["headlessSessionCells", "headlessDurableTurns"]) {
+    await sql("INSERT INTO organization_feature (organization_id, feature_key, enabled, source) VALUES (?, ?, false, 'platform') ON DUPLICATE KEY UPDATE enabled = false", [orgId, key])
+    await sql("INSERT INTO feature_rollout (feature_key, enabled, killed) VALUES (?, false, true) ON DUPLICATE KEY UPDATE enabled = false, killed = true", [key])
+  }
+  const session = await den.request(memberMcpToken, "GET", "/v1/workbot/session")
+  assert.equal(session.status, 200, summary(session))
+  assert.equal(field(session.body, "sessionCells"), true)
+  assert.equal(field(session.body, "stepTurns"), true)
 })
 
 test("removing a member keeps their rows attributable by member id only; deleting the organization deletes its rows", async () => {

@@ -14,7 +14,7 @@ import { HEADLESS_INDEX_MAX_UPDATES, HEADLESS_INDEX_ROUTE, headlessIndexRequestS
 /**
  * The headless runner's calls back into Den, both authenticated with DEN_HEADLESS_RUNNER_CALLBACK_TOKEN (404 when
  * unset), internal (not in the published API document) and never MCP capabilities:
- * - exchanging a turn's resume grant (feature `headlessDurableTurns`) for a fresh member-scoped MCP token, so it can
+ * - exchanging a turn's resume grant (saved step turns) for a fresh member-scoped MCP token, so it can
  *   continue the turn after a restart or refresh a long turn's token. Never log the grant or the token.
  * - reporting sessions' content-free totals and state to Den's session index, each update with the capability Den
  *   minted for that session (session-index.ts). Never log a capability.
@@ -125,7 +125,7 @@ export function registerHeadlessRunnerRoutes<T extends Env>(app: Hono<T>) {
       security: [{ headlessRunnerCallbackToken: [] }],
       summary: "Exchange a headless turn's resume grant for a fresh MCP token",
       description:
-        "For the headless runner only, with `Authorization: Bearer $DEN_HEADLESS_RUNNER_CALLBACK_TOKEN`. Body `{ grant, sessionId, messageId }`. Exchanges the resume grant Den minted with a turn for a fresh member-scoped MCP token (at most an hour, same read-only setting) for that turn, its background tasks and their reports, while the member is still active and `headlessDurableTurns` is on. 403 answers are permanent for the grant. Answers 404 when DEN_HEADLESS_RUNNER_CALLBACK_TOKEN is not configured.",
+        "For the headless runner only, with `Authorization: Bearer $DEN_HEADLESS_RUNNER_CALLBACK_TOKEN`. Body `{ grant, sessionId, messageId }`. Exchanges the resume grant Den minted with a turn for a fresh member-scoped MCP token (at most an hour, same read-only setting) for that turn, its background tasks and their reports, while the member is still active. 403 answers are permanent for the grant. Answers 404 when DEN_HEADLESS_RUNNER_CALLBACK_TOKEN is not configured.",
       responses: {
         200: jsonResponse("A fresh MCP token for the turn.", exchangeResponseSchema),
         400: jsonResponse("The body is not `{ grant, sessionId, messageId }`.", exchangeErrorSchema),

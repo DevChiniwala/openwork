@@ -174,7 +174,6 @@ test("Workbot uses current member Gateway grants, exact org defaults and private
 
   // A durable interrupted Gateway turn rehydrates its original member's access,
   // never the deployment credential.
-  ok(await den.setFeature(a.orgId, "headlessDurableTurns", true))
   const turn = { sessionId: "hs_gateway_resume_fixture", messageId: "msg-gateway-resume" }
   const durable = ok(await den.request(text(tokens.get(member.userId), "member MCP token"), "POST", "/v1/workbot/run-token", { body: { ...turn, model: claude } }))
   const grant = text(field(durable.body, "resumeGrant"), "durable resume grant")
