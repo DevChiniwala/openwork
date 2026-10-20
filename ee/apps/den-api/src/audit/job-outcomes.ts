@@ -6,7 +6,7 @@ import type { AuditOrigin } from "@openwork-ee/den-db/audit-log"
 // requestId null), category "execution". The starting request keeps its own
 // request-bound operation (.requested/.accepted); the job operation carries the
 // background start (scheduler only) and the single terminal outcome.
-// scripts/check-audit-route-coverage.ts renders this list into COVERAGE.md and
+// scripts/check-audit-route-coverage.ts validates this list and
 // coverage.ts adds the event types to the supported catalog.
 
 export type AuditJobOutcomeDeclaration = Readonly<{
