@@ -171,6 +171,7 @@ function observePage(id, query = null) {
     elements.push({ ref, ...control, visible: right > left && bottom > top, needsReveal: left > rect.left || top > rect.top || right < rect.right || bottom < rect.bottom, bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
   }
   const observation = { id, nodes, bounds: new Map(elements.map(({ ref, bounds }) => [ref, bounds])), activeElement: document.activeElement,
+    optionRefs: new Map(elements.map(({ ref, options }) => [ref, new Set((options || []).map(option => option.value))])),
     used: false, createdAt: performance.now(), describe, optionRef, snapshots, width: innerWidth, height: innerHeight, x: scrollX, y: scrollY };
   globalThis[key] = observation;
   return { truncated, scrollRegions, title: text(document.title, 300), text: text(document.body?.innerText, 16000), elements,
@@ -216,6 +217,7 @@ function prepareAction(id, action) {
   if (action.type === "select") {
     if (!(element instanceof HTMLSelectElement) || (!element.multiple && action.values.length > 1)) throw new Error("not_selectable");
     for (const value of action.values) {
+      if (!state.optionRefs.get(action.ref)?.has(value)) throw new Error("option_unavailable");
       const option = [...element.options].find(option => state.optionRef(option) === value);
       if (!option || option.disabled || (option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled)) throw new Error("option_unavailable");
     }
@@ -280,11 +282,10 @@ async function verifyFormAction(id, action) {
     if (matchingSince !== null && performance.now() - matchingSince >= 150) return { verified: true, control: state.describe(element) };
     await new Promise(resolve => setTimeout(resolve, 50));
   } while (performance.now() < deadline);
-  // What the page made of the agent's own entry (formatting, normalizing) is still the agent's value.
-  if (element.isConnected && action.type !== "set_checked") {
-    globalThis.__openworkAgentEntered?.set(element, action.type === "select" ? JSON.stringify([...element.selectedOptions].map(option => option.value)) : control.value);
-  }
-  return { verified: false, control: element.isConnected ? state.describe(element) : control };
+  // A rejected or transformed entry can restore a value filled by the page or
+  // person. Only the exact requested value remains eligible for readback.
+  if (!element.isConnected) throw new Error("stale_element");
+  return { verified: false, control: state.describe(element) };
 }
 async function captureObservation(webContents, viewport) {
   if (typeof webContents.captureObservation === "function") return webContents.captureObservation(viewport);
