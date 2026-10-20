@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { demonstrationReplySchema, type DemonstrationCommand } from "@openwork/types/browser-demonstration"
 
 /**
  * The typed client for the headless runner (ee/apps/headless-runner): the one place that knows its routes,
@@ -301,6 +302,12 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       const { status, payload } = await request(deps, "POST", `${sessionPath(sessionId)}/desktop/viewer`, input, 180_000)
       const parsed = z.union([z.object({ state: z.literal("paused") }), z.object({ state: z.literal("connected"), url: z.string().url(), expiresAt: z.number(), paused: z.boolean() })]).safeParse(payload)
       if (status !== 200 || !parsed.success) return { ok: false as const, status, error: errorCode(payload, "desktop_unavailable") }
+      return { ok: true as const, value: parsed.data }
+    },
+    async browserDemonstration(sessionId: string, command: DemonstrationCommand) {
+      const { status, payload } = await request(deps, "POST", `${sessionPath(sessionId)}/desktop/demonstration`, command, 180_000)
+      const parsed = demonstrationReplySchema.safeParse(payload)
+      if (status !== 200 || !parsed.success) return { ok: false as const, status, error: errorCode(payload, "teaching_unavailable") }
       return { ok: true as const, value: parsed.data }
     },
     async desktopAction(sessionId: string, action: "continue" | "pause" | "resume") {

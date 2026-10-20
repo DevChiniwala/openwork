@@ -56,6 +56,7 @@ const sessionSchema = z.object({
   /** Workbot may set up recurring work: the organization runs Automations on the headless runner. */
   canSchedule: z.boolean(),
   computer: z.boolean().optional(),
+  browserDemonstrations: z.boolean().optional(),
   /** Workbot shows its Calendar tab: Workbot is on. Older Dens omit it. */
   calendar: z.boolean().optional(),
   /** Connected document browsing; off on older Dens. */
@@ -342,6 +343,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         firstRun: features.workbotFirstRun,
         canEnableWorkbot: false,
         computer: features.computerUse && features.remoteComputers,
+        browserDemonstrations: features.browserDemonstrations && features.computerUse && features.remoteComputers,
         canSchedule,
         calendar: true,
         documents: features.workbotDocuments,

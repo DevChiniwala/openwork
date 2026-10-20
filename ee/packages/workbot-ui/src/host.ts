@@ -27,6 +27,8 @@ export type WorkbotHost = {
   documents?: boolean
   /** Shared browser and computer desktop, enabled by the organization flags. */
   computer?: boolean
+  /** Teach browser tasks and save private Cloud skills; omitted means off. */
+  browserDemonstrations?: boolean
   /** Explicit document editing is enabled; omitted means preview only. */
   documentEditing?: boolean
   /** Contextual chat and workspace navigation. Omitted means off. */

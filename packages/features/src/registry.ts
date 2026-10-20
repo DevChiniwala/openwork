@@ -201,6 +201,14 @@ export const FEATURES = defineFeatures({
     default: false,
   },
 
+  browserDemonstrations: {
+    label: "Workbot: teach browser tasks",
+    description: "Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+
   browserFloatingView: {
     label: "Desktop: floating and full-screen browser",
     description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.",

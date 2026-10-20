@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { skillCreatedPayloadSchema } from "@openwork/types/skill-created-app"
 import { headlessModelAccessSchema } from "@openwork-ee/headless-protocol"
 import type { Tokens } from "./sealed.js"
 
@@ -30,6 +33,7 @@ export const denSessionSchema = z.object({
   canEnableWorkbot: z.boolean().optional(),
   canSchedule: z.boolean(),
   computer: z.boolean().default(false),
+  browserDemonstrations: z.boolean().default(false),
   /** Workbot's Calendar tab is on (while Workbot is on). Older Dens omit it: off. */
   calendar: z.boolean().optional(),
   documents: z.boolean().default(false),
@@ -192,6 +196,19 @@ export function createDen(options: { apiUrl: string; publicUrl: string; serviceT
         body: new URLSearchParams({ token: refreshToken, token_type_hint: "refresh_token", client_id: WORKBOT_CLIENT_ID }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       }).catch(() => undefined)
+    },
+    /** The normal private Cloud-skill path: Den owns permissions, audit, and persistence. */
+    async saveBrowserSkill(accessToken: string, pluginName: string, skillMarkdown: string) {
+      const client = new Client({ name: "openwork-workbot", version: "1" })
+      const transport = new StreamableHTTPClientTransport(new URL(`${options.apiUrl}/mcp/agent`), {
+        requestInit: { headers: { authorization: `Bearer ${accessToken}` } },
+      })
+      try {
+        await client.connect(transport, { timeout: TIMEOUT_MS })
+        const result = await client.callTool({ name: "create_skill", arguments: { pluginName, skillMarkdown } }, undefined, { timeout: TIMEOUT_MS })
+        if (result.isError) throw new Error("The skill could not be saved. Check your skill-creation permission or choose a different name.")
+        return skillCreatedPayloadSchema.parse(result.structuredContent)
+      } finally { await client.close() }
     },
     async session(accessToken: string): Promise<DenSession> {
       const { status, payload } = await authorized("GET", "/v1/workbot/session", accessToken)

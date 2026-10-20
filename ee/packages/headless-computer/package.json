@@ -26,7 +26,8 @@
     "freestyle": "0.2.13",
     "ws": "8.18.3",
     "zod": "^4.3.6",
-    "@openwork/computer-use": "workspace:*"
+    "@openwork/computer-use": "workspace:*",
+    "@openwork/types": "workspace:*"
   },
   "devDependencies": {
     "@daytonaio/sdk": "^0.201.0",

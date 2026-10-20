@@ -66,7 +66,7 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       let message;
       try { message = JSON.parse(String(event.data)); } catch { return; }
       if (!message.id) {
-        if (message.method === "Page.frameNavigated") tabChanged();
+        if (["Page.frameNavigated", "Runtime.executionContextsCleared", "Runtime.executionContextDestroyed"].includes(message.method)) tabChanged();
         // Every document request, redirect hops included, is checked before it loads.
         if (message.method === "Fetch.requestPaused") void admitRequest(message.params);
         return;
@@ -174,6 +174,7 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
     };
     wire.changed(() => { context = null; tab.webMcpRevision++; host.invalidate(tab.tabId); });
     void wire.send("Page.enable", {}, false).catch(() => {});
+    void wire.send("Runtime.enable", {}, false).catch(() => {});
     // Sent before any navigation on this socket, so redirects to private hosts never load.
     void wire.send("Fetch.enable", { patterns: [{ resourceType: "Document", requestStage: "Request" }] }, false).catch(() => {});
     return tab;

@@ -391,6 +391,14 @@
       "bun": "./src/managed-provider-config.ts",
       "browser": "./src/managed-provider-config.ts",
       "default": "./dist/managed-provider-config.js"
+    },
+    "./browser-demonstration": {
+      "types": {
+        "openwork-build": "./dist/types/src/browser-demonstration.d.ts",
+        "default": "./src/browser-demonstration.ts"
+      },
+      "development": "./src/browser-demonstration.ts",
+      "default": "./src/browser-demonstration.ts"
     }
   },
   "files": [

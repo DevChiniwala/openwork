@@ -9,6 +9,7 @@ import { serviceHealthResponse, type ServiceHealthConfig } from "./service-healt
 import { SavedFileLimitError, type SavedFiles } from "./saved-files.js"
 import { formatBytes } from "./tool-files.js"
 import { z } from "zod"
+import { demonstrationCommandSchema } from "@openwork/types/browser-demonstration"
 import { FILE_LIMITS, isMemoryPath, normalizePath } from "./files.js"
 import { localMemory, MemoryUnavailableError, type MemoryResolver } from "./memory.js"
 import type { Runner } from "./runner.js"
@@ -219,6 +220,11 @@ export function createApp(input: {
     const raw: unknown = await c.req.json().catch(() => null)
     c.header("Cache-Control", "no-store")
     try {
+      if (c.req.param("operation") === "demonstration" && input.computer?.browserDemonstration) {
+        const body = demonstrationCommandSchema.safeParse(raw)
+        if (!body.success) return c.json({ error: "invalid_request" }, 400)
+        return c.json(await input.computer.browserDemonstration(session.id, body.data))
+      }
       if (c.req.param("operation") === "viewer" && input.computer?.desktopViewer) {
         const body = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean(), origin: z.string().url().max(2048) }).strict().safeParse(raw)
         if (!body.success) return c.json({ error: "invalid_request" }, 400)

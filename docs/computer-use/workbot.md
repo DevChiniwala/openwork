@@ -168,6 +168,13 @@ interrupted script reports that its outcome is uncertain and is never retried.
 Launch receipts for scriptable apps include a one-line hint with the scripting
 route and a few shortcuts.
 
+## Teach browser tasks
+
+With `browserDemonstrations` enabled, members can demonstrate a browser task,
+explain it in chat, select fields to collect, and save a private reusable skill.
+See [Teach Workbot browser tasks](browser-demonstrations.md) for the flow,
+recording boundaries, and desktop snapshot requirements.
+
 ## MicroVM lifecycle and cost
 
 Daytona's `linux-vm` class is its hypervisor-backed microVM, also used by the

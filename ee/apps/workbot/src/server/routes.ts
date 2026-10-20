@@ -13,6 +13,7 @@ import type { Context, Hono, MiddlewareHandler } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { streamSSE } from "hono/streaming"
 import { z } from "zod"
+import { browserTeachingPrompt, compileBrowserDemonstration, demonstrationCommandSchema } from "@openwork/types/browser-demonstration"
 import { workbotContextPrompt, workbotViewContextSchema, WORKBOT_MAX_MESSAGE_CHARS } from "@openwork/types/workbot-context"
 import type { AppEnv, Member } from "./auth.js"
 import type { Config } from "./config.js"
@@ -35,6 +36,7 @@ const sendSchema = z
     timeZone: z.string().max(64).optional(),
     attachments: z.array(fileIdSchema).max(20).optional(),
     context: workbotViewContextSchema.optional(),
+    teachingId: z.string().uuid().optional(),
   })
   .strict()
 const editSchema = z
@@ -148,6 +150,51 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
 
   app.use("/v1/workbot/*", input.sameOrigin, input.member)
   app.use("/v1/workbot", input.sameOrigin, input.member)
+  const teachingSaves = new Map<string, { markdown: string; name: string; saving: ReturnType<Den["saveBrowserSkill"]> }>()
+  app.post("/v1/workbot/teaching", bodyLimit({ maxSize: 8192 }), async c => {
+    c.header("Cache-Control", "no-store")
+    const member = c.get("member")
+    const allowed = async () => {
+      const fresh = await den.session(member.accessToken)
+      return fresh.enabled && fresh.computer && fresh.browserDemonstrations && fresh.user.id === member.den.user.id
+        && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
+    }
+    if (!member.den.enabled || !member.den.computer || !member.den.browserDemonstrations || !await allowed()) return c.json({ error: "feature_disabled" }, 403)
+    const raw: unknown = await c.req.json().catch(() => null)
+    const save = z.object({ action: z.literal("save"), demonstrationId: z.string().uuid(), name: z.string().trim().min(1).max(100), purpose: z.string().trim().min(1).max(1000) }).strict().safeParse(raw)
+    const command = demonstrationCommandSchema.safeParse(raw)
+    if (!save.success && !command.success) return c.json({ error: "invalid_request" }, 400)
+    try {
+      const workbot = workbotFor(member)
+      const client = runnerClientFor(member)
+      const sessionId = await workbot.sessionIdOf(actorOf(member))
+      if (!await allowed()) return c.json({ error: "feature_disabled" }, 403)
+      if (save.success) {
+        const state = await client.browserDemonstration(sessionId, { action: "read" })
+        if (!state.ok || state.value.demonstration?.id !== save.data.demonstrationId) return c.json({ error: "demonstration_unavailable" }, 409)
+        const markdown = compileBrowserDemonstration(state.value.demonstration, save.data.name, save.data.purpose)
+        if (!await allowed()) return c.json({ error: "feature_disabled" }, 403)
+        const key = JSON.stringify([member.den.organization.id, member.den.memberId, save.data.demonstrationId])
+        let receipt = teachingSaves.get(key)
+        if (receipt && (receipt.markdown !== markdown || receipt.name !== save.data.name)) return c.json({ error: "already_saved", message: "This demonstration already has a save attempt. Check the saved skill before making another version." }, 409)
+        if (!receipt) {
+          if (teachingSaves.size >= 1000) return c.json({ error: "save_capacity", message: "Skill saving is busy. Keep your draft and try again later." }, 503)
+          // Retain failed/uncertain saves too: never automatically repeat a persistent write.
+          receipt = { markdown, name: save.data.name, saving: den.saveBrowserSkill(member.accessToken, save.data.name, markdown) }
+          teachingSaves.set(key, receipt)
+        }
+        const saved = await receipt.saving
+        if (!await allowed()) return c.json({ error: "feature_disabled" }, 403)
+        return c.json({ saved, markdown })
+      }
+      if (!command.success) return c.json({ error: "invalid_request" }, 400)
+      if (command.data.action === "start" || command.data.action === "resume") await workbot.stop(actorOf(member))
+      const result = await client.browserDemonstration(sessionId, command.data)
+      if (!await allowed()) return c.json({ error: "feature_disabled" }, 403)
+      return result.ok ? c.json(result.value) : c.json({ error: "teaching_unavailable", message: "Teaching is unavailable. Reconnect the browser or ask an operator to update its desktop snapshot." }, 409)
+    } catch { return c.json({ error: "teaching_unavailable", message: save.success ? "Couldn't confirm the skill was saved. Check your skill library before trying another save." : "Couldn't update the demonstration. Reconnect and check its current state." }, 409) }
+  })
+
 
   app.get("/v1/workbot/me", async (c) => {
     const { den: who } = c.get("member")
@@ -163,6 +210,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       calendar: who.enabled && who.calendar === true,
       documents: who.enabled && who.documents === true,
       computer: who.enabled && who.computer,
+      browserDemonstrations: who.enabled && who.browserDemonstrations,
       documentEditing: who.enabled && who.documents === true && who.documentEditing,
       workspaceAssistant: who.enabled && who.workspaceAssistant,
       guidedNavigation: who.enabled && who.workspaceAssistant && who.guidedNavigation,
@@ -357,7 +405,20 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     const retryAfter = rateLimited(member.den.memberId)
     if (retryAfter !== null) return c.json({ error: "rate_limited" as const, retryAfter }, 429)
     try {
-      const result = await workbotFor(member).send(actorOf(member), { ...body.data, chat: scope.chat })
+      let text = body.data.text
+      if (body.data.teachingId) {
+        const fresh = await den.session(member.accessToken)
+        if (scope.chat !== null || !fresh.enabled || !fresh.computer || !fresh.browserDemonstrations || fresh.user.id !== member.den.user.id || fresh.organization.id !== member.den.organization.id || fresh.memberId !== member.den.memberId) return c.json({ error: "feature_disabled" }, 403)
+        const client = runnerClientFor(member)
+        const sessionId = await workbotFor(member).sessionIdOf(actorOf(member))
+        const state = await client.browserDemonstration(sessionId, { action: "read" })
+        if (!state.ok || state.value.demonstration?.id !== body.data.teachingId || state.value.demonstration.phase !== "recording") return c.json({ error: "teaching_paused", message: "Resume teaching before adding an explanation." }, 409)
+        const annotated = await client.browserDemonstration(sessionId, { action: "annotate", text })
+        if (!annotated.ok || !annotated.value.demonstration) return c.json({ error: "teaching_unavailable" }, 409)
+        text = browserTeachingPrompt(text, annotated.value.demonstration.steps)
+        if (text.length > MAX_MESSAGE_CHARS) return c.json(messageTooLong, 400)
+      }
+      const result = await workbotFor(member).send(actorOf(member), { ...body.data, text, chat: scope.chat })
       if (!result.ok && result.code === "message_too_long") return c.json(messageTooLong, 400)
       if (!result.ok) return c.json({ error: result.code }, result.code === "unknown_file" ? 400 : 429)
       return c.json({ ok: true as const }, 202)

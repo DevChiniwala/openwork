@@ -272,7 +272,7 @@ export function useSendWorkbotMessage() {
   const queryClient = useQueryClient();
   const chat = useWorkbotChat();
   return useMutation({
-    mutationFn: async (input: { id: string; text: string; attachments?: string[]; context?: WorkbotViewContext }) => {
+    mutationFn: async (input: { id: string; text: string; attachments?: string[]; context?: WorkbotViewContext; teachingId?: string }) => {
       if (input.text.length > MAX_MESSAGE_CHARS) throw new WorkbotSendError("That's too long for one message. Send it as a file instead.", 400);
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const { response, payload } = await requestJson(inChat("/v1/workbot/messages", chat), {

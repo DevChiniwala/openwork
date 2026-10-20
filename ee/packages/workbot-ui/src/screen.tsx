@@ -115,8 +115,9 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const [turnWindow, setTurnWindow] = useState(PAGE_TURNS);
   const [filesOpen, setFilesOpen] = useState(false);
   // Once activated, keep this shell mounted even when the flag is revoked: draft editors must survive.
-  const [workspaceShell, setWorkspaceShell] = useState(host.workspaceAssistant === true);
-  useEffect(() => { if (host.workspaceAssistant) setWorkspaceShell(true); }, [host.workspaceAssistant]);
+  const [teachingId, setTeachingId] = useState<string>();
+  const [workspaceShell, setWorkspaceShell] = useState(host.workspaceAssistant === true || host.browserDemonstrations === true);
+  useEffect(() => { if (host.workspaceAssistant || host.browserDemonstrations) setWorkspaceShell(true); }, [host.workspaceAssistant, host.browserDemonstrations]);
   const [documentContext, setDocumentContext] = useState<WorkbotViewContext | null>(null);
   const [calendarContext, setCalendarContext] = useState<WorkbotViewContext | null>(null);
   const [includeContext, setIncludeContext] = useState(true);
@@ -203,7 +204,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     void composerState.send(id, async (entry, attachments) => {
       const input = { text: entry.text, context: entry.context, attachments };
       if (entry.correctionOf) await editMessage.mutateAsync({ ...input, id: entry.correctionOf, newId: entry.id });
-      else await send.mutateAsync({ ...input, id: entry.id });
+      else await send.mutateAsync({ ...input, id: entry.id, ...(entry.teachingId ? { teachingId: entry.teachingId } : {}) });
       void queryClient.invalidateQueries({ queryKey: workbotFilesKey });
     }, again);
   };
@@ -213,7 +214,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     if (!trimmed && draft.uploads.length === 0) return;
     const parsed = workbotViewContextSchema.safeParse(includeContext ? currentContext : undefined);
     const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || host.documents) ? parsed.data : undefined;
-    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context });
+    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, ...(teachingId ? { teachingId } : {}) });
     sendPending(id);
   };
 
@@ -278,12 +279,12 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           <div className="flex min-h-0 min-w-0 flex-1 border-t border-[var(--wb-hairline)]" style={{ display: tab === "calendar" ? undefined : "none" }} hidden={tab !== "calendar"}>
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
-          {tab === "computer" && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} />}
+          {tab === "computer" && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeachingId} onRun={text => submit(text)} canTeach={!side} />}
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
           </div>
-          <div hidden={!host.workspaceAssistant || tab === "home"}><WorkspaceAssistant name={name} context={currentContext} includeContext={includeContext} onIncludeContext={setIncludeContext}
-            composer={composer} conversation={conversation} onDocument={navigateFromChat} onComputer={navigateComputerFromChat} unavailable={!data} active={host.workspaceAssistant === true && tab !== "home"}
+          <div hidden={!(host.workspaceAssistant || host.browserDemonstrations && tab === "computer") || tab === "home"}><WorkspaceAssistant name={name} context={currentContext} includeContext={includeContext} onIncludeContext={setIncludeContext}
+            composer={composer} conversation={conversation} onDocument={navigateFromChat} onComputer={navigateComputerFromChat} unavailable={!data} active={(host.workspaceAssistant === true || host.browserDemonstrations === true && tab === "computer") && tab !== "home"}
             reveal={revealChat} stayOpen={guided} /></div>
           {filesEnabled && <FilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
         </div>
@@ -304,7 +305,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeachingId} onRun={text => submit(text)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );

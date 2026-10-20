@@ -228,6 +228,16 @@
               ],
               "description": "Computer use: Let agents use Mac apps or a managed cloud desktop directly, with a live view and Take over and Stop controls. Enabling this rollout provides access without chat or window consent prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules. Renders DEN_FEATURE_COMPUTER_USE."
             },
+            "browserDemonstrations": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: teach browser tasks: Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs. Renders DEN_FEATURE_BROWSER_DEMONSTRATIONS."
+            },
             "browserFloatingView": {
               "enum": [
                 "",

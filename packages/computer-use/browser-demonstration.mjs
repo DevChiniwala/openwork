@@ -1,0 +1,237 @@
+// A chosen tab, trusted user events, and a private guest-owned demonstration.
+// Recording never reads field values across the CDP boundary.
+import { readFile, writeFile, rename, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { demonstrationCommandSchema, demonstrationSchema } from "@openwork/types/browser-demonstration";
+import { publicDestination } from "./chromium.mjs";
+
+const WORLD = "openwork-browser-demonstration";
+const BINDING = "__openworkDemonstrationEvent";
+function pageRecorder() {
+  if (window.top !== window || globalThis.__openworkTeaching) return;
+  let recording = true, picking = false, sequence = 0;
+  const controls = new WeakMap();
+  const safeName = element => {
+    let name = element.getAttribute("aria-label") || [...(element.labels || [])].map(label => label.textContent).join(" ") || (element.tagName === "INPUT" ? element.getAttribute("placeholder") : element.textContent) || "";
+    // Values can be echoed in labels. Redact here; the values never leave this world.
+    for (const input of document.querySelectorAll("input,textarea,select")) if (input.value) name = name.split(input.value).join("[private]");
+    return name.replace(/\s+/g, " ").trim().slice(0, 160);
+  };
+  const protectedField = element => element.matches('input[type="password"],input[type="hidden"],[autocomplete="one-time-code"],[autocomplete^="cc-"]') || /password|secret|token|otp|verification.?code|card.?number/i.test(`${element.getAttribute("name") || ""} ${element.getAttribute("autocomplete") || ""} ${element.getAttribute("aria-label") || ""}`);
+  const describe = (element, extraction = false) => {
+    const tag = element.tagName.toLowerCase();
+    let name = safeName(element);
+    if (extraction && !element.hasAttribute("aria-label")) {
+      const cell = element.closest("td"), term = element.closest("dd")?.previousElementSibling;
+      const heading = cell?.closest("table")?.querySelectorAll("thead th")[cell.cellIndex];
+      name = heading ? safeName(heading) : term?.tagName === "DT" ? safeName(term) : "";
+    }
+    return { tag, role: element.getAttribute("role") || ({ a: "link", button: "button", input: "textbox", textarea: "textbox", select: "combobox", table: "table" }[tag] || "text"), name };
+  };
+  const emit = (kind, element, extra = {}) => {
+    if (!recording || protectedField(element) || element.closest('[contenteditable="true"]')) return;
+    if (!controls.has(element)) controls.set(element, ++sequence);
+    globalThis.__openworkDemonstrationEvent(JSON.stringify({ kind, control: controls.get(element), target: describe(element, kind === "extract"), ...extra }));
+  };
+  const click = event => {
+    if (!event.isTrusted || !recording) return;
+    const element = event.target instanceof Element ? event.target.closest('button,a,input,select,textarea,[role="button"],[role="link"]') || event.target.closest('td,th,dd,dt,label,p,span,[role]') || event.target : null;
+    if (!element) return;
+    if (picking) {
+      event.preventDefault(); event.stopImmediatePropagation(); picking = false;
+      emit("extract", element); return;
+    }
+    if (element.matches('input,textarea,select,label')) return;
+    emit("click", element);
+  };
+  const input = event => {
+    if (!event.isTrusted || !(event.target instanceof Element) || !event.target.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea')) return;
+    emit("fill", event.target);
+  };
+  const change = event => {
+    if (!event.isTrusted || !(event.target instanceof Element) || event.target.tagName !== "SELECT") return;
+    emit("select", event.target);
+  };
+  const key = event => {
+    if (!event.isTrusted || !recording || !(event.target instanceof Element)) return;
+    if (event.key === "Escape" && picking) { picking = false; return; }
+    if (["Enter", "Tab", "Escape"].includes(event.key)) emit("key", event.target, { key: event.key });
+  };
+  document.addEventListener("click", click, true);
+  document.addEventListener("input", input, true);
+  document.addEventListener("change", change, true);
+  document.addEventListener("keydown", key, true);
+  globalThis.__openworkTeaching = {
+    set(active, pick = false) { recording = active; picking = active && pick; },
+    dispose() { recording = false; document.removeEventListener("click", click, true); document.removeEventListener("input", input, true); document.removeEventListener("change", change, true); document.removeEventListener("keydown", key, true); delete globalThis.__openworkTeaching; },
+  };
+}
+const SCRIPT = `(${pageRecorder.toString()})()`;
+
+function connect(url, onEvent) {
+  const socket = new WebSocket(url);
+  let nextId = 0;
+  const pending = new Map();
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { reject(new Error("Browser connection timed out.")); socket.close(); }, 5000);
+    socket.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Browser connection failed.")); }, { once: true });
+  });
+  void ready.catch(() => {});
+  const close = () => { for (const item of pending.values()) { clearTimeout(item.timer); item.reject(new Error("The teaching tab disconnected. Reconnect to continue.")); } pending.clear(); };
+  socket.addEventListener("close", close);
+  socket.addEventListener("message", event => {
+    let message; try { message = JSON.parse(String(event.data)); } catch { return; }
+    if (!message.id) { onEvent(message); return; }
+    const item = pending.get(message.id); if (!item) return;
+    pending.delete(message.id); clearTimeout(item.timer);
+    if (message.error) item.reject(new Error("The teaching tab changed. Inspect it before continuing.")); else item.resolve(message.result);
+  });
+  return {
+    async send(method, params = {}) {
+      await ready;
+      const id = ++nextId;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error("The teaching tab did not respond.")); }, 5000);
+        pending.set(id, { resolve, reject, timer }); socket.send(JSON.stringify({ id, method, params }));
+      });
+    },
+    close() { socket.close(); close(); },
+  };
+}
+
+export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:9222", allowed = publicDestination, now = Date.now }) {
+  let demo = null, owner = null, wire = null, scriptId = null, contextId = null, frameId = null;
+  let lastField = null;
+  let until = 0, serial = Promise.resolve(), writing = Promise.resolve(), events = Promise.resolve(), loaded = false;
+  const enqueue = work => { events = events.catch(() => {}).then(work).catch(() => {}); };
+  const contexts = new Map();
+  const active = () => demo?.phase === "recording" && now() < until;
+  const persist = () => {
+    const snapshot = JSON.stringify({ owner, demonstration: demo });
+    writing = writing.catch(() => {}).then(async () => { await writeFile(`${path}.tmp`, snapshot, { mode: 0o600 }); await rename(`${path}.tmp`, path); });
+    return writing;
+  };
+  const append = (step, fieldKey = null) => {
+    if (!active()) return;
+    if (demo.steps.length >= 120) { demo.phase = "paused"; demo.notice = "120 steps recorded. Finish this skill or discard it and teach a smaller task."; void persist().catch(() => {}); return; }
+    const previous = demo.steps.at(-1);
+    if (step.kind === "fill" && previous?.kind === "fill" && fieldKey !== null && fieldKey === lastField) { previous.target = step.target; void persist().catch(() => {}); return; }
+    lastField = step.kind === "fill" ? fieldKey : null;
+    const id = (previous?.id ?? 0) + 1;
+    const entry = { ...step, id, explanation: "" };
+    if (["fill", "select"].includes(step.kind)) entry.parameter = `input_${id}`;
+    if (step.kind === "extract") entry.field = `field_${id}`;
+    demo.steps.push(entry); void persist().catch(() => {});
+  };
+  const navigation = async url => {
+    if (!active()) return;
+    const navigatedDemo = demo;
+    let parsed; try { parsed = new URL(url); } catch { return; }
+    if (!await allowed(url)) { demo.phase = "paused"; demo.notice = "The tab left the permitted browser destinations. Recording paused."; await persist(); return; }
+    if (demo !== navigatedDemo || !active() || !["https:", "http:"].includes(parsed.protocol)) return;
+    parsed.username = ""; parsed.password = ""; parsed.search = ""; parsed.hash = "";
+    if (demo.steps.at(-1)?.url !== parsed.href) append({ kind: "navigate", url: parsed.href });
+  };
+  const setMode = async (pick = false) => {
+    if (wire && contextId !== null) await wire.send("Runtime.evaluate", { contextId, expression: `globalThis.__openworkTeaching?.set(${active()}, ${pick})` });
+  };
+  async function attach(target) {
+    const address = new URL(target.webSocketDebuggerUrl);
+    if (address.protocol !== "ws:" || !["127.0.0.1", "localhost"].includes(address.hostname) || address.port !== new URL(endpoint).port) throw new Error("Invalid browser endpoint.");
+    wire = connect(address.href, event => {
+      if (event.method === "Runtime.executionContextCreated") {
+        const context = event.params.context;
+        contexts.set(context.id, context);
+        if (context.name === WORLD && context.auxData?.frameId === frameId) { contextId = context.id; void setMode().catch(() => {}); }
+      }
+      if (event.method === "Runtime.executionContextsCleared") { contexts.clear(); contextId = null; }
+      if (event.method === "Page.frameNavigated" && !event.params.frame.parentId) {
+        frameId = event.params.frame.id;
+        enqueue(() => navigation(event.params.frame.url));
+      }
+      if (event.method !== "Runtime.bindingCalled" || event.params.name !== BINDING) return;
+      const context = contexts.get(event.params.executionContextId);
+      if (!active() || context?.name !== WORLD || context.auxData?.frameId !== frameId || event.params.payload.length > 2048) return;
+      let value; try { value = JSON.parse(event.params.payload); } catch { return; }
+      if (!["click", "fill", "select", "key", "extract"].includes(value.kind)) return;
+      const { control, ...data } = value;
+      const parsed = demonstrationSchema.shape.steps.element.safeParse({ ...data, id: 1, explanation: "", ...(value.kind === "fill" || value.kind === "select" ? { parameter: "input_1" } : {}), ...(value.kind === "extract" ? { field: "field_1" } : {}) });
+      if (parsed.success) { const { id, explanation, parameter, field, ...step } = parsed.data; enqueue(() => append(step, Number.isSafeInteger(control) ? `${event.params.executionContextId}:${control}` : null)); }
+    });
+    await wire.send("Runtime.enable"); await wire.send("Page.enable");
+    const tree = await wire.send("Page.getFrameTree"); frameId = tree.frameTree.frame.id;
+    await wire.send("Runtime.addBinding", { name: BINDING, executionContextName: WORLD });
+    const script = await wire.send("Page.addScriptToEvaluateOnNewDocument", { source: SCRIPT, worldName: WORLD }); scriptId = script.identifier;
+    const context = await wire.send("Page.createIsolatedWorld", { frameId, worldName: WORLD }); contextId = context.executionContextId;
+    await wire.send("Runtime.evaluate", { contextId, expression: SCRIPT }); await setMode();
+  }
+  async function detach() {
+    if (!wire) return;
+    await wire.send("Runtime.evaluate", { contextId, expression: "globalThis.__openworkTeaching?.dispose()" }).catch(() => {});
+    if (scriptId) await wire.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: scriptId }).catch(() => {});
+    wire.close(); wire = null; contextId = null; scriptId = null; contexts.clear();
+  }
+  async function tabs() {
+    const response = await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(5000), redirect: "error" });
+    if (!response.ok) throw new Error("The browser is unavailable.");
+    const targets = await response.json();
+    return targets.filter(target => target.type === "page").slice(0, 12);
+  }
+  async function command(sessionId, raw) {
+    if (!loaded) {
+      try {
+        const saved = JSON.parse(await readFile(path, "utf8"));
+        demo = demonstrationSchema.parse(saved.demonstration); owner = saved.owner;
+        if (demo.phase === "recording") { demo.phase = "paused"; demo.notice = "Recording was interrupted. Resume to continue teaching."; }
+      } catch (error) { if (error.code !== "ENOENT") throw error; }
+      loaded = true;
+    }
+    await events;
+    if (owner && owner !== sessionId) throw new Error("This demonstration belongs to another conversation.");
+    const input = demonstrationCommandSchema.parse(raw);
+    if (input.action === "tabs") return { demonstration: demo, tabs: (await tabs()).map(target => ({ id: target.id, origin: new URL(target.url).origin })) };
+    if (input.action === "start") {
+      if (demo) throw new Error("Finish or discard the current demonstration first.");
+      const target = (await tabs()).find(tab => tab.id === input.tabId);
+      if (!target || !await allowed(target.url)) throw new Error("Choose a permitted browser tab.");
+      owner = sessionId; until = now() + 12_000;
+      demo = { id: randomUUID(), phase: "recording", tabId: target.id, steps: [] };
+      try { await attach(target); await navigation(target.url); } catch (error) { await detach(); demo = null; owner = null; throw error; }
+    } else if (input.action === "discard") {
+      await detach(); await writing; await unlink(path).catch(error => { if (error.code !== "ENOENT") throw error; }); demo = null; owner = null;
+    } else if (demo) {
+      if (demo.phase === "recording" && now() >= until) { demo.phase = "paused"; demo.notice = "Recording paused because the teaching connection expired."; await setMode(); }
+      if (input.action === "pause" || input.action === "finish") {
+        demo.phase = input.action === "finish" ? "draft" : "paused"; await setMode();
+        if (input.action === "finish") await detach();
+      } else if (input.action === "resume") {
+        if (demo.phase !== "paused") throw new Error("Only a paused demonstration can resume.");
+        const target = (await tabs()).find(tab => tab.id === demo.tabId);
+        if (!target || !await allowed(target.url)) throw new Error("The chosen tab is unavailable. Finish this skill or discard it.");
+        demo.phase = "recording"; demo.notice = undefined; until = now() + 12_000;
+        try { if (!wire) await attach(target); await setMode(); } catch (error) { demo.phase = "paused"; throw error; }
+      } else if (input.action === "pick") {
+        if (!active()) throw new Error("Resume teaching before selecting information."); await setMode(true);
+      } else if (input.action === "annotate") {
+        const step = input.stepId ? demo.steps.find(step => step.id === input.stepId) : demo.steps.at(-1);
+        if (!step) throw new Error("Record a browser action before explaining it.");
+        step.explanation = `${step.explanation}${step.explanation ? "\n" : ""}${input.text}`.slice(0, 2000);
+      } else if (input.action === "edit") {
+        const step = demo.steps.find(step => step.id === input.stepId);
+        if (!step) throw new Error("The step is unavailable.");
+        step.explanation = input.explanation;
+        if (input.parameter && ["fill", "select"].includes(step.kind)) step.parameter = input.parameter;
+        if (input.field && step.kind === "extract") step.field = input.field;
+      }
+      if (input.action === "read" && demo.phase === "recording") until = now() + 12_000;
+    }
+    if (demo) await persist();
+    return { demonstration: structuredClone(demo) };
+  }
+  return {
+    isTeaching() { return demo !== null && demo.phase !== "draft"; },
+    command(sessionId, input) { const result = serial.then(() => command(sessionId, input)); serial = result.catch(() => {}); return result; },
+    async close() { await detach(); if (demo?.phase === "recording") { demo.phase = "paused"; await persist(); } await writing; },
+  };
+}

@@ -15,6 +15,7 @@ export type Pending = {
   id: string;
   text: string;
   context?: WorkbotViewContext;
+  teachingId?: string;
   sentAt: number;
   uploads: Upload[];
   attachments: WorkbotAttachment[];
@@ -80,7 +81,7 @@ export function createComposerState(uploadFile: Uploader) {
       if (upload) release(upload);
       publish({ ...state, uploads: state.uploads.filter(upload => upload.key !== key) });
     },
-    enqueue: (input: { id: string; text: string; context?: WorkbotViewContext; correctionOf?: string; correctionReference?: WorkbotCorrectionReference; attachments?: WorkbotAttachment[] }) => {
+    enqueue: (input: { id: string; text: string; context?: WorkbotViewContext; teachingId?: string; correctionOf?: string; correctionReference?: WorkbotCorrectionReference; attachments?: WorkbotAttachment[] }) => {
       const entry: Pending = { ...input, attachments: input.attachments ?? [], sentAt: Date.now(),
         uploads: input.correctionOf ? [] : state.uploads, failed: null };
       publish({ ...state, ...(input.correctionOf ? {} : { text: "", uploads: [] }), pending: [...state.pending, entry] });

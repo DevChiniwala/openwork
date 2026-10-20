@@ -3,6 +3,7 @@ import { posix } from "node:path"
 import { ensureRunning, isSandboxError, shellQuote, SCOPE_LABEL, withBlocks, type RunSpec, type SandboxHandle, type SandboxProvider, type SandboxSpec } from "@openwork/sandbox"
 import { z } from "zod"
 import type { ComputerFile, ComputerFiles, FileReader, ToolResult, ToolSpec } from "./types.js"
+import { demonstrationReplySchema, type DemonstrationCommand } from "@openwork/types/browser-demonstration"
 import { Desktop, type DesktopView } from "./desktop.js"
 import { DESKTOP_TOOL } from "./desktop-tool.js"
 
@@ -118,6 +119,15 @@ export class Computers {
     const box = await this.vm(sessionId)
     try { return { state: "connected" as const, ...await this.desktop.viewer(box, input) } }
     finally { this.release(sessionId) }
+  }
+
+  async browserDemonstration(sessionId: string, command: DemonstrationCommand) {
+    if (!this.desktop) throw new Error("Desktop access is not configured.")
+    const box = await this.vm(sessionId)
+    try {
+      await this.desktop.start(box)
+      return demonstrationReplySchema.parse(await this.desktop.call(box, "/browser/demonstration", { sessionId, command }))
+    } finally { this.release(sessionId) }
   }
 
   async desktopAction(sessionId: string, action: "continue" | "pause" | "resume") {

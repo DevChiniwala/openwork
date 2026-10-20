@@ -5,6 +5,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import { WebSocketServer, WebSocket } from "ws";
 import { createCloudComputer } from "@openwork/computer-use/cloud";
+import { createBrowserDemonstration } from "@openwork/computer-use/browser-demonstration";
 import { createDesktopApplications } from "./desktop-apps.mjs";
 
 const directory = process.env.WORKBOT_DESKTOP_STATE;
@@ -20,6 +21,7 @@ const computer = await createCloudComputer({ directory, display: ":99", enabled:
   privateBrowsing: process.env.WORKBOT_DESKTOP_PRIVATE_BROWSING === "1",
   applications: createDesktopApplications({ directory: `${directory}/apps`, display: ":99" }),
 });
+const teaching = createBrowserDemonstration({ path: `${directory}/browser-demonstration.json` });
 const json = (response, status, payload) => {
   response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(payload));
@@ -46,6 +48,11 @@ const server = createServer(async (request, response) => {
       const viewer = await Promise.all([access(viewerScript), access(`${directory}/browser-window`)]).then(() => true, () => false);
       return json(response, browser && viewer ? 200 : 503, { ok: browser && viewer, version: process.env.WORKBOT_DESKTOP_VERSION ?? "unknown" });
     }
+    if (request.url === "/browser/demonstration") {
+      if (typeof body.sessionId !== "string" || !body.sessionId || body.sessionId.length > 256) return json(response, 400, { error: "invalid_session" });
+      if (body.command?.action === "start" || body.command?.action === "resume") await computer.interact({ action: "takeover" });
+      return json(response, 200, await teaching.command(body.sessionId, body.command));
+    }
     if (request.url === "/viewer") {
       if (!["browser", "computer"].includes(body.view) || typeof body.origin !== "string") return json(response, 400, { error: "invalid_view" });
       if (body.control === true) await computer.interact({ action: "takeover" });
@@ -57,6 +64,7 @@ const server = createServer(async (request, response) => {
       return json(response, 200, { token, paused });
     }
     if (request.url === "/continue") {
+      if (teaching.isTeaching()) return json(response, 409, { error: "teaching_active", message: "Finish or discard teaching before returning control to Workbot." });
       for (const socket of sockets) { transports.get(socket)?.destroy(); socket.terminate(); }
       await computer.interact({ action: "resume" });
       return json(response, 200, { ok: true });

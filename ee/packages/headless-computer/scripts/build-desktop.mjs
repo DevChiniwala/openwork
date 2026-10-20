@@ -26,7 +26,7 @@ async function include(relative) {
   for (const entry of (await readdir(join(root, relative))).sort()) await include(`${relative}/${entry}`);
 }
 for (const relative of [
-  "pnpm-lock.yaml", "packages/computer-use/package.json", "packages/computer-use/src",
+  "packages/types/src/browser-demonstration.ts", "pnpm-lock.yaml", "packages/computer-use/package.json", "packages/computer-use/src",
   "packages/codemode/package.json", "packages/codemode/src",
   "ee/packages/headless-computer/package.json", "ee/packages/headless-computer/Dockerfile.desktop",
   "ee/packages/headless-computer/src/image.ts", "ee/packages/headless-computer/requirements-desktop.lock",
