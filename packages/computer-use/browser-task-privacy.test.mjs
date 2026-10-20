@@ -124,4 +124,9 @@ test("select options keep backing identities private and revalidate before choos
   const publicLabel = await observe();
   assert.equal(publicLabel.elements[0].options[0].label, "Plan 1");
   assert.notEqual(publicLabel.elements[0].options[0].value, "1");
+  options[0].value = "en"; options[0].label = "English";
+  options[1].value = "fr"; options[1].label = "French";
+  const languages = await observe();
+  assert.equal(languages.elements[0].options[1].label, "French");
+  assert.notEqual(languages.elements[0].options[1].value, "fr");
 });
