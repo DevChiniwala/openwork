@@ -281,3 +281,101 @@ test("a member keeps unsaved text when editing is turned off", async ({ world, u
     await user.screenshot();
   });
 });
+
+test("a member reads a document without editing notices and finds editing details beside the tabs", async ({ world, user, probe, step, evidence }) => {
+  const notice = "Text editing. Original document layout and other content are retained when you save.";
+  await user.resizeViewport({ width: 1200, height: 800, deviceScaleFactor: 1 });
+  await step("before: editing is off and the preview has no explanatory row", async () => {
+    await user.navigate(`${world.url}documents?assistant=off&editing=off&notice=on`);
+    await user.click({ role: "button", label: "Project brief.txt" });
+    await user.see({ role: "textbox", label: "Document text" }, { value: "Project overview", editable: false });
+    await user.notSee({ text: notice });
+    await user.notSee({ role: "button", label: "Document information" });
+    await user.notSee({ text: "Read-only. Editing requires write access" });
+    expect((await probe.dom(".ow-document-editor > .ow-editor-message")).elements).toHaveLength(0);
+    evidence.recordAssertionEvidence("Preview has no editing notice row", "The read-only preview shows its content with zero notice rows and no editing-information control", world.officeRequests().length === 0);
+    await user.screenshot();
+  });
+  await step("after: an editable document keeps its details in a tooltip beside the tabs", async () => {
+    await user.navigate(`${world.url}documents?assistant=off&editing=on&notice=on`);
+    await user.click({ role: "button", label: "Project brief.txt" });
+    await user.notSee({ role: "button", label: "Document information" });
+    await user.click({ role: "button", label: /^Edit$/ });
+    await user.see({ role: "button", label: "Document information" });
+    await user.notSee({ text: notice });
+    await user.hover({ role: "button", label: "Document information" });
+    await user.see({ text: notice });
+    expect((await probe.dom(".ow-document-editor > .ow-editor-message")).elements).toHaveLength(0);
+    const trigger = (await probe.dom(".ow-document-information")).elements[0]!;
+    const tabs = (await probe.dom(".ow-document-tabs")).elements[0]!;
+    evidence.recordAssertionEvidence("Details are beside the tabs instead of above the document", `Notice rows=0; information button x=${Math.round(trigger.rect.left)}, tab row x=${Math.round(tabs.rect.left)}`, trigger.rect.left > tabs.rect.left);
+    await user.screenshot();
+  });
+  await step("after: the tooltip fits a narrow window and dismisses with Escape", async () => {
+    await user.resizeViewport({ width: 600, height: 800, deviceScaleFactor: 1 });
+    await user.hover({ role: "button", label: "Document information" });
+    await user.see({ text: notice });
+    const layout = await probe.dom(".ow-document-information-tooltip");
+    const popup = layout.elements[0]!;
+    expect(popup.rect.left).toBeGreaterThanOrEqual(0);
+    expect(popup.rect.right).toBeLessThanOrEqual(layout.viewportWidth);
+    evidence.recordAssertionEvidence("Tooltip placement stays inside the window", `Window=${layout.viewportWidth}px; tooltip left=${Math.round(popup.rect.left)}, right=${Math.round(popup.rect.right)}`, popup.rect.left >= 0 && popup.rect.right <= layout.viewportWidth);
+    await user.screenshot();
+    await user.press("Escape");
+    await probe.eventually(() => probe.dom(".ow-document-information-tooltip"), { within: 5000, label: "the tooltip has finished closing after Escape", until: layout => layout.elements.every(item => item.rect.width === 0) });
+    await user.notSee({ text: notice });
+    await user.see({ role: "textbox", label: "Document text" }, { value: "Project overview", editable: true });
+  });
+});
+
+test("document previews avoid connection reloads and keep their viewer stable across file types", async ({ world, user, probe, step, evidence }) => {
+  await user.resizeViewport({ width: 1200, height: 800, deviceScaleFactor: 1 });
+  await step("before: a spreadsheet opens directly into its read-only preview", async () => {
+    await user.navigate(`${world.url}documents?assistant=off&editing=off&previews=on`);
+    await user.click({ role: "button", label: "Trigger phrases" });
+    await user.see({ role: "textbox", label: "A1" }, { value: "Trigger phrase", editable: false });
+    // notSee observes the interval, catching the old second-request loading flash.
+    await user.notSee({ label: "Opening document" });
+    // React development StrictMode may retry the initial request, but selecting
+    // its connection must never initiate another read with that connection.
+    expect(world.editorConnections().length).toBeGreaterThan(0);
+    expect(world.editorConnections().every(connection => connection === null)).toBe(true);
+    await user.screenshot();
+  });
+  await step("after: spreadsheets and documents avoid connection reloads and reuse open previews", async () => {
+    for (const name of ["Analysis.xlsx", "Project plan.docx", "Project plan"]) {
+      await user.click({ role: "button", label: /^Files$/ });
+      await user.click({ role: "button", label: name });
+      if (name === "Analysis.xlsx") await user.see({ role: "textbox", label: "A1" }, { value: "Trigger phrase", editable: false });
+      else await user.see({ text: "A readable project plan" });
+      await user.notSee({ label: "Opening document" });
+    }
+    const readsBeforeReturn = world.editorReads();
+    await user.click({ role: "button", label: "Trigger phrases" });
+    await user.see({ role: "textbox", label: "A1" }, { value: "Trigger phrase", editable: false });
+    await user.notSee({ label: "Opening document" });
+    expect(world.editorReads()).toEqual(readsBeforeReturn);
+    for (const id of ["file_sheet", "file_office", "file_docx", "file_doc"]) expect(world.editorReads().filter(read => read === id).length).toBeGreaterThan(0);
+    evidence.recordAssertionEvidence("Previews do not reopen after selecting a connection", "Sheets, XLSX, Docs and DOCX made no connection-triggered reload; returning to a tab sent no request", world.editorConnections().every(connection => connection === null));
+    await user.screenshot();
+  });
+  await step("after: PDF, Slides and images keep one mounted viewer while protected bytes arrive", async () => {
+    for (const [id, name, label] of [["file_pdf", "Project plan.pdf", "PDF"], ["file_slides", "Project slides", "PDF"], ["file_image", "Project image.png", "image"]]) {
+      world.holdPreviewContent();
+      await user.click({ role: "button", label: /^Files$/ });
+      await user.click({ role: "button", label: name });
+      await user.see({ text: `Loading ${label} preview…` });
+      await probe.eventually(() => world.contentReads(), { within: 5000, label: "the protected preview request has started", until: values => values.includes(id) });
+      expect((await probe.dom('.ow-editor-binary[aria-busy="true"]')).elements).toHaveLength(1);
+      await user.screenshot();
+      world.releasePreviewContent();
+      await probe.eventually(() => probe.dom('.ow-editor-binary[aria-busy="true"]'), { within: 10_000, label: "the preview viewer has finished loading", until: layout => layout.elements.length === 0 });
+      await user.notSee({ text: `Loading ${label} preview…` });
+      expect(await probe.text()).not.toContain("Couldn't load this preview.");
+      expect(world.editorReads().filter(read => read === id).length).toBeGreaterThan(0);
+      expect(world.contentReads().filter(read => read === id)).toHaveLength(1);
+    }
+    evidence.recordAssertionEvidence("Binary previews stay mounted during loading", "PDF, native Slides PDF export and PNG each used one content read; zero Office requests or writes", world.officeRequests().length === 0 && world.documentWrites().length === 0);
+    await user.screenshot();
+  });
+});

@@ -28282,6 +28282,21 @@
         ],
         "additionalProperties": false
       },
+      "WorkbotReadiness": {
+        "type": "object",
+        "properties": {
+          "gatewayRequired": {
+            "type": "boolean"
+          },
+          "hasGatewayProvider": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "gatewayRequired",
+          "hasGatewayProvider"
+        ]
+      },
       "DefaultModelChoice": {
         "type": "object",
         "properties": {
@@ -104579,6 +104594,57 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/WorkbotSettingsInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/org/workbot-readiness": {
+      "get": {
+        "operationId": "getV1OrgWorkbotReadiness",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Check whether Workbot has an AI provider",
+        "description": "Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, true while cloudAgentGateway is on) and, only then, whether the organization has at least one active AI Gateway provider (hasGatewayProvider; false when not required). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.",
+        "x-mcp": false,
+        "responses": {
+          "200": {
+            "description": "Whether Workbot needs an AI Gateway provider and whether one exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbotReadiness"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The caller is not a member of the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
               }
             }
           }

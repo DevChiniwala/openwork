@@ -164,6 +164,7 @@ import { findManagedEngineWorkspace, managedEngineRootWorkspace } from "./worksp
 import { startThreadApprovalReplayer, type ThreadApprovalReplayer } from "./thread-approvals.js";
 import { CloudProviderSync, parseCloudProviderDenSession } from "./cloud-provider-sync.js";
 import { createEngineV2Preview, shouldSyncLiveProviderOwnerTransition, type EngineV2Preview } from "./engine-v2-preview.js";
+import { MACHINE_PROVIDER_TEMPLATE_OWNERSHIP, providerConfigFingerprint } from "./provider-config-templates.js";
 import pkg from "../package.json" with { type: "json" };
 import constants from "../../../constants.json" with { type: "json" };
 
@@ -3476,6 +3477,20 @@ function createRoutes(
       provider: mergeRuntimeProviderUpdate(current.provider, providerPatch),
     }));
 
+    // Only this host-token route can approve local process/file sources. Bind
+    // approval to the exact definition so a later collaborator write cannot
+    // retain privileges merely by reusing its provider ID.
+    const previousOwnership = await readOpenworkWorkspaceConfig(config, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP);
+    const providers = runtimeProviderMap(result.config);
+    const ownership = await writeOpenworkWorkspaceConfig(config, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP, current => {
+      const next = new Map(Object.entries(current));
+      for (const id of Object.keys(providerPatch)) {
+        if (providers[id]) next.set(id, providerConfigFingerprint(providers[id]));
+        else next.delete(id);
+      }
+      return Object.fromEntries(next);
+    });
+    const templateOwnershipChanged = providerConfigFingerprint(previousOwnership) !== providerConfigFingerprint(ownership);
     const fileResult = await writeOpenworkRuntimeConfigFile(config);
     // Auth must land before the reload so the replacement provider instance is
     // constructed with its credential. This also refreshes SDK clients after
@@ -3486,6 +3501,7 @@ function createRoutes(
       logger: toManagedProviderAuthLogger(logger),
     });
     const shouldReload = result.changed
+      || templateOwnershipChanged
       || fileResult.changed
       || authResult.delivered.length > 0
       || authResult.removed.length > 0;

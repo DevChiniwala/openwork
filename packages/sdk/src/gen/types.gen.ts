@@ -6691,6 +6691,11 @@ export type WorkbotSettingsInput = {
   model: string | null;
 };
 
+export type WorkbotReadiness = {
+  gatewayRequired: boolean;
+  hasGatewayProvider: boolean;
+};
+
 export type DefaultModelChoice = {
   providerId: string;
   modelId: string;
@@ -34119,6 +34124,36 @@ export type PutV1OrgWorkbotSettingsResponses = {
 };
 
 export type PutV1OrgWorkbotSettingsResponse = PutV1OrgWorkbotSettingsResponses[keyof PutV1OrgWorkbotSettingsResponses];
+
+export type GetV1OrgWorkbotReadinessData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/org/workbot-readiness";
+};
+
+export type GetV1OrgWorkbotReadinessErrors = {
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * The caller is not a member of the organization.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1OrgWorkbotReadinessError = GetV1OrgWorkbotReadinessErrors[keyof GetV1OrgWorkbotReadinessErrors];
+
+export type GetV1OrgWorkbotReadinessResponses = {
+  /**
+   * Whether Workbot needs an AI Gateway provider and whether one exists.
+   */
+  200: WorkbotReadiness;
+};
+
+export type GetV1OrgWorkbotReadinessResponse =
+  GetV1OrgWorkbotReadinessResponses[keyof GetV1OrgWorkbotReadinessResponses];
 
 export type GetV1OrgDefaultModelData = {
   body?: never;

@@ -40,6 +40,8 @@ import {
 import type { EnvService } from "./env-file.js";
 import { selectPrimaryCredentialEnvName } from "./managed-provider-auth.js";
 import type { ServerConfig } from "./types.js";
+import { approvedProviderEnvironmentNames, machineOwnedProviderIds, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP, resolveProviderConfigTemplates } from "./provider-config-templates.js";
+import { readOpenworkWorkspaceConfig } from "./openwork-workspace-config-store.js";
 
 /**
  * A stable id for this OpenWork app's engine config. Each desktop app gives
@@ -869,7 +871,20 @@ export function createEngineV2Preview(options: {
     const providerMap = Object.fromEntries(Object.entries(combinedProviders)
       .filter(([id]) => !ownsGateway() || !/^ipr_/i.test(id)));
     const credentials = new Map((await options.env?.list() ?? []).map((entry) => [entry.key, entry.value]));
-    const mapped = mapRuntimeProvidersToV2Specs(providerMap, credentials, localKeys, new Set(Object.keys(configured)));
+    // Persisted cloud ownership is written before managed runtime rows. Do not
+    // treat a Den-pushed definition as local merely because it is in that map.
+    const ownership = await readOpenworkWorkspaceConfig(config, "__cloud_provider_ownership__");
+    const managedIds = new Set(Array.isArray(ownership.providerIds) ? ownership.providerIds : []);
+    const localOwnership = await readOpenworkWorkspaceConfig(config, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP);
+    const localProviderIds = machineOwnedProviderIds(configured, localOwnership);
+    for (const id of localProviderIds) {
+      if (managedIds.has(id) || /^(?:lpr_|ipr_|openwork$)/i.test(id)) localProviderIds.delete(id);
+    }
+    const templates = await resolveProviderConfigTemplates(providerMap, {
+      directory: runtimeStorageDir(config), environment: credentials, localProviderIds,
+      remoteEnvironmentNames: approvedProviderEnvironmentNames(ownership.providerEnvHashes, credentials),
+    });
+    const mapped = mapRuntimeProvidersToV2Specs(templates.providers, credentials, localKeys, new Set(Object.keys(configured)));
     const specs = mapped.specs.filter((spec) => !disabled.has(spec.id));
     if (ownsGateway()) mirroredSpecs = specs;
     discovered();
@@ -884,14 +899,14 @@ export function createEngineV2Preview(options: {
     mirroredSpecs = specs.filter(spec => !ownsGateway() || !/^ipr_/i.test(spec.id));
     workspaceReadiness.clear();
     mirroredProviderIds = nextMirroredProviderIds.filter(id => !ownsGateway() || !/^ipr_/i.test(id));
-    skippedProviderIds = [...mapped.skippedProviderIds];
+    skippedProviderIds = [...new Set([...mapped.skippedProviderIds, ...templates.errors.map(error => error.providerId)])].sort();
     lastMirroredAt = new Date().toISOString();
     pushed();
     // Re-check folders already in use now, so their next prompt pays nothing.
     for (const directory of mcpLocations.keys()) void ensureWorkspaceReady(directory).catch(() => undefined);
     const catalog = await waitForEngineV2Catalog(active, workspaceDir, specs, CATALOG_MIRROR_TIMEOUT_MS, ownsGateway);
     currentCatalogModelIds = catalog.modelIds;
-    lastError = catalog.lastError;
+    lastError = [...templates.errors.map(error => error.message), ...(catalog.lastError ? [catalog.lastError] : [])].join("\n") || undefined;
   }
 
   function scheduleMirror(): void {

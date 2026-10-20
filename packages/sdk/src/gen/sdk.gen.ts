@@ -499,6 +499,8 @@ import type {
   GetV1OrgsInvitationsPreviewResponses,
   GetV1OrgWebOriginsErrors,
   GetV1OrgWebOriginsResponses,
+  GetV1OrgWorkbotReadinessErrors,
+  GetV1OrgWorkbotReadinessResponses,
   GetV1OrgWorkbotSettingsErrors,
   GetV1OrgWorkbotSettingsResponses,
   GetV1PermissionsCatalogErrors,
@@ -16328,6 +16330,19 @@ export class DenClient extends HeyApiClient {
         ...params.headers,
       },
     });
+  }
+
+  /**
+   * Check whether Workbot has an AI provider
+   *
+   * Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, true while cloudAgentGateway is on) and, only then, whether the organization has at least one active AI Gateway provider (hasGatewayProvider; false when not required). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.
+   */
+  public getV1OrgWorkbotReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetV1OrgWorkbotReadinessResponses,
+      GetV1OrgWorkbotReadinessErrors,
+      ThrowOnError
+    >({ url: "/v1/org/workbot-readiness", ...options });
   }
 
   /**

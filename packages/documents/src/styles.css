@@ -195,3 +195,10 @@
 .ow-editor-starting-indicator { width: 16px; height: 16px; border: 2px solid var(--doc-line); border-top-color: currentColor; border-radius: 50%; animation: ow-editor-starting 1s linear infinite; }
 @keyframes ow-editor-starting { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ow-editor-starting-indicator { animation: none; } }
+
+.ow-editor-toolbar .ow-document-information { display: inline-flex; align-items: center; justify-content: center; }
+.ow-document-information-positioner { z-index: 60; }
+.ow-document-information-tooltip { box-sizing: border-box; max-width: min(320px, var(--available-width)); max-height: var(--available-height); overflow: auto; padding: 8px 12px; border-radius: 6px; background: var(--doc-bg); color: var(--doc-text); box-shadow: 0 0 0 1px var(--doc-line); font: 12px/1.5 system-ui, sans-serif; }
+
+.ow-editor-binary { position: relative; display: flex; flex: 1; min-height: 0; }
+.ow-editor-preview-loading { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--doc-bg); color: var(--doc-muted); pointer-events: none; }

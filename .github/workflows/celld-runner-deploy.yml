@@ -157,6 +157,12 @@ jobs:
           HEADLESS_DEN_API_URL: ${{ vars.HEADLESS_DEN_API_URL }}
           HEADLESS_DEN_CALLBACK_TOKEN: ${{ secrets.HEADLESS_DEN_CALLBACK_TOKEN }}
           HEADLESS_GRANT_KEY: ${{ secrets.HEADLESS_GRANT_KEY }}
+          # Session storage (sealing and large outputs, OWNER-CELLS.md): plain variables, not secrets, so they can be
+          # turned on or off without rewriting CELLD_RUNNER_VARS. Unset keeps whatever CELLD_RUNNER_VARS says (default off).
+          HEADLESS_SEGMENTS: ${{ vars.HEADLESS_SEGMENTS }}
+          HEADLESS_HOT_LIMIT_BYTES: ${{ vars.HEADLESS_HOT_LIMIT_BYTES }}
+          HEADLESS_SEGMENT_TARGET_BYTES: ${{ vars.HEADLESS_SEGMENT_TARGET_BYTES }}
+          HEADLESS_LARGE_BODY_BYTES: ${{ vars.HEADLESS_LARGE_BODY_BYTES }}
         run: |
           set -euo pipefail
           umask 077
@@ -180,12 +186,29 @@ jobs:
             echo "::warning title=Self-resume not configured::set all of HEADLESS_DEN_API_URL (variable), HEADLESS_DEN_CALLBACK_TOKEN and HEADLESS_GRANT_KEY (secrets) on celld-production, or none"
           fi
           jq -r '.[]' "$RUNNER_TEMP/vars.json" | while IFS= read -r value; do [ -n "$value" ] && echo "::add-mask::$value"; done
+          # Storage settings are merged after masking: they are not secret, and masking a value like "on" would hide that
+          # text in every later log line. Checked here so a typo fails before anything is bundled.
+          if [ -n "${HEADLESS_SEGMENTS:-}" ] && [ "$HEADLESS_SEGMENTS" != "on" ] && [ "$HEADLESS_SEGMENTS" != "off" ]; then
+            echo "::error::HEADLESS_SEGMENTS must be on or off"; exit 1
+          fi
+          for name in HEADLESS_HOT_LIMIT_BYTES HEADLESS_SEGMENT_TARGET_BYTES HEADLESS_LARGE_BODY_BYTES; do
+            value="${!name:-}"
+            if [ -n "$value" ] && ! [[ "$value" =~ ^[0-9]+$ ]]; then echo "::error::$name must be a whole number of bytes"; exit 1; fi
+          done
+          jq --arg segments "${HEADLESS_SEGMENTS:-}" --arg hot "${HEADLESS_HOT_LIMIT_BYTES:-}" \
+            --arg target "${HEADLESS_SEGMENT_TARGET_BYTES:-}" --arg body "${HEADLESS_LARGE_BODY_BYTES:-}" '
+            . + (if $segments != "" then { HEADLESS_SEGMENTS: $segments } else {} end)
+              + (if $hot != "" then { HEADLESS_HOT_LIMIT_BYTES: $hot } else {} end)
+              + (if $target != "" then { HEADLESS_SEGMENT_TARGET_BYTES: $target } else {} end)
+              + (if $body != "" then { HEADLESS_LARGE_BODY_BYTES: $body } else {} end)
+          ' "$RUNNER_TEMP/vars.json" > "$RUNNER_TEMP/vars.merged.json"
+          mv "$RUNNER_TEMP/vars.merged.json" "$RUNNER_TEMP/vars.json"
           # What the bundle is configured with, without any value: every value above is masked, so settings are named,
           # and a few that decide behaviour are described in words that are never a value.
           echo "Runner settings in the bundle: $(jq -r 'keys | join(", ")' "$RUNNER_TEMP/vars.json")"
           jq -r '
             def state(k): if (.[k] // "") == "" or .[k] == "off" then "disabled" else "enabled" end;
-            "computer: \(state("HEADLESS_COMPUTER")); saved files: \(state("HEADLESS_FILES")); error reporting: \(state("HEADLESS_SENTRY_DSN")); self-resume: \(if (.HEADLESS_DEN_API_URL and .HEADLESS_DEN_CALLBACK_TOKEN and .HEADLESS_GRANT_KEY) then "enabled" else "disabled" end)"
+            "computer: \(state("HEADLESS_COMPUTER")); saved files: \(state("HEADLESS_FILES")); error reporting: \(state("HEADLESS_SENTRY_DSN")); self-resume: \(if (.HEADLESS_DEN_API_URL and .HEADLESS_DEN_CALLBACK_TOKEN and .HEADLESS_GRANT_KEY) then "enabled" else "disabled" end); sealing: \(state("HEADLESS_SEGMENTS"))"
           ' "$RUNNER_TEMP/vars.json"
           cd ee/apps/headless-runner
           pnpm exec tsx scripts/celld-bundle.ts "$RUNNER_TEMP/celld" "$RUNNER_TEMP/vars.json"

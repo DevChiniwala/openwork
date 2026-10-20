@@ -50,6 +50,19 @@ export const workbotModelTestSchema = z.discriminatedUnion("status", [
 ])
 export type WorkbotModelTest = z.infer<typeof workbotModelTestSchema>
 
+/**
+ * Whether Workbot can get a model for the organization's members, without naming any provider (`GET /v1/org/workbot-readiness`).
+ * With cloudAgentGateway on, every Workbot turn needs an active AI Gateway provider; Den web checks this before sending people
+ * to Workbot. A provider existing does not mean every member has a usable model.
+ */
+export const workbotReadinessSchema = z.object({
+  /** cloudAgentGateway is on: Workbot turns get their model through the organization's AI Gateway. */
+  gatewayRequired: z.boolean(),
+  /** The organization has at least one active AI Gateway provider. Only checked while gatewayRequired is true; false otherwise. */
+  hasGatewayProvider: z.boolean(),
+})
+export type WorkbotReadiness = z.infer<typeof workbotReadinessSchema>
+
 export const workbotSettingsInputSchema = z.strictObject({
   /** A model id from `models`, or null for the runner's default. */
   model: z.string().trim().min(1).max(255).nullable(),

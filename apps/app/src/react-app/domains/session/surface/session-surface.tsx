@@ -3738,7 +3738,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
         </>}
       </div>
       {/* Error display moved inline into the session conversation area */}
-      {props.developerMode ? <SessionDebugPanel model={model} snapshot={snapshot ? { ...snapshot, status: liveStatus, todos: props.todos ?? [] } : null} /> : null}
+      {props.developerMode && props.isControlTarget ? <SessionDebugPanel
+        model={model} client={props.client} workspaceId={props.workspaceId}
+        opencodeBaseUrl={props.opencodeBaseUrl} openworkToken={props.openworkToken}
+        status={liveStatus.type} messageCount={renderedMessages.length} todoCount={props.todos?.length ?? 0}
+        modelLabel={props.modelLabel}
+        waitingOn={props.activePermission ? "Permission" : props.activeQuestion ? "Your answer" : sending ? "Send acknowledgement" : snapshotQuery.isFetching ? "Session history" : liveStatus.type === "retry" ? "Retry backoff" : liveStatus.type === "busy" ? "Assistant" : "Nothing"}
+      /> : null}
     </div>
     </DevProfiler>
   );
