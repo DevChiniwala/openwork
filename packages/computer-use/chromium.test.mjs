@@ -67,6 +67,7 @@ test("cloud interception validates every resource type and redirect destination"
       for (const [suffix, url, expected] of [
         ["private", "http://127.0.0.1/control", "Fetch.failRequest"],
         ["metadata", "http://169.254.169.254/latest/meta-data", "Fetch.failRequest"],
+        ["nat64", "http://[64:ff9b::a9fe:a9fe]/latest/meta-data", "Fetch.failRequest"],
         ["socket", "ws://[::1]:6080/control", "Fetch.failRequest"],
         ["public", "https://8.8.8.8/resource", "Fetch.continueRequest"],
       ]) {
@@ -97,9 +98,11 @@ test("cloud navigation waits for interception and fails closed when it cannot be
   }
 });
 
-test("cloud destination checks reject private IPv4, IPv6 and mapped addresses", async () => {
+test("cloud destination checks reject private IPv4, IPv6 and translated addresses", async () => {
   for (const url of ["http://localhost/", "http://127.0.0.1/", "http://10.0.0.1/", "http://100.100.100.200/",
-    "http://169.254.169.254/", "http://[::1]/", "http://[fd00::1]/", "http://[::ffff:7f00:1]/", "file:///etc/passwd"]) {
+    "http://169.254.169.254/", "http://[::1]/", "http://[fd00::1]/", "http://[::ffff:7f00:1]/", "http://[::7f00:1]/",
+    "http://[64:ff9b::7f00:1]/", "http://[64:ff9b::a00:1]/", "http://[64:ff9b::a9fe:a9fe]/", "http://[64:ff9b::808:808]/",
+    "http://[64:ff9b:1:7f00:1::]/", "http://[64:ff9b:1::a9fe:a9fe]/", "file:///etc/passwd"]) {
     assert.equal(await publicDestination(url), false, url);
   }
   assert.equal(await publicDestination("https://8.8.8.8/"), true);

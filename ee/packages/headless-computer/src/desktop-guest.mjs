@@ -1,17 +1,18 @@
 /** Private guest bridge. Bundled with the shared browser/computer implementation, never a provider credential. */
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import { WebSocketServer, WebSocket } from "ws";
 import { createCloudComputer } from "@openwork/computer-use/cloud";
 import { createDesktopApplications } from "./desktop-apps.mjs";
+import { ViewerTickets } from "./viewer-tickets.mjs";
 
 const directory = process.env.WORKBOT_DESKTOP_STATE;
 if (!directory) throw new Error("WORKBOT_DESKTOP_STATE is required");
 const secret = (await readFile(`${directory}/token`, "utf8")).trim();
 let until = 0;
-const tickets = new Map();
+const tickets = new ViewerTickets();
 const sockets = new Set();
 const transports = new Map();
 process.umask(0o077);
@@ -32,6 +33,7 @@ const authorized = request => {
 const viewerScript = "/usr/local/share/openwork-desktop/vnc-stdio.py";
 const server = createServer(async (request, response) => {
   if (request.method !== "POST" || !authorized(request)) return json(response, 404, { error: "not_found" });
+  const viewerGeneration = tickets.generation;
   try {
     let raw = "";
     for await (const chunk of request) {
@@ -48,23 +50,24 @@ const server = createServer(async (request, response) => {
     }
     if (request.url === "/viewer") {
       if (!["browser", "computer"].includes(body.view) || typeof body.origin !== "string") return json(response, 400, { error: "invalid_view" });
-      if (body.control === true) await computer.interact({ action: "takeover" });
-      const token = randomBytes(32).toString("base64url");
-      const paused = (await computer.snapshot()).paused;
-      for (const [key, ticket] of tickets) if (ticket.expiresAt <= Date.now()) tickets.delete(key);
-      if (tickets.size >= 16) return json(response, 409, { error: "too_many_viewers" });
-      tickets.set(token, { view: body.view, control: paused && body.control === true, origin: body.origin, expiresAt: Date.now() + 15_000 });
-      return json(response, 200, { token, paused });
+      const result = await tickets.run(viewerGeneration, async () => {
+        if (body.control === true) await computer.interact({ action: "takeover" });
+        const paused = (await computer.snapshot()).paused;
+        const token = tickets.issue({ view: body.view, control: paused && body.control === true, origin: body.origin }, viewerGeneration);
+        return { token, paused };
+      });
+      return json(response, 200, result);
     }
     if (request.url === "/continue") {
+      const generation = tickets.revoke();
       for (const socket of sockets) { transports.get(socket)?.destroy(); socket.terminate(); }
-      await computer.interact({ action: "resume" });
+      await tickets.run(generation, () => computer.interact({ action: "resume" }));
       return json(response, 200, { ok: true });
     }
     if (request.url === "/stop") {
       // Pause first, including when Stop overtakes a not-yet-started task.
       // Only the person's existing Continue action can release input again.
-      await computer.interact({ action: "stop" });
+      await tickets.run(tickets.generation, () => computer.interact({ action: "stop" }));
       return json(response, 200, { ok: true, paused: true });
     }
     if (["/browser/task", "/computer/task", "/computer/program"].includes(request.url)) {
@@ -77,10 +80,10 @@ const websocket = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024,
 server.on("upgrade", (request, socket, head) => {
   const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
   const token = /^\/vnc\/([A-Za-z0-9_-]{43})$/.exec(path)?.[1];
-  const ticket = tickets.get(token);
-  tickets.delete(token);
-  if (!ticket || ticket.expiresAt <= Date.now() || request.headers.origin !== ticket.origin || sockets.size >= 4) return socket.destroy();
+  const ticket = tickets.consume(token, request.headers.origin);
+  if (!ticket || Date.now() >= until || sockets.size >= 4) return socket.destroy();
   websocket.handleUpgrade(request, socket, head, ws => {
+    if (ticket.generation !== tickets.generation || Date.now() >= until) return ws.terminate();
     // Private stdio cannot be pre-bound by the command account. The VNC
     // process itself enforces view-only, independently of noVNC's controls.
     const viewer = spawn("/usr/bin/python3", ["-I", viewerScript, ticket.view, ticket.control ? "control" : "view"], { stdio: ["pipe", "pipe", "ignore"] });
@@ -91,7 +94,7 @@ server.on("upgrade", (request, socket, head) => {
     const close = () => { clearTimeout(deadline); sockets.delete(ws); transports.delete(ws); transport.destroy(); ws.close(); };
     viewer.stdout.on("data", data => { if (ws.readyState === WebSocket.OPEN) ws.send(data, { binary: true }); });
     ws.on("message", (data, binary) => {
-      if (!binary || Date.now() >= until) return close();
+      if (!binary || Date.now() >= until || ticket.generation !== tickets.generation) return close();
       viewer.stdin.write(data);
       if (viewer.stdin.writableLength > 2 * 1024 * 1024 || ws.bufferedAmount > 4 * 1024 * 1024) close();
     });

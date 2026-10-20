@@ -299,6 +299,23 @@ final class BoundaryTests: XCTestCase {
         XCTAssertThrowsError(try incomplete.requireCapture())
     }
 
+    func testAXChildScanRejectsCountAndIdentityChangesIncludingEqualSizeShifts() {
+        let original = Array(0..<130)
+        XCTAssertNoThrow(try AXChildScan.requireStable(expectedCount: 130, currentCount: 130, expected: original, current: original))
+        // A protected child can move across the old 64-element page boundary
+        // while every page and the final count retain their expected size.
+        var shifted = original
+        shifted.insert(999, at: 0); shifted.removeLast()
+        var reordered = original
+        reordered.swapAt(63, 64)
+        for changed in [shifted, reordered, Array(original.dropLast())] {
+            XCTAssertThrowsError(try AXChildScan.requireStable(expectedCount: 130, currentCount: changed.count,
+                                                             expected: original, current: changed))
+        }
+        XCTAssertThrowsError(try AXChildScan.requireStable(expectedCount: 0, currentCount: 1, expected: [Int](), current: []))
+        XCTAssertThrowsError(try AXChildScan.requireStable(expectedCount: nil, currentCount: 0, expected: [Int](), current: []))
+    }
+
     @MainActor
     func testEmbeddedPolicyDoesNotChangeDesktopSchemaOrObservationShape() throws {
         func schema(_ name: String, _ policy: RuntimePolicy) throws -> [String: Any] {

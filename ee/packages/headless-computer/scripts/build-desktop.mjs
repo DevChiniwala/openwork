@@ -31,7 +31,7 @@ for (const relative of [
   "ee/packages/headless-computer/package.json", "ee/packages/headless-computer/Dockerfile.desktop",
   "ee/packages/headless-computer/src/image.ts", "ee/packages/headless-computer/requirements-desktop.lock",
   "ee/packages/headless-computer/src/desktop.ts", "ee/packages/headless-computer/src/desktop-apps.mjs",
-  "ee/packages/headless-computer/src/desktop-guest.mjs", "ee/packages/headless-computer/src/desktop-scripting.mjs",
+  "ee/packages/headless-computer/src/desktop-guest.mjs", "ee/packages/headless-computer/src/viewer-tickets.mjs", "ee/packages/headless-computer/src/desktop-scripting.mjs",
   "ee/packages/headless-computer/src/scripting", "ee/packages/headless-computer/scripts/build-desktop.mjs",
   "ee/packages/headless-computer/scripts/desktop-bridge.py", "ee/packages/headless-computer/scripts/vnc-stdio.py", "ee/packages/headless-computer/scripts/configure-desktop-files.sh",
   "ee/packages/headless-computer/scripts/install-desktop-apps.sh",
