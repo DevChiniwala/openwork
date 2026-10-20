@@ -562,7 +562,10 @@ async function readBody(request) {
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
-    if (request.headers.origin && request.headers.origin !== url.origin) throw new ApiError(403, "accessDenied", "Cross-origin requests are not allowed.");
+    // Same-origin only. Behind an HTTPS proxy (a hosted instance) the page's origin is https://<host> or PUBLIC_URL,
+    // while this server sees plain http, so accept those too; any other site's origin is still refused.
+    const sameOrigin = new Set([url.origin, PUBLIC_ORIGIN, ...(request.headers["x-forwarded-proto"] === "https" && request.headers.host ? [`https://${request.headers.host}`] : [])]);
+    if (request.headers.origin && !sameOrigin.has(request.headers.origin)) throw new ApiError(403, "accessDenied", "Cross-origin requests are not allowed.");
     if (request.method === "GET" && url.pathname === "/health") return send(response, 200, { ok: true, service: "open-workplace-microsoft365", externalDelivery: false });
     if (request.method === "GET" && url.pathname === "/state") return send(response, 200, { user: ME, audit: state.audit, folders: folders(), messages: state.messages, events: state.events, files: state.files.map((file) => ({ ...fileJson(file), ...(!file.folder ? { preview: preview(file.bytes, file.name) } : {}) })) });
     if (request.method === "POST" && url.pathname === "/reset") { await readBody(request); reset(); return send(response, 200, { reset: true }); }
