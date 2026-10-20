@@ -1051,6 +1051,13 @@
       "when": 1792451113327,
       "tag": "0150_headless_session_index",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "5",
+      "when": 1792527537815,
+      "tag": "0151_desktop_startup_report",
+      "breakpoints": true
     }
   ]
 }

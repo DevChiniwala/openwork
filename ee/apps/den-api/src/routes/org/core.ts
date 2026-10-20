@@ -187,7 +187,7 @@ const organizationContextResponseSchema = z.object({
    * A key missing here means an older server: treat it as off.
    */
   features: z.record(z.string(), z.boolean()).meta({ description: "Effective on/off for every OpenWork feature in this organization. Treat a missing key as off." }),
-  canManageDeploymentServices: z.boolean().meta({ description: "Whether this signed-in caller may manage deployment services: an allowlisted self-hosted operator with serviceReadiness enabled for both this organization and the deployment. Organization ownership and permissions never grant it. False for API keys, hosted deployments, disabled or killed rollout, and capability lookup failures." }),
+  canManageDeploymentServices: z.boolean().meta({ description: "Whether this caller may open installation diagnostics: a self-hosted installation administrator (local allowlist), signed in or using an API key they own. Organization ownership and permissions never grant it. False on hosted deployments and when the lookup fails." }),
   deploymentCapabilities: deploymentCapabilitiesSchema,
   entitlements: z.object({ sso: z.boolean(), desktopPolicies: z.boolean(), orgControls: z.boolean(), analytics: z.boolean(), auditLogs: z.boolean() }),
 }).passthrough().meta({ ref: "OrganizationContextResponse" })
@@ -702,7 +702,7 @@ export function registerOrgCoreRoutes<T extends { Variables: OrgRouteVariables }
           .limit(1),
       ])
       const owner = directory.members.find((member) => member.isOwner) ?? null
-      const serviceReadiness = await cachedOrganizationServiceReadiness(features.serviceReadiness)
+      const serviceReadiness = await cachedOrganizationServiceReadiness()
 
       return c.json({
         ...payload,
@@ -727,7 +727,7 @@ export function registerOrgCoreRoutes<T extends { Variables: OrgRouteVariables }
         currentMemberTeams: c.get("memberTeams") ?? [],
         // Caller-specific operator authority is queried only here, not by the
         // shared org context loader used by unrelated organization requests.
-        canManageDeploymentServices: await canManageDeploymentServices({ user: c.get("user"), session: c.get("session"), apiKey: c.get("apiKey") }, features.serviceReadiness),
+        canManageDeploymentServices: await canManageDeploymentServices({ user: c.get("user"), session: c.get("session"), apiKey: c.get("apiKey") }),
         deploymentCapabilities: {
           ...deploymentCapabilities(),
           ...(serviceReadiness ? { serviceReadiness } : {}),

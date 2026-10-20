@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { after, test } from "node:test"
+import { orgDiagnosticsSchema } from "@openwork/types/den/diagnostics"
 import { bootDen, field, summary, text, type Session } from "./harness.js"
 
 const email = "ordinary-single-org-owner@example.test"
@@ -10,15 +11,13 @@ const den = await bootDen({ env: {
   DEN_SINGLE_ORG_ALLOW_PUBLIC_SIGNUP: "true",
   DEN_BOOTSTRAP_ADMIN_EMAILS: "",
   DEN_INITIAL_ADMIN_BOOTSTRAP_CODE: "",
-  DEN_FEATURE_SERVICE_READINESS: "true",
 } })
 after(() => den.close())
 
-test("real MySQL: ordinary single-org owner bootstrap and org admin never acquire local operator authority", async () => {
+test("real MySQL: ordinary single-org owner bootstrap and org admin never acquire installation authority", async () => {
   const deployment = await den.request(null, "GET", "/v1/features")
   assert.equal(deployment.status, 200, summary(deployment))
   assert.equal(field(deployment.body, "deployment"), "self_hosted")
-  assert.equal(field(deployment.body, "features", "serviceReadiness"), true, "operator lock enables the deployment gate")
 
   // Deliberately use ordinary signup: no /setup verification or bootstrapGrant.
   const signedUp = await den.request(null, "POST", "/api/auth/sign-up/email", { body: {
@@ -36,7 +35,6 @@ test("real MySQL: ordinary single-org owner bootstrap and org admin never acquir
   const singleton = await den.request(owner.token, "GET", "/v1/org")
   assert.equal(singleton.status, 200, summary(singleton))
   const orgId = text(field(singleton.body, "organization", "id"), "singleton organization id")
-  assert.equal(field(singleton.body, "organization", "owner", "userId"), owner.userId)
   assert.equal(field(singleton.body, "currentMember", "role"), "owner", "eligible ordinary account bootstraps the singleton owner")
 
   // Single-org signup joins the existing singleton; promote through the real API.
@@ -49,21 +47,20 @@ test("real MySQL: ordinary single-org owner bootstrap and org admin never acquir
   admin.token = text(field(adminSignIn.body, "token"), "fresh admin session token")
   admin.cookie = adminSignIn.headers.get("set-cookie")?.split(";")[0] ?? ""
 
-  async function denied(person: Session, role: string) {
+  for (const [person, role] of [[owner, "owner"], [admin, "admin"]] as const) {
     const context = await den.as(person, orgId)("GET", "/v1/org")
     assert.equal(context.status, 200, summary(context))
-    assert.equal(field(context.body, "organization", "id"), orgId)
     assert.equal(field(context.body, "currentMember", "role"), role)
-    assert.equal(field(context.body, "features", "serviceReadiness"), true, "organization gate is enabled, not masking authority denial")
     assert.equal(field(context.body, "canManageDeploymentServices"), false, `${role} is not a local installation operator`)
-    for (const path of ["/v1/org/deployment-services", "/v1/org/deployment-services/check"]) {
-      const result = await den.as(person, orgId)(path.endsWith("check") ? "POST" : "GET", path)
-      assert.equal(result.status, 403, `${role} ${path}: ${summary(result)}`)
-      assert.equal(field(result.body, "error"), "forbidden")
-    }
+    const read = await den.as(person, orgId)("GET", "/v1/org/diagnostics")
+    assert.equal(read.status, 200, summary(read))
+    const body = orgDiagnosticsSchema.parse(read.body)
+    assert.deepEqual(body.installation, { access: "locked", reason: "installation_admin_required" }, `${role}: organization roles never grant installation authority`)
+    assert.equal(body.desktop.access, "granted", `${role} still sees organization sections`)
+    const check = await den.as(person, orgId)("POST", "/v1/org/diagnostics/check")
+    assert.ok(check.status === 202 || check.status === 429, summary(check))
+    assert.equal(orgDiagnosticsSchema.parse(check.body).installation.access, "locked")
     const platform = await den.request(person.token, "GET", "/v1/admin/services")
     assert.equal(platform.status, 403, `${role} did not gain installation allowlist authority: ${summary(platform)}`)
   }
-  await denied(owner, "owner")
-  await denied(admin, "admin")
 })

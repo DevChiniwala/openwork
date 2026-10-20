@@ -5,75 +5,74 @@ import {
   type DeploymentServiceReadiness,
 } from "@openwork/types/den/service-readiness";
 import {
-  CHECK_MAX_POLLS, finishServicesRun, parseServicesEnabled, parseServicesSnapshot, runServicesReadiness,
-  serviceRows, serviceStateLabel, servicesFailure, SERVICES_VERIFY_ERROR,
+  CHECK_MAX_POLLS, finishServicesRun, parseServicesSnapshot, runServicesReadiness,
+  serviceRows, serviceStateLabel, servicesFailure, SERVICE_STALE_LABEL, SERVICES_VERIFY_ERROR,
 } from "./service-readiness-data";
 
 const checkedAt = "2026-10-01T12:00:00.000Z";
 function snapshot(checking = false): DeploymentServiceReadiness {
   return {
-    version: 1, checkedAt, checking,
-    services: serviceRows(null).map((service) => ({ ...service, configured: true, state: "ready", reason: "health_verified", checkedAt, lastSuccessAt: checkedAt })),
+    version: 2, checkedAt, checking,
+    server: { version: "0.19.2", startedAt: checkedAt, startupMs: 4_100 },
+    services: serviceRows(null).map((service) => ({
+      ...service, configured: true, state: "ready",
+      reason: service.id === "database" ? "database_verified" : service.id === "email" ? "email_verified" : "health_verified",
+      durationMs: 41, checkedAt, lastSuccessAt: checkedAt,
+    })),
   };
 }
 
-test("strict shared snapshots reject unknown fields, raw errors, invalid setting names and duplicate services", () => {
+test("strict shared snapshots reject unknown fields, raw errors, invalid setting names, removed services and duplicates", () => {
   const report = snapshot();
   assert.deepEqual(parseServicesSnapshot(report), report);
   assert.equal(parseServicesSnapshot({ ...report, host: "https://private.example.test" }), null);
+  assert.equal(parseServicesSnapshot({ ...report, version: 1 }), null);
   assert.equal(parseServicesSnapshot({ ...report, services: [{ ...report.services[0], error: "raw provider failure" }] }), null);
   assert.equal(parseServicesSnapshot({ ...report, services: [{ ...report.services[0], reason: "provider_error" }] }), null);
   assert.equal(parseServicesSnapshot({ ...report, services: [{ ...report.services[0], missingSettings: ["https://private.example.test"] }] }), null);
+  assert.equal(parseServicesSnapshot({ ...report, services: [{ ...report.services[0], id: "slack" }] }), null);
   assert.equal(parseServicesSnapshot({ ...report, services: [report.services[0], report.services[0]] }), null);
 });
 
-test("all seven initial service slots are unknown and never optimistic green", () => {
+test("all five service slots start unknown and never optimistic green", () => {
   const rows = serviceRows(null);
   assert.deepEqual(rows.map((row) => row.id), serviceIdSchema.options);
-  assert.ok(rows.every((row) => row.state === "unknown" && row.reason === "not_checked" && serviceStateLabel(row) === SERVICE_STATE_LABELS.unknown));
+  assert.deepEqual(rows.map((row) => row.id), ["database", "gateway", "headlessRunner", "workbot", "email"]);
+  assert.ok(rows.every((row) => row.state === "unknown" && row.reason === "not_checked" && row.durationMs === null && row.notes.length === 0));
+  assert.ok(rows.every((row) => serviceStateLabel(row) === SERVICE_STATE_LABELS.unknown));
   assert.deepEqual(rows.filter((row) => row.required).map((row) => row.id), ["database"]);
-  assert.equal(serviceRows({ version: 1, checkedAt: null, checking: true, services: [] }).length, 7);
+  assert.equal(serviceRows({ version: 2, checkedAt: null, checking: true, server: null, services: [] }).length, 5);
 });
 
-test("state and reason copy is fixed, with stale and unverified states never promoted to Ready", () => {
+test("Ready needs a successful live check: email sign-in counts, stale or configuration-only results never do", () => {
   for (const reason of serviceReadinessReasonSchema.options) assert.equal(typeof SERVICE_REASON_LABELS[reason], "string");
-  assert.match(SERVICE_REASON_LABELS.health_verified, /does not test a model completion or message delivery/);
-  assert.match(SERVICE_REASON_LABELS.delivery_unverified, /No message was sent/);
-  const row = snapshot().services[0];
-  assert.equal(serviceStateLabel(row), "Ready");
-  assert.match(serviceStateLabel({ ...row, stale: true }), /Couldn't verify.*stale/);
+  const rows = snapshot().services;
+  for (const row of rows) assert.equal(serviceStateLabel(row), "Ready", row.id);
+  const email = rows.find((row) => row.id === "email");
+  if (!email) throw new Error("email row");
+  assert.equal(serviceStateLabel({ ...email, reason: "email_key_verified" }), "Ready");
+  const row = rows[0];
+  assert.equal(serviceStateLabel({ ...row, stale: true }), SERVICE_STALE_LABEL);
   assert.equal(serviceStateLabel({ ...row, checkedAt: null }), "Couldn't verify");
   assert.equal(serviceStateLabel({ ...row, reason: "configuration_only" }), "Couldn't verify");
   assert.equal(serviceStateLabel({ ...row, lastSuccessAt: null }), "Couldn't verify");
+  const verified = new Set(["health_verified", "database_verified", "email_verified", "email_key_verified"]);
   for (const reason of serviceReadinessReasonSchema.options) {
-    if (reason !== "health_verified" && reason !== "database_verified") assert.equal(serviceStateLabel({ ...row, reason }), "Couldn't verify");
+    if (!verified.has(reason)) assert.equal(serviceStateLabel({ ...row, reason }), "Couldn't verify", reason);
   }
+  assert.equal(serviceStateLabel({ ...row, state: "not_configured", reason: "not_configured" }), "Not set up");
 });
 
-test("deployment rollout uses availability, kill switch and operator lock, never an organization override", () => {
-  const feature = { key: "serviceReadiness", available: true, killed: false, enabled: false, lock: null };
-  const enabled = (changes: Partial<typeof feature> & { lock?: boolean | null }) => parseServicesEnabled({ features: [{ ...feature, ...changes }] });
-  assert.equal(enabled({}), false);
-  assert.equal(enabled({ enabled: true }), true);
-  assert.equal(parseServicesEnabled({ features: [{ ...feature, enabled: false, lock: true }] }), true);
-  assert.equal(parseServicesEnabled({ features: [{ ...feature, enabled: true, lock: false }] }), false);
-  assert.equal(parseServicesEnabled({ features: [{ ...feature, killed: true, lock: true }] }), false);
-  assert.equal(enabled({ available: false, enabled: true }), false);
-  assert.equal(parseServicesEnabled({ features: [] }), false);
-  assert.equal(parseServicesEnabled({ features: [{ key: "serviceReadiness" }] }), null);
-});
-
-test("auth and feature loss clear details, network and cooldown failures keep the last snapshot without provider text", () => {
+test("auth loss clears details, network and cooldown failures keep the last snapshot without provider text", () => {
   const last = snapshot();
-  for (const result of [servicesFailure(401), servicesFailure(403), servicesFailure(404, "feature_disabled")]) {
+  for (const result of [servicesFailure(401), servicesFailure(403)]) {
     assert.equal(finishServicesRun(last, result).snapshot, null);
   }
-  for (const result of [servicesFailure(500, "secret provider error"), servicesFailure(429)]) {
+  for (const result of [servicesFailure(500), servicesFailure(429), servicesFailure(404)]) {
     assert.equal(finishServicesRun(last, result).snapshot, last);
-    assert.doesNotMatch(result.message, /secret provider error/);
+    assert.equal(result.status, "error");
   }
   assert.equal(servicesFailure(403).status, "forbidden");
-  assert.equal(servicesFailure(404, "feature_disabled").status, "locked");
   assert.equal(servicesFailure(500).message, SERVICES_VERIFY_ERROR);
 });
 

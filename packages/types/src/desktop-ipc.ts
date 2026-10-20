@@ -173,6 +173,15 @@ export type AppBuildInfo = {
   arch?: string | null;
 };
 
+/** This launch's startup milestones in epoch milliseconds; null until reached. */
+export type DesktopStartupTimings = {
+  processStartedAt: number;
+  windowShownAt: number | null;
+  engineSettledAt: number | null;
+  /** How the launch's first runtime boot settled; "skipped" means no local workspace. */
+  engine: "ready" | "failed" | "skipped" | null;
+};
+
 export type DesktopDistributionInfo = {
   flavor: "public" | "enterprise";
   appName: string;
@@ -371,6 +380,7 @@ export type DesktopCommandMap = {
 
   // App / bridge info
   appBuildInfo: { args: []; result: AppBuildInfo };
+  startupTimings: { args: []; result: DesktopStartupTimings };
   desktopNotificationShow: {
     args: [input: DesktopNotificationInput];
     result: DesktopNotificationResult;

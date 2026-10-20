@@ -53,13 +53,6 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
-  serviceReadiness: {
-    label: "Deployment service readiness",
-    description: "Self-hosted installation operators can check optional services from Settings; internal platform diagnostics and minimal member readiness share the same checker without blocking core work.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
   cloudAgentGateway: {
     label: "Cloud agents use the organization AI Gateway",
     description: "Choose and run cloud-agent models through the organization's AI Gateway access instead of the runner's shared model credentials.",

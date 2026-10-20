@@ -1058,15 +1058,17 @@ export const cache = {
     async load(configurationFingerprint: string): Promise<DeploymentServiceReadiness | null> {
       if (!activeRedisClient || !/^[a-f0-9]{64}$/.test(configurationFingerprint)) return null
       try {
-        const raw = await activeRedisClient.get(`cache:service-readiness:v1:${configurationFingerprint}`)
+        const raw = await activeRedisClient.get(`cache:service-readiness:v2:${configurationFingerprint}`)
         if (!raw || raw.length > 32_768) return null
+        // Version-1 snapshots (removed services, no notes or durations) fail the
+        // version-2 schema and are ignored; server facts are never shared.
         const parsed = deploymentServiceReadinessSchema.safeParse(JSON.parse(raw))
-        return parsed.success ? parsed.data : null
+        return parsed.success ? { ...parsed.data, server: null } : null
       } catch { return null }
     },
     async save(configurationFingerprint: string, snapshot: DeploymentServiceReadiness): Promise<void> {
       if (!activeRedisClient || !/^[a-f0-9]{64}$/.test(configurationFingerprint)) return
-      try { await activeRedisClient.set(`cache:service-readiness:v1:${configurationFingerprint}`, JSON.stringify(snapshot), "EX", 86_400) } catch { /* Best effort, no secrets in errors. */ }
+      try { await activeRedisClient.set(`cache:service-readiness:v2:${configurationFingerprint}`, JSON.stringify({ ...snapshot, server: null }), "EX", 86_400) } catch { /* Best effort, no secrets in errors. */ }
     },
   },
   auth: {

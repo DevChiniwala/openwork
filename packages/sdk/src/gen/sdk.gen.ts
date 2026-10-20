@@ -133,6 +133,7 @@ import type {
   DenDesktopPolicyDocumentWrite,
   DescribeHostGoogleDriveDownloadErrors,
   DescribeHostGoogleDriveDownloadResponses,
+  DesktopStartupReport,
   DownloadGoogleDriveFileByLinkErrors,
   DownloadGoogleDriveFileByLinkResponses,
   DownloadHostGoogleDriveFileErrors,
@@ -487,8 +488,8 @@ import type {
   GetV1OrgDefaultModelOptionsErrors,
   GetV1OrgDefaultModelOptionsResponses,
   GetV1OrgDefaultModelResponses,
-  GetV1OrgDeploymentServicesErrors,
-  GetV1OrgDeploymentServicesResponses,
+  GetV1OrgDiagnosticsErrors,
+  GetV1OrgDiagnosticsResponses,
   GetV1OrgErrors,
   GetV1OrgInventoryRevisionErrors,
   GetV1OrgInventoryRevisionResponses,
@@ -774,6 +775,8 @@ import type {
   PostV1ConnectorTargetsByConnectorTargetIdResyncResponses,
   PostV1DesktopPoliciesErrors,
   PostV1DesktopPoliciesResponses,
+  PostV1DiagnosticsDesktopStartupErrors,
+  PostV1DiagnosticsDesktopStartupResponses,
   PostV1DiagnosticsEgressErrors,
   PostV1DiagnosticsEgressResponses,
   PostV1DirectUploadsGoogleWorkspaceDriveFilesErrors,
@@ -897,8 +900,8 @@ import type {
   PostV1OauthProvidersByProviderIdDisconnectResponses,
   PostV1OrgBrandAssetsErrors,
   PostV1OrgBrandAssetsResponses,
-  PostV1OrgDeploymentServicesCheckErrors,
-  PostV1OrgDeploymentServicesCheckResponses,
+  PostV1OrgDiagnosticsCheckErrors,
+  PostV1OrgDiagnosticsCheckResponses,
   PostV1OrgsByOrganizationIdInstallLinksErrors,
   PostV1OrgsByOrganizationIdInstallLinksResponses,
   PostV1OrgsInvitationsAcceptErrors,
@@ -1349,7 +1352,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Read cached deployment service readiness
    *
-   * Fixed deployment diagnostics only, not inference or delivery verification. Never waits for an outbound health probe. A stale snapshot remains explicitly stale.
+   * Fixed deployment diagnostics and the answering Den replica's version and start time. Never waits for an outbound check. A stale snapshot remains explicitly stale.
    */
   public getV1AdminServices<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GetV1AdminServicesResponses, GetV1AdminServicesErrors, ThrowOnError>({
@@ -1361,7 +1364,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Queue a deployment service readiness check
    *
-   * Queues bounded, read-only service probes. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new probes across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.
+   * Queues bounded, read-only service checks: a database query, service health endpoints, and a mail sign-in or mail-provider domain lookup. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new checks across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.
    */
   public postV1AdminServicesCheck<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<
@@ -3567,7 +3570,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Read minimal cached deployment service readiness
    *
-   * Member-safe deployment facts only. Does not inspect organization or member credentials, start a probe, or alter access decisions. Missing deployment settings and required-service policy are withheld.
+   * Member-safe deployment facts only. Does not inspect organization or member credentials, start a check, or alter access decisions. Missing deployment settings, notes, durations and required-service policy are withheld.
    */
   public getV1OrgServiceReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -3578,31 +3581,63 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Read local deployment service readiness
+   * Read Settings › Diagnostics
    *
-   * Self-hosted deployment operators with an active organization membership only. Organization ownership and permissions do not grant access. Shares the platform diagnostics snapshot and bounded refresh admission.
+   * One read for cloud, single-org and self-hosted Den: desktop startups (last 24 hours), model providers, connectors, installation services and network diagnostics, plus a summary of what needs attention. Each section is present for every caller; a section the caller's permissions do not open is `locked` and names the permission. Installation details are only for self-hosted installation administrators (local allowlist). Never returns credentials, upstream responses or another member's identity. Missing or expired provider and connector checks start in the background (rate limited); the read never waits for them.
    */
-  public getV1OrgDeploymentServices<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<
-      GetV1OrgDeploymentServicesResponses,
-      GetV1OrgDeploymentServicesErrors,
-      ThrowOnError
-    >({ url: "/v1/org/deployment-services", ...options });
+  public getV1OrgDiagnostics<ThrowOnError extends boolean = false>(
+    parameters?: {
+      strict?: "0" | "1" | "true" | "false";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "strict" }] }]);
+    return (options?.client ?? this.client).get<GetV1OrgDiagnosticsResponses, GetV1OrgDiagnosticsErrors, ThrowOnError>({
+      url: "/v1/org/diagnostics",
+      ...options,
+      ...params,
+    });
   }
 
   /**
-   * Queue a local deployment service readiness check
+   * Run the diagnostics checks the caller may run
    *
-   * Self-hosted deployment operators with an active organization membership only. Queues the same read-only, bounded probes as platform diagnostics; shares active checks, recent results and deployment-wide rate limits. Never sends email, calls a model or initiates Slack events.
+   * Starts, in the background, every live check the caller's sections allow: provider model listings with organization-held credentials (never a model request or a member's credential), the Slack assistant token, the caller's own Google API check, and installation services for installation administrators. Shares the rate limits of background checks (one per organization, or per member for connectors, every 30 seconds). Answers with the current diagnostics; poll GET /v1/org/diagnostics until `checking` is false.
    */
-  public postV1OrgDeploymentServicesCheck<ThrowOnError extends boolean = false>(
+  public postV1OrgDiagnosticsCheck<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<
+      PostV1OrgDiagnosticsCheckResponses,
+      PostV1OrgDiagnosticsCheckErrors,
+      ThrowOnError
+    >({ url: "/v1/org/diagnostics/check", ...options });
+  }
+
+  /**
+   * Report one desktop app launch
+   *
+   * Sent by the signed-in desktop app once per launch (a failed launch may be sent on the next one). Step timings and a fixed failure code only: no hostnames, error text, paths or device identifiers. Attributed to the caller's active organization and membership. Idempotent per attemptId; launches more than 7 days old or more than 5 minutes in the future are ignored.
+   */
+  public postV1DiagnosticsDesktopStartup<ThrowOnError extends boolean = false>(
+    parameters: {
+      desktopStartupReport: DesktopStartupReport;
+    },
     options?: Options<never, ThrowOnError>,
   ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "desktopStartupReport", map: "body" }] }]);
     return (options?.client ?? this.client).post<
-      PostV1OrgDeploymentServicesCheckResponses,
-      PostV1OrgDeploymentServicesCheckErrors,
+      PostV1DiagnosticsDesktopStartupResponses,
+      PostV1DiagnosticsDesktopStartupErrors,
       ThrowOnError
-    >({ url: "/v1/org/deployment-services/check", ...options });
+    >({
+      url: "/v1/diagnostics/desktop-startup",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
   }
 
   /**

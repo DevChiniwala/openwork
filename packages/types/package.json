@@ -203,6 +203,14 @@
       "development": "./src/den/managed-models-policy.ts",
       "default": "./src/den/managed-models-policy.ts"
     },
+    "./den/diagnostics": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/diagnostics.d.ts",
+        "default": "./src/den/diagnostics.ts"
+      },
+      "development": "./src/den/diagnostics.ts",
+      "default": "./src/den/diagnostics.ts"
+    },
     "./den/deployment-capabilities": {
       "types": {
         "openwork-build": "./dist/types/src/den/deployment-capabilities.d.ts",

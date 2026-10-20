@@ -1,16 +1,23 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { AdminAccessScreen } from "../admin-access-screen";
 import { ServicesView } from "../../services/services-view";
 import { useServicesReadiness } from "../../services/use-services-readiness";
 import { adminServicesTransport } from "./admin-services-transport";
-import { ServicesAccessScreen } from "./services-access-screen";
-import { useServicesAccess } from "./service-readiness-access";
+
+const CLOCK_MS = 30_000;
 
 export function ServicesPage() {
-  const { access, refresh: refreshAccess } = useServicesAccess();
-  const readiness = useServicesReadiness(access.status === "ready", adminServicesTransport);
-  if (access.status !== "ready") return <ServicesAccessScreen status={access.status} message={access.message} onRetry={refreshAccess} />;
+  const readiness = useServicesReadiness(true, adminServicesTransport);
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), CLOCK_MS);
+    return () => clearInterval(timer);
+  }, []);
   const { state } = readiness;
-  if (state.status === "locked" || state.status === "signed-out" || state.status === "forbidden") return <ServicesAccessScreen status={state.status} onRetry={refreshAccess} />;
-  return <ServicesView {...readiness} testId="admin-services-page" />;
+  if (state.status === "signed-out" || state.status === "forbidden") {
+    return <AdminAccessScreen state={state.status} onRetry={readiness.refresh} />;
+  }
+  return <ServicesView {...readiness} now={clock} testId="admin-services-page" />;
 }

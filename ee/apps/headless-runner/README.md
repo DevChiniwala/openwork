@@ -37,7 +37,7 @@ cells. It reports only whether model and resume settings are present, and can
 compare an `X-OpenWork-Den-Origin` header with the configured callback origin.
 It does not run inference, exchange grants, allocate a conversation cell, or
 return credentials or URLs. Public `/health` remains a liveness check. See
-[deployment service readiness](../../../docs/deployment-service-readiness.md).
+[diagnostics](../../../docs/diagnostics.md).
 
 | Method | Path | Body / query | Result |
 |---|---|---|---|

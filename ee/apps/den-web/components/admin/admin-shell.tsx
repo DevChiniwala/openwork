@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, type ReactNode } from "react";
-import { ArrowLeft, Building2, ChartNoAxesCombined, Flag, LayoutDashboard, Lock, Server, Users } from "lucide-react";
+import { ArrowLeft, Building2, ChartNoAxesCombined, Flag, LayoutDashboard, Server, Users } from "lucide-react";
 import { AdminBreadcrumbs } from "./admin-breadcrumbs";
-import { ServicesAccessProvider, useServicesAccess } from "./services/service-readiness-access";
 
 const SessionCookieContext = createContext(false);
 export const useAdminSessionCookie = () => useContext(SessionCookieContext);
@@ -22,14 +21,13 @@ const SECTIONS = [
 export function AdminShell({ hasSessionCookie, children }: { hasSessionCookie: boolean; children: ReactNode }) {
   return (
     <SessionCookieContext.Provider value={hasSessionCookie}>
-      <ServicesAccessProvider hasSessionCookie={hasSessionCookie}><AdminShellContent>{children}</AdminShellContent></ServicesAccessProvider>
+      <AdminShellContent>{children}</AdminShellContent>
     </SessionCookieContext.Provider>
   );
 }
 
 function AdminShellContent({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { access: servicesAccess } = useServicesAccess();
   const section = SECTIONS.find(({ href }) => href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
   const organizationDetail = pathname.startsWith("/admin/organizations/");
   return (
@@ -42,14 +40,12 @@ function AdminShellContent({ children }: { children: ReactNode }) {
           <nav aria-label="Admin navigation" data-testid="admin-navigation" className="grid grid-cols-2 gap-1 px-3 pb-3 sm:grid-cols-3 md:flex md:shrink-0 md:flex-col">
             {SECTIONS.map(({ label, href, icon: Icon }) => {
               const active = href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
-              const locked = href === "/admin/services" && servicesAccess.status === "locked";
-              const NavIcon = locked ? Lock : Icon;
               return (
                 <Link key={href} href={href} prefetch={false} aria-current={active ? pathname === href ? "page" : "location" : undefined}
                   data-testid={`admin-nav-${href === "/admin" ? "overview" : href.split("/").at(-1)}`}
                   className={`flex min-w-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${active ? "bg-slate-100 text-slate-950" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}>
-                  <NavIcon size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
-                  <span className="min-w-0">{label}{locked ? <span className="block text-xs font-normal" data-testid="admin-nav-services-lock">Off · platform admin can enable</span> : null}</span>
+                  <Icon size={16} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+                  <span className="min-w-0">{label}</span>
                 </Link>
               );
             })}

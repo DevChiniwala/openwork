@@ -7,7 +7,6 @@ import { WORKBOT_DEFAULT_MODEL_NAME, type WorkbotModelTest, type WorkbotSettings
 import {
   getBrandAppearanceRoute,
   getOrgAccessFlags,
-  orgFeatureEnabled,
   parseOrganizationMetadata,
   permissionLockReason,
 } from "../../_lib/den-org";
@@ -151,7 +150,7 @@ export function WorkbotSettingsScreen() {
         description={null}
       >
         <div className="grid gap-4">
-          <ServiceReadinessNotice capabilities={orgContext?.deploymentCapabilities} enabled={orgFeatureEnabled(orgContext, "serviceReadiness")} />
+          <ServiceReadinessNotice capabilities={orgContext?.deploymentCapabilities} />
           {settings && !settings.runnerReachable ? (
             <DenNotice
               tone="error"

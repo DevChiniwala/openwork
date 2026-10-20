@@ -2429,6 +2429,39 @@
           "organizations"
         ]
       },
+      "DenServerFacts": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "startupMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "startedAt",
+          "startupMs"
+        ],
+        "additionalProperties": false
+      },
       "DeploymentServiceStatus": {
         "type": "object",
         "properties": {
@@ -2439,8 +2472,6 @@
               "gateway",
               "headlessRunner",
               "workbot",
-              "slack",
-              "durableTurns",
               "email"
             ]
           },
@@ -2475,11 +2506,11 @@
               "timeout",
               "dependency_unavailable",
               "configuration_only",
-              "provider_access_unverified",
-              "organization_setup_required",
-              "callback_unverified",
-              "delivery_unverified",
-              "incompatible_service"
+              "incompatible_service",
+              "email_verified",
+              "email_key_verified",
+              "email_sender_unverified",
+              "resume_misconfigured"
             ]
           },
           "missingSettings": {
@@ -2491,7 +2522,7 @@
             }
           },
           "dependencies": {
-            "maxItems": 6,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "type": "string",
@@ -2500,11 +2531,35 @@
                 "gateway",
                 "headlessRunner",
                 "workbot",
-                "slack",
-                "durableTurns",
                 "email"
               ]
             }
+          },
+          "notes": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "resume_ready",
+                "resume_not_configured",
+                "resume_misconfigured",
+                "email_smtp",
+                "email_resend"
+              ]
+            }
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "checkedAt": {
             "anyOf": [
@@ -2542,6 +2597,8 @@
           "reason",
           "missingSettings",
           "dependencies",
+          "notes",
+          "durationMs",
           "checkedAt",
           "lastSuccessAt",
           "stale"
@@ -2553,7 +2610,7 @@
         "properties": {
           "version": {
             "type": "number",
-            "const": 1
+            "const": 2
           },
           "checkedAt": {
             "anyOf": [
@@ -2570,8 +2627,18 @@
           "checking": {
             "type": "boolean"
           },
+          "server": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DenServerFacts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "services": {
-            "maxItems": 7,
+            "maxItems": 5,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DeploymentServiceStatus"
@@ -2582,6 +2649,7 @@
           "version",
           "checkedAt",
           "checking",
+          "server",
           "services"
         ],
         "additionalProperties": false
@@ -2592,7 +2660,6 @@
           "key": {
             "type": "string",
             "enum": [
-              "serviceReadiness",
               "cloudAgentGateway",
               "liveProviderSync",
               "offlineRecovery",
@@ -2791,9 +2858,6 @@
                 "capabilities": {
                   "type": "object",
                   "properties": {
-                    "serviceReadiness": {
-                      "type": "boolean"
-                    },
                     "cloudAgentGateway": {
                       "type": "boolean"
                     },
@@ -2874,7 +2938,6 @@
                     }
                   },
                   "required": [
-                    "serviceReadiness",
                     "cloudAgentGateway",
                     "liveProviderSync",
                     "offlineRecovery",
@@ -2905,62 +2968,6 @@
                 "featureStates": {
                   "type": "object",
                   "properties": {
-                    "serviceReadiness": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "cloudAgentGateway": {
                       "type": "object",
                       "properties": {
@@ -4307,7 +4314,6 @@
                     }
                   },
                   "required": [
-                    "serviceReadiness",
                     "cloudAgentGateway",
                     "liveProviderSync",
                     "offlineRecovery",
@@ -4701,9 +4707,6 @@
                 "capabilities": {
                   "type": "object",
                   "properties": {
-                    "serviceReadiness": {
-                      "type": "boolean"
-                    },
                     "cloudAgentGateway": {
                       "type": "boolean"
                     },
@@ -4784,7 +4787,6 @@
                     }
                   },
                   "required": [
-                    "serviceReadiness",
                     "cloudAgentGateway",
                     "liveProviderSync",
                     "offlineRecovery",
@@ -4815,62 +4817,6 @@
                 "featureStates": {
                   "type": "object",
                   "properties": {
-                    "serviceReadiness": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "cloudAgentGateway": {
                       "type": "object",
                       "properties": {
@@ -6217,7 +6163,6 @@
                     }
                   },
                   "required": [
-                    "serviceReadiness",
                     "cloudAgentGateway",
                     "liveProviderSync",
                     "offlineRecovery",
@@ -9010,7 +8955,7 @@
         "properties": {
           "version": {
             "type": "number",
-            "const": 1
+            "const": 2
           },
           "checkedAt": {
             "anyOf": [
@@ -9028,7 +8973,7 @@
             "type": "boolean"
           },
           "services": {
-            "maxItems": 7,
+            "maxItems": 5,
             "type": "array",
             "items": {
               "type": "object",
@@ -9040,8 +8985,6 @@
                     "gateway",
                     "headlessRunner",
                     "workbot",
-                    "slack",
-                    "durableTurns",
                     "email"
                   ]
                 },
@@ -9073,15 +9016,15 @@
                     "timeout",
                     "dependency_unavailable",
                     "configuration_only",
-                    "provider_access_unverified",
-                    "organization_setup_required",
-                    "callback_unverified",
-                    "delivery_unverified",
-                    "incompatible_service"
+                    "incompatible_service",
+                    "email_verified",
+                    "email_key_verified",
+                    "email_sender_unverified",
+                    "resume_misconfigured"
                   ]
                 },
                 "dependencies": {
-                  "maxItems": 6,
+                  "maxItems": 4,
                   "type": "array",
                   "items": {
                     "type": "string",
@@ -9090,8 +9033,6 @@
                       "gateway",
                       "headlessRunner",
                       "workbot",
-                      "slack",
-                      "durableTurns",
                       "email"
                     ]
                   }
@@ -9279,7 +9220,7 @@
           },
           "canManageDeploymentServices": {
             "type": "boolean",
-            "description": "Whether this signed-in caller may manage deployment services: an allowlisted self-hosted operator with serviceReadiness enabled for both this organization and the deployment. Organization ownership and permissions never grant it. False for API keys, hosted deployments, disabled or killed rollout, and capability lookup failures."
+            "description": "Whether this caller may open installation diagnostics: a self-hosted installation administrator (local allowlist), signed in or using an API key they own. Organization ownership and permissions never grant it. False on hosted deployments and when the lookup fails."
           },
           "deploymentCapabilities": {
             "type": "object",
@@ -9339,6 +9280,1010 @@
           "entitlements"
         ],
         "additionalProperties": {}
+      },
+      "OrgDiagnostics": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "deployment": {
+            "type": "string",
+            "enum": [
+              "cloud",
+              "self_hosted"
+            ]
+          },
+          "checking": {
+            "type": "boolean"
+          },
+          "attention": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section": {
+                  "type": "string",
+                  "enum": [
+                    "desktop",
+                    "providers",
+                    "connectors",
+                    "installation",
+                    "network"
+                  ]
+                },
+                "targetId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "warning",
+                    "error"
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "provider_key_rejected",
+                    "provider_unreachable",
+                    "provider_model_missing",
+                    "provider_misconfigured",
+                    "desktop_startup_failures",
+                    "connector_slack_token_rejected",
+                    "connector_slack_not_installed",
+                    "connector_google_api_disabled",
+                    "service_misconfigured",
+                    "service_unreachable"
+                  ]
+                },
+                "subject": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                "count": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "detail": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 255
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "section",
+                "targetId",
+                "severity",
+                "code",
+                "subject",
+                "count",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "desktop": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "granted"
+                  },
+                  "windowHours": {
+                    "type": "number",
+                    "const": 24
+                  },
+                  "startups": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "connected": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "people": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "typicalMs": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "slowestMs": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "steps": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "step": {
+                          "type": "string",
+                          "enum": [
+                            "window",
+                            "engine",
+                            "signed_in",
+                            "org_tools"
+                          ]
+                        },
+                        "typicalMs": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "step",
+                        "typicalMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "failures": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "step": {
+                          "type": "string",
+                          "enum": [
+                            "window",
+                            "engine",
+                            "signed_in",
+                            "org_tools"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "certificate",
+                            "dns",
+                            "offline",
+                            "timeout",
+                            "connection_refused",
+                            "server_error",
+                            "signed_out",
+                            "session_expired",
+                            "engine_failed",
+                            "org_unavailable",
+                            "unknown"
+                          ]
+                        },
+                        "count": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "people": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "lastSeenAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        }
+                      },
+                      "required": [
+                        "step",
+                        "reason",
+                        "count",
+                        "people",
+                        "lastSeenAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "versions": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "maxLength": 64
+                        },
+                        "startups": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "startups"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "access",
+                  "windowHours",
+                  "startups",
+                  "connected",
+                  "failed",
+                  "people",
+                  "typicalMs",
+                  "slowestMs",
+                  "steps",
+                  "failures",
+                  "versions"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "locked"
+                  },
+                  "permission": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "access",
+                  "permission"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "providers": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "granted"
+                  },
+                  "checkedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "checking": {
+                    "type": "boolean"
+                  },
+                  "items": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "gateway",
+                            "legacy",
+                            "openwork"
+                          ]
+                        },
+                        "providerId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255
+                        },
+                        "credentialName": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 255
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "ready",
+                            "key_rejected",
+                            "unreachable",
+                            "model_missing",
+                            "misconfigured",
+                            "member_credentials",
+                            "managed",
+                            "not_checked"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "models_listed",
+                            "key_accepted",
+                            "no_live_check",
+                            "member_sign_in",
+                            "endpoint_not_found",
+                            "network_error",
+                            "timeout",
+                            "configuration_error",
+                            "credential_missing",
+                            "sync_error",
+                            "managed_by_openwork",
+                            "not_checked_yet",
+                            "credential_rejected",
+                            "credential_expired",
+                            "unexpected_response"
+                          ]
+                        },
+                        "httpStatus": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 100,
+                              "maximum": 599
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "durationMs": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "checkedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastSuccessAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "models": {
+                          "type": "object",
+                          "properties": {
+                            "configured": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "served": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "missing": {
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 255
+                              }
+                            }
+                          },
+                          "required": [
+                            "configured",
+                            "served",
+                            "missing"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "members": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "connected": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "needsAttention": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "connected",
+                                "needsAttention"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "source",
+                        "providerId",
+                        "name",
+                        "credentialName",
+                        "state",
+                        "reason",
+                        "httpStatus",
+                        "durationMs",
+                        "checkedAt",
+                        "lastSuccessAt",
+                        "models",
+                        "members"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "access",
+                  "checkedAt",
+                  "checking",
+                  "items"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "locked"
+                  },
+                  "permission": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "access",
+                  "permission"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "connectors": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "granted"
+                  },
+                  "checkedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "items": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "slack_assistant",
+                            "google_workspace"
+                          ]
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255
+                        },
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "ready",
+                            "attention",
+                            "off",
+                            "not_checked"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "slack_token_accepted",
+                            "slack_token_rejected",
+                            "slack_not_installed",
+                            "slack_assistant_off",
+                            "slack_runner_missing",
+                            "google_apis_enabled",
+                            "google_api_disabled",
+                            "google_sign_in_required",
+                            "not_checked_yet"
+                          ]
+                        },
+                        "checkedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastEventAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "completed24h": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "apis": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "maxLength": 64
+                              },
+                              "name": {
+                                "type": "string",
+                                "maxLength": 128
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "enabled",
+                                  "disabled",
+                                  "unknown"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "status"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "state",
+                        "reason",
+                        "checkedAt",
+                        "lastEventAt",
+                        "completed24h",
+                        "apis"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "access",
+                  "checkedAt",
+                  "items"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "locked"
+                  },
+                  "permission": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "access",
+                  "permission"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "installation": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "operator"
+                  },
+                  "server": {
+                    "$ref": "#/components/schemas/DenServerFacts"
+                  },
+                  "services": {
+                    "$ref": "#/components/schemas/DeploymentServiceReadiness"
+                  }
+                },
+                "required": [
+                  "access",
+                  "server",
+                  "services"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "managed"
+                  }
+                },
+                "required": [
+                  "access"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "locked"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "const": "installation_admin_required"
+                  }
+                },
+                "required": [
+                  "access",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "network": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "granted"
+                  },
+                  "canRun": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "access",
+                  "canRun"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "access": {
+                    "type": "string",
+                    "const": "locked"
+                  },
+                  "permission": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "access",
+                  "permission"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "generatedAt",
+          "deployment",
+          "checking",
+          "attention",
+          "desktop",
+          "providers",
+          "connectors",
+          "installation",
+          "network"
+        ],
+        "additionalProperties": false
+      },
+      "DesktopStartupReport": {
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "appVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "darwin",
+              "win32",
+              "linux",
+              "other"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "steps": {
+            "type": "object",
+            "properties": {
+              "window": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3600000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3600000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "signed_in": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3600000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "org_tools": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3600000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "window",
+              "engine",
+              "signed_in",
+              "org_tools"
+            ],
+            "additionalProperties": false
+          },
+          "failedStep": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "window",
+                  "engine",
+                  "signed_in",
+                  "org_tools"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "certificate",
+                  "dns",
+                  "offline",
+                  "timeout",
+                  "connection_refused",
+                  "server_error",
+                  "signed_out",
+                  "session_expired",
+                  "engine_failed",
+                  "org_unavailable",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "attemptId",
+          "appVersion",
+          "platform",
+          "observedAt",
+          "success",
+          "steps",
+          "failedStep",
+          "reason"
+        ],
+        "additionalProperties": false
       },
       "DashboardActivityTarget": {
         "oneOf": [
@@ -29641,7 +30586,7 @@
         ],
         "summary": "Read cached deployment service readiness",
         "x-mcp": false,
-        "description": "Fixed deployment diagnostics only, not inference or delivery verification. Never waits for an outbound health probe. A stale snapshot remains explicitly stale.",
+        "description": "Fixed deployment diagnostics and the answering Den replica's version and start time. Never waits for an outbound check. A stale snapshot remains explicitly stale.",
         "responses": {
           "200": {
             "description": "Cached deployment readiness.",
@@ -29669,16 +30614,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ForbiddenError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Service readiness is disabled.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -29721,7 +30656,7 @@
         ],
         "summary": "Queue a deployment service readiness check",
         "x-mcp": false,
-        "description": "Queues bounded, read-only service probes. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new probes across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.",
+        "description": "Queues bounded, read-only service checks: a database query, service health endpoints, and a mail sign-in or mail-provider domain lookup. Active checks and matching-configuration results completed within 30 seconds coalesce without changing timestamps or spending admission. Durable global admission limits new checks across replicas. Never sends email, calls a model, provisions credentials or initiates Slack events.",
         "responses": {
           "202": {
             "description": "Check queued, already in progress, or completed recently with matching configuration.",
@@ -29749,16 +30684,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ForbiddenError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Service readiness is disabled.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -30943,9 +31868,6 @@
                     "capabilities": {
                       "type": "object",
                       "properties": {
-                        "serviceReadiness": {
-                          "type": "boolean"
-                        },
                         "cloudAgentGateway": {
                           "type": "boolean"
                         },
@@ -31026,7 +31948,6 @@
                         }
                       },
                       "required": [
-                        "serviceReadiness",
                         "cloudAgentGateway",
                         "liveProviderSync",
                         "offlineRecovery",
@@ -31057,62 +31978,6 @@
                     "featureStates": {
                       "type": "object",
                       "properties": {
-                        "serviceReadiness": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "cloudAgentGateway": {
                           "type": "object",
                           "properties": {
@@ -32459,7 +33324,6 @@
                         }
                       },
                       "required": [
-                        "serviceReadiness",
                         "cloudAgentGateway",
                         "liveProviderSync",
                         "offlineRecovery",
@@ -32602,9 +33466,6 @@
                     "capabilities": {
                       "type": "object",
                       "properties": {
-                        "serviceReadiness": {
-                          "type": "boolean"
-                        },
                         "cloudAgentGateway": {
                           "type": "boolean"
                         },
@@ -32685,7 +33546,6 @@
                         }
                       },
                       "required": [
-                        "serviceReadiness",
                         "cloudAgentGateway",
                         "liveProviderSync",
                         "offlineRecovery",
@@ -32716,62 +33576,6 @@
                     "featureStates": {
                       "type": "object",
                       "properties": {
-                        "serviceReadiness": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "cloudAgentGateway": {
                           "type": "object",
                           "properties": {
@@ -34118,7 +34922,6 @@
                         }
                       },
                       "required": [
-                        "serviceReadiness",
                         "cloudAgentGateway",
                         "liveProviderSync",
                         "offlineRecovery",
@@ -40319,7 +41122,7 @@
         ],
         "summary": "Read minimal cached deployment service readiness",
         "x-mcp": false,
-        "description": "Member-safe deployment facts only. Does not inspect organization or member credentials, start a probe, or alter access decisions. Missing deployment settings and required-service policy are withheld.",
+        "description": "Member-safe deployment facts only. Does not inspect organization or member credentials, start a check, or alter access decisions. Missing deployment settings, notes, durations and required-service policy are withheld.",
         "responses": {
           "200": {
             "description": "Cached service readiness.",
@@ -40331,79 +41134,8 @@
               }
             }
           },
-          "404": {
-            "description": "Service readiness is disabled.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "denApiKey": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/org/deployment-services": {
-      "get": {
-        "operationId": "getV1OrgDeploymentServices",
-        "tags": [
-          "Organizations"
-        ],
-        "summary": "Read local deployment service readiness",
-        "x-mcp": false,
-        "description": "Self-hosted deployment operators with an active organization membership only. Organization ownership and permissions do not grant access. Shares the platform diagnostics snapshot and bounded refresh admission.",
-        "responses": {
-          "200": {
-            "description": "Cached deployment readiness.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeploymentServiceReadiness"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Deployment operator access required.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ForbiddenError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Service readiness is disabled.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
           "503": {
-            "description": "Diagnostic admission is unavailable; no upstream detail is exposed.",
+            "description": "The cached snapshot is unavailable; no detail is exposed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -40432,28 +41164,37 @@
         ]
       }
     },
-    "/v1/org/deployment-services/check": {
-      "post": {
-        "operationId": "postV1OrgDeploymentServicesCheck",
+    "/v1/org/diagnostics": {
+      "get": {
+        "operationId": "getV1OrgDiagnostics",
         "tags": [
-          "Organizations"
+          "Diagnostics"
         ],
-        "summary": "Queue a local deployment service readiness check",
-        "x-mcp": false,
-        "description": "Self-hosted deployment operators with an active organization membership only. Queues the same read-only, bounded probes as platform diagnostics; shares active checks, recent results and deployment-wide rate limits. Never sends email, calls a model or initiates Slack events.",
+        "summary": "Read Settings › Diagnostics",
+        "description": "One read for cloud, single-org and self-hosted Den: desktop startups (last 24 hours), model providers, connectors, installation services and network diagnostics, plus a summary of what needs attention. Each section is present for every caller; a section the caller's permissions do not open is `locked` and names the permission. Installation details are only for self-hosted installation administrators (local allowlist). Never returns credentials, upstream responses or another member's identity. Missing or expired provider and connector checks start in the background (rate limited); the read never waits for them.",
         "responses": {
-          "202": {
-            "description": "Check queued, already in progress, or completed recently with matching configuration.",
+          "200": {
+            "description": "Diagnostics for this caller.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeploymentServiceReadiness"
+                  "$ref": "#/components/schemas/OrgDiagnostics"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The query was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
                 }
               }
             }
           },
           "401": {
-            "description": "Authentication required.",
+            "description": "The caller must be signed in.",
             "content": {
               "application/json": {
                 "schema": {
@@ -40462,18 +41203,85 @@
               }
             }
           },
-          "403": {
-            "description": "Deployment operator access required.",
+          "404": {
+            "description": "No active organization.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ForbiddenError"
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "With strict=1: something needs attention at error severity. Same body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgDiagnostics"
+                }
+              }
+            }
+          }
+        },
+        "x-mcp": false,
+        "parameters": [
+          {
+            "in": "query",
+            "name": "strict",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1",
+                "true",
+                "false"
+              ]
+            },
+            "description": "With 1 or true, answer 503 (same body) when any attention item is an error. For post-deploy smoke tests."
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/org/diagnostics/check": {
+      "post": {
+        "operationId": "postV1OrgDiagnosticsCheck",
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Run the diagnostics checks the caller may run",
+        "description": "Starts, in the background, every live check the caller's sections allow: provider model listings with organization-held credentials (never a model request or a member's credential), the Slack assistant token, the caller's own Google API check, and installation services for installation administrators. Shares the rate limits of background checks (one per organization, or per member for connectors, every 30 seconds). Answers with the current diagnostics; poll GET /v1/org/diagnostics until `checking` is false.",
+        "responses": {
+          "202": {
+            "description": "Checks started, already running, or nothing to check.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgDiagnostics"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
                 }
               }
             }
           },
           "404": {
-            "description": "Service readiness is disabled.",
+            "description": "No active organization.",
             "content": {
               "application/json": {
                 "schema": {
@@ -40483,17 +41291,71 @@
             }
           },
           "429": {
-            "description": "No recent matching snapshot is available and another replica recently admitted a check; Retry-After indicates the admission window.",
+            "description": "Every requested check ran recently; Retry-After says when another may start. Same body.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeploymentServiceReadiness"
+                  "$ref": "#/components/schemas/OrgDiagnostics"
+                }
+              }
+            }
+          }
+        },
+        "x-mcp": false,
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/diagnostics/desktop-startup": {
+      "post": {
+        "operationId": "postV1DiagnosticsDesktopStartup",
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Report one desktop app launch",
+        "description": "Sent by the signed-in desktop app once per launch (a failed launch may be sent on the next one). Step timings and a fixed failure code only: no hostnames, error text, paths or device identifiers. Attributed to the caller's active organization and membership. Idempotent per attemptId; launches more than 7 days old or more than 5 minutes in the future are ignored.",
+        "responses": {
+          "204": {
+            "description": "Recorded, already recorded, or ignored."
+          },
+          "400": {
+            "description": "The report was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
                 }
               }
             }
           },
-          "503": {
-            "description": "Diagnostic admission is unavailable; no upstream detail is exposed.",
+          "401": {
+            "description": "The caller must be signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No active organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many reports from this member; Retry-After says when to send again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -40501,13 +41363,24 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "const": "service_readiness_unavailable"
+                      "const": "rate_limited"
                     }
                   },
                   "required": [
                     "error"
                   ]
                 }
+              }
+            }
+          }
+        },
+        "x-mcp": false,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesktopStartupReport"
               }
             }
           }

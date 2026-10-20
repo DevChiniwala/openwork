@@ -1,5 +1,8 @@
+import { randomUUID } from "node:crypto";
 import type { Seed } from "@openwork/env";
+import type { DenSession } from "@openwork/behaviors";
 import { denFetch, freshSession } from "@openwork/behaviors";
+import type { DesktopStartupReport } from "@openwork/types/den/diagnostics";
 import { healthFixture } from "./den-service-readiness.ts";
 
 function field(value: unknown, key: string): unknown {
@@ -11,22 +14,45 @@ function memberId(body: unknown): string {
   return id;
 }
 
-export function localSettingsServices(seed: Seed) { return settingsServices(seed, "self_hosted"); }
-export function cloudSettingsServices(seed: Seed) { return settingsServices(seed, "cloud"); }
+export function localSettingsDiagnostics(seed: Seed) { return settingsDiagnostics(seed, "self_hosted"); }
+export function cloudSettingsDiagnostics(seed: Seed) { return settingsDiagnostics(seed, "cloud"); }
 
-/** Real sessions, membership, ownership transfer, feature store and UI; only external health is mocked. */
-async function settingsServices(seed: Seed, deployment: "cloud" | "self_hosted") {
+/** What real desktop apps send after launch: three connected launches and one that failed on the certificate. */
+export function desktopLaunches(now = Date.now()): DesktopStartupReport[] {
+  const observedAt = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
+  const connected = (minutesAgo: number, window: number, engine: number, signedIn: number, orgTools: number): DesktopStartupReport => ({
+    attemptId: randomUUID(), appVersion: "0.19.2", platform: "darwin", observedAt: observedAt(minutesAgo), success: true,
+    steps: { window, engine, signed_in: signedIn, org_tools: orgTools }, failedStep: null, reason: null,
+  });
+  return [
+    connected(50, 600, 1100, 1600, 1800),
+    connected(40, 650, 1200, 1750, 2000),
+    connected(30, 700, 1400, 2900, 4200),
+    {
+      attemptId: randomUUID(), appVersion: "0.18.7", platform: "win32", observedAt: observedAt(18), success: false,
+      steps: { window: 800, engine: 1500, signed_in: null, org_tools: null }, failedStep: "signed_in", reason: "certificate",
+    },
+  ];
+}
+
+async function report(seed: Seed, session: DenSession, launch: DesktopStartupReport) {
+  const sent = await seed.api(session, "/v1/diagnostics/desktop-startup", { method: "POST", body: JSON.stringify(launch) });
+  if (sent.response.status !== 204) throw new Error(`Desktop startup report was not accepted: ${sent.response.status}`);
+}
+
+/** Real sessions, membership, ownership transfer, reports and UI; only external service health is mocked. */
+async function settingsDiagnostics(seed: Seed, deployment: "cloud" | "self_hosted") {
   const stack = new AsyncDisposableStack();
   try {
     const fixture = stack.use(await healthFixture());
     const den = await seed.den({
       org: {
-        name: "Service settings",
+        name: "Diagnostics settings",
         admin: { name: "Installation Operator" },
         members: { owner: { name: "Organization Owner" }, member: { name: "Workspace Member" } },
       },
       env: {
-        DEN_DEPLOYMENT: deployment, DEN_FEATURE_SERVICE_READINESS: "true",
+        DEN_DEPLOYMENT: deployment,
         GATEWAY_ENABLED: "false", GATEWAY_PROXY_BASE_URL: "", GATEWAY_PUBLIC_BASE_URL: "",
         DEN_HEADLESS_RUNNER_URL: fixture.url,
         DEN_HEADLESS_RUNNER_TOKEN: "readiness-fixture-service-token-not-production",
@@ -34,8 +60,6 @@ async function settingsServices(seed: Seed, deployment: "cloud" | "self_hosted")
         SMTP_HOST: "", SMTP_USER: "", SMTP_PASS: "", SMTP_PORT: "", SMTP_SECURE: "", RESEND_API_KEY: "", EMAIL_FROM: "",
       },
     });
-    const rollout = await seed.api(den.admin, "/v1/admin/features/serviceReadiness", { method: "PUT", body: JSON.stringify({ enabled: true }) });
-    if (!rollout.response.ok) throw new Error(`Cannot enable disposable readiness rollout: ${rollout.response.status}`);
     const operatorContext = await seed.api(den.admin, "/v1/org");
     const ownerContext = await seed.api(den.members.owner, "/v1/org");
     const operatorId = memberId(operatorContext.body), ownerId = memberId(ownerContext.body);
@@ -52,11 +76,17 @@ async function settingsServices(seed: Seed, deployment: "cloud" | "self_hosted")
     stack.defer(async () => {
       const owner = await freshSession(den.members.owner);
       const headers = { authorization: `Bearer ${owner.token}` };
-      const promote = await denFetch(owner, `/v1/members/${operatorId}/role`, { method: "POST", headers, body: JSON.stringify({ role: "admin" }) });
-      if (!promote.response.ok) throw new Error(`Cleanup promotion failed: ${promote.response.status}`);
-      const transfer = await denFetch(owner, `/v1/members/${operatorId}/transfer-ownership`, { method: "POST", headers });
-      if (!transfer.response.ok) throw new Error(`Cleanup ownership transfer failed: ${transfer.response.status}`);
+      const promoteBack = await denFetch(owner, `/v1/members/${operatorId}/role`, { method: "POST", headers, body: JSON.stringify({ role: "admin" }) });
+      if (!promoteBack.response.ok) throw new Error(`Cleanup promotion failed: ${promoteBack.response.status}`);
+      const transferBack = await denFetch(owner, `/v1/members/${operatorId}/transfer-ownership`, { method: "POST", headers });
+      if (!transferBack.response.ok) throw new Error(`Cleanup ownership transfer failed: ${transferBack.response.status}`);
     });
+    // Two people launch the desktop app through the same endpoint the app uses.
+    const [first, second, third, failed] = desktopLaunches();
+    await report(seed, den.members.owner, first);
+    await report(seed, den.members.member, second);
+    await report(seed, den.members.owner, third);
+    await report(seed, den.members.member, failed);
     const viewport = { width: 1280, height: 800, deviceScaleFactor: 1 };
     const operator = await seed.web({ den, signedInAs: den.admin, startPath: "/dashboard", headless: true, viewport });
     const owner = await seed.web({ den, signedInAs: den.members.owner, startPath: "/dashboard", headless: true, viewport });

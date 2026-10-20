@@ -18,16 +18,6 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "serviceReadiness": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Deployment service readiness: Self-hosted installation operators can check optional services from Settings; internal platform diagnostics and minimal member readiness share the same checker without blocking core work. Renders DEN_FEATURE_SERVICE_READINESS."
-            },
             "cloudAgentGateway": {
               "enum": [
                 "",
@@ -829,6 +819,16 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "managedDeploymentsMcp": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "serviceReadiness": {
               "enum": [
                 "",
                 "true",

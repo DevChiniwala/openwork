@@ -89,6 +89,25 @@ import {
 } from "./process-resilience.mjs";
 import { createQuitSequencer } from "./quit-sequence.mjs";
 
+// Startup milestones (epoch ms) for the renderer's one-per-launch startup
+// report to Den. The OS process creation time includes module loading; the
+// time this module started evaluating is the fallback.
+const MAIN_MODULE_STARTED_AT = Date.now();
+function resolveProcessStartedAt() {
+  const getCreationTime = Reflect.get(process, "getCreationTime");
+  const creationTime = typeof getCreationTime === "function" ? getCreationTime.call(process) : null;
+  return typeof creationTime === "number" && Number.isFinite(creationTime) && creationTime > 0 && creationTime <= MAIN_MODULE_STARTED_AT
+    ? Math.round(creationTime)
+    : MAIN_MODULE_STARTED_AT;
+}
+/** @type {import("@openwork/types/desktop-ipc").DesktopStartupTimings} */
+const startupTimings = {
+  processStartedAt: resolveProcessStartedAt(),
+  windowShownAt: null,
+  engineSettledAt: null,
+  engine: null,
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, "../../..");
 const require = createRequire(import.meta.url);
@@ -1539,7 +1558,15 @@ function startRuntimeBootstrap() {
     ok: false,
     error: error instanceof Error ? error.message : String(error),
   }));
+  void runtimeBootstrapPromise.then(recordStartupEngineSettled);
   return runtimeBootstrapPromise;
+}
+
+// Only the launch's first boot counts; a Reload after a failure is a retry.
+function recordStartupEngineSettled(result) {
+  if (startupTimings.engineSettledAt !== null) return;
+  startupTimings.engineSettledAt = Date.now();
+  startupTimings.engine = result?.ok === false ? "failed" : result?.skipped ? "skipped" : "ready";
 }
 
 function ensureRuntimeBootstrap() {
@@ -1840,6 +1867,9 @@ const desktopCommandHandlers = {
         buildEpoch: process.env.OPENWORK_BUILD_EPOCH ?? null,
         openworkDevMode: process.env.OPENWORK_DEV_MODE === "1",
       };
+  },
+  "startupTimings": async (event, ...args) => {
+      return { ...startupTimings };
   },
   "desktopNotificationShow": async (event, ...args) => {
       return showDesktopNotification(args[0] ?? {});
@@ -2513,6 +2543,7 @@ async function createMainWindow() {
   mainWindow.setTitle(currentDisplayAppName);
 
   mainWindow.once("ready-to-show", () => {
+    if (startupTimings.windowShownAt === null) startupTimings.windowShownAt = Date.now();
     mainWindow?.setTitle(currentDisplayAppName);
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
     mainWindow?.show();

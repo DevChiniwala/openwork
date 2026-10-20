@@ -91,13 +91,12 @@ test("retired GA locks cannot disable models, skills, permissions or team member
   assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
 })
 
-test("service readiness is opt-in and killable on both deployment types", () => {
-  for (const deployment of ["cloud", "self_hosted"] satisfies FeatureContext["deployment"][]) {
-    const context = { ...base, deployment }
-    assert.equal(resolveFeature("serviceReadiness", context).enabled, false)
-    assert.equal(resolveFeature("serviceReadiness", { ...context, rollouts: { serviceReadiness: { enabled: true, killed: false } } }).enabled, true)
-    assert.equal(resolveFeature("serviceReadiness", { ...context, locks: { serviceReadiness: true }, rollouts: { serviceReadiness: { enabled: true, killed: true } } }).enabled, false)
-  }
+test("service readiness is retired: no key, and an old operator lock is ignored with a warning", () => {
+  assert.equal(featureKeySchema.safeParse("serviceReadiness").success, false)
+  const parsed = parseFeatureEnvironment({ DEN_FEATURE_SERVICE_READINESS: "false" })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, 1)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
 })
 
 test("every key maps to a unique DEN_FEATURE_ name", () => {

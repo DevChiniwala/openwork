@@ -362,7 +362,6 @@ OpenWork Cloud. Don't change it on a customer install.
 <!-- BEGIN GENERATED features (pnpm features:sync) -->
 | `config.features.*` | Environment variable | Default | What it does |
 | --- | --- | --- | --- |
-| `serviceReadiness` | `DEN_FEATURE_SERVICE_READINESS` | default off | Self-hosted installation operators can check optional services from Settings; internal platform diagnostics and minimal member readiness share the same checker without blocking core work. |
 | `cloudAgentGateway` | `DEN_FEATURE_CLOUD_AGENT_GATEWAY` | default off | Choose and run cloud-agent models through the organization's AI Gateway access instead of the runner's shared model credentials. |
 | `liveProviderSync` | `DEN_FEATURE_LIVE_PROVIDER_SYNC` | default off | Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. |
 | `offlineRecovery` | `DEN_FEATURE_OFFLINE_RECOVERY` | default off | Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations. |
