@@ -64,7 +64,8 @@ guard_desktop_egress() {
     iptables -w -A OPENWORK_DESKTOP_EGRESS -d "$range" -j REJECT
   done
   case " $tools " in *" ip6tables "*)
-    for range in ::1/128 ::ffff:0:0/96 fc00::/7 fe80::/10; do ip6tables -w -A OPENWORK_DESKTOP_EGRESS -d "$range" -j REJECT; done ;;
+    # Match the browser policy, including IPv4-compatible/mapped and NAT64.
+    for range in ::/96 ::ffff:0:0/96 64:ff9b::/96 64:ff9b:1::/48 fc00::/7 fe80::/10; do ip6tables -w -A OPENWORK_DESKTOP_EGRESS -d "$range" -j REJECT; done ;;
   esac
 }
 command -v iptables >/dev/null || { echo "The desktop network guard needs iptables" >&2; exit 1; }

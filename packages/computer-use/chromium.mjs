@@ -8,12 +8,14 @@ import { createBrowserTaskHost } from "./browser-task.mjs";
 
 // Loopback, private, shared, link-local (including cloud metadata) and unspecified ranges.
 const PRIVATE = new BlockList();
+const PRIVATE_V6 = new BlockList();
 for (const [network, prefix] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.168.0.0", 16]]) PRIVATE.addSubnet(network, prefix, "ipv4");
-for (const [network, prefix] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10]]) PRIVATE.addSubnet(network, prefix, "ipv6");
+// IPv4 translation is unsupported: both standardized NAT64 prefixes can
+// otherwise hide private IPv4 destinations from IPv6-only checks.
+for (const [network, prefix] of [["::", 96], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["fc00::", 7], ["fe80::", 10]]) PRIVATE_V6.addSubnet(network, prefix, "ipv6");
 const privateAddress = (address) => {
   const family = isIP(address);
-  if (family === 6 && /^::ffff:/i.test(address)) return privateAddress(address.slice(7));
-  return family === 4 ? PRIVATE.check(address, "ipv4") : family === 6 ? PRIVATE.check(address, "ipv6") : true;
+  return family === 4 ? PRIVATE.check(address, "ipv4") : family === 6 ? PRIVATE_V6.check(address, "ipv6") : true;
 };
 
 /** Agent-chosen pages may reach the public web only; the VM firewall enforces the same boundary. */

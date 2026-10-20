@@ -112,6 +112,18 @@ enum AXChildScan {
             throw UseError("privacy_incomplete", "Accessible descendants could not be verified. No screenshot can be captured.", next: "observe")
         }
     }
+    static func requireStable<T: Equatable>(expectedCount: Int?, currentCount: Int?, expected: [T], current: [T]) throws {
+        guard expectedCount == currentCount, expected == current else {
+            throw UseError("stale_observation", "The accessible children changed during the bounded read.", next: "observe")
+        }
+    }
+}
+
+private struct AXChildrenSnapshot {
+    let parent: AXUIElement
+    let total: Int?
+    let elements: [AXUIElement]
+    var truncated: Bool { total.map { $0 != elements.count } ?? false }
 }
 
 struct ElementRecord {
@@ -284,6 +296,7 @@ final class MacAccessibility {
         var pending = [(target.element, 0)]
         var issue: String?
         var focused: AXUIElement?
+        var childSnapshots: [AXChildrenSnapshot] = []
         while let (element, depth) = pending.popLast() {
             try Task.checkCancellation(); try check()
             guard depth < 24, visited.count < 1500, records.count < 300 else { issue = "tree_limit"; break }
@@ -313,7 +326,8 @@ final class MacAccessibility {
                             actions: actions, settable: settable, enabled: enabled, protected: false,
                             labelHash: textHash(label), valueHash: value.map(textHash)))
                     }
-                    let descendants = try await children(element, limit: 1500 - visited.count - pending.count, budget: budget, check: check)
+                    let descendants = try children(element, limit: 1500 - visited.count - pending.count, budget: budget, check: check)
+                    childSnapshots.append(descendants)
                     if descendants.truncated { issue = "tree_limit" }
                     pending += descendants.elements.reversed().map { ($0, depth + 1) }
                 }
@@ -327,6 +341,13 @@ final class MacAccessibility {
         try check()
         if issue == nil {
             do {
+                // Revalidate the exact ordered child lists after traversal.
+                // Counts alone miss insert/remove/reorder mutations of equal size.
+                for snapshot in childSnapshots {
+                    let current = try children(snapshot.parent, limit: snapshot.elements.count, budget: budget, check: check)
+                    try AXChildScan.requireStable(expectedCount: snapshot.total, currentCount: current.total,
+                                                  expected: snapshot.elements, current: current.elements)
+                }
                 var pid: pid_t = 0
                 guard AXUIElementGetPid(target.element, &pid) == .success else { throw UseError("window_unavailable", "The window exited.", next: "observe") }
                 focused = try checkedElement(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute, budget)
@@ -549,28 +570,27 @@ final class MacAccessibility {
         var settable = DarwinBoolean(false)
         return try accepted(AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable), budget) && settable.boolValue
     }
-    private func children(_ element: AXUIElement, limit: Int, budget: AXReadBudget, check: () throws -> Void) async throws -> (elements: [AXUIElement], truncated: Bool) {
-        try prepare(element, budget)
+    private func children(_ element: AXUIElement, limit: Int, budget: AXReadBudget, check: () throws -> Void) throws -> AXChildrenSnapshot {
+        try check(); try prepare(element, budget)
         var total = 0
         guard try accepted(AXUIElementGetAttributeValueCount(element, kAXChildrenAttribute as CFString, &total), budget) else {
             try AXChildScan.requireKnownLeaf(checkedString(element, kAXRoleAttribute, budget))
-            return ([], false)
+            return AXChildrenSnapshot(parent: element, total: nil, elements: [])
         }
         guard total >= 0 else { throw UseError("accessibility_unavailable", "The accessible child count is invalid.", next: "observe") }
         let count = min(total, max(0, limit))
         var elements: [AXUIElement] = []
-        while elements.count < count {
+        if count > 0 {
             try check(); try prepare(element, budget)
-            let size = min(64, count - elements.count)
             var values: CFArray?
-            guard try accepted(AXUIElementCopyAttributeValues(element, kAXChildrenAttribute as CFString, elements.count, size, &values), budget),
-                  let page = values as? [AXUIElement], page.count == size else {
+            // One bounded read: never stitch pages across a changing AX tree.
+            guard try accepted(AXUIElementCopyAttributeValues(element, kAXChildrenAttribute as CFString, 0, count, &values), budget),
+                  let snapshot = values as? [AXUIElement], snapshot.count == count else {
                 throw UseError("stale_observation", "The accessible children changed during the bounded read.", next: "observe")
             }
-            elements += page
-            await Task.yield()
+            elements = snapshot
         }
-        return (elements, count != total)
+        return AXChildrenSnapshot(parent: element, total: total, elements: elements)
     }
     private func checkedFrame(_ element: AXUIElement, _ budget: AXReadBudget) throws -> CGRect? {
         guard let rawPosition = try checkedAttribute(element, kAXPositionAttribute, budget),
