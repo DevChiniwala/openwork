@@ -834,7 +834,6 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
       advance(grant);
       grant.adapter = adapter;
       grant.windows = new Map();
-      grant.enabled = true;
       await remember((state) => { state.targets.delete(grant.sessionId); state.targets.set(grant.sessionId, adapter.id); });
       requests.get(grant.sessionId)?.wake();
       return view(grant);

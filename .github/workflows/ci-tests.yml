@@ -128,6 +128,7 @@ jobs:
           node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs
           python3 ee/packages/headless-computer/scripts/desktop-bridge.test.py
           python3 ee/packages/headless-computer/scripts/configure-desktop-files.test.py
+          python3 ee/packages/headless-computer/scripts/cloud-desktop.test.py
           python3 ee/packages/headless-computer/scripts/vnc-stdio.test.py
           python3 packages/computer-use/computer-x11-worker.test.py
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr ../apps/server/test/computer-use-tools.vitest.test.ts ../apps/server/test/cloud-computer-lifecycle.vitest.test.ts

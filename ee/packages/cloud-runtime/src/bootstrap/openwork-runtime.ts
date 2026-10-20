@@ -247,7 +247,7 @@ export function renderOpenWorkBootstrapScript(config: OpenWorkBootstrapConfig) {
   ].join("; ")
   const desktopEnvironment = config.cloudComputerDisplay ? [
     `DISPLAY=${shellQuote(config.cloudComputerDisplay)} `,
-    `XAUTHORITY=${shellQuote(`${config.runtimeDataPath}/cloud-desktop/.Xauthority`)} `,
+    `XAUTHORITY=${shellQuote(`/run/openwork-desktop/${config.cloudComputerDisplay.slice(1)}/.Xauthority`)} `,
     `OPENWORK_CLOUD_COMPUTER_DISPLAY=${shellQuote(config.cloudComputerDisplay)} `,
     "OPENWORK_BROWSER_PROVIDER=sandbox-interactive ",
     `OPENWORK_UI_CONTROL_DISCOVERY=${shellQuote(`${config.sidecarDir}/cloud-ui-control.json`)} `,

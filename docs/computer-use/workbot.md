@@ -230,7 +230,7 @@ test another compatible region/snapshot; it never provisions a warm pool.
 
 For image acceptance, copy `ee/packages/headless-computer/scripts/prove-desktop-apps.mjs`
 into a dedicated prepared test guest, start its desktop, then run it as root with
-`DISPLAY=:99 XAUTHORITY=/var/lib/openwork-desktop/cloud-desktop/.Xauthority node prove-desktop-apps.mjs --dedicated-guest`.
+`DISPLAY=:99 XAUTHORITY=/run/openwork-desktop/99/.Xauthority node prove-desktop-apps.mjs --dedicated-guest`.
 It checks the installed catalog, launches four GUI apps, saves text through the
 editor and renders a small Blender scene on CPU. It leaves its outputs and
 desktop screenshot under `/workspace/out/desktop-apps-proof-…` for inspection.

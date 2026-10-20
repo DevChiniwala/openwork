@@ -30,7 +30,7 @@ def serve(view, control, input_fd=0, output_fd=1):
     signal.signal(signal.SIGINT, interrupted)
     try:
         process = subprocess.Popen(['/usr/sbin/runuser', '-u', 'openwork-browser', '--', 'x11vnc', '-inetd', '-q',
-                                    '-display', ':99', '-auth', str(state / 'cloud-desktop/.Xauthority'),
+                                    '-display', ':99', '-auth', '/run/openwork-desktop/99/.Xauthority',
                                     '-nopw', '-noxdamage', *extra], stdin=child, stdout=child,
                                    stderr=subprocess.DEVNULL, start_new_session=True,
                                    env={'PATH': '/usr/local/bin:/usr/bin:/bin', 'HOME': '/home/openwork-browser',
