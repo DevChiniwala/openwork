@@ -134,7 +134,8 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
     const registry = resources.use(await chrome({ host: place.host(), name: "demonstrated-registry", startUrl: "about:blank", headless: true }));
     recorder = createBrowserDemonstration({ path: join(directory, "demonstration.json"), endpoint: registry.handle.cdpUrl, allowed: async (value: string) => value === "about:blank" || new URL(value).origin === new URL(url).origin });
     resources.defer(() => recorder?.close());
-    browser = createCloudBrowser({ statePath: join(directory, "browser-tabs.json"), endpoint: registry.handle.cdpUrl, privateBrowsing: true, assertActive() {}, enabled: () => true, beforeInput: async () => {} });
+    // Local Chrome has no Linux guest UID/kernel filter; this fixture deliberately uses its own loopback site.
+    browser = createCloudBrowser({ statePath: join(directory, "browser-tabs.json"), endpoint: registry.handle.cdpUrl, privateBrowsing: true, verifyEgress: async () => {}, assertActive() {}, enabled: () => true, beforeInput: async () => {} });
     resources.defer(() => browser?.close());
     const den = await seed.den({ web: false, org: { name: "Example workspace", admin: { name: "Member Example" } }, env: { DEN_WORKBOT_URL: url, DEN_PLAN_GATING_ENABLED: "false", RESEND_API_KEY: "", SMTP_HOST: "", LOOPS_API_KEY: "", STRIPE_SECRET_KEY: "" } });
     const orgId = await enableOrganizationCapabilities(seed, den.admin, { computerUse: true, remoteComputers: true, browserDemonstrations: true });
