@@ -1,6 +1,6 @@
 # Computer Use
 
-A small macOS 14+ helper that lets OpenWork see and use one app window selected automatically by the desktop, for one short session. It is a single Swift executable
+A small macOS 14+ helper that lets OpenWork see and use one app window approved by the person, for one short session. It is a single Swift executable
 (`native/`) that the OpenWork desktop packages as **OpenWork Computer Use.app**
 (bundle id `com.differentai.openwork.computer-use`) and launches from its main
 process. It has no model, API key, network listener or clipboard access.
@@ -9,7 +9,7 @@ process. It has no model, API key, network listener or clipboard access.
 
 | Command | Purpose |
 | --- | --- |
-| `ComputerUse mcp-embedded` | What OpenWork launches. MCP over stdio; the desktop selects the window automatically and hosts Take over, Continue and Stop over the private `openwork/ui` channel. |
+| `ComputerUse mcp-embedded` | What the same-team signed OpenWork desktop launches. MCP over stdio; the person chooses a window in the desktop, which hosts Take over, Continue and Stop over the private `openwork/ui` channel. |
 | `ComputerUse mcp` | Standalone MCP server for local testing, with native consent and a small native control panel. |
 | `ComputerUse --check` | Prints `{ok, accessibility, screenRecording, supported, protocolVersion: "openwork.computer-use/1"}` and exits. |
 | `ComputerUse permissions accessibility\|screenRecording` | Triggers the macOS prompt and opens the matching System Settings pane. |
@@ -27,7 +27,7 @@ screenshots and receipts live in process memory and are discarded on close.
 | Tool | Purpose |
 | --- | --- |
 | `computer_discover` | App identities, permissions, modes, keys, shortcuts and limits; reads no window content |
-| `computer_open_session` | Launch the app if needed, select its window automatically (embedded desktop mode) |
+| `computer_open_session` | Launch the app if needed and wait for the person to approve a window |
 | `computer_observe` | Compact interactive (or all) elements plus an optional window PNG |
 | `computer_zoom` | A region of the current observation at full resolution; read only |
 | `computer_act` | One action or an ordered batch (1–8) against a fresh observation, with a display-only `intent` |
@@ -115,7 +115,9 @@ while accessible controls keep working.
 
 ## Experimental access model
 
-The desktop rollout grants application access without chat or window prompts.
+The desktop rollout enables application tools. Personal app windows and manually
+configured remote desktops wait for the person's window choice in the Computer
+view; dedicated conversation cloud VMs select their windows automatically.
 System permissions still come from macOS. Editable controls do not expose their
 raw Accessibility values to the model; ordinary visible content remains in the
 screenshot. Protected controls that identify
@@ -134,13 +136,16 @@ remain enforced.
 
 ## Shared cloud runtime
 
-Browser observations include accessible field names, current non-sensitive
-values, input types, required/read-only/disabled state, checkbox state, select
+Browser observations include accessible field names, input types,
+required/read-only/disabled state, checkbox state, select
 options and validation messages. `fill` replaces or clears text and date/time
 fields; `select` accepts observed option values (including multiple selection);
 `set_checked` sets a checkbox, radio or custom switch without toggling an
 already correct control. Form receipts verify the retained value and expose
-`value_mismatch` when a page rewrites or rejects it. Submission still requires
+`value_mismatch` when a page rewrites or rejects it. Field values filled by the
+page or person stay withheld; only the exact value entered by the agent can be
+read back. Select option references are opaque and limited to the observed list.
+Submission still requires
 observing the resulting page; an uncertain submit must never be replayed.
 References expire after a minute and are consumed once. Before input, the host
 revalidates the target's state, geometry and hit test, while unrelated page
@@ -165,7 +170,7 @@ it is a focused provider diagnostic, separate from the Web rollout UI proof.
 With `computerUse` enabled, `computer_run` executes one bounded JavaScript
 program against the conversation's selected computer or built-in browser. It
 uses the same Stop/takeover controls and organization policy as direct tools.
-There is no extra application consent step. The `remoteComputers` rollout is
+Programs share the window approval used by direct tools. The `remoteComputers` rollout is
 also required when the selected computer is a VM.
 
 ```js
