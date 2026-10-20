@@ -478,10 +478,27 @@ function wikiToMarkdown(wiki) {
 // ── State ───────────────────────────────────────────────────────────────────────────────────────────────
 
 function seed() { commentSeq = 30000; return { jira: seedJira(), confluence: seedConfluence() }; }
-let state = seed();
+let state;
 let touched = false;
 let audit = [], auditSequence = 0;
 function reset() { state = seed(); touched = false; audit = []; auditSequence = 0; }
+// Raw standalone fixtures stay in memory; the gateway opts each worker into its own file.
+const snapshotStore = process.env.OPEN_WORKPLACE_STATE_FILE
+  ? (await import("./workshop-store.mjs")).createSnapshotStore({ file: process.env.OPEN_WORKPLACE_STATE_FILE }) : null;
+const snapshotIdentity = process.env.OPEN_WORKPLACE_PERSON || "Alex Chen|alex|CEO";
+let storageFailed = false;
+function saveSnapshot() {
+  snapshotStore?.write("atlassian", { version: 1, identity: snapshotIdentity, state, touched, audit, auditSequence, commentSeq });
+}
+const restored = snapshotStore?.read("atlassian");
+if (restored === undefined) { reset(); saveSnapshot(); }
+else {
+  if (restored.version !== 1 || restored.identity !== snapshotIdentity || !restored.state
+    || !Array.isArray(restored.state.jira?.issues) || !Array.isArray(restored.state.confluence?.pages)
+    || !Array.isArray(restored.audit) || typeof restored.touched !== "boolean"
+    || !Number.isSafeInteger(restored.auditSequence) || !Number.isSafeInteger(restored.commentSeq)) throw new Error("Invalid Atlassian snapshot or participant identity.");
+  ({ state, touched, audit, auditSequence, commentSeq } = restored);
+}
 
 // ── Jira: views in the shape of the REST API v2 ─────────────────────────────────────────────────────────
 
@@ -1717,6 +1734,13 @@ async function callTool(message, scope = null) {
 
 function log(line) { console.log(`[open-atlassian] ${new Date().toISOString()} ${line}`); }
 function send(res, status, body, headers = {}) {
+  // Flush all content, counters and audits before acknowledging REST/MCP/reset.
+  // Handle disk errors here, not by throwing into a catch that invokes send again.
+  try { if (storageFailed) throw new Error("Storage unavailable"); saveSnapshot(); }
+  catch {
+    storageFailed = true;
+    status = 500; body = { error: "storage_unavailable" }; headers = {};
+  }
   const text = body === undefined ? "" : JSON.stringify(body);
   res.writeHead(status, { ...(body === undefined ? {} : { "content-type": "application/json;charset=UTF-8" }), "cache-control": "no-store", ...headers });
   res.end(text);
@@ -1729,8 +1753,10 @@ async function readBody(req) {
 /** Data Center accepts a personal access token (Bearer) or basic auth; anonymous REST calls get 401 like the real thing. */
 const authorized = (req) => /^(Bearer|Basic)\s+\S+/i.test(String(req.headers.authorization ?? ""));
 
+export { server };
 const server = createServer(async (req, res) => {
   try {
+    if (storageFailed) return send(res, 500, undefined);
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname.replace(/\/+$/, "") || "/";
     if (path === "/health") return send(res, 200, { ok: true, services: ["jira", "confluence"], mcp: Object.keys(MCP_SCOPES) });

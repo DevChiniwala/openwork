@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { randomBytes, createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -32,10 +32,14 @@ test("Alice and Bob sign in normally and keep mail, Drive and sign-out isolated 
   try { await access(chrome); } catch { t.skip("Set CHROME_BIN to an installed Chrome/Chromium for browser verification."); return; }
   // Import at execution time: this proof does not need auth credentials in environment variables.
   const { startWorkshop } = await import("./workshop.mjs");
-  const participants = [
-    { id: "alice", name: "Alice", token: randomBytes(32).toString("base64url") },
-    { id: "bob", name: "Bob", token: randomBytes(32).toString("base64url") },
-  ];
+  const participants = process.env.OPEN_WORKPLACE_TEST_PARTICIPANTS_FILE
+    ? JSON.parse(await readFile(process.env.OPEN_WORKPLACE_TEST_PARTICIPANTS_FILE, "utf8"))
+    : [
+      { id: "alice", name: "Alice", token: randomBytes(32).toString("base64url") },
+      { id: "bob", name: "Bob", token: randomBytes(32).toString("base64url") },
+    ];
+  assert.equal(participants.length, 2, "Use exactly two dedicated verification accounts, not the attendee roster");
+  if (process.env.OPEN_WORKPLACE_TEST_URL && !process.env.OPEN_WORKPLACE_TEST_PARTICIPANTS_FILE) throw new Error("A hosted proof requires a private test-account roster file");
   const directory = await mkdtemp(join(process.env.TMPDIR || tmpdir(), "open-workplace-workshop-browser-"));
   let workshop, browser, socket;
   const contexts = [], pending = new Map();
@@ -46,7 +50,9 @@ test("Alice and Bob sign in normally and keep mail, Drive and sign-out isolated 
     try { if (browser) await stop(browser); }
     finally { try { await workshop?.close(); } finally { await rm(directory, { recursive: true, force: true }); } }
   });
-  workshop = await startWorkshop({ participants, port: 0 });
+  workshop = process.env.OPEN_WORKPLACE_TEST_URL
+    ? { origin: new URL(process.env.OPEN_WORKPLACE_TEST_URL).origin, close: async () => {} }
+    : await startWorkshop({ participants, port: 0 });
   const base = workshop.origin;
   browser = spawn(chrome, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0", `--user-data-dir=${join(directory, "profile")}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
   let output = "";
@@ -219,12 +225,12 @@ test("Alice and Bob sign in normally and keep mail, Drive and sign-out isolated 
     await context.navigate("/jira", "document.querySelectorAll('#issue-rows tr').length>3");
     await context.navigate("/confluence", "document.querySelectorAll('.page-row').length>10");
   }
-  await alice.navigate("/", "document.querySelector('h1')?.textContent==='Alice'");
+  await alice.navigate("/", `document.querySelector('h1')?.textContent===${JSON.stringify(participants[0].name)}`);
   await alice.submit('form[action="/logout"]');
   await waitFor(() => alice.evaluate("location.pathname==='/login' && !!document.querySelector('[name=token]')"), "Sign out did not return Alice to login");
   assert.equal(await alice.evaluate("fetch('/v1.0/me/messages').then(response=>response.status)"), 401, "Signed-out browser must not read mail directly");
   assert.equal(await alice.evaluate("fetch('/_workshop/state/microsoft').then(response=>response.status)"), 401, "Signed-out browser must not read private fixture state");
-  await bob.navigate("/", "document.querySelector('h1')?.textContent==='Bob'");
+  await bob.navigate("/", `document.querySelector('h1')?.textContent===${JSON.stringify(participants[1].name)}`);
   const bobMail = await bob.evaluate("fetch('/v1.0/me/messages').then(async response=>({status:response.status,body:await response.json()}))");
   assert.equal(bobMail.status, 200, "Alice's sign-out must preserve Bob's cookie");
   assert.equal(bobMail.body.value.find((message) => message.id === sharedId).subject, bobSubject);

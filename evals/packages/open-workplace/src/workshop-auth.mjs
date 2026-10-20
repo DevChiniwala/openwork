@@ -1,5 +1,5 @@
 // Standalone fictional workshop authentication. Node builtins only; no upstream identity provider.
-// OAuth public clients use authorization_code + S256 PKCE, scope workplace, and no refresh tokens.
+// OAuth public clients use S256 PKCE and rotating, resource-bound refresh token families.
 import { createHash, randomBytes } from "node:crypto";
 import { workshopPage as page, escapeHtml } from "./workshop-html.mjs";
 
@@ -16,11 +16,71 @@ const safeNext = (value) => {
   return value;
 };
 
-export function createWorkshopAuth({ origin, participants }) {
+export function createWorkshopAuth({ origin, participants, storage }) {
   const base = new URL(origin);
   if (base.origin !== origin || !["http:", "https:"].includes(base.protocol)) throw new Error("Workshop origin must be an HTTP(S) origin");
   const identities = new Map(participants.map((participant) => [digest(participant.token), participant]));
-  const sessions = new Map(), clients = new Map(), codes = new Map(), tokens = new Map(), rates = new Map();
+  const sessions = new Map(), clients = new Map(), codes = new Map(), tokens = new Map(), refreshes = new Map(), rates = new Map();
+  const byId = new Map(participants.map((participant) => [participant.id, participant]));
+  const tables = { sessions, clients, codes, tokens, refreshes };
+  const storageKey = "workshop-auth:v1";
+  let unavailable = false, closed = false, pendingResponse, queue = Promise.resolve();
+  function snapshot() {
+    return { version: 1, origin, tables: Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, [...table].map(([key, entry]) => {
+      const { participant, ...fields } = entry;
+      return [key, participant ? { ...fields, participantId: participant.id, credentialFingerprint: digest(participant.token) } : fields];
+    })])) };
+  }
+  function restore(saved) {
+    if (saved === undefined) return;
+    saved = structuredClone(saved);
+    const invalid = () => { unavailable = true; throw new Error("Workshop authentication storage is invalid; restore a trusted backup before restarting."); };
+    if (!saved || saved.version !== 1 || saved.origin !== origin || !saved.tables || Object.keys(saved.tables).sort().join() !== Object.keys(tables).sort().join()) invalid();
+    for (const [name, table] of Object.entries(tables)) {
+      const rows = saved.tables[name];
+      if (!Array.isArray(rows) || rows.length > LIMIT * 2) invalid();
+      for (const row of rows) {
+        if (!Array.isArray(row) || row.length !== 2) invalid();
+        const [key, entry] = row;
+        if (typeof key !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(key) || table.has(key) || !entry || typeof entry !== "object" || !Number.isFinite(entry.expires) || "participant" in entry) invalid();
+        const allowedFields = {
+          sessions: ["participantId", "credentialFingerprint", "expires"],
+          clients: ["client_id", "client_name", "redirect_uris", "token_endpoint_auth_method", "grant_types", "response_types", "scope", "expires"],
+          codes: ["participantId", "credentialFingerprint", "clientId", "redirectUri", "challenge", "resource", "expires"],
+          tokens: ["participantId", "credentialFingerprint", "clientId", "resource", "family", "expires"],
+          refreshes: ["participantId", "credentialFingerprint", "clientId", "resource", "family", "expires", "used"],
+        }[name];
+        if (Object.keys(entry).sort().join() !== allowedFields.sort().join()) invalid();
+        if (name === "clients") {
+          if (entry.token_endpoint_auth_method !== "none" || entry.scope !== "workplace" || JSON.stringify(entry.grant_types) !== JSON.stringify(["authorization_code", "refresh_token"]) || JSON.stringify(entry.response_types) !== JSON.stringify(["code"])) invalid();
+          if (entry.client_id !== key || typeof entry.client_name !== "string" || !Array.isArray(entry.redirect_uris) || !entry.redirect_uris.length || !entry.redirect_uris.every(redirectAllowed)) invalid();
+        } else {
+          if (typeof entry.participantId !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(entry.credentialFingerprint || "")) invalid();
+          if (name !== "sessions" && (typeof entry.clientId !== "string" || !resource(entry.resource))) invalid();
+          if (name === "codes" && (!redirectAllowed(entry.redirectUri) || !/^[A-Za-z0-9_-]{43}$/.test(entry.challenge || ""))) invalid();
+          if (["tokens", "refreshes"].includes(name) && !/^[A-Za-z0-9_-]{43}$/.test(entry.family || "")) invalid();
+          if (name === "refreshes" && typeof entry.used !== "boolean") invalid();
+          const participant = byId.get(entry.participantId);
+          if (!participant || digest(participant.token) !== entry.credentialFingerprint) continue;
+          entry.participant = participant;
+          delete entry.participantId; delete entry.credentialFingerprint;
+        }
+        if (entry.expires > Date.now()) table.set(key, entry);
+      }
+    }
+  }
+  // read may be synchronous (SQLite) or asynchronous. authenticate stays fail-closed until ready.
+  let initialized = !storage, ready = Promise.resolve();
+  if (storage) {
+    try {
+      const saved = storage.read(storageKey);
+      if (saved && typeof saved.then === "function") ready = Promise.resolve(saved).then((value) => { restore(value); initialized = true; }).catch(() => { unavailable = true; });
+      else { restore(saved); initialized = true; }
+    } catch { unavailable = true; }
+  }
+  function revokeFamily(family) {
+    for (const table of [tokens, refreshes]) for (const [key, entry] of table) if (entry.family === family) table.delete(key);
+  }
   const cookieName = base.protocol === "https:" ? "__Host-workshop_session" : "workshop_session";
   const prune = (map) => { for (const [key, entry] of map) if (entry.expires <= Date.now()) map.delete(key); };
   function budget(req, category, maximum, failureOnly = false) {
@@ -43,16 +103,18 @@ export function createWorkshopAuth({ origin, participants }) {
     return match ? digest(match.slice(cookieName.length + 1)) : null;
   }
   function browserParticipant(req) {
+    if (!initialized || unavailable || closed) return null;
     prune(sessions);
     return sessions.get(cookieKey(req))?.participant || null;
   }
   function resource(value) {
     try {
       const parsed = new URL(value);
-      return parsed.origin === origin && !parsed.username && !parsed.password && !parsed.hash && !parsed.search ? parsed.href : null;
+      return ["/outlook/mcp", "/calendar/mcp", "/drive/mcp", "/jira/mcp", "/confluence/mcp"].some((path) => value === origin + path) && parsed.origin === origin ? parsed.href : null;
     } catch { return null; }
   }
   function authenticate(req) {
+    if (!initialized || unavailable || closed) return null;
     if (req.headers.authorization !== undefined) {
       const match = /^Bearer ([A-Za-z0-9._~+/-]+=*)$/i.exec(req.headers.authorization);
       if (!match) return null;
@@ -60,12 +122,10 @@ export function createWorkshopAuth({ origin, participants }) {
       if (identities.has(hash)) return identities.get(hash);
       prune(tokens);
       const token = tokens.get(hash);
-      if (!token) return null;
-      if (token.resource) {
-        const path = new URL(req.url, origin).pathname;
-        const audiencePath = new URL(token.resource).pathname.replace(/\/$/, "");
-        if (audiencePath && path !== audiencePath && !path.startsWith(audiencePath + "/")) return null;
-      }
+      if (!token || !resource(token.resource)) return null;
+      const path = new URL(req.url, origin).pathname;
+      const audiencePath = new URL(token.resource).pathname;
+      if (path !== audiencePath) return null;
       return token.participant;
     }
     return browserParticipant(req);
@@ -83,12 +143,14 @@ export function createWorkshopAuth({ origin, participants }) {
   function send(res, status, body, type = "application/json") {
     // Chromium sends Origin: null for native form POSTs from no-referrer pages.
     // same-origin preserves CSRF validation without leaking referrers to OAuth callbacks.
-    res.writeHead(status, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-store", "Pragma": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "Content-Security-Policy": res.getHeader("Content-Security-Policy") || "default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
-    res.end(type === "application/json" ? JSON.stringify(body) : body);
+    pendingResponse = () => {
+      res.writeHead(status, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-store", "Pragma": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "Content-Security-Policy": res.getHeader("Content-Security-Policy") || "default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" });
+      res.end(type === "application/json" ? JSON.stringify(body) : body);
+    };
   }
   const error = (res, status, name) => send(res, status, { error: name });
   function redirect(res, location) {
-    res.writeHead(303, { Location: location, "Cache-Control": "no-store", "Referrer-Policy": "same-origin" }); res.end();
+    pendingResponse = () => { res.writeHead(303, { Location: location, "Cache-Control": "no-store", "Referrer-Policy": "same-origin" }); res.end(); };
   }
   function setCookie(res, value, age) {
     res.setHeader("Set-Cookie", `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${base.protocol === "https:" ? "; Secure" : ""}`);
@@ -109,20 +171,23 @@ export function createWorkshopAuth({ origin, participants }) {
     if ([...new Set(result.keys())].some((key) => result.getAll(key).length !== 1)) throw { status: 400 };
     return result;
   }
-  const redirectAllowed = (value) => {
+  function redirectAllowed(value) {
     try {
       const target = new URL(value);
       return !value.includes("#") && !target.origin.includes("'") && !target.username && !target.password && (target.protocol === "https:" || (target.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname)));
     } catch { return false; }
-  };
-  function loginPage(res, next, participant = null) {
-    // Native form controls intentionally keep this standalone fixture free of UI dependencies (DESIGN P5).
-    send(res, 200, page("Sign in to the workshop", `<p class="muted">Private sandbox · Fictional sample data</p>${participant ? `<p>Signed in as ${escapeHtml(participant.name)}</p>` : ""}<form action="/login" method="post"><input type="hidden" name="next" value="${escapeHtml(next)}"><p><label for="token">Workshop access code</label><input id="token" name="token" type="password" autocomplete="off" required></p><button type="submit">Sign in</button></form>`), "text/html");
   }
-  async function handle(req, res, url) {
+  function loginPage(res, next, participant = null, message = "", status = 200) {
+    // Native labeled controls are appropriate for this dependency-free sandbox (DESIGN P5, C6).
+    const destination = new URL(next, origin), client = clients.get(destination.searchParams.get("client_id"));
+    const callback = destination.searchParams.get("redirect_uri");
+    if (destination.pathname === "/oauth/authorize" && client?.redirect_uris.includes(callback)) res.setHeader("Content-Security-Policy", `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${new URL(callback).origin}; frame-ancestors 'none'; base-uri 'none'`);
+    send(res, status, page("Sign in to Acme Workplace", `${participant ? `<div class="account"><span class="muted">Signed in as</span><strong>${escapeHtml(participant.name)}</strong></div>` : `<p class="muted">Use the password on your assigned workshop account card.</p>`}${message ? `<p class="error" role="alert">${escapeHtml(message)}</p>` : ""}<form action="/login" method="post"><input type="hidden" name="next" value="${escapeHtml(next)}"><p><label for="token">Workshop password</label><input id="token" name="token" type="password" autocomplete="current-password" aria-describedby="password-help" required></p><p id="password-help" class="muted">Your account name comes from the workshop roster. Do not use a work password.</p><div class="actions"><button type="submit">Sign in</button><button class="secondary" type="submit" name="decision" value="cancel" formnovalidate>Cancel</button></div></form>${participant ? `<form action="/logout" method="post"><button class="secondary" type="submit">Sign out</button></form>` : ""}`), "text/html");
+  }
+  async function dispatch(req, res, url) {
     const path = url.pathname;
     const metadata = path === "/.well-known/oauth-authorization-server" || path === "/.well-known/oauth-protected-resource" || path.startsWith("/.well-known/oauth-protected-resource/");
-    const clientEndpoint = path === "/oauth/register" || path === "/oauth/token";
+    const clientEndpoint = path === "/oauth/register" || path === "/oauth/token" || path === "/oauth/revoke";
     if (!["/login", "/logout", "/oauth/authorize"].includes(path) && !metadata && !clientEndpoint) return false;
     res.setHeader("Cache-Control", "no-store");
     if (metadata || clientEndpoint) {
@@ -134,8 +199,9 @@ export function createWorkshopAuth({ origin, participants }) {
     }
     try {
       if (metadata && req.method === "GET") {
-        if (path === "/.well-known/oauth-authorization-server") send(res, 200, { issuer: origin, authorization_endpoint: origin + "/oauth/authorize", token_endpoint: origin + "/oauth/token", registration_endpoint: origin + "/oauth/register", response_types_supported: ["code"], grant_types_supported: ["authorization_code"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], scopes_supported: ["workplace"] });
-        else send(res, 200, { resource: origin + path.slice("/.well-known/oauth-protected-resource".length), authorization_servers: [origin], scopes_supported: ["workplace"], bearer_methods_supported: ["header"] });
+        if (path === "/.well-known/oauth-authorization-server") send(res, 200, { issuer: origin, authorization_endpoint: origin + "/oauth/authorize", token_endpoint: origin + "/oauth/token", registration_endpoint: origin + "/oauth/register", response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], revocation_endpoint: origin + "/oauth/revoke", revocation_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], scopes_supported: ["workplace"] });
+        else if (path === "/.well-known/oauth-protected-resource" || resource(origin + path.slice("/.well-known/oauth-protected-resource".length))) send(res, 200, { resource: origin + path.slice("/.well-known/oauth-protected-resource".length), authorization_servers: [origin], scopes_supported: ["workplace"], bearer_methods_supported: ["header"] });
+        else error(res, 404, "resource_not_found");
       } else if (path === "/login" && req.method === "GET") {
         if (url.searchParams.has("token")) error(res, 400, "Access codes must be sent by POST");
         else loginPage(res, safeNext(url.searchParams.get("next")), browserParticipant(req));
@@ -143,10 +209,21 @@ export function createWorkshopAuth({ origin, participants }) {
         if (!browserOrigin(req)) { error(res, 403, "Same-origin request required"); return true; }
         if (path === "/logout") { sessions.delete(cookieKey(req)); setCookie(res, "", 0); redirect(res, "/login"); return true; }
         const form = await body(req);
+        if (form.get("decision") === "cancel") {
+          const next = new URL(safeNext(form.get("next")), origin);
+          const client = clients.get(next.searchParams.get("client_id"));
+          const callback = next.searchParams.get("redirect_uri");
+          if (next.pathname === "/oauth/authorize" && client && client.expires > Date.now() && client.redirect_uris.includes(callback)) {
+            const target = new URL(callback); target.searchParams.set("error", "access_denied");
+            if (next.searchParams.has("state")) target.searchParams.set("state", next.searchParams.get("state"));
+            redirect(res, target.href);
+          } else redirect(res, "/");
+          return true;
+        }
         const participant = identities.get(digest(form.get("token") || ""));
         if (!participant) {
           if (!budget(req, "login", 20, true)) { error(res, 429, "too_many_requests"); return true; }
-          failure(req, "login"); error(res, 401, "Invalid access code. Try your workshop access code."); return true;
+          failure(req, "login"); loginPage(res, safeNext(form.get("next")), null, "That workshop password was not recognized. Check your account card or ask the workshop host for a new password.", 401); return true;
         }
         if (!budget(req, `session:${participant.id}`, 30)) { error(res, 429, "too_many_requests"); return true; }
         prune(sessions); sessions.delete(cookieKey(req));
@@ -158,10 +235,10 @@ export function createWorkshopAuth({ origin, participants }) {
       } else if (path === "/oauth/register" && req.method === "POST") {
         if (!budget(req, "register", 600)) { error(res, 429, "too_many_requests"); return true; }
         const data = await body(req, true);
-        if (!data || !Array.isArray(data.redirect_uris) || !data.redirect_uris.length || data.redirect_uris.length > 10 || !data.redirect_uris.every((uri) => typeof uri === "string" && uri.length <= 2048 && redirectAllowed(uri)) || (data.token_endpoint_auth_method !== undefined && data.token_endpoint_auth_method !== "none") || (data.grant_types !== undefined && (!Array.isArray(data.grant_types) || data.grant_types.length !== 1 || data.grant_types[0] !== "authorization_code")) || (data.response_types !== undefined && (!Array.isArray(data.response_types) || data.response_types.length !== 1 || data.response_types[0] !== "code")) || (data.scope !== undefined && data.scope !== "workplace")) { error(res, 400, "invalid_client_metadata"); return true; }
+        if (!data || !Array.isArray(data.redirect_uris) || !data.redirect_uris.length || data.redirect_uris.length > 10 || !data.redirect_uris.every((uri) => typeof uri === "string" && uri.length <= 2048 && redirectAllowed(uri)) || (data.token_endpoint_auth_method !== undefined && data.token_endpoint_auth_method !== "none") || (data.grant_types !== undefined && (!Array.isArray(data.grant_types) || !data.grant_types.includes("authorization_code") || data.grant_types.some((grant) => !["authorization_code", "refresh_token"].includes(grant)) || new Set(data.grant_types).size !== data.grant_types.length)) || (data.response_types !== undefined && (!Array.isArray(data.response_types) || data.response_types.length !== 1 || data.response_types[0] !== "code")) || (data.scope !== undefined && data.scope !== "workplace")) { error(res, 400, "invalid_client_metadata"); return true; }
         prune(clients);
         if (clients.size >= 1024) { error(res, 503, "temporarily_unavailable"); return true; }
-        const client = { client_id: secret(), client_name: typeof data.client_name === "string" ? data.client_name.slice(0, 120) : "Workshop MCP client", redirect_uris: [...new Set(data.redirect_uris)], token_endpoint_auth_method: "none", grant_types: ["authorization_code"], response_types: ["code"], scope: "workplace" };
+        const client = { client_id: secret(), client_name: typeof data.client_name === "string" ? data.client_name.slice(0, 120) : "Workshop MCP client", redirect_uris: [...new Set(data.redirect_uris)], token_endpoint_auth_method: "none", grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], scope: "workplace" };
         clients.set(client.client_id, { ...client, expires: Date.now() + SESSION_MS }); send(res, 201, client);
       } else if (path === "/oauth/authorize" && ["GET", "POST"].includes(req.method)) {
         if (!requireMutationOrigin(req) || (req.method === "POST" && !browserOrigin(req))) { error(res, 403, "Same-origin request required"); return true; }
@@ -171,42 +248,110 @@ export function createWorkshopAuth({ origin, participants }) {
         prune(clients); const client = clients.get(query.get("client_id"));
         const redirectUri = query.get("redirect_uri");
         if (!client || !client.redirect_uris.includes(redirectUri)) { error(res, 400, "invalid_request"); return true; }
-        if (query.get("response_type") !== "code" || query.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(query.get("code_challenge") || "") || (query.has("scope") && query.get("scope") !== "workplace") || (query.has("resource") && !resource(query.get("resource")))) { error(res, 400, "invalid_request"); return true; }
+        if (query.get("response_type") !== "code" || query.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(query.get("code_challenge") || "") || (query.has("scope") && query.get("scope") !== "workplace") || !resource(query.get("resource"))) { error(res, 400, "invalid_request"); return true; }
         const participant = browserParticipant(req);
         if (!participant) { redirect(res, "/login?next=" + encodeURIComponent(safeNext("/oauth/authorize?" + query.toString()))); return true; }
         if (req.method === "GET") {
+          const permissions = {
+            "/outlook/mcp": ["Read sample mail and threads.", "Draft, send or update fictional messages."],
+            "/calendar/mcp": ["Read your sample calendar and availability.", "Create, update or cancel fictional events."],
+            "/drive/mcp": ["Read and search sample workplace files.", "Create or update fictional files."],
+            "/jira/mcp": ["Read sample projects and issues.", "Create or update fictional issues and comments."],
+            "/confluence/mcp": ["Read and search sample spaces and pages.", "Create or update fictional pages."],
+          }[new URL(query.get("resource")).pathname];
           const fields = [...query].map(([key, value]) => `<input type="hidden" name="${escapeHtml(key)}" value="${escapeHtml(value)}">`).join("");
           // Chromium checks the final redirect of a form POST against form-action too.
           // Only this client's already-validated callback origin is added to the consent form.
           res.setHeader("Content-Security-Policy", `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${new URL(redirectUri).origin}; frame-ancestors 'none'; base-uri 'none'`);
-          send(res, 200, page(`Connect ${client.client_name}`, `<p class="muted">Private sandbox · Fictional sample data</p><p>Allow ${escapeHtml(new URL(redirectUri).host)} to access workplace data as ${escapeHtml(participant.name)}?</p><form action="/oauth/authorize" method="post">${fields}<button type="submit">Allow workplace access</button></form><p><a href="/">Cancel</a></p>`), "text/html"); return true;
+          send(res, 200, page(`Connect ${client.client_name}`, `<div class="account"><span class="muted">Signed in as</span><strong>${escapeHtml(participant.name)}</strong></div><h2>Application requesting access</h2><p>${escapeHtml(client.client_name)}<br><span class="muted">${escapeHtml(new URL(redirectUri).host)} · Unverified workshop application</span></p><h2>Workplace permissions</h2><ul class="permissions">${permissions.map((permission) => `<li>${escapeHtml(permission)}</li>`).join("")}<li>Keep this connection active for up to 8 hours.</li></ul><p class="muted">Only your assigned sandbox account is shared. No real work accounts are connected.</p><details><summary>Connection details</summary><p>Resource: <code>${escapeHtml(query.get("resource") || origin)}</code></p><p>Scope: <code>workplace</code></p><p>Access expires after 1 hour. Sign out ends the browser session; the application can disconnect to revoke its connection.</p></details><form action="/oauth/authorize" method="post">${fields}<div class="actions"><button type="submit" name="decision" value="allow">Allow workplace access</button><button class="secondary" type="submit" name="decision" value="deny">Deny access</button></div></form>`), "text/html"); return true;
+        }
+        if (query.has("decision") && !["allow", "deny"].includes(query.get("decision"))) { error(res, 400, "invalid_request"); return true; }
+        if (query.get("decision") === "deny") {
+          const target = new URL(redirectUri); target.searchParams.set("error", "access_denied");
+          if (query.has("state")) target.searchParams.set("state", query.get("state"));
+          redirect(res, target.href); return true;
         }
         prune(codes);
         if ([...codes.values()].filter((entry) => entry.participant.id === participant.id).length >= 16) { error(res, 429, "authorization_quota_reached"); return true; }
         if (codes.size >= LIMIT) { error(res, 503, "temporarily_unavailable"); return true; }
-        const code = secret(); codes.set(digest(code), { participant, clientId: client.client_id, redirectUri, challenge: query.get("code_challenge"), resource: query.has("resource") ? resource(query.get("resource")) : null, expires: Date.now() + CODE_MS });
+        const code = secret(); codes.set(digest(code), { participant, clientId: client.client_id, redirectUri, challenge: query.get("code_challenge"), resource: resource(query.get("resource")), expires: Date.now() + CODE_MS });
         const target = new URL(redirectUri); target.searchParams.set("code", code);
         if (query.has("state")) target.searchParams.set("state", query.get("state"));
         redirect(res, target.href);
       } else if (path === "/oauth/token" && req.method === "POST") {
         const form = await body(req);
-        prune(codes); prune(clients); prune(tokens);
+        prune(codes); prune(clients); prune(tokens); prune(refreshes);
+        if (form.get("grant_type") === "refresh_token") {
+          const refresh = refreshes.get(digest(form.get("refresh_token") || ""));
+          const validBinding = refresh && clients.has(form.get("client_id")) && refresh.clientId === form.get("client_id") && (resource(form.get("resource")) && resource(form.get("resource")) === refresh.resource) && (!form.has("scope") || form.get("scope") === "workplace");
+          if (!validBinding) { error(res, 400, "invalid_grant"); return true; }
+          if (refresh.used) { revokeFamily(refresh.family); error(res, 400, "invalid_grant"); return true; }
+          if (!budget(req, `refresh:${refresh.participant.id}`, 120)) { error(res, 429, "too_many_requests"); return true; }
+          // Keep used hashes for the family's original lifetime to detect replay across restarts.
+          if ([...refreshes.values()].filter((entry) => entry.participant.id === refresh.participant.id).length >= 256 || refreshes.size >= LIMIT * 2) { error(res, 429, "refresh_quota_reached"); return true; }
+          refresh.used = true;
+          issueTokens(res, refresh, refresh.expires); return true;
+        }
+        if (form.get("grant_type") !== "authorization_code") { error(res, 400, "unsupported_grant_type"); return true; }
         const codeKey = digest(form.get("code") || ""), code = codes.get(codeKey);
         // A failed redemption also consumes the code, preventing verifier guessing and retries.
         codes.delete(codeKey);
         const verifier = form.get("code_verifier") || "";
-        if (form.get("grant_type") !== "authorization_code" || !code || !clients.has(form.get("client_id")) || code.clientId !== form.get("client_id") || code.redirectUri !== form.get("redirect_uri") || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || digest(verifier) !== code.challenge || (form.has("resource") && (!resource(form.get("resource")) || (code.resource && resource(form.get("resource")) !== code.resource))) || (form.has("scope") && form.get("scope") !== "workplace")) {
+        if (form.get("grant_type") !== "authorization_code" || !code || !clients.has(form.get("client_id")) || code.clientId !== form.get("client_id") || code.redirectUri !== form.get("redirect_uri") || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || digest(verifier) !== code.challenge || (!resource(form.get("resource")) || resource(form.get("resource")) !== code.resource) || (form.has("scope") && form.get("scope") !== "workplace")) {
           if (!budget(req, "token", 20, true)) { error(res, 429, "too_many_requests"); return true; }
           failure(req, "token"); error(res, 400, "invalid_grant"); return true;
         }
-        const ownTokens = [...tokens].filter(([, entry]) => entry.participant.id === code.participant.id);
-        if (ownTokens.length >= 32) tokens.delete(ownTokens[0][0]);
-        if (tokens.size >= LIMIT * 2) { error(res, 503, "temporarily_unavailable"); return true; }
-        const token = secret(); tokens.set(digest(token), { participant: code.participant, resource: code.resource || (form.has("resource") ? resource(form.get("resource")) : null), expires: Date.now() + TOKEN_MS });
-        send(res, 200, { access_token: token, token_type: "Bearer", expires_in: TOKEN_MS / 1000, scope: "workplace" });
+        const ownFamilies = new Set([...refreshes.values()].filter((entry) => entry.participant.id === code.participant.id).map((entry) => entry.family));
+        if (ownFamilies.size >= 32 || [...refreshes.values()].filter((entry) => entry.participant.id === code.participant.id).length >= 256) { error(res, 429, "connection_quota_reached"); return true; }
+        if (tokens.size >= LIMIT * 2 || refreshes.size >= LIMIT * 2) { error(res, 503, "temporarily_unavailable"); return true; }
+        issueTokens(res, { participant: code.participant, clientId: code.clientId, resource: code.resource, family: secret() }, Date.now() + SESSION_MS);
+      } else if (path === "/oauth/revoke" && req.method === "POST") {
+        const form = await body(req);
+        prune(clients); prune(tokens); prune(refreshes);
+        if (!form.get("token")) { error(res, 400, "invalid_request"); return true; }
+        if (!clients.has(form.get("client_id"))) { error(res, 400, "invalid_client"); return true; }
+        const key = digest(form.get("token") || "");
+        const entry = refreshes.get(key) || tokens.get(key);
+        // RFC 7009: unknown, already revoked or differently bound tokens all return 200.
+        if (entry && entry.clientId === form.get("client_id") && (!form.has("resource") || (resource(form.get("resource")) && resource(form.get("resource")) === entry.resource))) revokeFamily(entry.family);
+        send(res, 200, {});
       } else error(res, 405, "method_not_allowed");
     } catch (caught) { error(res, caught.status || 400, "invalid_request"); }
     return true;
   }
-  return { authenticate, handle, requireMutationOrigin, close() { sessions.clear(); clients.clear(); codes.clear(); tokens.clear(); rates.clear(); } };
+  function issueTokens(res, grant, expires) {
+    const ownTokens = [...tokens].filter(([, entry]) => entry.participant.id === grant.participant.id);
+    if (ownTokens.length >= 32) tokens.delete(ownTokens[0][0]);
+    if (tokens.size >= LIMIT * 2) { error(res, 503, "temporarily_unavailable"); return; }
+    const access = secret(), refresh = secret(), now = Date.now(), accessExpires = Math.min(now + TOKEN_MS, expires);
+    const fields = { participant: grant.participant, clientId: grant.clientId, resource: grant.resource, family: grant.family };
+    tokens.set(digest(access), { ...fields, expires: accessExpires });
+    refreshes.set(digest(refresh), { ...fields, expires, used: false });
+    send(res, 200, { access_token: access, refresh_token: refresh, token_type: "Bearer", expires_in: Math.floor((accessExpires - now) / 1000), scope: "workplace" });
+  }
+  function handle(req, res, url) {
+    // Serialize mutations and commit one atomic snapshot before exposing codes, tokens or cookies.
+    const operation = queue.then(async () => {
+      await ready;
+      pendingResponse = undefined;
+      if (unavailable || closed) { error(res, 503, "authentication_unavailable"); pendingResponse(); return true; }
+      const handled = await dispatch(req, res, url);
+      if (!handled || res.writableEnded) return handled;
+      try { if (storage) await storage.write(storageKey, snapshot()); }
+      catch {
+        unavailable = true;
+        res.removeHeader("Set-Cookie"); res.removeHeader("Location");
+        error(res, 503, "authentication_unavailable");
+      }
+      pendingResponse?.(); return handled;
+    });
+    queue = operation.catch(() => { unavailable = true; });
+    return operation;
+  }
+  return { authenticate, handle, requireMutationOrigin, isReady: () => initialized && !unavailable && !closed, async close() {
+    closed = true;
+    await queue; await ready;
+    for (const table of Object.values(tables)) table.clear(); rates.clear();
+    await storage?.close();
+  } };
 }

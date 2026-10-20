@@ -225,12 +225,28 @@ function reset() {
   putFile("Atlas-products-customer-review.pptx", pptx([["Acme Robotics | Customer pilot review", "Alex Chen, Mateo Rivera, Priya Shah", "Two products: Atlas2 for autonomous tote transport; AtlasLift for pallet transfer.", "Decisions today: acceptance gates, site readiness, pilot owners."], ["Northwind | Atlas2", "12 committed units at $32,000 per unit.", "Lab: 497/500 successful missions (99.4%). Site acceptance still pending.", "Blocker: aisle C Wi-Fi handoff test. Owner: Priya Shah.", "24 additional units are an expansion option, not booked revenue."], ["Blue Harbor | AtlasLift", "8 committed pilot units at $48,000 per unit. Rated payload: 1,200 kg.", "Level-floor approved routes; supervised pilot only.", "Nora: safety guide. Kenji: charging layout and operator training.", "Next gate: customer safety sign-off and pilot terms review."]]));
   putFile("Blue-Harbor-safety-notes.txt", Buffer.from("Blue Harbor · AtlasLift supervised pilot\nRated payload: 1,200 kg. Approved level-floor routes only.\nTwo operator-training sessions per shift. No unattended operation.\nNora Patel owns the safety guide; Kenji Tanaka confirms charging-bay dimensions.\nCustomer sign-off and Maya Singh's pilot terms review are still pending.\n"));
 }
-reset();
+// Import only in durable mode: raw standalone fixtures still need Node builtins only.
+const snapshotStore = process.env.OPEN_WORKPLACE_STATE_FILE
+  ? (await import("./workshop-store.mjs")).createSnapshotStore({ file: process.env.OPEN_WORKPLACE_STATE_FILE }) : null;
+const snapshotIdentity = process.env.OPEN_WORKPLACE_PERSON || "Alex Chen|alex|CEO";
+let storageFailed = false;
+function saveSnapshot() {
+  snapshotStore?.write("microsoft365", { version: 1, identity: snapshotIdentity, state, sequence, auditSequence });
+}
+const restored = snapshotStore?.read("microsoft365");
+if (restored === undefined) { reset(); saveSnapshot(); }
+else {
+  if (restored.version !== 1 || restored.identity !== snapshotIdentity || !restored.state
+    || !["messages", "events", "files", "audit", "mailFolders"].every((key) => Array.isArray(restored.state[key]))
+    || !restored.state.uploads || !Number.isSafeInteger(restored.sequence) || !Number.isSafeInteger(restored.auditSequence)
+    || restored.state.files.some((file) => !file.folder && !Buffer.isBuffer(file.bytes))) throw new Error("Invalid Microsoft 365 snapshot or participant identity.");
+  ({ state, sequence, auditSequence } = restored);
+}
 
 function findFile(id) { const file = state.files.find((entry) => entry.id === id); if (!file) throw missing(); return file; }
 function findMessage(id) { const item = state.messages.find((entry) => entry.id === id); if (!item) throw missing(); return item; }
 const WELL_KNOWN_FOLDERS = { inbox: "Inbox", drafts: "Drafts", sentitems: "Sent Items", archive: "Archive", deleteditems: "Deleted Items" };
-// User-created mail folders (Graph POST /me/mailFolders) live beside the well-known ones, in memory only.
+// User-created mail folders (Graph POST /me/mailFolders) live beside the well-known ones in the shared state.
 const folders = () => [...Object.entries(WELL_KNOWN_FOLDERS).map(([id, displayName]) => ({ id, displayName })), ...state.mailFolders].map(({ id, displayName }) => ({ id, displayName, totalItemCount: state.messages.filter((m) => m.parentFolderId === id).length, unreadItemCount: state.messages.filter((m) => m.parentFolderId === id && !m.isRead).length, childFolderCount: 0 }));
 function collection(items, url) {
   const top = Number(url.searchParams.get("$top") || 100); const skip = Number(url.searchParams.get("$skip") || 0);
@@ -551,6 +567,13 @@ let refreshing=false;async function refresh(){if(refreshing)return;refreshing=tr
 }
 
 function send(response, status, value, headers = {}) {
+  // One synchronous boundary covers REST, MCP, upload completion, audit and reset.
+  // Do not throw into the request catch: that would call send recursively on disk failure.
+  try { if (storageFailed) throw new Error("Storage unavailable"); saveSnapshot(); }
+  catch {
+    storageFailed = true;
+    status = 500; value = { error: { code: "StorageUnavailable", message: "Durable state is unavailable. Restart after repairing storage." } }; headers = {};
+  }
   const binary = Buffer.isBuffer(value); const contentType = binary ? "application/octet-stream" : typeof value === "string" ? "text/html; charset=utf-8" : "application/json; charset=utf-8";
   response.writeHead(status, { "content-type": contentType, "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'", ...headers });
   response.end(value === null || status === 204 ? undefined : binary || typeof value === "string" ? value : JSON.stringify(value));
@@ -561,8 +584,10 @@ async function readBody(request) {
   for await (const chunk of request) { size += chunk.length; if (size > MAX_BODY) throw new ApiError(413, "RequestEntityTooLarge", "Maximum request size is 10 MB."); chunks.push(chunk); }
   return Buffer.concat(chunks);
 }
+export { server };
 const server = createServer(async (request, response) => {
   try {
+    if (storageFailed) return send(response, 500, null);
     const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
     // Same-origin only. Behind an HTTPS proxy (a hosted instance) the page's origin is https://<host> or PUBLIC_URL,
     // while this server sees plain http, so accept those too; any other site's origin is still refused.
@@ -604,7 +629,7 @@ const server = createServer(async (request, response) => {
 });
 server.requestTimeout = 30000; server.headersTimeout = 15000; server.maxRequestsPerSocket = 1000;
 server.listen(PORT, HOST, () => {
-  console.log(`Open Outlook, Open Calendar and Open Drive listening at http://${HOST}:${server.address().port} (in-memory; /outlook /calendar /drive /mcp /v1.0)`);
+  console.log(`Open Outlook, Open Calendar and Open Drive listening at http://${HOST}:${server.address().port} (${snapshotStore ? "durable" : "in-memory"}; /outlook /calendar /drive /mcp /v1.0)`);
   process.send?.({ type: "ready", port: server.address().port });
 });
 for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { server.close(); server.closeAllConnections(); });

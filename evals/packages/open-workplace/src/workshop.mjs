@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Opt-in workshop ingress. Never publish the raw fixture ports alongside this service.
-// Each authenticated participant owns three loopback-only child processes and their data.
+// Each participant owns one private process with three loopback-only HTTP services and separate data.
 import { createServer, request as httpRequest } from "node:http";
 import { fork } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir, rm } from "node:fs/promises";
+import { join, isAbsolute } from "node:path";
+import { createSnapshotStore } from "./workshop-store.mjs";
 import { fileURLToPath } from "node:url";
 import { createWorkshopAuth } from "./workshop-auth.mjs";
 import { workshopPage as page, escapeHtml as escape } from "./workshop-html.mjs";
@@ -48,9 +50,9 @@ function worker(script, env) {
     const failed = () => { clearTimeout(timer); reject(new Error("A private service could not start.")); };
     child.once("error", failed); child.once("exit", failed);
     child.on("message", (message) => {
-      if (message?.type !== "ready" || !Number.isInteger(message.port) || message.port < 1 || message.port > 65535) return;
+      if (message?.type !== "workshop-ready" || !message.ports || Object.keys(message.ports).sort().join() !== "atlassian,microsoft,web" || !Object.values(message.ports).every((port) => Number.isInteger(port) && port > 0 && port <= 65535)) return;
       clearTimeout(timer); child.removeListener("exit", failed); child.removeListener("error", failed);
-      resolve({ child, origin: `http://127.0.0.1:${message.port}` });
+      resolve({ child, origins: Object.fromEntries(Object.entries(message.ports).map(([name, port]) => [name, `http://127.0.0.1:${port}`])) });
     });
   });
 }
@@ -64,25 +66,27 @@ function backend(path) {
   return null;
 }
 
-export async function startWorkshop({ participants, origin, host = "127.0.0.1", port = 3990 } = {}) {
+export async function startWorkshop({ participants, origin, host = "127.0.0.1", port = 3990, dataDir } = {}) {
   const roster = validateParticipants(participants);
   let publicOrigin = origin ? new URL(origin).origin : null;
   if (origin && (!/^https?:$/.test(new URL(origin).protocol) || new URL(origin).username || new URL(origin).password || new URL(origin).pathname !== "/" || new URL(origin).search || new URL(origin).hash)) throw new Error("PUBLIC_URL must be an HTTP(S) origin without credentials, path, query or fragment.");
-  if (!publicOrigin && !["127.0.0.1", "localhost", "::1"].includes(host)) throw new Error("Set PUBLIC_URL when exposing a workshop beyond loopback.");
+  const loopbackListener = ["127.0.0.1", "localhost", "::1"].includes(host);
+  if (!publicOrigin && !loopbackListener) throw new Error("Set PUBLIC_URL when exposing a workshop beyond loopback.");
+  if (publicOrigin?.startsWith("http:") && (!loopbackListener || !["127.0.0.1", "localhost", "[::1]"].includes(new URL(publicOrigin).hostname))) throw new Error("Hosted workshops require an HTTPS PUBLIC_URL; HTTP is only allowed on a loopback listener and origin.");
+  if (dataDir !== undefined && (typeof dataDir !== "string" || !isAbsolute(dataDir))) throw new Error("OPEN_WORKPLACE_DATA_DIR must be an absolute private directory.");
+  if (dataDir) await mkdir(join(dataDir, "participants"), { recursive: true, mode: 0o700 });
+  const storage = dataDir ? createSnapshotStore({ file: join(dataDir, "auth.sqlite") }) : undefined;
   const stacks = new Map(), uploads = new Map(), active = new Map(), resetting = new Set();
   let auth, closing = false;
   function invalidateUploads(id) { for (const [token, entry] of uploads) if (entry.participant.id === id) uploads.delete(token); }
   async function createStack(participant) {
-    const started = [];
     const env = { OPEN_WORKPLACE_PERSON: `${participant.name}|${participant.id}|Workshop participant`, PUBLIC_URL: publicOrigin, UPLOAD_URL: publicOrigin, JIRA_PUBLIC_URL: `${publicOrigin}/jira`, CONFLUENCE_PUBLIC_URL: `${publicOrigin}/confluence`, OPEN_WORKPLACE_GATEWAY: "1" };
-    try {
-      const microsoft = await worker("./microsoft365.mjs", env); started.push(microsoft);
-      const atlassian = await worker("./atlassian.mjs", env); started.push(atlassian);
-      const web = await worker("./atlassian-web.mjs", { ...env, ATLASSIAN_BASE_URL: atlassian.origin }); started.push(web);
-      const stack = { microsoft, atlassian, web, failed: false, stopped: false };
-      for (const service of started) service.child.once("exit", () => { if (!stack.stopped) { stack.failed = true; invalidateUploads(participant.id); } });
-      return stack;
-    } catch (error) { await Promise.all(started.map(({ child }) => stop(child))); throw error; }
+    const directory = dataDir ? join(dataDir, "participants", participant.id) : undefined;
+    if (directory) await mkdir(directory, { recursive: true, mode: 0o700 });
+    const service = await worker("./workshop-worker.mjs", { ...env, ...(directory ? { OPEN_WORKPLACE_PARTICIPANT_DATA_DIR: directory } : {}) });
+    const stack = { ...Object.fromEntries(["microsoft", "atlassian", "web"].map((name) => [name, { child: service.child, origin: service.origins[name] }])), failed: false, stopped: false };
+    service.child.once("exit", () => { if (!stack.stopped) { stack.failed = true; invalidateUploads(participant.id); } });
+    return stack;
   }
   function stackFor(participant) {
     if (!stacks.has(participant.id)) {
@@ -96,7 +100,7 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
     const pending = stacks.get(id);
     if (!pending) return;
     // Keep the entry until all children have stopped; never overlap two stacks for one identity.
-    try { const stack = await pending; stack.stopped = true; await Promise.all([stack.microsoft, stack.atlassian, stack.web].map(({ child }) => stop(child))); }
+    try { const stack = await pending; stack.stopped = true; await stop(stack.microsoft.child); }
     finally { stacks.delete(id); invalidateUploads(id); }
   }
   function uploadCount(participant) {
@@ -125,6 +129,9 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
     const stack = await stackFor(participant);
     if (stack.failed) return send(res, 503, { error: "sandbox_stopped", message: "Your private sandbox stopped. Reset your sample data to start again." });
     const destination = new URL(path, stack[service].origin);
+    if (destination.origin !== stack[service].origin) throw new Error("Unexpected private service destination.");
+    const privatePort = Number(new URL(stack[service].origin).port);
+    if (!Number.isInteger(privatePort) || privatePort < 1 || privatePort > 65535) throw new Error("Invalid private service port.");
     const chunks = []; let size = 0;
     for await (const chunk of req) { size += chunk.length; if (size > MAX_BODY) return send(res, 413, { error: "body_too_large" }); chunks.push(chunk); }
     if (closing) return send(res, 503, { error: "workshop_stopping" });
@@ -143,7 +150,8 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
     headers.origin = publicOrigin;
     if (size) headers["content-length"] = size;
     await new Promise((resolve) => {
-      const upstream = httpRequest(destination, { method: req.method, headers, timeout: 15000 }, (response) => {
+      // The network destination is fixed by the owned child's ready receipt, never an HTTP caller.
+      const upstream = httpRequest({ protocol: "http:", hostname: "127.0.0.1", port: privatePort, path: destination.pathname + destination.search, method: req.method, headers, timeout: 15000 }, (response) => {
         const parts = []; let length = 0;
         response.on("data", (chunk) => { length += chunk.length; if (length > MAX_RESPONSE) response.destroy(new Error("Response limit exceeded.")); else parts.push(chunk); });
         response.on("error", () => { if (!res.headersSent) send(res, 502, { error: "service_unavailable" }); resolve(); });
@@ -176,7 +184,7 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
       // Reject absolute-form targets, encoded separators and dot-segment aliases before routing.
       if (!req.url?.startsWith("/") || req.url.startsWith("//") || /\\|%2f|%5c|%2e|[\x00-\x20]/i.test(req.url.split("?")[0])) return send(res, 400, { error: "invalid_path" });
       const url = new URL(req.url, publicOrigin);
-      if (url.pathname === "/health" && req.method === "GET") return send(res, 200, { ok: true, service: "open-workplace-workshop", isolated: true });
+      if (url.pathname === "/health" && req.method === "GET") return send(res, auth?.isReady() ? 200 : 503, { ok: Boolean(auth?.isReady()), service: "open-workplace-workshop", isolated: true, storage: dataDir ? "sqlite" : "memory" });
       if (await auth.handle(req, res, url)) return;
       participant = auth.authenticate(req);
       let uploadToken;
@@ -209,7 +217,10 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
         if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" });
         if ((active.get(participant.id) || 0) > 1) return send(res, 409, { error: "sandbox_busy", message: "Finish your current requests before resetting." });
         resetting.add(participant.id);
-        try { await disposeStack(participant.id); } finally { resetting.delete(participant.id); }
+        try {
+          await disposeStack(participant.id);
+          if (dataDir) await rm(join(dataDir, "participants", participant.id), { recursive: true, force: true });
+        } finally { resetting.delete(participant.id); }
         return send(res, 303, "", { location: "/" });
       }
       const state = /^\/_workshop\/state\/(microsoft|atlassian)$/.exec(url.pathname);
@@ -227,13 +238,17 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
   });
   server.requestTimeout = 30000; server.headersTimeout = 15000; server.maxRequestsPerSocket = 1000;
   // Listen first when using an ephemeral local port; all callbacks run after auth is constructed.
-  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); });
+  try { await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); }); }
+  catch (error) { storage?.close(); throw error; }
   publicOrigin ||= `http://${host === "::1" ? "[::1]" : host}:${server.address().port}`;
-  auth = createWorkshopAuth({ origin: publicOrigin, participants: roster });
+  try { auth = createWorkshopAuth({ origin: publicOrigin, participants: roster, storage }); }
+  catch (error) {
+    server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); storage?.close(); throw error;
+  }
   const close = async () => {
     closing = true;
     const stopped = new Promise((resolve) => server.close(resolve)); server.closeAllConnections();
-    await Promise.all([...stacks.keys()].map(disposeStack)); await stopped; auth.close?.();
+    await Promise.all([...stacks.keys()].map(disposeStack)); await stopped; await auth.close?.();
   };
   return { server, origin: publicOrigin, close };
 }
@@ -243,7 +258,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // Credentials stay in operator configuration, never in source, URLs or startup logs.
     const raw = process.env.OPEN_WORKPLACE_PARTICIPANTS_FILE ? await readFile(process.env.OPEN_WORKPLACE_PARTICIPANTS_FILE, "utf8") : process.env.OPEN_WORKPLACE_PARTICIPANTS;
     if (!raw) throw new Error("Set OPEN_WORKPLACE_PARTICIPANTS_FILE to a private roster JSON file (or OPEN_WORKPLACE_PARTICIPANTS).");
-    const workshop = await startWorkshop({ participants: JSON.parse(raw), origin: process.env.PUBLIC_URL, host: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 3990) });
+    const workshop = await startWorkshop({ participants: JSON.parse(raw), origin: process.env.PUBLIC_URL, host: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 3990), dataDir: process.env.OPEN_WORKPLACE_DATA_DIR });
     console.log(`Private workshop ingress listening at ${workshop.origin}`);
     for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, async () => { await workshop.close(); process.exit(0); });
   } catch (error) { console.error(error instanceof SyntaxError ? "Invalid workshop roster JSON." : error.message); process.exitCode = 1; }
