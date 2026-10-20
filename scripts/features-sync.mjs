@@ -2,7 +2,7 @@
 // Keeps everything derived from the feature registry in step with it.
 //
 //   pnpm features:sync    regenerate the Helm chart's feature block, values
-//                         schema and README table from
+//                         schema from
 //                         packages/features/src/registry.ts, then regenerate
 //                         the Den API contract/SDK (requires local MySQL)
 //   pnpm features:check   fail if those files are stale, if the chart renders
@@ -29,13 +29,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const chartDir = path.join(root, "packaging/helm/openwork-ee")
 const valuesPath = path.join(chartDir, "values.yaml")
 const schemaPath = path.join(chartDir, "values.schema.json")
-const readmePath = path.join(chartDir, "README.md")
 const check = process.argv.includes("--check")
 
 const BEGIN = "# BEGIN GENERATED features (pnpm features:sync; source: packages/features/src/registry.ts)"
 const END = "# END GENERATED features"
-const README_BEGIN = "<!-- BEGIN GENERATED features (pnpm features:sync) -->"
-const README_END = "<!-- END GENERATED features -->"
 
 /** Keys an operator can lock: every feature that exists on at least one deployment. */
 const helmKeys = FEATURE_KEYS.filter((key) => featureAvailableOn(key, "self_hosted") || featureAvailableOn(key, "cloud"))
@@ -108,23 +105,6 @@ function renderSchema() {
   return `${JSON.stringify(schema, null, 2)}\n`
 }
 
-function renderReadme(current) {
-  const start = current.indexOf(README_BEGIN)
-  const end = current.indexOf(README_END)
-  if (start === -1 || end === -1) {
-    throw new Error(`${path.relative(root, readmePath)} is missing the generated features markers.`)
-  }
-  const rows = helmKeys.map((key) => `| \`${key}\` | \`${featureLockEnvName(key)}\` | ${defaultLabel(key)} | ${FEATURES[key].description} |`)
-  const table = [
-    README_BEGIN,
-    "| `config.features.*` | Environment variable | Default | What it does |",
-    "| --- | --- | --- | --- |",
-    ...rows,
-    README_END,
-  ].join("\n")
-  return current.slice(0, start) + table + current.slice(end + README_END.length)
-}
-
 const problems = []
 
 function compareOrWrite(filePath, next) {
@@ -135,7 +115,6 @@ function compareOrWrite(filePath, next) {
 }
 
 compareOrWrite(valuesPath, renderValues(readFileSync(valuesPath, "utf8")))
-compareOrWrite(readmePath, renderReadme(readFileSync(readmePath, "utf8")))
 let schemaCurrent = ""
 try {
   schemaCurrent = readFileSync(schemaPath, "utf8")

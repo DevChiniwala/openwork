@@ -348,52 +348,24 @@ config:
 ```
 
 - `""` (the default) follows `/admin`, which starts from the default listed
-  below.
+  in `values.yaml`.
 - `"true"` or `"false"` locks the feature for everyone. `/admin` shows "Set by
   deployment config" for it. The `/admin` kill switch still turns it off.
 
 Each key renders `DEN_FEATURE_<KEY>` for den-api. Features that are not part
 of self-hosted installs have no key, so they can't be turned on here. A key
-that isn't listed below fails `helm install` through `values.schema.json`.
+that isn't declared in `values.schema.json` fails `helm install`.
 
 `config.deployment` (`DEN_DEPLOYMENT`) is `self_hosted` unless this is
 OpenWork Cloud. Don't change it on a customer install.
 
-<!-- BEGIN GENERATED features (pnpm features:sync) -->
-| `config.features.*` | Environment variable | Default | What it does |
-| --- | --- | --- | --- |
-| `serviceReadiness` | `DEN_FEATURE_SERVICE_READINESS` | default off | Self-hosted installation operators can check optional services from Settings; internal platform diagnostics and minimal member readiness share the same checker without blocking core work. |
-| `cloudAgentGateway` | `DEN_FEATURE_CLOUD_AGENT_GATEWAY` | default off | Choose and run cloud-agent models through the organization's AI Gateway access instead of the runner's shared model credentials. |
-| `liveProviderSync` | `DEN_FEATURE_LIVE_PROVIDER_SYNC` | default off | Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. |
-| `offlineRecovery` | `DEN_FEATURE_OFFLINE_RECOVERY` | default off | Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations. |
-| `secureSecretFields` | `DEN_FEATURE_SECURE_SECRET_FIELDS` | default off | When an agent sets up a connection, plugin or AI Gateway provider that needs keys, people enter them in private fields in the chat and the agent continues once they are saved. Key fields across OpenWork and OpenWork Cloud can be shown while typing and show saved keys as Replace rows. |
-| `modelsAnalyticsUi` | `DEN_FEATURE_MODELS_ANALYTICS_UI` | default off | Organization admins can view Models & usage analytics and shared model usage limits. Deprecated 2026-10-14: UI hidden behind modelsAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it. |
-| `taskAnalyticsUi` | `DEN_FEATURE_TASK_ANALYTICS_UI` | default off | Members with analytics access can view task activity and consumption, and admins can configure analytics integrations. Deprecated 2026-10-14: UI hidden behind taskAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it. |
-| `managedDeployments` | `DEN_FEATURE_MANAGED_DEPLOYMENTS` | default off (cloud only) | Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments. |
-| `slackAssistant` | `DEN_FEATURE_SLACK_ASSISTANT` | default off | Answers Slack mentions and DMs for the organization after the Slack connector is set up. |
-| `workbotTeamLinks` | `DEN_FEATURE_WORKBOT_TEAM_LINKS` | default off | Members with team management access can open their organization's Workbot settings and app connections from Workbot. |
-| `workbotFirstRun` | `DEN_FEATURE_WORKBOT_FIRST_RUN` | default off | People signing in to Workbot choose or create their workspace without leaving sign-in, with a clear next action when Workbot is unavailable. |
-| `workbotInlineConnect` | `DEN_FEATURE_WORKBOT_INLINE_CONNECT` | default off | Members connect their assigned apps directly from Workbot and return to the same view after consent. |
-| `workbotDocuments` | `DEN_FEATURE_WORKBOT_DOCUMENTS` | default off | Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive. |
-| `workbotDocumentEditing` | `DEN_FEATURE_WORKBOT_DOCUMENT_EDITING` | default off | Members choose Edit from a document preview. Full Office editing starts their Cloud workspace only when requested. Requires Workbot Documents. |
-| `workbotWorkspaceAssistant` | `DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT` | default off | Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. |
-| `workbotGuidedNavigation` | `DEN_FEATURE_WORKBOT_GUIDED_NAVIGATION` | default off | Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Needs the workspace assistant. |
-| `automationCalendar` | `DEN_FEATURE_AUTOMATION_CALENDAR` | default off | Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar. |
-| `engineV2ForceUpgrade` | `DEN_FEATURE_ENGINE_V2_FORCE_UPGRADE` | default off | Desktop and web instances copy chats with a backup and switch to OpenCode v2 automatically when idle, without asking for consent. |
-| `engineV2Upgrade` | `DEN_FEATURE_ENGINE_V2_UPGRADE` | default off | Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines. |
-| `remoteSessionEvents` | `DEN_FEATURE_REMOTE_SESSION_EVENTS` | default off | MCP clients can subscribe to changes in their remote session receipts and read the current state after reconnecting. |
-| `computerUse` | `DEN_FEATURE_COMPUTER_USE` | default off | Let agents use Mac apps or a managed cloud desktop directly, with a live view and Take over and Stop controls. Enabling this rollout provides access without chat or window consent prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules. |
-| `browserFloatingView` | `DEN_FEATURE_BROWSER_FLOATING_VIEW` | default off | The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person. |
-| `remoteComputers` | `DEN_FEATURE_REMOTE_COMPUTERS` | default off | Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Access starts directly when the rollout is enabled; Take over and Stop stay available. |
-| `remoteSessionSubagents` | `DEN_FEATURE_REMOTE_SESSION_SUBAGENTS` | default off | A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. |
-| `headlessDurableTurns` | `DEN_FEATURE_HEADLESS_DURABLE_TURNS` | default off | Workbot, Slack and Automations answers keep going after a restart, deploy or server failure, without waiting for someone to reopen the chat. |
-| `headlessStepTurns` | `DEN_FEATURE_HEADLESS_STEP_TURNS` | default off | Workbot, Slack and Automations answers keep going through OpenWork updates instead of restarting their current step. |
-| `headlessSessionCells` | `DEN_FEATURE_HEADLESS_SESSION_CELLS` | default off | Each Workbot chat is stored on its own, so long histories stay fast to open and move during updates. |
-| `headlessSessionIndex` | `DEN_FEATURE_HEADLESS_SESSION_INDEX` | default off | OpenWork keeps a content-free list of Workbot, Slack and Automation chats (sizes, activity, state) for admin views and retention. |
-<!-- END GENERATED features -->
+See [`config.features` in values.yaml](./values.yaml) for supported keys,
+defaults and descriptions. The
+[feature registry](../../../packages/features/src/registry.ts) is the source
+of truth.
 
-The table and the `config.features` block are generated: run `pnpm features:sync`
-after changing the registry.
+The `config.features` block and values schema are generated: run
+`pnpm features:sync` after changing the registry.
 
 ### Automations rollout
 

@@ -47,6 +47,8 @@ export const RETIRED_FEATURE_KEYS = [
   "teamMembershipCache", "teamPageTabs", "teamRoles", "workbot", "workbotLunaDefault",
   // Folded into managedDeployments (2026-10), which stays off: Google Cloud and agent tools follow it.
   "managedDeploymentsGcp", "managedDeploymentsMcp",
+  // Replaced by Settings › Diagnostics (2026-10): always on, the checks are advisory and never block work.
+  "serviceReadiness",
 ] as const
 
 export function isFeatureKey(value: string): value is FeatureKey {

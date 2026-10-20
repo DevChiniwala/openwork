@@ -15,9 +15,9 @@ import { LEGACY_ORG_PROXY_HEADER } from "../../middleware/user-organizations.js"
 import type { OrgRouteVariables } from "./shared.js"
 import { registerOrgCoreRoutes } from "./core.js"
 import { registerOrgServiceReadinessRoutes } from "./service-readiness.js"
-import { registerOrgDeploymentServiceRoutes } from "./deployment-services.js"
 import { registerOrgMcpAppCatalogRoutes } from "./mcp-app-catalog.js"
 import { registerDeleteOrganizationRoutes } from "./delete-organization.js"
+import { registerOrgDiagnosticsRoutes } from "./diagnostics.js"
 import { registerOrgDesktopPolicyRoutes } from "./desktop-policies.js"
 import { registerOrgEgressDiagnosticRoutes } from "./egress-diagnostics.js"
 import { registerOrgInventoryRevisionRoutes } from "./inventory-revision.js"
@@ -74,7 +74,7 @@ function extractLegacyOrgProxyTarget(pathname: string) {
 export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & RequestIdVariables }>(app: Hono<T>) {
   registerOrgCoreRoutes(app)
   registerOrgServiceReadinessRoutes(app)
-  registerOrgDeploymentServiceRoutes(app)
+  registerOrgDiagnosticsRoutes(app)
   registerOrgActivityRoutes(app)
   registerOrgInventoryRevisionRoutes(app)
   registerManagedDeploymentRoutes(app)

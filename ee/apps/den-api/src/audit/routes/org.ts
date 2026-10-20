@@ -58,8 +58,8 @@ const DOMAIN = (area: string) => `audit/domain/${area}.ts`
 
 export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   member("GET", "/v1/org/service-readiness", "tenant_read", "service_readiness.read", "service.readiness", "service_readiness", null, { notes: "Minimal cached deployment facts, never settings or tenant credentials. Does not initiate probes." }),
-  member("GET", "/v1/org/deployment-services", "tenant_read", "deployment_services.read", "service.readiness", "service_readiness", null, { notes: "Self-hosted allowlisted operator with genuine user session and active membership only; deployment diagnostics, not tenant credentials." }),
-  member("POST", "/v1/org/deployment-services/check", "tenant_external", "deployment_services.check", "service.readiness", "service_readiness", null, { external: "Bounded, read-only deployment health probes; shared durable admission with /v1/admin/services/check.", notes: "Self-hosted allowlisted operator with genuine user session and active membership only; no configuration mutation." }),
+  member("GET", "/v1/org/diagnostics", "tenant_read", "diagnostics.read", "diagnostics", "diagnostic", null, { notes: "Settings > Diagnostics for the caller: sections the caller's permissions do not open are locked; installation details only for self-hosted local operators. Missing or expired provider/connector results start a rate-limited background check (read-only listings and token checks; never a model request). No credentials, upstream bodies or other members' identities." }),
+  member("POST", "/v1/org/diagnostics/check", "tenant_external", "diagnostics.check", "diagnostics", "diagnostic", null, { external: "Read-only provider model listings / AWS STS GetCallerIdentity with organization-held credentials, Slack auth.test with the assistant bot token, the caller's own Google API reads, and (operators) deployment service probes; per-organization/member rate limits shared with background checks.", notes: "Never sends a model request, a message or an email, and never uses a member's provider credential." }),
   // API keys
   member("GET", "/v1/api-keys", "tenant_read", "api_key.list", "api_key.management", "api_key", null),
   member("POST", "/v1/api-keys", "tenant_change", "api_key.create", "api_key.management", "api_key", null, { changeEvidence: DOMAIN("api-keys"), notes: "Legacy organization.api_key.created. better-auth createApiKey write: after-snapshot appended in a fresh tx; plaintext key only in the response, never captured." }),
@@ -173,6 +173,7 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   member("GET", "/v1/diagnostics/egress", "tenant_read", "diagnostics.egress.read", "diagnostics", "diagnostic", null),
   member("POST", "/v1/diagnostics/egress", "tenant_external", "diagnostics.egress.run", "diagnostics", "diagnostic", null, { external: "diagnostics_origin (egress probe)" }),
   member("PUT", "/v1/diagnostics/egress/token", "tenant_change", "diagnostics.egress_token.update", "diagnostics", "diagnostic_credential", null, { notes: "Stores a diagnostics credential; never snapshotted." }),
+  member("POST", "/v1/diagnostics/desktop-startup", "tenant_signal", "diagnostics.desktop_startup.report", "diagnostics", "desktop_startup_report", null, { notes: "One report per desktop launch for the calling member: step timings and a fixed failure code only. Idempotent per attemptId; rate limited per member. High volume." }),
 
   // Managed deployments (customer-cloud installs)
   member("GET", "/v1/managed-deployments/configuration", "tenant_read", "managed_deployment.configuration.read", "managed_deployment", "managed_deployment", null),
@@ -198,6 +199,10 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   admin("PATCH", "/v1/admin/organizations/:organizationId/free-seats", "tenant_external", "organization.free_seats.update", { external: "stripe (seat subscription quantity resync)" }),
   admin("PATCH", "/v1/admin/organizations/:organizationId/dpa", "tenant_change", "organization.dpa.update", { changeEvidence: DOMAIN("organization-settings"), notes: "Legacy organization.dpa_signed.updated; reason text is not snapshotted (reasonProvided only)." }),
   admin("PUT", "/v1/admin/organizations/:organizationId/openwork-web-access", "tenant_change", "organization.openwork_web_access.update", { changeEvidence: DOMAIN("organization-settings"), notes: "Legacy organization.openwork_web.complimentary_access_granted / _revoked; reason text is not snapshotted." }),
+  admin("GET", "/v1/admin/organizations/:organizationId/control-panel", "tenant_read", "organization.control_panel.read"),
+  admin("PUT", "/v1/admin/organizations/:organizationId/control-panel/access", "tenant_change", "organization.benefit_setting.update", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
+  admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants", "tenant_change", "organization.benefit_grant.create", { changeEvidence: "routes/admin/organization-control-panel.ts", notes: "Grant and change evidence commit together. Reason text is not copied to audit snapshots." }),
+  admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants/:grantId/revoke", "tenant_change", "organization.benefit_grant.revoke", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
 
   // SCIM v2 provisioning (bearer token)
   handler("GET", "/api/auth/scim/v2/Schemas", "tenant_read", "scim.schema.list", "scim.provisioning", "scim_metadata", null, SCIM_PROOF),

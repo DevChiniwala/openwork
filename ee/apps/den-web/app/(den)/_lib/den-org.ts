@@ -863,10 +863,6 @@ export function getDeploymentsRoute(orgSlug?: string | null): string {
   return `${getOrgDashboardRoute(orgSlug)}/deployments`;
 }
 
-export function getServicesRoute(orgSlug?: string | null): string {
-  return `${getOrgDashboardRoute(orgSlug)}/services`;
-}
-
 export function getDiagnosticsRoute(orgSlug?: string | null): string {
   return `${getOrgDashboardRoute(orgSlug)}/diagnostics`;
 }

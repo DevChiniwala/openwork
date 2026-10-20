@@ -4,12 +4,15 @@ import { isIP } from "node:net"
 import { headlessRunnerConfig } from "@openwork-ee/headless-protocol"
 import { gatewayOrigin } from "@openwork-ee/utils/gateway-env"
 import { headlessServiceHealthSchema, workbotServiceHealthSchema } from "@openwork/types/den/service-health"
-import { serviceIdSchema, type DeploymentServiceReadiness, type DeploymentServiceStatus, type OrganizationServiceReadiness, type ServiceId, type ServiceReadinessReason, type ServiceReadinessState } from "@openwork/types/den/service-readiness"
+import { serviceIdSchema, type DeploymentServiceReadiness, type DeploymentServiceStatus, type OrganizationServiceReadiness, type ServiceId, type ServiceNote, type ServiceReadinessReason, type ServiceReadinessState } from "@openwork/types/den/service-readiness"
+import type { EmailTransportCheck } from "@openwork/email"
 import { z } from "zod"
 import { isPrivateAddress } from "./capability-sources/url-guard.js"
 
 export const SERVICE_READINESS_TTL_MS = 60_000
 export const SERVICE_READINESS_TIMEOUT_MS = 2_000
+/** SMTP sign-in (connect, STARTTLS, AUTH) needs longer than a health GET, but stays bounded. */
+export const EMAIL_READINESS_TIMEOUT_MS = 8_000
 export const SERVICE_READINESS_RATE_KEY = "service-readiness:deployment:check:v1"
 export const SERVICE_READINESS_RATE_WINDOW_MS = 30_000
 const MAX_BODY_BYTES = 16_384
@@ -22,16 +25,21 @@ export type ServiceProbeDependencies = {
   denOrigin?: string
   database: (signal: AbortSignal) => Promise<unknown>
   fetch: ReadinessFetch
+  /** Live mail transport check; never sends a message. Omitted: complete settings stay unverified. */
+  verifyEmail?: (signal: AbortSignal) => Promise<EmailTransportCheck>
   timeoutMs?: number
+  emailTimeoutMs?: number
+  /** Monotonic milliseconds for check durations. */
+  clock?: () => number
 }
-type Fact = Pick<DeploymentServiceStatus, "configured" | "state" | "reason" | "missingSettings">
+type Fact = Pick<DeploymentServiceStatus, "configured" | "state" | "reason" | "missingSettings" | "notes" | "durationMs">
 type ProbeFacts = { services: Map<ServiceId, Fact>; drained?: Promise<void> }
 export type ServiceProbeFact = Fact
 export type ServiceProbeResult = ProbeFacts
 type TrackProbe = (operation: Promise<unknown>) => void
 
-function fact(state: ServiceReadinessState, reason: ServiceReadinessReason, configured = true, missingSettings: string[] = []): Fact {
-  return { state, reason, configured, missingSettings }
+function fact(state: ServiceReadinessState, reason: ServiceReadinessReason, configured = true, missingSettings: string[] = [], notes: ServiceNote[] = []): Fact {
+  return { state, reason, configured, missingSettings, notes, durationMs: null }
 }
 function configuration(source: Environment, names: string[]): Fact | null {
   const missing = names.filter((name) => !source[name]?.trim())
@@ -118,7 +126,7 @@ export function readinessConfigurationFingerprint(source: Environment, denOrigin
   const key = source.DEN_DB_ENCRYPTION_KEY
   if (!key) throw new Error("invalid_configuration")
   return createHmac("sha256", key)
-    .update(JSON.stringify({ version: 1, denOrigin: denOrigin ?? null, settings: inputs }))
+    .update(JSON.stringify({ version: 2, denOrigin: denOrigin ?? null, settings: inputs }))
     .digest("hex")
 }
 
@@ -169,9 +177,12 @@ async function jsonBody(response: Response): Promise<unknown> {
     reader.releaseLock()
   }
 }
-async function health<T>(deps: ServiceProbeDependencies & { track: TrackProbe }, raw: string, path: "/health" | "/ready" | "/v1/health" | "/internal/readiness", schema: z.ZodType<T>, token?: string): Promise<T> {
+type ProbeContext = ServiceProbeDependencies & { track: TrackProbe; begin?: () => void }
+async function health<T>(deps: ProbeContext, raw: string, path: "/health" | "/ready" | "/v1/health" | "/internal/readiness", schema: z.ZodType<T>, token?: string): Promise<T> {
   let origin: string
   try { origin = readinessServiceOrigin(raw) } catch { throw new ProbeFailure("misconfigured", "invalid_configuration") }
+  // The live check starts at the first network call, not at configuration validation.
+  deps.begin?.()
   return bounded(async (signal) => {
     const headers: Record<string, string> = { accept: "application/json" }
     if (token) headers.authorization = `Bearer ${token}`
@@ -195,91 +206,160 @@ async function protect(probe: () => Promise<Fact>): Promise<Fact> {
     return error instanceof ProbeFailure ? fact(error.state, error.reason) : fact("unreachable", "request_failed")
   }
 }
+/** durationMs covers the first network/database call until completion; null when none ran. */
+async function timed(clock: () => number, probe: (begin: () => void) => Promise<Fact>): Promise<Fact> {
+  let started: number | null = null
+  const result = await protect(() => probe(() => { started ??= clock() }))
+  return started === null ? result : { ...result, durationMs: Math.max(0, Math.round(clock() - started)) }
+}
 const gatewayHealth = z.object({ ok: z.literal(true), service: z.literal("gateway") })
 const gatewayReady = z.object({ ok: z.literal(true), service: z.literal("gateway"), checks: z.object({ database: z.literal("ok") }) })
 
+function emailNotes(source: Environment): ServiceNote[] {
+  if (source.SMTP_HOST?.trim()) return ["email_smtp"]
+  return source.RESEND_API_KEY?.trim() ? ["email_resend"] : []
+}
+/** Configuration only. Complete SMTP/Resend settings are `not_checked` until the live check runs. */
 export function emailReadiness(source: Environment): Fact {
   const present = (name: string) => Boolean(source[name]?.trim())
+  const notes = emailNotes(source)
   // Match @openwork/email: SMTP_HOST > RESEND_API_KEY > development sink.
   if (present("SMTP_HOST")) {
     const missing = ["EMAIL_FROM", ...(present("SMTP_USER") ? ["SMTP_PASS"] : []), ...(present("SMTP_PASS") ? ["SMTP_USER"] : [])].filter((name) => !present(name))
-    if (missing.length) return fact("misconfigured", "missing_configuration", false, missing)
+    if (missing.length) return fact("misconfigured", "missing_configuration", false, missing, notes)
     const port = source.SMTP_PORT ?? "587"
-    if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535 || (source.SMTP_SECURE !== undefined && !/^(true|false)$/i.test(source.SMTP_SECURE))) return fact("misconfigured", "invalid_configuration", false)
-    return fact("unknown", "delivery_unverified")
+    if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535 || (source.SMTP_SECURE !== undefined && !/^(true|false)$/i.test(source.SMTP_SECURE))) return fact("misconfigured", "invalid_configuration", false, [], notes)
+    return fact("unknown", "not_checked", true, [], notes)
   }
-  if (present("RESEND_API_KEY")) return present("EMAIL_FROM") ? fact("unknown", "delivery_unverified") : fact("misconfigured", "missing_configuration", false, ["EMAIL_FROM"])
+  if (present("RESEND_API_KEY")) return present("EMAIL_FROM") ? fact("unknown", "not_checked", true, [], notes) : fact("misconfigured", "missing_configuration", false, ["EMAIL_FROM"], notes)
   if (["SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_SECURE"].some(present)) return fact("misconfigured", "missing_configuration", false, ["SMTP_HOST"])
-  if (source.OPENWORK_DEV_MODE === "1") return fact("unknown", "configuration_only")
+  // The development sink only logs messages; no mail transport is set up.
+  if (source.OPENWORK_DEV_MODE === "1") return fact("not_configured", "not_configured", false)
   if (present("EMAIL_FROM")) return fact("misconfigured", "missing_configuration", false, ["SMTP_HOST", "RESEND_API_KEY"])
   return fact("not_configured", "not_configured", false)
 }
+function emailFact(check: EmailTransportCheck, notes: ServiceNote[]): Fact {
+  if (check.provider === "dev" || check.provider === "none") return fact("unknown", "configuration_only", true, [], notes)
+  const live: ServiceNote[] = check.provider === "smtp" ? ["email_smtp"] : ["email_resend"]
+  switch (check.outcome) {
+    case "verified": return fact("ready", "email_verified", true, [], live)
+    case "key_accepted": return fact("ready", "email_key_verified", true, [], live)
+    case "sender_unverified": return fact("misconfigured", "email_sender_unverified", true, [], live)
+    case "auth_failed": return fact("misconfigured", "authentication_failed", true, [], live)
+    case "unreachable": return fact("unreachable", "request_failed", true, [], live)
+    case "timeout": return fact("unreachable", "timeout", true, [], live)
+    default: return fact("unknown", "unexpected_response", true, [], live)
+  }
+}
 
-/** At most four concurrent read-only probes; all other statuses derive from these same facts. */
+type RunnerHealth = z.infer<typeof headlessServiceHealthSchema>
+type ResumeFacts = { note: ServiceNote | null; missingSettings: string[]; misconfigured: boolean }
+/**
+ * Resumable answers are part of the runner, not a service of their own. Den
+ * cannot exercise the callback without a real turn, so this compares settings
+ * on both sides. `health` is the runner's answer when it was reachable.
+ */
+function resumeFacts(source: Environment, denOrigin: string | undefined, health?: RunnerHealth): ResumeFacts {
+  const callback = source.DEN_HEADLESS_RUNNER_CALLBACK_TOKEN?.trim()
+  const broken = (missingSettings: string[] = []): ResumeFacts => ({ note: "resume_misconfigured", missingSettings, misconfigured: true })
+  if (!callback) {
+    if (health?.resumeConfigured) return broken(["DEN_HEADLESS_RUNNER_CALLBACK_TOKEN"])
+    return { note: "resume_not_configured", missingSettings: [], misconfigured: false }
+  }
+  if (callback.length < 32 || callback === source.DEN_HEADLESS_RUNNER_TOKEN?.trim()) return broken()
+  if (!denOrigin) return broken(["DEN_API_PUBLIC_URL"])
+  // Without the runner's answer, configuration alone cannot show resume works.
+  if (!health) return { note: null, missingSettings: [], misconfigured: false }
+  if (!health.resumeConfigured || health.denOriginMatches === false) return broken()
+  return { note: "resume_ready", missingSettings: [], misconfigured: false }
+}
+function withResume(runner: Fact, resume: ResumeFacts, healthy: boolean): Fact {
+  const missingSettings = [...new Set([...runner.missingSettings, ...resume.missingSettings])]
+  const notes = resume.note ? [...runner.notes, resume.note] : runner.notes
+  if (healthy && resume.misconfigured) return { ...runner, state: "misconfigured", reason: "resume_misconfigured", missingSettings, notes }
+  return { ...runner, missingSettings, notes }
+}
+function runnerSettings(source: Environment): Fact | null {
+  const incomplete = configuration(source, ["DEN_HEADLESS_RUNNER_URL", "DEN_HEADLESS_RUNNER_TOKEN"])
+  // A callback token without a runner is a partial runner setup, not an absent one.
+  if (incomplete?.state === "not_configured" && source.DEN_HEADLESS_RUNNER_CALLBACK_TOKEN?.trim()) {
+    return fact("misconfigured", "missing_configuration", false, ["DEN_HEADLESS_RUNNER_URL", "DEN_HEADLESS_RUNNER_TOKEN"])
+  }
+  return incomplete
+}
+
+/** At most five concurrent read-only probes; all other statuses derive from these same facts. Nothing is sent or invoked. */
 export async function probeDeploymentServices(deps: ServiceProbeDependencies): Promise<ProbeFacts> {
   const operations: Promise<unknown>[] = []
   const track: TrackProbe = (operation) => { operations.push(operation) }
   const tracked = { ...deps, track }
   const source = deps.env
+  const clock = deps.clock ?? (() => performance.now())
   const runnerConfig = headlessRunnerConfig(source)
-  let runnerHealth: z.infer<typeof headlessServiceHealthSchema> | undefined
-  const database = protect(async () => {
+  let runnerHealth: RunnerHealth | undefined
+  const database = timed(clock, async (begin) => {
+    begin()
     await bounded(deps.database, deps.timeoutMs ?? SERVICE_READINESS_TIMEOUT_MS, track)
     return fact("ready", "database_verified")
   })
-  const gateway = protect(async () => {
+  const gateway = timed(clock, async (begin) => {
     const raw = source.GATEWAY_PROXY_BASE_URL ?? source.INFERENCE_PROXY_BASE_URL
     if (source.GATEWAY_ENABLED === "false" || (!raw && source.GATEWAY_ENABLED !== "true")) return fact("not_configured", "not_configured", false)
     if (!raw) return fact("misconfigured", "missing_configuration", false, ["GATEWAY_PROXY_BASE_URL"])
-    await health(tracked, raw, "/health", gatewayHealth)
-    await health(tracked, raw, "/ready", gatewayReady)
+    await health({ ...tracked, begin }, raw, "/health", gatewayHealth)
+    await health({ ...tracked, begin }, raw, "/ready", gatewayReady)
     return fact("ready", "health_verified")
   })
-  const runner = protect(async () => {
-    const incomplete = configuration(source, ["DEN_HEADLESS_RUNNER_URL", "DEN_HEADLESS_RUNNER_TOKEN"])
+  const runner = timed(clock, async (begin) => {
+    const incomplete = runnerSettings(source)
     if (incomplete) return incomplete
     if (!runnerConfig) return fact("misconfigured", "invalid_configuration", false)
-    runnerHealth = await health(tracked, runnerConfig.url, "/v1/health", headlessServiceHealthSchema, runnerConfig.token)
-    if (runnerHealth.denOriginMatches === false) return fact("misconfigured", "invalid_configuration")
+    runnerHealth = await health({ ...tracked, begin }, runnerConfig.url, "/v1/health", headlessServiceHealthSchema, runnerConfig.token)
     // Per-member credentials may supply models; no model invocation or provider catalog lookup here.
+    // A Den origin mismatch only affects resumable answers and is reported there.
     return fact("ready", "health_verified")
   })
-  const workbot = protect(async () => {
+  const workbot = timed(clock, async (begin) => {
     if (!source.DEN_WORKBOT_URL?.trim()) return fact("not_configured", "not_configured", false)
     if (!source.DEN_HEADLESS_RUNNER_TOKEN?.trim()) return fact("misconfigured", "missing_configuration", false, ["DEN_HEADLESS_RUNNER_TOKEN"])
     if (source.DEN_HEADLESS_RUNNER_TOKEN.trim().length < 32) return fact("misconfigured", "invalid_configuration", false)
-    const result = await health(tracked, source.DEN_WORKBOT_URL, "/internal/readiness", workbotServiceHealthSchema, source.DEN_HEADLESS_RUNNER_TOKEN.trim())
+    const result = await health({ ...tracked, begin }, source.DEN_WORKBOT_URL, "/internal/readiness", workbotServiceHealthSchema, source.DEN_HEADLESS_RUNNER_TOKEN.trim())
     if (result.denOriginMatches === false || !result.runnerConfigured) return fact("misconfigured", "invalid_configuration")
     if (result.denOriginMatches === null || !deps.denOrigin) return fact("unknown", "configuration_only")
     return fact("ready", "health_verified")
   })
-  const [databaseFact, gatewayFact, runnerFact, workbotFact] = await Promise.all([database, gateway, runner, workbot])
-  const services = new Map<ServiceId, Fact>([["database", databaseFact], ["gateway", gatewayFact], ["headlessRunner", runnerFact], ["workbot", workbotFact.state === "ready" && runnerFact.state !== "ready" ? fact("unknown", "dependency_unavailable") : workbotFact]])
-  services.set("slack", runnerFact.state === "not_configured" ? fact("not_configured", "not_configured", false) : runnerFact.state !== "ready" ? fact("unknown", "dependency_unavailable", Boolean(runnerConfig)) : fact("unknown", "organization_setup_required"))
-  let durable: Fact
-  const callback = source.DEN_HEADLESS_RUNNER_CALLBACK_TOKEN?.trim()
-  if (!callback && !runnerHealth?.resumeConfigured) durable = fact("not_configured", "not_configured", false)
-  else if (!callback) durable = fact("misconfigured", "missing_configuration", false, ["DEN_HEADLESS_RUNNER_CALLBACK_TOKEN"])
-  else if (callback.length < 32 || callback === source.DEN_HEADLESS_RUNNER_TOKEN?.trim()) durable = fact("misconfigured", "invalid_configuration", false)
-  else if (!runnerConfig) {
-    const missing = ["DEN_HEADLESS_RUNNER_URL", "DEN_HEADLESS_RUNNER_TOKEN"].filter((name) => !source[name]?.trim())
-    durable = fact("misconfigured", missing.length ? "missing_configuration" : "invalid_configuration", false, missing)
-  } else if (!deps.denOrigin) durable = fact("misconfigured", "missing_configuration", false, ["DEN_API_PUBLIC_URL"])
-  else if (runnerFact.state !== "ready") durable = fact("unknown", "dependency_unavailable", Boolean(runnerConfig))
-  else if (!runnerHealth?.resumeConfigured || runnerHealth.denOriginMatches === false) durable = fact("misconfigured", "invalid_configuration")
-  else durable = fact("unknown", "callback_unverified")
-  services.set("durableTurns", durable)
-  services.set("email", emailReadiness(source))
+  const email = timed(clock, async (begin) => {
+    const configured = emailReadiness(source)
+    if (configured.reason !== "not_checked") return configured
+    const verify = deps.verifyEmail
+    if (!verify) return { ...configured, reason: "configuration_only" }
+    begin()
+    try {
+      return emailFact(await bounded(verify, deps.emailTimeoutMs ?? EMAIL_READINESS_TIMEOUT_MS, track), configured.notes)
+    } catch (error) {
+      const failed = error instanceof ProbeFailure ? fact(error.state, error.reason) : fact("unreachable", "request_failed")
+      return { ...failed, notes: configured.notes }
+    }
+  })
+  const [databaseFact, gatewayFact, runnerFact, workbotFact, emailResult] = await Promise.all([database, gateway, runner, workbot, email])
+  const runnerHealthy = runnerFact.state === "ready"
+  const services = new Map<ServiceId, Fact>([
+    ["database", databaseFact],
+    ["gateway", gatewayFact],
+    ["headlessRunner", withResume(runnerFact, resumeFacts(source, deps.denOrigin, runnerHealthy ? runnerHealth : undefined), runnerHealthy)],
+    // Workbot needs a reachable runner, not resumable answers.
+    ["workbot", workbotFact.state === "ready" && !runnerHealthy ? { ...workbotFact, state: "unknown", reason: "dependency_unavailable" } : workbotFact],
+    ["email", emailResult],
+  ])
   return { services, drained: Promise.allSettled(operations).then(() => undefined) }
 }
 
 function dependencies(id: ServiceId): ServiceId[] {
   if (id === "gateway") return ["database"]
-  if (id === "workbot" || id === "slack") return ["headlessRunner"]
-  if (id === "durableTurns") return ["database", "headlessRunner"]
+  if (id === "workbot") return ["headlessRunner"]
   return []
 }
-function configurationHint(id: ServiceId, source: Environment): Fact {
+function configurationHint(id: ServiceId, source: Environment, denOrigin?: string): Fact {
   const unchecked = fact("unknown", "not_checked")
   if (id === "database") return unchecked
   if (id === "email") return emailReadiness(source)
@@ -289,35 +369,29 @@ function configurationHint(id: ServiceId, source: Environment): Fact {
     if (!raw) return fact("misconfigured", "missing_configuration", false, ["GATEWAY_PROXY_BASE_URL"])
     try { readinessServiceOrigin(raw); return unchecked } catch { return fact("misconfigured", "invalid_configuration", false) }
   }
-  const runner = configuration(source, ["DEN_HEADLESS_RUNNER_URL", "DEN_HEADLESS_RUNNER_TOKEN"])
   if (id === "headlessRunner") {
-    if (runner) return runner
+    const resume = resumeFacts(source, denOrigin)
+    const incomplete = runnerSettings(source)
+    if (incomplete) return withResume(incomplete, resume, false)
     const config = headlessRunnerConfig(source)
-    if (!config) return fact("misconfigured", "invalid_configuration", false)
-    try { readinessServiceOrigin(config.url); return unchecked } catch { return fact("misconfigured", "invalid_configuration", false) }
+    if (!config) return withResume(fact("misconfigured", "invalid_configuration", false), resume, false)
+    try { readinessServiceOrigin(config.url); return withResume(unchecked, resume, false) } catch { return withResume(fact("misconfigured", "invalid_configuration", false), resume, false) }
   }
-  if (id === "slack") return runner?.state === "not_configured" ? runner : runner ? fact("unknown", "dependency_unavailable", false) : unchecked
-  if (id === "workbot") {
-    if (!source.DEN_WORKBOT_URL?.trim()) return fact("not_configured", "not_configured", false)
-    if (!source.DEN_HEADLESS_RUNNER_TOKEN?.trim()) return fact("misconfigured", "missing_configuration", false, ["DEN_HEADLESS_RUNNER_TOKEN"])
-    if (source.DEN_HEADLESS_RUNNER_TOKEN.trim().length < 32) return fact("misconfigured", "invalid_configuration", false)
-    try { readinessServiceOrigin(source.DEN_WORKBOT_URL); return unchecked } catch { return fact("misconfigured", "invalid_configuration", false) }
-  }
-  const callback = source.DEN_HEADLESS_RUNNER_CALLBACK_TOKEN?.trim()
-  if (!callback) return fact("not_configured", "not_configured", false)
-  if (callback.length < 32 || callback === source.DEN_HEADLESS_RUNNER_TOKEN?.trim()) return fact("misconfigured", "invalid_configuration", false)
-  return runner ? fact("misconfigured", "missing_configuration", false, runner.missingSettings.length ? runner.missingSettings : ["DEN_HEADLESS_RUNNER_URL", "DEN_HEADLESS_RUNNER_TOKEN"]) : unchecked
+  if (!source.DEN_WORKBOT_URL?.trim()) return fact("not_configured", "not_configured", false)
+  if (!source.DEN_HEADLESS_RUNNER_TOKEN?.trim()) return fact("misconfigured", "missing_configuration", false, ["DEN_HEADLESS_RUNNER_TOKEN"])
+  if (source.DEN_HEADLESS_RUNNER_TOKEN.trim().length < 32) return fact("misconfigured", "invalid_configuration", false)
+  try { readinessServiceOrigin(source.DEN_WORKBOT_URL); return unchecked } catch { return fact("misconfigured", "invalid_configuration", false) }
 }
-export function initialReadiness(source?: Environment): DeploymentServiceReadiness {
-  return { version: 1, checkedAt: null, checking: false, services: serviceIdSchema.options.map((id) => ({
-    id, required: id === "database", ...(source ? configurationHint(id, source) : fact("unknown", "not_checked", false)), dependencies: dependencies(id), checkedAt: null, lastSuccessAt: null, stale: true,
+/** No outbound work. `server` stays null here and in the shared cache; read handlers fill it per replica. */
+export function initialReadiness(source?: Environment, denOrigin?: string): DeploymentServiceReadiness {
+  return { version: 2, checkedAt: null, checking: false, server: null, services: serviceIdSchema.options.map((id) => ({
+    id, required: id === "database", ...(source ? configurationHint(id, source, denOrigin) : fact("unknown", "not_checked", false)), dependencies: dependencies(id), checkedAt: null, lastSuccessAt: null, stale: true,
   })) }
 }
 export function organizationReadiness(snapshot: DeploymentServiceReadiness): OrganizationServiceReadiness {
-  return { version: 1, checkedAt: snapshot.checkedAt, checking: snapshot.checking, services: snapshot.services.map(({ required: _required, missingSettings: _missing, ...status }) => status) }
+  return { version: 2, checkedAt: snapshot.checkedAt, checking: snapshot.checking, services: snapshot.services.map(({ required: _required, missingSettings: _missing, notes: _notes, durationMs: _duration, ...status }) => status) }
 }
 export type ReadinessControllerDependencies = {
-  enabled: () => Promise<boolean>
   /** Durable shared admission; null admits, otherwise seconds until another check may be admitted. */
   admit: () => Promise<number | null>
   probe: () => Promise<ProbeFacts>
@@ -327,7 +401,7 @@ export type ReadinessControllerDependencies = {
   save?: (snapshot: DeploymentServiceReadiness) => Promise<void>
 }
 
-/** Diagnostics are never an authorization input. Turning the flag off stops new admissions, not in-flight work. */
+/** Diagnostics are advisory: never an authorization input, never a startup or request dependency. */
 export function createReadinessController(deps: ReadinessControllerDependencies) {
   const now = deps.now ?? Date.now
   let current = deps.initial ?? initialReadiness()
@@ -336,12 +410,12 @@ export function createReadinessController(deps: ReadinessControllerDependencies)
   let sync: Promise<void> | null = null
   let lastSync = -Infinity
   function snapshot(): DeploymentServiceReadiness {
-    return { ...current, checking: admission !== null || active !== null, services: current.services.map((status) => ({ ...status, missingSettings: [...status.missingSettings], dependencies: [...status.dependencies], stale: !status.checkedAt || now() - Date.parse(status.checkedAt) >= SERVICE_READINESS_TTL_MS })) }
+    return { ...current, server: null, checking: admission !== null || active !== null, services: current.services.map((status) => ({ ...status, missingSettings: [...status.missingSettings], dependencies: [...status.dependencies], notes: [...status.notes], stale: !status.checkedAt || now() - Date.parse(status.checkedAt) >= SERVICE_READINESS_TTL_MS })) }
   }
   async function run() {
     const result = await deps.probe()
     const checkedAt = new Date(now()).toISOString()
-    current = { version: 1, checkedAt, checking: false, services: current.services.map((old) => {
+    current = { version: 2, checkedAt, checking: false, server: null, services: current.services.map((old) => {
       const next = result.services.get(old.id) ?? fact("unknown", "not_checked", false)
       return { ...old, ...next, checkedAt, stale: false, lastSuccessAt: next.state === "ready" ? checkedAt : old.lastSuccessAt }
     }) }
@@ -353,7 +427,7 @@ export function createReadinessController(deps: ReadinessControllerDependencies)
   async function loadCache() {
     if (!deps.load) return
     const cached = await bounded(() => deps.load?.() ?? Promise.resolve(null), 250).catch(() => null)
-    if (cached?.checkedAt && (!current.checkedAt || cached.checkedAt > current.checkedAt) && !active) current = cached
+    if (cached?.checkedAt && (!current.checkedAt || cached.checkedAt > current.checkedAt) && !active) current = { ...cached, server: null }
   }
   function completedRecently() {
     if (!current.checkedAt || current.services.length !== serviceIdSchema.options.length) return false
@@ -365,7 +439,6 @@ export function createReadinessController(deps: ReadinessControllerDependencies)
     if (admission) return admission
     if (active) return Promise.resolve(null)
     admission = (async () => {
-      if (!await deps.enabled()) return null
       // A GET's recent background result is also the answer to Check now. Reuse
       // it without changing timestamps, spending quota or launching more work.
       // Loading first also preserves the previous replica's last-success facts.
@@ -377,8 +450,6 @@ export function createReadinessController(deps: ReadinessControllerDependencies)
         await loadCache()
         return completedRecently() ? null : retryAfter
       }
-      // Recheck after durable admission: a kill racing admission must not launch probes.
-      if (!await deps.enabled()) return null
       active = run().catch(() => undefined).finally(() => { active = null })
       return null
     })().finally(() => { admission = null })

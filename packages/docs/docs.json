@@ -310,6 +310,7 @@
           {
             "group": "Troubleshoot",
             "pages": [
+              "self-host/diagnostics",
               "start-here/network-diagnostics"
             ]
           }
