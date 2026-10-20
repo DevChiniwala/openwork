@@ -107,4 +107,13 @@ node --test --test-concurrency=1 src/*.test.mjs
 
 These Node 22.23+ tests cover service behavior, cross-participant boundaries, OAuth protocol, real Chrome sign-in/consent, durable restart and failed-storage behavior. Set `CHROME_BIN` if Chrome is not at the standard macOS path. `OPEN_WORKPLACE_SCREENSHOT_DIR` retains private screenshots; never commit them. SQLite's experimental warning is expected on the supported Node release.
 
-The opt-in `evals/proofs/workshop-agent.proof.test.ts` is the separate real OpenWork/Den-client/live-model rehearsal. Do not substitute standalone gateway tests or a mock-model demo for that proof, and do not call unexecuted/skipped scenarios passed. Local tests alone do not establish deployed TLS, capacity or hosted OAuth compatibility.
+The default `evals/proofs/workshop-oauth.proof.test.ts` runs the real Den browser OAuth client with two members and independently executes private Drive work through their OAuth-backed MCP grants. It makes no model calls and requires no paid-model key, so it belongs in the automatic PR proof lane.
+
+Paid acceptance rehearsals are explicit manual scenarios rather than automatic PR proofs:
+
+- `scenarios/workshop-live/e2e.test.ts`: actual OpenWork + Sol, sourced PowerPoint and unsent threaded reply, ordinary Jira/Confluence follow-up, second-member isolation.
+- `scenarios/workshop-calendar-trust/e2e.test.ts`: actual OpenWork + Sol, existing-review reschedule preserving attendees, and an honest internal-policy no-answer.
+
+Use Node 24+ for the testkit controller. Select `--local --engine v2 --surface web`, explicitly set `OPEN_WORKPLACE_LIVE_PROOF=1` and `OPENWORK_EVAL_LIVE_OPENAI=1`, and scope the paid `OPENAI_API_KEY` to that command. For example, run `pnpm evals:e2e scenarios/workshop-live/e2e.test.ts --local --engine v2 --surface web` with those settings. To use the hosted gateway rather than a fresh local fixture, also supply `OPEN_WORKPLACE_TEST_URL` and `OPEN_WORKPLACE_TEST_PARTICIPANTS_FILE` pointing to **exactly two reserved test accounts**, never the attendee roster. Browser verification supports those same two settings.
+
+These paid scenarios deliberately are not selected automatically by the PR-proof workflow: they require explicit spending consent and may modify an operator-owned hosted workshop. CI instead runs the no-paid-model OAuth proof above; no CI gate is disabled or represented as paid-model coverage. Do not substitute standalone gateway tests or a mock-model demo for real agent acceptance, and do not call unexecuted/skipped scenarios passed. Local tests alone do not establish deployed TLS, capacity or hosted OAuth compatibility.

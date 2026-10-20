@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { spec } from "@openwork/testkit";
-import { record, rows, workshopAgent, workshopModel } from "../worlds/workshop-agent.ts";
+import { record, rows, workshopAgent, workshopModel } from "../../evals/worlds/workshop-agent.ts";
 
 const test = spec.world(workshopAgent, {
   resources: { surfaces: ["appWeb", "web"], services: ["den"] },

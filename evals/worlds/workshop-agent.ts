@@ -36,13 +36,15 @@ export async function workshopAgent(seed: Seed) {
       { id: "proof-a", name: "Avery Workshop", token: randomBytes(32).toString("base64url") },
       { id: "proof-b", name: "Riley Workshop", token: randomBytes(32).toString("base64url") },
     ];
-    const participants = rows(roster).slice(0, 2).map((entry) => ({
+    if (!Array.isArray(roster) || roster.length !== 2 || rows(roster).length !== 2) throw new Error("Use exactly two reserved verification accounts, never the full attendee roster");
+    const participants = rows(roster).map((entry) => ({
       id: requiredString(entry.id, "participant id"), name: requiredString(entry.name, "participant name"),
       token: requiredString(entry.token, "participant access code"),
     }));
     if (participants.length !== 2) throw new Error("The proof needs two private workshop participants");
     const first = participants[0]; const second = participants[1];
     if (!first || !second) throw new Error("Missing workshop participants");
+    if (first.id === second.id || first.token === second.token) throw new Error("Verification accounts must have distinct identities and passwords");
     const origin = configured ? new URL(configured).origin : `http://127.0.0.1:${await allocateFreePort()}`;
     if (configured && new URL(origin).protocol !== "https:") throw new Error("Hosted workshop proof requires HTTPS");
     if (!configured) {
