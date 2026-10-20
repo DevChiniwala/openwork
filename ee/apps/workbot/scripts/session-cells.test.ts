@@ -3,7 +3,7 @@
  * person's existing chats are split out once per process, only with the flag. Chats are found from the runner's chat
  * list whatever the flag says, a chat in a session cell preferred, so turning the flag off never makes a chat look empty
  * or get replaced. A list that can't be read never leads to a new chat replacing an existing one.
- * Feature `headlessSessionIndex`: the index capability Den returns with a run token reaches the runner with the turn.
+ * Den's session index: the index capability Den returns with a run token reaches the runner with the turn.
  */
 import assert from "node:assert/strict"
 import { beforeEach, test } from "node:test"

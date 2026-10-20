@@ -7,7 +7,6 @@ import { getOrgOAuthClient } from "../capability-sources/oauth-credentials.js"
 import { clientSelectedFeatures, getNativeOAuthProvider, type NativeOAuthProviderConfig } from "../capability-sources/provider-registry.js"
 import { db } from "../db.js"
 import { env } from "../env.js"
-import { getOrganizationFeatures } from "../features.js"
 import { checkGoogleConnectorApis, requiredGoogleApis, type GoogleApiCheck } from "../routes/org/google-api-check.js"
 import { slackRunnerAvailable } from "../slack-assistant/headless.js"
 import { slackClient } from "../slack-assistant/protocol.js"
@@ -59,8 +58,7 @@ async function slackTargets(organizationId: OrganizationId, connections: Awaited
   // A Slack connection whose assistant was never set up is not a diagnostics row.
   if (!installations.length) return []
   const installed = installations.map((row) => row.connectionId)
-  const [features, lastEvents, metrics] = await Promise.all([
-    getOrganizationFeatures(organizationId),
+  const [lastEvents, metrics] = await Promise.all([
     db.select({ connectionId: SlackAssistantEventTable.connectionId, lastEventAt: max(SlackAssistantEventTable.createdAt) })
       .from(SlackAssistantEventTable).where(inArray(SlackAssistantEventTable.connectionId, installed))
       .groupBy(SlackAssistantEventTable.connectionId),
@@ -71,7 +69,6 @@ async function slackTargets(organizationId: OrganizationId, connections: Awaited
     const connection = slack.find((entry) => entry.id === installation.connectionId)
     if (!connection) return []
     const state = {
-      featureEnabled: features.slackAssistant,
       runnerAvailable,
       enabled: installation.enabled,
       hasBotToken: Boolean(Number(installation.hasBotToken)),

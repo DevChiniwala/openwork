@@ -7,7 +7,6 @@ import { describeRoute } from "hono-openapi"
 import { db } from "../../db.js"
 import { orgMemberRoute } from "../../middleware/index.js"
 import { jsonResponse, notFoundSchema, unauthorizedSchema } from "../../openapi.js"
-import { cloudAgentGatewayEnabled } from "../../workbot/model.js"
 import type { OrgRouteVariables } from "./shared.js"
 
 const workbotReadinessDocumentSchema = workbotReadinessSchema.meta({ ref: "WorkbotReadiness" })
@@ -20,7 +19,7 @@ async function hasActiveGatewayProvider(organizationId: string): Promise<boolean
 }
 
 /**
- * With cloudAgentGateway on, Den refuses Workbot turns when the organization has no active AI Gateway provider. Members
+ * Den refuses Workbot turns when the organization has no active AI Gateway provider. Members
  * cannot list providers, so Den web reads this content-free answer before sending someone to Workbot.
  */
 export function registerOrgWorkbotReadinessRoutes<T extends { Variables: OrgRouteVariables }>(app: Hono<T>) {
@@ -30,7 +29,7 @@ export function registerOrgWorkbotReadinessRoutes<T extends { Variables: OrgRout
       tags: ["Organizations"],
       summary: "Check whether Workbot has an AI provider",
       description:
-        "Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, true while cloudAgentGateway is on) and, only then, whether the organization has at least one active AI Gateway provider (hasGatewayProvider; false when not required). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.",
+        "Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, always true) and whether the organization has at least one active AI Gateway provider (hasGatewayProvider). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.",
       ...{ "x-mcp": false },
       responses: {
         200: jsonResponse("Whether Workbot needs an AI Gateway provider and whether one exists.", workbotReadinessDocumentSchema),
@@ -42,9 +41,7 @@ export function registerOrgWorkbotReadinessRoutes<T extends { Variables: OrgRout
     async (c) => {
       c.header("Cache-Control", "no-store")
       const organizationId = c.get("organizationContext").organization.id
-      const gatewayRequired = await cloudAgentGatewayEnabled(organizationId)
-      const hasGatewayProvider = gatewayRequired && await hasActiveGatewayProvider(organizationId)
-      return c.json({ gatewayRequired, hasGatewayProvider })
+      return c.json({ gatewayRequired: true, hasGatewayProvider: await hasActiveGatewayProvider(organizationId) })
     },
   )
 }

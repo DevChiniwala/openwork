@@ -3,10 +3,8 @@ import { OrganizationTable } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { readWorkbotModel } from "@openwork/types/den/workbot-settings"
 import { db } from "../db.js"
-import { organizationFeatureEnabled } from "../features.js"
 import { cloudAgentGatewayCatalog } from "./gateway-model.js"
 import { createHeadlessRunnerClient, defaultHeadlessRunnerDeps, type HeadlessModelCatalog } from "../headless-runner/client.js"
-import { explicitWorkbotModel, workbotDefaultReadiness } from "./readiness.js"
 
 /**
  * The organization's default model for its cloud agents on the headless runner: Workbot, the Slack assistant, and
@@ -56,15 +54,9 @@ export async function readOrganizationDefaultModel(organizationId: string): Prom
 
 export type CloudModelActor = { organizationId: string; userId: string }
 
-export function cloudAgentGatewayEnabled(organizationId: string): Promise<boolean> {
-  return organizationFeatureEnabled(organizationId, "cloudAgentGateway")
-}
-
-/** One catalog boundary for settings and execution. Gateway reads are never shared across actors. */
-export async function cloudAgentModelCatalog(actor: CloudModelActor, refresh = false): Promise<HeadlessModelCatalog | null> {
-  if (await cloudAgentGatewayEnabled(actor.organizationId)) return cloudAgentGatewayCatalog(actor)
-  if (refresh) forgetHeadlessModelCatalog()
-  return headlessModelCatalog()
+/** One catalog boundary for settings and execution: the actor's AI Gateway models. Never shared across actors. */
+export async function cloudAgentModelCatalog(actor: CloudModelActor): Promise<HeadlessModelCatalog> {
+  return cloudAgentGatewayCatalog(actor)
 }
 
 /** Selection only. Authorization belongs after the shared client's persisted-turn pin, at credential minting. */
@@ -74,14 +66,10 @@ export async function organizationCloudModelSelection(actor: CloudModelActor, fa
 }
 
 /**
- * An organization default selects a model; it never grants inference access. In Gateway mode every
- * caller must have its own usable assignment, and unavailable choices never fall back to a shared key.
+ * An organization default selects a model; it never grants inference access. Every caller must have its own
+ * usable AI Gateway assignment, and unavailable choices never fall back to a shared key.
  */
 export async function organizationCloudModel(actor: CloudModelActor, fallback: string | null = null): Promise<string | null> {
-  if (!(await cloudAgentGatewayEnabled(actor.organizationId))) {
-    const policy = await organizationModelPolicy(actor.organizationId)
-    return policy.enabled ? policy.model : fallback
-  }
   const catalog = await cloudAgentGatewayCatalog(actor)
   const chosen = await readOrganizationDefaultModel(actor.organizationId)
   const model = chosen ?? fallback ?? catalog.defaultModel
@@ -96,15 +84,13 @@ export function servableModel(chosen: string | null, catalog: HeadlessModelCatal
   return catalog.models.some((entry) => entry.id === chosen) ? chosen : null
 }
 
-/** What the admin page shows: the saved model, whether the runner still serves it, and what can be chosen. */
-export function workbotSettingsView(chosen: string | null, catalog: HeadlessModelCatalog | null, gatewayModels = false) {
-  const defaultReadiness = gatewayModels
-    ? catalog === null ? "unverified" : catalog.models.some((entry) => entry.id === catalog.defaultModel) ? "available" : "unavailable"
-    : workbotDefaultReadiness(catalog)
+/** What the admin page shows: the saved model, whether the caller's AI Gateway still serves it, and what can be chosen. */
+export function workbotSettingsView(chosen: string | null, catalog: HeadlessModelCatalog | null) {
+  const defaultReadiness = catalog === null ? "unverified" : catalog.models.some((entry) => entry.id === catalog.defaultModel) ? "available" : "unavailable"
   return {
     model: chosen,
-    ...(gatewayModels ? { gatewayModels: true } : {}),
-    defaultModel: gatewayModels ? catalog?.defaultModel || null : explicitWorkbotModel(null, catalog),
+    gatewayModels: true,
+    defaultModel: catalog?.defaultModel || null,
     defaultReadiness,
     models: catalog?.models ?? [],
     modelAvailable: chosen === null || catalog === null || catalog.models.some((entry) => entry.id === chosen),
@@ -144,17 +130,4 @@ export async function organizationDefaultModel(
   deps: Partial<OrganizationModelPolicyDeps> = {},
 ): Promise<string | null> {
   return (await organizationModelPolicy(organizationId, deps)).model
-}
-
-/**
- * The model a headless Slack run sends: the organization default for every organization; the model saved
- * on the Slack installation is only an outage fallback. Undefined means the runner's default. A failed read keeps Slack answering.
- */
-export async function slackAssistantModel(
-  installation: { organizationId: string; model: string | null },
-  deps: Partial<OrganizationModelPolicyDeps> = {},
-): Promise<string | undefined> {
-  const policy = await organizationModelPolicy(installation.organizationId, deps).catch((): OrganizationModelPolicy => ({ enabled: false, model: null }))
-  if (policy.enabled) return policy.model ?? undefined
-  return installation.model ?? undefined
 }

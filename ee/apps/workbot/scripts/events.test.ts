@@ -1,5 +1,5 @@
 /**
- * Workbot's live-events relay: with `stepTurns` (headlessStepTurns) it reads the runner's events over a WebSocket,
+ * Workbot's live-events relay: with `stepTurns` (headlessDurableTurns) it reads the runner's events over a WebSocket,
  * falling back to the runner's SSE when the runner doesn't upgrade; without it, SSE only. The page gets the same SSE
  * either way.
  */

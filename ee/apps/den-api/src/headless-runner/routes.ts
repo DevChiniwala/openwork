@@ -16,8 +16,8 @@ import { HEADLESS_INDEX_MAX_UPDATES, HEADLESS_INDEX_ROUTE, headlessIndexRequestS
  * unset), internal (not in the published API document) and never MCP capabilities:
  * - exchanging a turn's resume grant (feature `headlessDurableTurns`) for a fresh member-scoped MCP token, so it can
  *   continue the turn after a restart or refresh a long turn's token. Never log the grant or the token.
- * - reporting sessions' content-free totals and state to Den's session index (feature `headlessSessionIndex`), each
- *   update with the capability Den minted for that session (session-index.ts). Never log a capability.
+ * - reporting sessions' content-free totals and state to Den's session index, each update with the capability Den
+ *   minted for that session (session-index.ts). Never log a capability.
  */
 
 const logger = appLogger.child({ component: "headless_resume_token" })
@@ -89,7 +89,7 @@ export function registerHeadlessRunnerRoutes<T extends Env>(app: Hono<T>) {
       operationId: "reportHeadlessSessionIndex",
       security: [{ headlessRunnerCallbackToken: [] }],
       summary: "Report headless sessions' content-free totals and state to Den's session index",
-      description: `For the headless runner only, with \`Authorization: Bearer $DEN_HEADLESS_RUNNER_CALLBACK_TOKEN\`. Body \`{ updates: [{ capability, sessionId, version, fields }] }\`, at most ${HEADLESS_INDEX_MAX_UPDATES}. Each update carries the index capability Den minted with the session's turn; the organization, member and kind come from it alone and \`sessionId\` must be its session. Idempotent on (sessionId, version): a version at or below the stored one is \`stale\` and changes nothing. One result per update, in order: \`ok\`, \`stale\`, or \`rejected\` with a code (\`index_disabled\` while headlessSessionIndex is off for the organization, \`rate_limited\` per session and organization; keep and retry both). Rejections are audited. Answers 404 when DEN_HEADLESS_RUNNER_CALLBACK_TOKEN is not configured.`,
+      description: `For the headless runner only, with \`Authorization: Bearer $DEN_HEADLESS_RUNNER_CALLBACK_TOKEN\`. Body \`{ updates: [{ capability, sessionId, version, fields }] }\`, at most ${HEADLESS_INDEX_MAX_UPDATES}. Each update carries the index capability Den minted with the session's turn; the organization, member and kind come from it alone and \`sessionId\` must be its session. Idempotent on (sessionId, version): a version at or below the stored one is \`stale\` and changes nothing. One result per update, in order: \`ok\`, \`stale\`, or \`rejected\` with a code (\`rate_limited\` per session and organization: keep and retry it; \`index_disabled\` is no longer sent but older runners keep and retry it too). Rejections are audited. Answers 404 when DEN_HEADLESS_RUNNER_CALLBACK_TOKEN is not configured.`,
       responses: {
         200: jsonResponse("One result per update.", indexResponseSchema),
         400: jsonResponse("The body is not `{ updates: [...] }` with 1 to 50 updates.", indexErrorSchema),

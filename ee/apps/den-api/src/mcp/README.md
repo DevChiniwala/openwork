@@ -9,8 +9,7 @@ For third-party client setup and `invalid_target` troubleshooting, see
 
 `/mcp/agent` identifies itself as **OpenWork Connect** during initialization,
 including its purpose, public website, and scalable public SVG icon. Initialization
-keeps critical routing and safety guidance within 2048 UTF-8 bytes, including when
-remote-session receipt subscriptions are enabled. Agents read
+keeps critical routing and safety guidance within 2048 UTF-8 bytes. Agents read
 `openwork://agent/guidance.md` for the full operating rules; those rules are retained
 rather than silently truncated. App authoring details live in `build-an-app`.
 

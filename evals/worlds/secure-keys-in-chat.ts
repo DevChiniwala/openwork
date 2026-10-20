@@ -5,13 +5,12 @@ import type { Place, Seed } from "@openwork/env";
 import type { MockAgentToolStep, MockAgentWorkload } from "@openwork/labs";
 import { engineParity } from "./engine-parity.ts";
 import { isRecord } from "./library.ts";
-import { enableOrganizationCapabilities } from "./organization-capabilities.ts";
+import { seededOrganizationId } from "./organization-capabilities.ts";
 
 /** What OpenWork sends after a key is saved; it carries no key. */
 export const KEY_SAVED_PROMPT = "I've saved the key. Go ahead.";
 export const CONNECT_PROMPT = "Connect our status service. It needs an API key.";
 export const GATEWAY_PROMPT = "Add our OpenRouter account to the AI Gateway for everyone.";
-export const BACKUP_PROMPT = "Also connect our backup status service.";
 export const VERTEX_PROMPT = "Add our Google Cloud Vertex project to the AI Gateway for everyone.";
 
 function field(value: unknown, ...path: string[]): unknown {
@@ -46,7 +45,8 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
       { name: "team_status", description: "Read the team status page", inputSchema: { type: "object", properties: {} }, result: { content: [{ type: "text", text: proof }] } },
     ] }) },
   });
-  const organizationId = await enableOrganizationCapabilities(seed, den.admin, { secureSecretFields: true });
+  const organizationId = await seededOrganizationId(seed, den.admin);
+  if (!organizationId) throw new Error("Missing seeded organization");
 
   // Keys exist only in this process; witnesses keep a 12-character fingerprint.
   const keys = { status: randomBytes(24).toString("hex"), wrong: randomBytes(24).toString("hex"), gateway: `sk-or-${randomBytes(24).toString("hex")}` };
@@ -169,14 +169,6 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
         { promptMarker: KEY_SAVED_PROMPT, latestUserTurn: true, finalReply: "Team OpenRouter is ready for everyone.", steps: [] },
       ]);
     },
-    /** A second request whose key nobody has entered yet. */
-    async scriptBackup() {
-      await script([
-        { promptMarker: BACKUP_PROMPT, latestUserTurn: true, finalReply: "Add the backup service's key in the field above.", steps: [
-          cloudCall("execute_capability", { name: "postMcpConnections", body: { name: "Backup status service", url: statusUrl, authType: "apikey", credentialMode: "shared", access: { orgWide: true } } }),
-        ] },
-      ]);
-    },
     /** The admin asks; the agent adds a Vertex provider for everyone without its key file and ends its turn. */
     async scriptVertex() {
       await script([
@@ -215,9 +207,6 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
       const riley = den.members.riley;
       if (!riley) throw new Error("Missing member");
       return seed.api(riley, `/v1/mcp-connections/${encodeURIComponent(connectionId)}/shared-credential`, { method: "PUT", headers: { "x-openwork-org-id": organizationId }, body: JSON.stringify({ apiKey: keys.wrong }) });
-    },
-    async setFeature(enabled: boolean) {
-      await seed.api(den.admin, `/v1/admin/organizations/${organizationId}/capabilities`, { method: "PUT", body: JSON.stringify({ capabilities: { secureSecretFields: enabled } }) });
     },
     async colorScheme(theme: "light" | "dark") {
       await base.app.client.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });

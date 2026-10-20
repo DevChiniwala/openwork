@@ -8,7 +8,7 @@ import { mintHeadlessRunMcpToken, revokeHeadlessRunMcpToken } from "../mcp/headl
 import { appLogger } from "../observability/logger.js"
 import { checkRateLimit } from "../utils/rate-limit.js"
 import type { HeadlessModelAccess } from "@openwork-ee/headless-protocol"
-import { cloudAgentGatewayEnabled, organizationCloudModel } from "../workbot/model.js"
+import { organizationCloudModel } from "../workbot/model.js"
 import { cloudAgentGatewayAccess } from "../workbot/gateway-model.js"
 import { indexCapabilityForTurn, type HeadlessIndexKind } from "./session-index.js"
 
@@ -131,8 +131,8 @@ async function resumeGrantForTurn(input: {
 /**
  * The credentials Den sends with one headless turn: a member-scoped MCP token and, where `headlessDurableTurns` is on
  * and the turn's session and message are known, a resume grant. Without the feature the result has no
- * `resumeGrant` field at all, so nothing changes for callers or the runner. Likewise `indexCapability`: only where
- * `headlessSessionIndex` is on, the caller names its kind (`indexKind`) and the session is known (session-index.ts).
+ * `resumeGrant` field at all, so nothing changes for callers or the runner. `indexCapability`: only where the caller
+ * names its kind (`indexKind`) and the session is known (session-index.ts).
  */
 export async function mintHeadlessTurnCredentials(input: {
   userId: string
@@ -143,8 +143,6 @@ export async function mintHeadlessTurnCredentials(input: {
   messageId?: string
   /** Exact selected alias; never an upstream credential or client-supplied route. */
   model?: string
-  /** Trusted caller recovery retains the persisted turn's inference domain across rollout rollback. */
-  modelAccessRequired?: boolean
   /** Which surface the conversation belongs to, for its index capability; without it none is minted. */
   indexKind?: HeadlessIndexKind
   /** The member the turn is for, when the caller knows it (Workbot); looked up from the user otherwise. */
@@ -153,13 +151,11 @@ export async function mintHeadlessTurnCredentials(input: {
   // Taken before anything is minted: a credential revocation after this moment outranks the grant (see
   // headlessResumeGrantAuthorizedBeforeRevocation), however long minting takes.
   const authorizedAt = new Date()
-  const modelAccess = input.modelAccessRequired || await cloudAgentGatewayEnabled(input.organizationId)
-    ? await cloudAgentGatewayAccess(input, input.model ?? await organizationCloudModel(input) ?? "")
-    : undefined
+  const modelAccess = await cloudAgentGatewayAccess(input, input.model ?? await organizationCloudModel(input) ?? "")
   const minted = await mintHeadlessRunMcpToken(input)
   const resumeGrant = await resumeGrantForTurn({ ...input, authorizedAt })
   const indexCapability = await indexCapabilityForTurn(input)
-  return { ...minted, ...(resumeGrant ? { resumeGrant } : {}), ...(modelAccess ? { modelAccess } : {}), ...(indexCapability ? { indexCapability } : {}) }
+  return { ...minted, ...(resumeGrant ? { resumeGrant } : {}), modelAccess, ...(indexCapability ? { indexCapability } : {}) }
 }
 
 export type HeadlessResumeGrantError =
@@ -266,7 +262,7 @@ export async function exchangeHeadlessResumeGrant(
   if (input.modelAccessRequired) {
     if (!input.model) return { ok: false, status: 403, error: "model_unavailable" }
     try {
-      // The persisted turn keeps its selected alias across rollout rollback; current member access is rechecked.
+      // The persisted turn keeps its selected alias; current member access is rechecked.
       modelAccess = await cloudAgentGatewayAccess(row, input.model)
     } catch {
       return { ok: false, status: 403, error: "model_unavailable" }

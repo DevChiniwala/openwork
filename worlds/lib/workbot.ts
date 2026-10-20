@@ -63,7 +63,7 @@ export type WorkbotWorldOptions = {
   runnerProxy?: (runnerUrl: string) => Promise<string>;
   /** Extra runner settings, for example a small HEADLESS_CONTEXT_CHAR_BUDGET so a short journey outgrows the context. */
   runnerEnv?: Record<string, string>;
-  /** Features turned on for the seeded organization besides Workbot itself, for example `slackAssistant`. */
+  /** Features turned on for the seeded organization besides Workbot itself, for example `workbotDocuments`. */
   features?: Record<string, boolean>;
 };
 

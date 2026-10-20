@@ -68,8 +68,8 @@ export type HeadlessRunnerDeps = {
   /**
    * `sessionId` and `messageId` are the turn the token is minted for, so a caller can remember which run it belongs
    * to. `resumeGrant` (feature `headlessDurableTurns`): a credential the runner can exchange with Den for a fresh token
-   * for this turn, so it can continue the turn on its own after a restart. `indexCapability` (feature
-   * `headlessSessionIndex`): what the runner presents to report the session's content-free totals and state to Den.
+   * for this turn, so it can continue the turn on its own after a restart. `indexCapability`: what the runner presents
+   * to report the session's content-free totals and state to Den's session index.
    */
   mintToken: (
     input: HeadlessRunnerActor & { ttlMs?: number; sessionId?: string; messageId?: string; readOnly?: boolean; model?: string; modelAccessRequired?: boolean },
@@ -383,7 +383,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
      * messageId never starts a second turn; it resumes an interrupted one.
      * `interrupt`: the conversation's answer in progress wraps up at its next safe point instead of this waiting behind
      * it (runners from before it refuse the field, so callers send it only where it is turned on).
-     * `execution: "steps"` (feature `headlessStepTurns`): the runner runs the turn one step at a time, so a runner deploy
+     * `execution: "steps"` (feature `headlessDurableTurns`): the runner runs the turn one step at a time, so a runner deploy
      * switches between steps instead of cutting one off. Sent only when given; older runners refuse the field.
      */
     async sendTurn(
@@ -465,8 +465,8 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
         ...(input.attachments?.length ? { attachments: input.attachments } : {}),
         ...(input.interrupt ? { interrupt: true } : {}),
         ...(input.execution === "steps" ? { execution: "steps" } : {}),
-        // A grant is only minted where `headlessDurableTurns` is on, an index capability only where `headlessSessionIndex`
-        // is; without them the body is exactly as before.
+        // A grant is only minted where `headlessDurableTurns` is on, an index capability only where the session is known;
+        // without them the body is exactly as before.
         credentials: {
           mcpToken: token,
           ...(input.readOnly ? { readOnly: true } : {}),
@@ -607,7 +607,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
     },
 
     /**
-     * The session's live events over a WebSocket (feature `headlessStepTurns`): on celld the socket is hibernatable,
+     * The session's live events over a WebSocket (feature `headlessDurableTurns`): on celld the socket is hibernatable,
      * so it keeps going while the runner's code is switched under it, and doesn't hold up that switch. Yields
      * `{ type: "ready" }`, then each event as `openEvents` carries it, until the socket closes or `signal` aborts.
      * Null when the runner doesn't upgrade (the Node runner, an older runner) or the socket can't open: use

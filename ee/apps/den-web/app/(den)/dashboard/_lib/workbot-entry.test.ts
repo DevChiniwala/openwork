@@ -11,17 +11,12 @@ const owner = getOrgAccessFlags("owner", true);
 const noProvider = { gatewayRequired: true, hasGatewayProvider: false };
 
 function decide(input: Partial<Parameters<typeof decideWorkbotEntry>[0]> = {}) {
-  return decideWorkbotEntry({ gatewayFeatureEnabled: true, readiness: noProvider, access: member, orgSlug: "workspace", ...input });
+  return decideWorkbotEntry({ readiness: noProvider, access: member, orgSlug: "workspace", ...input });
 }
 
 test("Workbot opens as before when it has an AI provider or the Gateway isn't required", () => {
   assert.deepEqual(decide({ readiness: { gatewayRequired: true, hasGatewayProvider: true } }), { kind: "open" });
   assert.deepEqual(decide({ readiness: { gatewayRequired: false, hasGatewayProvider: false } }), { kind: "open" });
-});
-
-test("killing cloudAgentGateway makes the prompt disappear, whatever readiness was cached", () => {
-  assert.deepEqual(decide({ gatewayFeatureEnabled: false }), { kind: "open" });
-  assert.deepEqual(decide({ gatewayFeatureEnabled: false, access: owner }), { kind: "open" });
 });
 
 test("readiness that is loading or failed never blocks Workbot", () => {
