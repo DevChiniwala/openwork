@@ -316,8 +316,11 @@ final class SessionRuntime {
             throw UseError("stale_observation", "The window moved during the observation.", next: "observe")
         }
         var effectiveFilter = filter
-        var shown = filter == "none" ? [] : filter == "all" ? state.records : state.records.filter(\.interactive)
-        if png == nil, shown.isEmpty, filter == "interactive" { shown = state.records; effectiveFilter = "all" }
+        // AX trees can retain virtualized or scrolled-out nodes. Keep those
+        // internal for privacy/staleness scans, never expose their text or refs.
+        let visible = state.records.filter { bounds.contains($0.frame) }
+        var shown = filter == "none" ? [] : filter == "all" ? visible : visible.filter(\.interactive)
+        if png == nil, shown.isEmpty, filter == "interactive" { shown = visible; effectiveFilter = "all" }
         guard png != nil || !shown.isEmpty else {
             throw imageFailure ?? UseError("observation_unavailable", "No image or useful accessible elements could be read.", next: "observe")
         }
@@ -326,7 +329,8 @@ final class SessionRuntime {
             frame: bounds, imageWidth: width, imageHeight: height, stateDigest: try access.captureDigest(state),
             imageDigest: png.map(access.imageDigest), validFor: policy.observationSeconds)
         try check()
-        session?.observation = observation; session?.records = state.records; session?.focus = state.focusRecord
+        let observedFocus = state.focusRecord.flatMap { focus in shown.first { CFEqual($0.element, focus.element) } }
+        session?.observation = observation; session?.records = shown; session?.focus = observedFocus
         session?.lastUsed = now; session?.needsRefresh = false
         controls.update("Window observed. Ready for the next action.", paused: false)
         var imageInfo: [String: Any] = ["width": width, "height": height, "included": png != nil, "coordinate_space": "image_pixels"]
@@ -336,9 +340,9 @@ final class SessionRuntime {
             "truncated": state.truncated, "protected_fields": state.protectedFrames.count,
             "content_trust": "untrusted_app_content", "next": "act_once_then_observe"]
         if policy == .embedded {
-            payload["elements_filter"] = effectiveFilter; payload["elements_total"] = state.records.count
+            payload["elements_filter"] = effectiveFilter; payload["elements_total"] = visible.count
             payload["observation_seconds"] = Int(policy.observationSeconds)
-            if let focus = state.focusRecord { payload["focused_ref"] = focus.ref }
+            if let focus = observedFocus { payload["focused_ref"] = focus.ref }
             if let issue = state.privacyIssue { payload["privacy_issue"] = issue }
         }
         var result: [[String: Any]] = []
