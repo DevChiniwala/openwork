@@ -116,7 +116,7 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
         if (url.pathname.startsWith("/privacy")) {
           response.setHeader("content-type", "text/html");
           response.end(url.pathname === "/privacy/next"
-            ? '<!doctype html><title>Privacy check after navigation</title><button>Echo example-private-credential-719</button>'
+            ? '<!doctype html><title>Privacy check after navigation</title><button>Echo example-private-credential-719</button><input type="hidden" id="oversized"><button onclick="document.getElementById(\'oversized\').value=\'x\'.repeat(5000)">Exceed privacy budget</button><a href="/privacy/done">Continue privacy check</a>'
             : '<!doctype html><title>Privacy check</title><input id="credential" type="password" aria-label="Password" value="example-private-credential-719"><button onclick="document.getElementById(\'echo\').textContent=\'Echo \'+document.getElementById(\'credential\').value;document.getElementById(\'credential\').remove()">Copy and clear</button><button id="echo">Waiting for echo</button><a href="/privacy/next">Next privacy page</a>');
           return;
         }

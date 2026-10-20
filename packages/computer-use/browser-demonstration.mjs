@@ -180,8 +180,12 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
     if (!await allowed(url)) { demo.phase = "paused"; demo.notice = "The tab left the permitted browser destinations. Recording paused."; await persist(); return; }
     if (demo !== navigatedDemo || !active() || !["https:", "http:"].includes(parsed.protocol)) return;
     parsed.username = ""; parsed.password = ""; parsed.search = ""; parsed.hash = "";
-    const safeUrl = privacy.redact(parsed.href);
-    if (demo.steps.at(-1)?.url !== safeUrl) append({ kind: "navigate", url: safeUrl });
+    // A redaction marker is not a usable URL. Keep the draft valid and omit it.
+    if (privacy.redact(parsed.href) !== parsed.href || parsed.href.length > 2048) {
+      demo.notice = "A navigation address was omitted for privacy. Teach a public entry page before saving.";
+      await persist(); return;
+    }
+    if (demo.steps.at(-1)?.url !== parsed.href) append({ kind: "navigate", url: parsed.href });
   };
   const setMode = async (pick = false) => {
     if (wire && contextId !== null) await wire.send("Runtime.evaluate", { contextId, expression: `${SCRIPT}; globalThis.__openworkTeaching?.set(${active()}, ${pick}, ${JSON.stringify(privacy.snapshot())})` });

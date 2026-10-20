@@ -24,6 +24,11 @@ test("a member teaches a browser lookup, saves a private skill and runs it with 
     expect(world.turns().at(-1)?.prompt).not.toContain("example-private-credential-719");
     expect(world.turns().at(-1)?.prompt).toContain("Echo [private]");
     evidence.recordAssertionEvidence("Removed field values remain redacted after navigation", "Both trusted clicks retain only Echo [private]; the draft and teaching conversation contain no credential.", !JSON.stringify(world.state()).includes("example-private-credential-719") && !world.turns().at(-1)?.prompt.includes("example-private-credential-719"));
+    await person.click({ role: "button", label: "Exceed privacy budget" });
+    await person.click({ role: "link", label: "Continue privacy check" });
+    await probe.eventually(() => world.state(), { within: 10_000, label: "privacy overflow conceals descriptors without invalidating the draft", until: value => Boolean(value.demonstration?.notice?.includes("omitted for privacy")) });
+    expect(world.state().demonstration?.steps.at(-1)?.target?.name).toBe("[private]");
+    expect(await world.recorded()).not.toContain("x".repeat(5000));
     await user.click({ role: "button", label: "Discard demonstration" });
     await person.navigate("about:blank");
   });
