@@ -18,6 +18,7 @@ export const idTypesMapNameToPrefix = {
   rateLimit: "rli",
   org: "org",
   organization: "org",
+  organizationGrant: "ogr",
   orgMembership: "om",
   member: "om",
   invitation: "inv",

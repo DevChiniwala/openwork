@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, type ReactNode } from "react";
-import { ArrowLeft, Building2, ChartNoAxesCombined, Flag, LayoutDashboard, Server, Users } from "lucide-react";
+import { ArrowLeft, Building2, ChartNoAxesCombined, Flag, LayoutDashboard, ScanSearch, Server, Users } from "lucide-react";
 import { AdminBreadcrumbs } from "./admin-breadcrumbs";
 
 const SessionCookieContext = createContext(false);
@@ -13,6 +13,7 @@ const SECTIONS = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Organizations", href: "/admin/organizations", icon: Building2 },
+  { label: "Opportunities", href: "/admin/opportunities", icon: ScanSearch },
   { label: "Feature rollouts", href: "/admin/features", icon: Flag },
   { label: "Free Auto usage", href: "/admin/free-auto", icon: ChartNoAxesCombined },
   { label: "Services", href: "/admin/services", icon: Server },

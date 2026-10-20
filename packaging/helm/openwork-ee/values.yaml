@@ -26,6 +26,7 @@ config:
   #   "false" off for everyone; /admin shows "Set by deployment config"
   # The /admin kill switch still turns a feature off, even when locked on.
   features:
+    organizationGrants: ""        # default off · Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.
     cloudAgentGateway: ""         # default off · Choose and run cloud-agent models through the organization's AI Gateway access instead of the runner's shared model credentials.
     liveProviderSync: ""          # default off · Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.
     offlineRecovery: ""           # default off · Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations.

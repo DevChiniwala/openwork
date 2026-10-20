@@ -124,6 +124,7 @@ jobs:
         run: node --test scripts/ci/check-codeql-results.test.mjs
       - name: Test packaged smoke engine diagnosis and kept logs
         run: |
+          bun test apps/server/test/opencode-plugin-deps.test.ts
           node --test apps/desktop/test/engine-diagnosis.test.mjs
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr packages/hosts/src/local-surface-log.test.ts
       - name: Test the OpenCode engine new installs start on
@@ -567,7 +568,7 @@ jobs:
       - name: Prepare the CI database for audit route introspection
         run: pnpm --filter @openwork-ee/den-db exec node --import tsx ./node_modules/drizzle-kit/bin.cjs push --force
       # Every den-api route and better-auth endpoint must carry an audit
-      # declaration (src/audit/routes) and src/audit/COVERAGE.md must be current.
+      # declaration (src/audit/routes); validate it without a generated report.
       - name: Check audit route coverage
         run: pnpm --filter @openwork-ee/den-api audit:coverage
       - name: Lint the contract and typecheck the SDK

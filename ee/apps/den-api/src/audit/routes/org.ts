@@ -199,6 +199,10 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   admin("PATCH", "/v1/admin/organizations/:organizationId/free-seats", "tenant_external", "organization.free_seats.update", { external: "stripe (seat subscription quantity resync)" }),
   admin("PATCH", "/v1/admin/organizations/:organizationId/dpa", "tenant_change", "organization.dpa.update", { changeEvidence: DOMAIN("organization-settings"), notes: "Legacy organization.dpa_signed.updated; reason text is not snapshotted (reasonProvided only)." }),
   admin("PUT", "/v1/admin/organizations/:organizationId/openwork-web-access", "tenant_change", "organization.openwork_web_access.update", { changeEvidence: DOMAIN("organization-settings"), notes: "Legacy organization.openwork_web.complimentary_access_granted / _revoked; reason text is not snapshotted." }),
+  admin("GET", "/v1/admin/organizations/:organizationId/control-panel", "tenant_read", "organization.control_panel.read"),
+  admin("PUT", "/v1/admin/organizations/:organizationId/control-panel/access", "tenant_change", "organization.benefit_setting.update", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
+  admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants", "tenant_change", "organization.benefit_grant.create", { changeEvidence: "routes/admin/organization-control-panel.ts", notes: "Grant and change evidence commit together. Reason text is not copied to audit snapshots." }),
+  admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants/:grantId/revoke", "tenant_change", "organization.benefit_grant.revoke", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
 
   // SCIM v2 provisioning (bearer token)
   handler("GET", "/api/auth/scim/v2/Schemas", "tenant_read", "scim.schema.list", "scim.provisioning", "scim_metadata", null, SCIM_PROOF),

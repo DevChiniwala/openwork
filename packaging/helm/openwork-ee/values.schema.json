@@ -18,6 +18,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "organizationGrants": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Organization control panel and grants: Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration. Renders DEN_FEATURE_ORGANIZATION_GRANTS."
+            },
             "cloudAgentGateway": {
               "enum": [
                 "",
