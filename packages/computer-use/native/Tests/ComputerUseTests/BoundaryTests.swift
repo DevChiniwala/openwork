@@ -10,6 +10,27 @@ final class BoundaryTests: XCTestCase {
         XCTAssertFalse(HostTrust.embeddedHostIsTrusted())
     }
 
+    func testOffWindowAndPartiallyClippedAccessibilityTextCannotBeExposed() throws {
+        let window = CGRect(x: 100, y: 100, width: 320, height: 240)
+        let frames = [CGRect(x: 0, y: 0, width: 80, height: 40),
+                      CGRect(x: 400, y: 150, width: 80, height: 40),
+                      CGRect(x: 50, y: 50, width: 500, height: 500)]
+        for frame in frames {
+            let record = ElementRecord(ref: "e1", element: AXUIElementCreateSystemWide(), role: "AXStaticText",
+                label: "Hidden document label", value: "offscreen-private-content", frame: frame,
+                actions: [], settable: false, enabled: true, protected: false)
+            for compact in [false, true] {
+                XCTAssertThrowsError(try record.payload(bounds: window, width: 320, height: 240, compact: compact)) { error in
+                    XCTAssertEqual((error as? UseError)?.code, "outside_window")
+                }
+            }
+        }
+        let visible = ElementRecord(ref: "e2", element: AXUIElementCreateSystemWide(), role: "AXStaticText",
+            label: "Visible document", value: "visible-content", frame: CGRect(x: 110, y: 110, width: 80, height: 40),
+            actions: [], settable: false, enabled: true, protected: false)
+        XCTAssertEqual(try visible.payload(bounds: window, width: 320, height: 240, compact: true)["value"] as? String, "visible-content")
+    }
+
     func testEditableAccessibilityValuesAreNeverSerializedToTheModel() throws {
         let frame = CGRect(x: 0, y: 0, width: 320, height: 240)
         for role in ElementRecord.textRoles.union(["AXUnknown", "AXCell"]) {
