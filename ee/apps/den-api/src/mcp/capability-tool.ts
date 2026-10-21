@@ -5,18 +5,17 @@ import type { CapabilityMatch, CapabilityToolAnnotations } from "./search.js"
  * `inputSchema` for `execute_capability`'s `arguments`, optional
  * `outputSchema` and `annotations`, plus the Den details a client acts on
  * (kind, connection status, App binding, script path).
+ *
+ * It also keeps the older fields (method, path, summary, pathParams,
+ * queryParams, hasBody, bodySchema, querySchema, argumentsSchema, invocation,
+ * readOnly) because desktop releases from before `inputSchema` still read
+ * them and pass path, query, and body. Remove them once those have updated.
  */
-export type CapabilityToolMatch = Omit<CapabilityMatch, (typeof TRANSPORT_FIELDS)[number]> & {
+export type CapabilityToolMatch = Omit<CapabilityMatch, "annotations"> & {
   description: string
   inputSchema: Record<string, unknown>
   annotations?: CapabilityToolAnnotations
 }
-
-/** How Den once described calling a match; `inputSchema` replaces all of them. */
-const TRANSPORT_FIELDS = [
-  "method", "path", "score", "summary", "pathParams", "queryParams", "hasBody",
-  "bodySchema", "querySchema", "argumentsSchema", "invocation", "readOnly", "annotations",
-] as const
 
 const NO_ARGUMENTS = { type: "object", additionalProperties: false }
 
@@ -58,7 +57,7 @@ function annotationsFor(match: CapabilityMatch): CapabilityToolAnnotations | und
 
 export function capabilityToolMatch(match: CapabilityMatch, httpArguments: boolean): CapabilityToolMatch {
   const annotations = annotationsFor(match)
-  const details = Object.fromEntries(Object.entries(match).filter(([key]) => !(TRANSPORT_FIELDS as readonly string[]).includes(key)))
+  const { annotations: _providerAnnotations, ...details } = match
   return {
     ...details,
     name: match.name,
