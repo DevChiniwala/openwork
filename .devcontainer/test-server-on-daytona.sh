@@ -118,7 +118,11 @@ created=0
 cleanup_failed_provision() {
   status=$?
   if [ "$status" -ne 0 ] && [ "$created" -eq 1 ]; then
-    printf 'y\n' | daytona delete "$SANDBOX" >/dev/null 2>&1 || true
+    if [ "${OPENWORK_DAYTONA_RETAIN_FAILED:-0}" = "1" ]; then
+      echo "==> Retaining failed server sandbox for repair: $SANDBOX" >&2
+    else
+      printf 'y\n' | daytona delete "$SANDBOX" >/dev/null 2>&1 || true
+    fi
   fi
   exit "$status"
 }

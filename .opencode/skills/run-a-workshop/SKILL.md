@@ -105,8 +105,12 @@ node worlds/lib/workshop-reset.ts --stage <event> --confirm  # reset every atten
 - **One attendee:** they open the `attendeeReset` URL from their own desktop
   browser; it resets only their data.
 
-If something is badly broken, `world down` and `world up` again: a fresh world
-is faster than debugging state.
+For a diagnostic pilot, set `OPENWORK_DAYTONA_RETAIN_FAILED=1` before `world up`
+to preserve repairable startup failures (including Den build failures). Record
+sandbox IDs as soon as allocation starts, apply a provider TTL, and stop those
+owned sandboxes explicitly when finished: a failed world may not have outputs or
+a complete cleanup ledger. Do not blindly rebuild a failed pilot or delete shared
+resources to recover it. Normal runs still clean up failed startup automatically.
 
 ## Tear down
 

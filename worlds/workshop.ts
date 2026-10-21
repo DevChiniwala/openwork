@@ -217,7 +217,18 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const stage = resolveStage(process.env);
   const expires = options.lifetimeMinutes === 0 ? undefined : new Date(Date.now() + options.lifetimeMinutes * 60_000);
   await using stack = new AsyncDisposableStack();
-  const world = await boot(stack, place, options, { ...(stage ? { stage } : {}), ...(expires ? { expires } : {}) });
+  let world: WorkshopWorld;
+  try {
+    world = await boot(stack, place, options, { ...(stage ? { stage } : {}), ...(expires ? { expires } : {}) });
+  } catch (error) {
+    if (target.provider === "daytona" && process.env.OPENWORK_DAYTONA_RETAIN_FAILED === "1") {
+      // An explicit diagnostic run owns provider TTL/cleanup and needs the failed
+      // pilot intact, rather than losing its logs and state to stack disposal.
+      stack.move();
+      console.error("workshop  Failed pilot retained for repair. Inspect the world log and stop its owned sandboxes explicitly when finished.");
+    }
+    throw error;
+  }
   const timer = expires ? setTimeout(() => process.kill(process.pid, "SIGTERM"), options.lifetimeMinutes * 60_000) : undefined;
   try {
     await hold({ name: "workshop", outputs: world.outputs });
