@@ -118,3 +118,36 @@ test("cloud browser refuses to connect without kernel egress enforcement", async
     assert.equal(f.commands.length, 0);
   } finally { await f.close(); }
 });
+
+test("native kernel readiness requires complete UID-bound IPv4 and IPv6 rejection", async () => {
+  const { nativeBrowserEgress } = await import("./chromium.mjs");
+  const ranges = {
+    ip: [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.168.0.0", 16]],
+    ip6: [["::", 96], ["::ffff:0.0.0.0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["fc00::", 7], ["fe80::", 10]],
+  };
+  const rules = { nftables: [
+    { chain: { family: "inet", table: "openwork_desktop", name: "output", type: "filter", hook: "output" } },
+    ...Object.entries(ranges).map(([protocol, prefixes]) => ({ rule: {
+      family: "inet", table: "openwork_desktop", chain: "output", expr: [
+        { match: { op: "==", left: { meta: { key: "skuid" } }, right: 1001 } },
+        { match: { op: "==", left: { payload: { protocol, field: "daddr" } }, right: { set: prefixes.map(([addr, len]) => ({ prefix: { addr, len } })) } } },
+        { reject: { type: "icmpx", expr: "port-unreachable" } },
+      ],
+    } })),
+  ] };
+  assert.equal(nativeBrowserEgress(rules, 1001), true);
+  assert.equal(nativeBrowserEgress(rules, 1002), false);
+  assert.equal(nativeBrowserEgress(rules, 0), false);
+  for (const change of [
+    value => { value.nftables.shift(); },
+    value => { value.nftables.pop(); },
+    value => { value.nftables[1].rule.expr[1].match.right.set.pop(); },
+    value => { value.nftables[1].rule.expr[0].match.op = "!="; },
+    value => { value.nftables[1].rule.expr.push({ accept: null }); },
+    value => { value.nftables[1].rule.chain = "unattached"; },
+  ]) {
+    const incomplete = structuredClone(rules);
+    change(incomplete);
+    assert.equal(nativeBrowserEgress(incomplete, 1001), false);
+  }
+});
