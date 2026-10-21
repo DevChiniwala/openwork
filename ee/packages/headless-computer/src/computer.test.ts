@@ -134,3 +134,16 @@ test("desktop computers expose only the viewer port, and persistent computers ar
   await desktop.delete("kept")
   await persistent.delete("forever")
 })
+
+test("on Freestyle, opening the view resumes a paused desktop", async () => {
+  const f = fixture()
+  const provider = { ...f.provider, id: "freestyle" }
+  const computers = new Computers({ provider, idlePauseMs: 1000, keepDays: 1, desktop: true }, { readFile: async () => ({ text: "" }) })
+  const box = await computers.vm("paused-freestyle")
+  await f.provider.stop(box, { timeoutMs: 1000 })
+  const starts = f.provider.fake.count("start")
+  const viewer = await computers.desktopViewer("paused-freestyle", { view: "computer", control: false, origin: "https://chat.example.test" }).catch((error: unknown) => error)
+  assert.ok(f.provider.fake.count("start") > starts, "the paused computer was resumed")
+  assert.notDeepEqual(viewer, { state: "paused" })
+  await computers.delete("paused-freestyle")
+})

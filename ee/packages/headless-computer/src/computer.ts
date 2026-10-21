@@ -119,7 +119,9 @@ export class Computers {
     if (!this.desktop) throw new Error("Desktop access is not configured.")
     const pending = this.vms.get(sessionId)
     const existing = pending ? await this.provider.inspect(await pending) : await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })
-    if (existing?.state === "stopped" || existing?.state === "stopping") return { state: "paused" as const }
+    // Freestyle resumes a paused computer, memory intact, in about a tenth of a second, so
+    // opening the view resumes it. Elsewhere it stays paused until the person chooses Resume.
+    if ((existing?.state === "stopped" || existing?.state === "stopping") && this.provider.id !== "freestyle") return { state: "paused" as const }
     const box = await this.vm(sessionId)
     try { return { state: "connected" as const, ...await this.desktop.viewer(box, input) } }
     finally { this.release(sessionId) }

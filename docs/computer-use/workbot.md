@@ -111,7 +111,8 @@ Keep `FREESTYLE_API_KEY` in the runner's secrets. Each desktop computer
 publishes only its viewer port, at a random host under that domain; the guest's
 single-use, origin-bound viewer tickets still gate every connection. Freestyle
 pauses a computer with its memory after the runner's idle period, and resumes it
-for the next turn. The builder installs the desktop on Freestyle's Ubuntu base,
+for the next turn. Opening the Computer view also resumes a paused Freestyle
+computer (about 0.1 s) instead of asking for Resume; Daytona keeps the Resume step. The builder installs the desktop on Freestyle's Ubuntu base,
 with Chromium for Testing in place of Debian's package.
 
 ## Transport and rollout
