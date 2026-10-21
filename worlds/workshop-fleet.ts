@@ -165,7 +165,7 @@ async function screenshot(surface: Surface, path: string) {
   if (!record(image) || typeof image.data !== "string") throw new Error("Desktop screenshot was not returned.");
   await privateFile(path, Buffer.from(image.data, "base64"));
 }
-async function freshComposer(surface: Surface, modelId?: string): Promise<void> {
+export async function freshComposer(surface: Surface, modelId?: string): Promise<void> {
   await control(surface, "session.create_task");
   if (modelId) await selectModel(surface, modelId);
   await waitFor(surface, () => {

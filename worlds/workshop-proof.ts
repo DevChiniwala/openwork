@@ -13,6 +13,7 @@ import { guestLabel, foregroundWorkshopDesktop, WORKPLACE_ORIGIN } from "./lib/w
 import { redactWorkshopDiagnostic } from "./lib/workshop-redaction.ts";
 import { unlockWorkshopDesktop } from "./lib/workshop-unlock.ts";
 import { typeThroughWorkshopViewer } from "./lib/workshop-viewer.ts";
+import { freshComposer } from "./workshop-fleet.ts";
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function rows(value: unknown): Record<string, unknown>[] { return Array.isArray(value) ? value.filter(record) : []; }
@@ -115,7 +116,7 @@ export async function runWorkshopProof(aId: string, bId: string, output: string)
     await pass("Second attendee has its own independently created unsent proof draft");
     await foregroundWorkshopDesktop(aBrowser, a);
     await control(a, "session.create_task");
-    await sendComposerMessage(a, "Read-only: summarize the Northwind project status from the connected workshop tools. Do not change any resource.");
+    await sendComposerMessage(a, "Operator controllability check in this disposable workshop VM: first run the harmless shell command sleep 20, then read Northwind status from the connected workshop tools. Do not change files or any connected resource. The operator may stop this run before it completes.");
     await waitFor(a, () => [...document.querySelectorAll("button")].some((button) => /^(stop|stop task|stop generating)$/i.test((button.getAttribute("aria-label") ?? button.textContent ?? "").trim()) && !button.disabled), { timeoutMs: 30_000, label: "active run offers the actual Stop control" });
     await control(a, "composer.stop");
     await waitFor(a, () => ![...document.querySelectorAll("button")].some((button) => /^(stop|stop task|stop generating)$/i.test((button.getAttribute("aria-label") ?? button.textContent ?? "").trim())), { timeoutMs: 60_000, label: "owned attendee run stopped" });
@@ -188,9 +189,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.ok(resetAnswer.includes("RESET_OAUTH_READY"));
     const resetTurn = turns.at(-1);
     assert.ok(resetTurn?.completedTools.some((part) => /read|search|list|get|find|query/i.test(part.tool) && /northwind/i.test(part.output) && !/"isError"\s*:\s*true/i.test(part.output)), "Post-reset marker lacks a completed Northwind read");
-    await pass("Real model successfully reads through existing OAuth again after personal reset, without reconnect");
-    await control(a, "session.create_task");
     await foregroundWorkshopDesktop(aBrowser, a);
+    await freshComposer(a);
+    await foregroundWorkshopDesktop(bBrowser, b);
+    await freshComposer(b);
+    await pass("Real model successfully reads through existing OAuth again after personal reset, without reconnect");
     await report();
     return { passed: true, assertions: assertions.length, output };
   } catch (error) {

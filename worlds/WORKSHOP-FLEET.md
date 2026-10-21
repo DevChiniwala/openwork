@@ -68,5 +68,6 @@ The driver runs from the current checkout; VM application code is the exact push
 
 ```sh
 node --test worlds/workshop-fleet.test.ts worlds/workshop-ops.test.ts worlds/lib/workshop-setup.test.ts worlds/lib/workshop-redaction.test.ts
+pnpm --dir evals exec tsc -p tsconfig.workshop.json --noEmit
 pnpm --dir evals exec vitest run packages/hosts/src/provision-options.test.ts packages/hosts/src/daytona-options.test.ts packages/hosts/src/local-chrome.test.ts packages/hosts/src/browser.test.ts
 ```
