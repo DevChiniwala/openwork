@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import { WebSocketServer, WebSocket } from "ws";
-import { createCloudComputer } from "@openwork/computer-use/cloud";
+import { createCloudComputer, browserEgressStatus } from "@openwork/computer-use/cloud";
 import { createBrowserDemonstration } from "@openwork/computer-use/browser-demonstration";
 import { createDesktopApplications } from "./desktop-apps.mjs";
 import { ViewerTickets } from "./viewer-tickets.mjs";
@@ -48,7 +48,7 @@ const server = createServer(async (request, response) => {
     if (request.url === "/health") {
       const browser = await fetch("http://127.0.0.1:9222/json/version", { signal: AbortSignal.timeout(1500) }).then(async result => { await result.body?.cancel(); return result.ok; }).catch(() => false);
       const viewer = await Promise.all([access(viewerScript), access(`${directory}/browser-window`)]).then(() => true, () => false);
-      return json(response, browser && viewer ? 200 : 503, { ok: browser && viewer, version: process.env.WORKBOT_DESKTOP_VERSION ?? "unknown" });
+      return json(response, browser && viewer ? 200 : 503, { ok: browser && viewer, version: process.env.WORKBOT_DESKTOP_VERSION ?? "unknown", ...(body.diagnostics === true ? { egress: await browserEgressStatus() } : {}) });
     }
     if (request.url === "/browser/demonstration") {
       if (typeof body.sessionId !== "string" || !body.sessionId || body.sessionId.length > 256) return json(response, 400, { error: "invalid_session" });

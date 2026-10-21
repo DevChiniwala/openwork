@@ -194,3 +194,5 @@ export async function createCloudComputer({ directory, display = ":99", enabled,
     async close() { closed = true; clearInterval(authorityTimer); await halt(); browser.close(); await control.reset(true); },
   };
 }
+
+export { browserEgressStatus } from "./chromium.mjs";

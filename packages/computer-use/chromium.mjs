@@ -68,17 +68,27 @@ export function nativeBrowserEgress(payload, uid) {
 const egressCommand = (command, args) => new Promise((resolve, reject) => {
   execFile(command, args, { timeout: 5000, maxBuffer: 1024 * 1024 }, (error, stdout) => error ? reject(error) : resolve(stdout));
 });
-const verifyLocalEgress = async () => {
+/** Authenticated helper diagnostics contain kernel policy metadata, never page contents. */
+export async function browserEgressStatus() {
+  let backend = "unknown", stage = "detect";
   try {
     const native = await egressCommand("/bin/sh", ["-c", "command -v nft"]).then(() => true, () => false);
-    if (native) {
-      const uid = Number((await egressCommand("id", ["-u", "openwork-browser"])).trim());
-      const rules = JSON.parse(await egressCommand("nft", ["-j", "list", "table", "inet", "openwork_desktop"]));
-      if (!nativeBrowserEgress(rules, uid)) throw new Error("Missing native browser rules");
-    } else await egressCommand("/bin/sh", ["-c", BROWSER_EGRESS_CHECK]);
-  } catch {
-    throw Object.assign(new Error("The cloud browser's private-network filter is unavailable. Reconnect the computer."), { code: "egress_unavailable" });
-  }
+    backend = native ? "nft" : "iptables";
+    if (!native) { stage = "legacy"; await egressCommand("/bin/sh", ["-c", BROWSER_EGRESS_CHECK]); return { ok: true, backend }; }
+    stage = "uid";
+    const uid = Number((await egressCommand("id", ["-u", "openwork-browser"])).trim());
+    stage = "query";
+    const rules = JSON.parse(await egressCommand("nft", ["-n", "-j", "list", "table", "inet", "openwork_desktop"]));
+    stage = "validate";
+    const entries = Array.isArray(rules?.nftables) ? rules.nftables.filter(entry => entry && typeof entry === "object") : [];
+    return { ok: nativeBrowserEgress(rules, uid), backend, uid, stage,
+      chains: entries.flatMap(entry => entry.chain ? [entry.chain] : []),
+      rejects: entries.flatMap(entry => entry.rule?.expr?.some(expr => Object.hasOwn(expr, "reject")) ? [entry.rule] : []),
+    };
+  } catch { return { ok: false, backend, stage }; }
+}
+const verifyLocalEgress = async () => {
+  if (!(await browserEgressStatus()).ok) throw Object.assign(new Error("The cloud browser's private-network filter is unavailable. Reconnect the computer."), { code: "egress_unavailable" });
 };
 
 export function createCloudBrowser({ statePath, assertActive, enabled, beforeInput, endpoint = "http://127.0.0.1:9222", privateBrowsing = false, verifyEgress = verifyLocalEgress }) {
