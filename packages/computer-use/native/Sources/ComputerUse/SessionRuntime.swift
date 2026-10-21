@@ -399,6 +399,11 @@ final class SessionRuntime {
             session?.receipts.removeValue(forKey: oldest); session?.receiptInputs.removeValue(forKey: oldest)
         }
         guard let observation = current.observation else { throw UseError("observation_required", "Observe this window before acting. Each observation authorizes one act call.", next: "observe") }
+        // The person may be using another app meanwhile; bring the selected window back
+        // before input instead of pausing when they switched away.
+        if current.mode == .control, (try? access.validate(current.target, app: current.app, requireFrontmost: true)) == nil {
+            try await focusTarget(current)
+        }
         let bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
         if actions.contains(where: \.usesCoordinates), observation.imageDigest == nil {

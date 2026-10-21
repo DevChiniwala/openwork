@@ -194,10 +194,9 @@ final class SessionControls: NSObject {
         statusItem = item
         }
         // Passive pointer motion (including activation-generated motion) is not takeover.
-        // Clicks, typing, scrolling and dragging on the selected app, and app switches,
-        // still stop agent input. Scrolling or dragging over another app (such as reading
-        // the conversation while the agent works) does not; a click there activates that
-        // app, and the switch below pauses control.
+        // Clicks, typing, scrolling and dragging on the selected app stop agent input.
+        // Using another app (such as the conversation while the agent works) does not:
+        // the agent brings the selected window back when it next acts.
         monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown,
             .keyDown, .scrollWheel, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             guard let self else { return }
@@ -218,14 +217,6 @@ final class SessionControls: NSObject {
                 MainActor.assumeIsolated { self?.desktopAvailable = true; self?.onAvailability?(true) }
             })
         }
-        workspaceObservers.append(center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
-            MainActor.assumeIsolated {
-                if self?.desktopAvailable == true, mode == .control, let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                   activated.processIdentifier != app.pid, NSWorkspace.shared.frontmostApplication?.processIdentifier != app.pid {
-                    self?.onPause?("You switched apps. Continue will return to the selected window.")
-                }
-            }
-        })
         stopObserver = DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.differentai.openwork.computer-use.stop"), object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.onStop?() }
         }

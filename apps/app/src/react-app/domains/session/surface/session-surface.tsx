@@ -113,7 +113,7 @@ import { useSessionFindStore } from "./find-store";
 import { getSessionActivityStatusLabel, useSessionActivityStore, type SessionActivityStatus } from "@/react-app/domains/session/status/session-activity-store";
 import { PermissionApprovalPanel } from "@/react-app/domains/session/chat/permission-approval-modal";
 import { ComputerRequestPanel } from "@/react-app/domains/session/computer/computer-request-panel";
-import { useComputerRequest } from "@/react-app/domains/session/computer/computer-store";
+import { useComputerRequest, useComputerStore } from "@/react-app/domains/session/computer/computer-store";
 import { QuestionPanel } from "@/react-app/domains/session/modals/question-modal";
 import { QueuedMessagesPanel } from "@/react-app/domains/session/modals/queued-messages-panel";
 import { deriveOpenTargets, sameOpenTargets, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -191,6 +191,7 @@ import { buildConnectorToolIdentities } from "@/react-app/domains/connections/co
 const EMPTY_TRANSCRIPT: UIMessage[] = [];
 const IDLE_STATUS: SessionStatus = { type: "idle" };
 const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next OpenWork task.";
+const COMPUTER_CONTINUE_PROMPT = "I'm done with the computer. Go ahead.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
 
 function sanitizedInspectorDiagnosticText(value: string) {
@@ -3257,6 +3258,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (context.status !== "ready" || context.asking || !isLatestTurnToolCall(context.messages, toolCallId)) return;
     void handleResumeInterrupted(prompt ?? CHAT_CONNECTION_CONTINUE_PROMPT);
   }, [handleResumeInterrupted]);
+  // Continue in the Computer view after the turn ended while the person had control:
+  // carry on, as if the person said so. A turn still running continues by itself.
+  const computerContinued = useComputerStore((state) => state.continued[props.sessionId] ?? 0);
+  const handledComputerContinue = useRef(computerContinued);
+  useEffect(() => {
+    if (computerContinued === handledComputerContinue.current) return;
+    handledComputerContinue.current = computerContinued;
+    const context = continueAfterConnectionRef.current;
+    if (context.status !== "ready" || context.asking) return;
+    void handleResumeInterrupted(COMPUTER_CONTINUE_PROMPT);
+  }, [computerContinued, handleResumeInterrupted]);
 
   const handleRevertToUserMessage = useCallback((messageId: string) => {
     if (archived || !archiveStateKnown || sessionWorkHeld(props.opencodeBaseUrl, props.sessionId)) return;
