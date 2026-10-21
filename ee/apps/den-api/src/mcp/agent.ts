@@ -829,6 +829,8 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
             body: z.unknown().optional().describe(appServersEnabled
               ? "For native API capabilities, the JSON body. For external MCP capabilities, the arguments object matching argumentsSchema. For an App (kind mcp_app), an optional launch input object the App receives."
               : "For native API capabilities, the JSON body. For external MCP capabilities, the arguments object matching argumentsSchema."),
+            // Desktops built for MCP tool shapes send this whatever the flag says.
+            arguments: z.unknown().optional().describe("Alternative to path/query/body: one object holding them for a native API capability, or the arguments object for an external MCP capability."),
           }),
         },
         executeCapabilityTool,
