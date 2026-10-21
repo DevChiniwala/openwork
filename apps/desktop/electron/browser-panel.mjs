@@ -276,6 +276,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       const guard = details.resourceType === "mainFrame" ? taskHost.navigationGuard(tab?.tabId) : null;
       const request = { url: details.url, method: details.method, hasUpload: Boolean(details.uploadData?.length) };
       if (tab && details.resourceType !== "mainFrame") rememberRequest(tab, details.url);
+      // Browser tasks wait for requests an action started before reporting settled.
+      if (tab && details.resourceType !== "webSocket") tab.inFlight.set(details.id, Date.now());
       Promise.resolve().then(async () => {
         // Every request follows the website rules; only a page may ask first.
         const page = details.resourceType === "mainFrame";
@@ -325,6 +327,9 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
           callback({ cancel: true });
         });
     });
+    const finished = (details) => { [...browserTabs.values()].find((item) => item.view.webContents.id === details.webContentsId)?.inFlight.delete(details.id); };
+    browserSession.webRequest.onCompleted({ urls: ["<all_urls>"] }, finished);
+    browserSession.webRequest.onErrorOccurred({ urls: ["<all_urls>"] }, finished);
   }
   // tabId -> { tabId, view, favicon, background }. Order, ownership, the active
   // tab per conversation, and which conversation is on screen live in the
@@ -885,6 +890,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     changed: (tabId, activity) => { const tab = getBrowserTab(tabId); if (tab) { tab.thumbnailRevision = (tab.thumbnailRevision ?? 0) + 1; tab.browserTask = activity; sendBrowserState(); } },
     siteTools: (args) => webMcpBroker.listTools(args),
     runSiteTool: (args, options) => webMcpBroker.executeTool(args, options),
+    inFlight: (tab, since) => [...tab.inFlight.values()].filter((started) => started >= since).length,
   });
 
   function scheduleWebMcpToolCountRefresh(tabId) {
@@ -960,6 +966,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       /** What the page requested since it opened (origin and path), for checking it against new website rules. */
       requests: new Set(),
       requestsOverflowed: false,
+      /** @type {Map<number, number>} Request id -> start time, until it completes or fails. */
+      inFlight: new Map(),
       // Set while a page reloads, or is replaced by a blank one, because new website rules restrict it.
       websiteRecheck: false,
       closingRestrictedPage: false,

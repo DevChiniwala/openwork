@@ -4,6 +4,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { usePlatform } from "../kernel/platform";
 import {
+  createSessionNumberHintReveal,
   getSessionNumberShortcutIntent,
   hasSessionNumberShortcutOwner,
   isSessionNumberModifierKey,
@@ -24,6 +25,8 @@ import {
 import { isFavoriteModelShortcut } from "./favorite-model-shortcut";
 import { isCycleModelSourceShortcut } from "@/react-app/domains/models/model-catalog";
 import { isFastModeShortcut } from "./fast-mode-shortcut";
+
+const NO_SESSION_NUMBER_TARGETS: readonly SessionNumberShortcutTarget[] = [];
 
 export type UseShellShortcutsInput = {
   canCreateTask: boolean;
@@ -76,6 +79,11 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
   const [sessionNumberTargets, setSessionNumberTargets] = useState<SessionNumberShortcutTarget[]>([]);
   const sessionNumberCancelledRef = useRef(false);
   const sessionNumberModifierHeldRef = useRef(false);
+  // Shortcuts work as soon as the modifier is down; only the sidebar hints wait.
+  const [sessionNumberHintsVisible, setSessionNumberHintsVisible] = useState(false);
+  const [sessionNumberHintReveal] = useState(() => createSessionNumberHintReveal({
+    onChange: setSessionNumberHintsVisible,
+  }));
   const sessionNumberOs: SessionNumberShortcutOs = resolveSessionNumberShortcutOs(
     platform.os,
     typeof navigator === "undefined" ? "" : navigator.platform,
@@ -93,6 +101,7 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
     const modifierHeld = nextSessionNumberModifierHeld(transition);
     sessionNumberModifierHeldRef.current = modifierHeld;
     setSessionNumberModifierHeld(modifierHeld);
+    sessionNumberHintReveal.release();
     setSessionNumberTargets((current) => current.length === 0 ? current : []);
   });
 
@@ -104,6 +113,7 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
     const targets = readVisibleSessionNumberShortcutTargets(document);
     sessionNumberModifierHeldRef.current = true;
     setSessionNumberModifierHeld(true);
+    sessionNumberHintReveal.hold();
     setSessionNumberTargets((current) => (
       sameSessionNumberShortcutTargets(current, targets) ? current : targets
     ));
@@ -283,9 +293,10 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
       document.removeEventListener("visibilitychange", visibilityChange);
       document.removeEventListener("focusin", focusIn);
       sessionNumberModifierHeldRef.current = false;
+      sessionNumberHintReveal.release();
       observer.disconnect();
     };
-  }, []);
+  }, [sessionNumberHintReveal]);
 
   return {
     commandPaletteOpen,
@@ -297,7 +308,7 @@ export function useShellShortcuts(input: UseShellShortcutsInput) {
     sessionNumberShortcuts: {
       modifierHeld: sessionNumberModifierHeld,
       os: sessionNumberOs,
-      targets: sessionNumberTargets,
+      targets: sessionNumberHintsVisible ? sessionNumberTargets : NO_SESSION_NUMBER_TARGETS,
     },
   };
 }

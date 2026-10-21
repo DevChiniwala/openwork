@@ -93,6 +93,7 @@ import { getSidePanelSessionKey } from "../panel/side-panel-session";
 import { useCreateTab, useOpenBrowserRailPane } from "../panel/use-side-panel-tabs";
 import { useBrowserPresentationController } from "../panel/use-browser-presentation";
 import { BrowserHeaderButton, BrowserPresentationSurfaces } from "../panel/browser-presentation";
+import { DebugRailProvider, DebugRailSlot } from "../panel/debug-rail-slot";
 import { FloatingSlotProvider, SessionFloatingLayer } from "../panel/floating-slot";
 import { useDesktopFeature } from "../status/use-desktop-feature";
 import { CloudComputerControl } from "../computer/cloud-computer-control";
@@ -1487,6 +1488,7 @@ export function SessionPage(props: SessionPageProps) {
         <SidebarInset
           className="min-h-0 min-w-0 overflow-hidden bg-sidebar mac:bg-transparent"
         >
+          <DebugRailProvider>
           <FloatingSlotProvider>
           {sidebarOnlyChrome ? <MobileChatNavigation /> : <header
             data-session-header
@@ -2007,7 +2009,7 @@ export function SessionPage(props: SessionPageProps) {
               </>
             ) : null}
           </ResizablePanelGroup>
-          <aside className={cn("hidden w-10 shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground mac:titlebar-no-drag", props.primarySurface !== "flat" && "lg:flex")}>
+          <aside className={cn("w-10 shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground mac:titlebar-no-drag", props.developerMode ? "flex" : "hidden", props.primarySurface !== "flat" && "lg:flex")}>
             {isElectronRuntime() ? (
               <Button
                 variant="ghost"
@@ -2043,10 +2045,12 @@ export function SessionPage(props: SessionPageProps) {
                 </span>
               ) : null}
             </Button>
+            <DebugRailSlot />
           </aside>
           </div>
           <BrowserPresentationSurfaces sessionId={sidePanelSessionKey} controller={browserPresentation} />
           </FloatingSlotProvider>
+          </DebugRailProvider>
         </SidebarInset>
       </SidebarProvider>
 

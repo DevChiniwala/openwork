@@ -89,12 +89,12 @@ function workerActivityHeartbeatUrl(workerId: string) {
 /** Resolve the org policy on every launch, never from the cached orchestrator. */
 async function workerEnginePolicy(workerId: string) {
   const [worker] = await db
-    .select({ orgId: WorkerTable.org_id })
+    .select({ orgId: WorkerTable.org_id, userId: WorkerTable.created_by_user_id })
     .from(WorkerTable)
     .where(eq(WorkerTable.id, normalizeDenTypeId("worker", workerId)))
     .limit(1)
   return {
-    engineV2ForceUpgrade: worker ? await organizationFeatureEnabled(worker.orgId, "engineV2ForceUpgrade") : false,
+    engineV2ForceUpgrade: worker ? await organizationFeatureEnabled(worker.orgId, "engineV2ForceUpgrade", { userId: worker.userId ?? undefined }) : false,
   }
 }
 

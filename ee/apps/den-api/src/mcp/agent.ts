@@ -151,6 +151,11 @@ const connectionStatusOutputSchema = openworkCloudMcpConnectionActionSchema.exte
     surface: z.enum(["openwork_your_connections", "openwork_organization_connections", "provider_admin_console", "network_infrastructure", "openwork_support"]),
     retry: z.literal("search_capabilities"),
     url: z.string().url().optional(),
+    askForKey: z.object({
+      capability: z.literal("postMcpConnectionsCredentialPrompt"),
+      path: z.object({ connectionId: z.string() }),
+      body: z.object({ scope: z.enum(["shared", "personal"]) }),
+    }).optional(),
   }),
 })
 
@@ -453,7 +458,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const finishIndexTiming = startMcpAppTiming("den.agent-index-read")
     const catalog = await getCatalog(app as unknown as Hono, c.env)
     const organizationId = normalizeDenTypeId("organization", principal.organizationId)
-    const organizationFeatures = await getOrganizationFeatures(organizationId)
+    const organizationFeatures = await getOrganizationFeatures(organizationId, { userId: principal.userId })
     // External MCP connections are scoped to the calling MEMBER (grants +
     // per-member credentials), not just the org — resolve who this token's
     // user is within the org once per request, reusing the features just read.

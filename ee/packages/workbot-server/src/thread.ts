@@ -1,6 +1,6 @@
 import { readBrowserTeachingPrompt, readBrowserSkillRunPrompt } from "@openwork/types/browser-demonstration"
 import type { RunnerMessage, RunnerSnapshot, RunnerTurn } from "@openwork-ee/headless-protocol"
-import { readWorkbotContextPrompt, type WorkbotViewContext } from "@openwork/types/workbot-context"
+import { readWorkbotContextPrompt, workbotDocumentNavigationSchema, type WorkbotViewContext } from "@openwork/types/workbot-context"
 
 /**
  * Workbot is one conversation per person. The runner keeps the transcript;
@@ -88,6 +88,8 @@ export type WorkbotTurn = {
   id: string
   text: string
   context?: WorkbotViewContext
+  /** Accepted requests to open a document beside the chat. Only requests: whether one opened is the page's to say. */
+  navigation?: Array<{ id: string; fileId: string }>
   sentAt: number | null
   finishedAt: number | null
   status: WorkbotTurnStatus
@@ -318,6 +320,7 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
     const results = new Map(messages.flatMap((message) => (message.role === "tool" ? [[message.callId, message] as const] : [])))
 
     const parts: WorkbotPart[] = []
+    const navigation: Array<{ id: string; fileId: string }> = []
     let reaction: string | null = null
     let modelSteps = 0
     const greeting = isGreetingRunnerId(turn.messageId)
@@ -329,6 +332,12 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
       // stored. The greeting follows the same streaming contract as other replies.
       if (text) parts.push({ kind: "text", text, step: modelSteps - 1 })
       for (const call of message.toolCalls) {
+        if (call.name === "open_document") {
+          const target = workbotDocumentNavigationSchema.safeParse(call.input)
+          const result = results.get(call.id)
+          if (turn.kind === undefined && !greeting && target.success && result?.role === "tool" && !result.isError) navigation.push({ id: call.id, fileId: target.data.fileId })
+          continue
+        }
         if (call.name === "react") {
           const result = results.get(call.id)
           const emoji = reactionOf(call.input)
@@ -387,6 +396,7 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
         ? [...new Map([...outputsOf(files, task.createdAt ?? null, task.updatedAt ?? null), ...outputs].map((file) => [file.id, file])).values()]
         : outputs,
       reaction,
+      ...(navigation.length ? { navigation } : {}),
       parts,
       modelSteps,
       error: status === "failed" ? friendlyError(turn.error) : null,

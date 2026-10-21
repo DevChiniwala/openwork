@@ -34,6 +34,7 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
   const hasSessionCookie = useAdminSessionCookie();
   const { search, draftSearch, page, offset, setSearch, setPage, organizationsHref } = useAdminListLocation();
   const [state, setState] = useState<PageState>(() => hasSessionCookie ? { access: "checking" } : { access: "signed-out", message: "" });
+  const [featureMember, setFeatureMember] = useState<Member | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -104,6 +105,7 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
   const columns: DenTableColumn<Member>[] = section === "members" ? [
     personColumn,
     { key: "role", header: "Role", render: (member) => member.role },
+    { key: "features", header: "Features", render: (member) => member.userId ? <DenButton variant="ghost" size="inline" data-testid={`admin-member-features-${member.id}`} onClick={() => setFeatureMember(member)}>Edit features</DenButton> : <span className="text-gray-500">Invitation pending</span> },
     { key: "joined", header: "Joined", render: (member) => member.joinedAt ? date(member.joinedAt) : "Invitation pending" },
   ] : [
     personColumn,
@@ -156,6 +158,13 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
       </section> : null}
 
       {data.insights ? <Suspense fallback={<p role="status" className="py-6 text-sm text-slate-500">Loading insights charts…</p>}><AdminOrganizationInsights organization={organization} insights={data.insights} /></Suspense> : null}
+      {section === "members" && featureMember ? <div className="border-b border-gray-200 py-4" data-testid="admin-member-feature-editor">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-900">{featureMember.name || featureMember.email || "Member"}</h2>
+          <DenButton variant="ghost" size="inline" onClick={() => setFeatureMember(null)}>Close member features</DenButton>
+        </div>
+        <AdminOrganizationFeatureControls key={`${organizationId}:${featureMember.id}`} organizationId={organizationId} memberId={featureMember.id} refreshKey={attempt} onAccessFailure={handleFeatureAccessFailure} />
+      </div> : null}
       {section === "features" ? <AdminOrganizationFeatureControls key={organizationId} organizationId={organizationId} refreshKey={attempt} onAccessFailure={handleFeatureAccessFailure} /> : null}
       {section === "control-panel" ? <AdminOrganizationControlPanel key={organizationId} organizationId={organizationId} onAccessFailure={handleFeatureAccessFailure} /> : null}
       {section === "members" || section === "usage" ?       <div className="py-5">

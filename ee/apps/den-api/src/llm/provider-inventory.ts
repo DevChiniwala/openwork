@@ -37,7 +37,7 @@ export async function readProviderInventoryRevision(principal: ProviderInventory
       .where(and(eq(MemberTable.id, principal.memberId), eq(MemberTable.userId, principal.userId), eq(MemberTable.organizationId, principal.organizationId), isNull(MemberTable.removedAt)))
     // Passing the transaction deliberately bypasses the feature cache. A kill
     // switch or org revocation closes an already-open stream on its next check.
-    if (!session || !member || !await organizationFeatureEnabled(principal.organizationId, "liveProviderSync", { database: tx })) {
+    if (!session || !member || !await organizationFeatureEnabled(principal.organizationId, "liveProviderSync", { database: tx, userId: principal.userId })) {
       throw new Error("Provider inventory is no longer authorized.")
     }
     const providers = await tx.select().from(GatewayProviderTable).where(and(eq(GatewayProviderTable.organization_id, principal.organizationId), eq(GatewayProviderTable.status, "active")))
