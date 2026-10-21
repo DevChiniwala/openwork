@@ -27,7 +27,7 @@ function ScriptCode({ code, label }: { code: string; label: string }) {
   for (const match of code.matchAll(HIDDEN_CHARACTERS)) {
     const at = match.index ?? 0
     parts.push(code.slice(last, at))
-    parts.push(<mark key={at} className="rounded bg-amber-3 px-0.5 text-amber-11">{`<U+${match[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}>`}</mark>)
+    parts.push(<mark key={at} className="rounded bg-amber-3 px-0.5 text-amber-11">{`<U+${(match[0].codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}>`}</mark>)
     last = at + match[0].length
   }
   parts.push(code.slice(last))
