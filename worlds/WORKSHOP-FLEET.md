@@ -29,6 +29,8 @@ The controller also requires `DAYTONA_API_URL`, `DAYTONA_API_KEY`, and `OPENAI_A
 
 Default `--count 1` provisions a single pilot desktop against the same twenty-member budget configuration. For a complete fleet, use `--count 20`: the first desktop must pass real OAuth, browser-profile handoff, private noVNC and paid model/tool proof before the remaining nineteen start, with at most five workers. This does not increase the fleet size: twenty 4-CPU/8-GiB desktops plus one backend stay within the checked team quota. The pilot remains outside that worker pool.
 
+The paid pilot correlates a completed engine invocation (including Code Mode wrappers) with a fresh independent audit from that same browser guest, an exact quoted title/subject, and increased settled Gateway spend. It rejects workplace mutations, more than two workplace calls, and shell/HTTP read workarounds. A model's marker alone never admits fan-out.
+
 Each individual HTML card is written after its seat passes; the host sheet is written only after the entire requested fleet passes. Do not distribute partial-run cards: a later failure tears down the owned fleet. Distribute each attendee's own card, not the controller receipt, backend URL, CDP URL, host sheet, or another attendee's viewer link.
 
 ```sh

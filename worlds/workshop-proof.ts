@@ -9,11 +9,13 @@ import { parsePrivatePreview } from "../evals/packages/hosts/src/private-web-pre
 import { control, evalIn, waitFor } from "../evals/packages/behaviors/src/desktop.ts";
 import { readComposerState, sendComposerMessage, waitForAssistantReply } from "../evals/packages/behaviors/src/composer.ts";
 import { engineSessionProbe } from "../evals/packages/behaviors/src/engine-session-probe.ts";
+import type { EngineSessionProbePart } from "../evals/packages/behaviors/src/engine-session-probe.ts";
 import { guestLabel, foregroundWorkshopDesktop, WORKPLACE_ORIGIN } from "./lib/workshop-browser.ts";
 import { redactWorkshopDiagnostic } from "./lib/workshop-redaction.ts";
 import { unlockWorkshopDesktop } from "./lib/workshop-unlock.ts";
 import { typeThroughWorkshopViewer } from "./lib/workshop-viewer.ts";
 import { freshComposer } from "./workshop-fleet.ts";
+import { readWorkshopAudit, validateAuditedPilotRead } from "./lib/workshop-pilot-audit.ts";
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function rows(value: unknown): Record<string, unknown>[] { return Array.isArray(value) ? value.filter(record) : []; }
@@ -64,6 +66,7 @@ export async function runWorkshopProof(aId: string, bId: string, output: string)
   const bProjects = await state(bBrowser, "atlassian");
   const assertions: { name: string; passed: boolean; detail?: unknown }[] = [];
   const turns: { name: string; text: string; durationMs: number; completedTools: { tool: string; output: string }[] }[] = [];
+  let lastParts: EngineSessionProbePart[] = [];
   const report = async () => writeFile(join(output, "workshop-proof.json"), JSON.stringify({ startedAt, updatedAt: new Date().toISOString(), desktopRef: "ef0db73ae009b6904d13bb8b1f5a391db713d86c", hostedRef: "ae6b832a0f95875ec0040a0637653764574e54ed", marker, aId, bId, aGuest, bGuest, assertions, turns }, null, 2), { mode: 0o600 });
   const pass = async (name: string, detail?: unknown) => { assertions.push({ name, passed: true, detail }); await report(); console.log(`Workshop proof PASS: ${name}`); };
   async function turn(name: string, prompt: string, desktop = a, browser = aBrowser) {
@@ -88,7 +91,8 @@ export async function runWorkshopProof(aId: string, bId: string, output: string)
     assert.ok(reply.text);
     const messages = await engineSessionProbe({ surface: desktop, workspaceId: app.workspaceId, engine: "v2" }).messages(sessionId);
     assert.ok(messages.ok, "Completed engine messages unavailable");
-    const completedTools = messages.data.flatMap((message) => message.parts).filter((part) => part.type === "tool" && part.status === "completed" && !part.error).map((part) => ({ tool: part.tool, output: part.output }));
+    lastParts = messages.data.flatMap((message) => message.parts);
+    const completedTools = lastParts.filter((part) => part.type === "tool" && part.status === "completed" && !part.error).map((part) => ({ tool: part.tool, output: part.output }));
     assert.ok(completedTools.length > 0, "Workshop turn has no completed tool execution");
     turns.push({ name, text: reply.text, durationMs: Date.now() - start, completedTools });
     await capture(desktop, join(output, `${name}.png`)); await report(); return reply.text;
@@ -100,20 +104,23 @@ export async function runWorkshopProof(aId: string, bId: string, output: string)
     assert.ok(record(aSeat) && typeof aSeat.viewer === "string" && record(bSeat) && typeof bSeat.viewer === "string");
     await unlockWorkshopDesktop(aId); await unlockWorkshopDesktop(bId);
     await foregroundWorkshopDesktop(aBrowser, a);
-    await typeThroughWorkshopViewer(aSeat.viewer, "INTERACTIVE_ATTENDEE_A");
-    await waitFor(a, () => (document.querySelector<HTMLElement>('[contenteditable="true"]')?.innerText ?? "").includes("INTERACTIVE_ATTENDEE_A"), { label: "real RFB keyboard reached unlocked attendee A composer" });
-    assert.ok(!(await readComposerState(b)).draftText.includes("INTERACTIVE_ATTENDEE_A"));
+    await typeThroughWorkshopViewer(aSeat.viewer, "interactive-attendee-a");
+    await waitFor(a, () => (document.querySelector<HTMLElement>('[contenteditable="true"]')?.innerText ?? "").includes("interactive-attendee-a"), { label: "real RFB keyboard reached unlocked attendee A composer" });
+    assert.ok(!(await readComposerState(b)).draftText.includes("interactive-attendee-a"));
     await capture(a, join(output, "interactive-attendee-a.png"));
     await foregroundWorkshopDesktop(bBrowser, b);
-    await typeThroughWorkshopViewer(bSeat.viewer, "INTERACTIVE_ATTENDEE_B");
-    await waitFor(b, () => (document.querySelector<HTMLElement>('[contenteditable="true"]')?.innerText ?? "").includes("INTERACTIVE_ATTENDEE_B"), { label: "real RFB keyboard reached unlocked attendee B composer" });
-    assert.ok((await readComposerState(a)).draftText.includes("INTERACTIVE_ATTENDEE_A"));
+    await typeThroughWorkshopViewer(bSeat.viewer, "interactive-attendee-b");
+    await waitFor(b, () => (document.querySelector<HTMLElement>('[contenteditable="true"]')?.innerText ?? "").includes("interactive-attendee-b"), { label: "real RFB keyboard reached unlocked attendee B composer" });
+    assert.ok((await readComposerState(a)).draftText.includes("interactive-attendee-a"));
     await capture(b, join(output, "interactive-attendee-b.png"));
     await control(a, "composer.set_text", { text: "" }); await control(b, "composer.set_text", { text: "" });
     await pass("Signed noVNC viewers accept real keyboard input on two unlocked independent desktops");
+    const originalBMail = bMail;
     await turn("00-second-attendee-independent-draft", `Use connected Workshop Outlook to create one UNSENT reply draft in the existing Northwind thread containing the exact text ${bMarker}. Do not send anything or modify other resources. Confirm in under 40 words.`, b, bBrowser);
     bMail = await state(bBrowser, "microsoft");
-    assert.ok(canonical(bMail).includes(`${bMarker}`));
+    const bDrafts = rows(bMail.messages).filter((message) => message.isDraft === true && canonical(message).includes(bMarker));
+    assert.equal(bDrafts.length, 1); assert.equal(bDrafts[0]?.conversationId, "thread-northwind");
+    assert.equal(rows(bMail.messages).filter((message) => message.parentFolderId === "sentitems").length, rows(originalBMail.messages).filter((message) => message.parentFolderId === "sentitems").length);
     await pass("Second attendee has its own independently created unsent proof draft");
     await foregroundWorkshopDesktop(aBrowser, a);
     await control(a, "session.create_task");
@@ -124,8 +131,15 @@ export async function runWorkshopProof(aId: string, bId: string, output: string)
     assert.deepEqual(businessState(await state(bBrowser, "microsoft")), businessState(bMail));
     await capture(a, join(output, "owned-stop-turn.png"));
     await pass("Operator stops one real running model turn without altering attendee B");
+    const beforeDeliverables = await state(aBrowser, "microsoft");
+    const deliverableCursor = Math.max(0, ...rows(beforeDeliverables.audit).map((entry) => Number(entry.sequence)));
     const first = await turn("01-readiness-presentation-draft", `Use the connected Workshop Outlook and Drive tools to review the Northwind pilot email thread and shared pilot brief. Determine whether the pilot is production-ready, citing clickable source links. Create a polished ONE-SLIDE actual PowerPoint (.pptx) with the readiness decision, evidence, blocker and owners. Save it in Drive named ${marker}-readiness.pptx. Create one reply draft in the EXISTING Northwind email thread for review, linking the saved presentation and citing the source facts behind the decision; include ${marker} in the draft body. Do NOT send anything or create an unrelated draft. You may use shell/Python standard library zipfile and XML to generate the real one-slide PPTX, then Drive binary write or upload-session tools to save it. No package installs or external websites. Keep final response under 180 words. Be efficient: read only the relevant email and brief, then write the two deliverables.`);
     const afterMail = await state(aBrowser, "microsoft");
+    const deliverableAudit = rows(afterMail.audit).filter((entry) => Number(entry.sequence) > deliverableCursor && entry.status === "completed");
+    assert.ok(deliverableAudit.some((entry) => /^mail_(?:search|read)$/.test(String(entry.name)) && /northwind/i.test(canonical(entry.output))), "Presentation lacks an actual Northwind email read");
+    assert.ok(deliverableAudit.some((entry) => entry.name === "file_read" && /Northwind-pilot-brief\.docx/i.test(canonical(entry.output))), "Presentation lacks a completed read of the shared Northwind brief");
+    assert.ok(deliverableAudit.some((entry) => entry.name === "mail_create_reply_draft"), "Reply draft was not created through the actual Outlook connector");
+    assert.ok(deliverableAudit.some((entry) => ["file_write", "file_create_upload_session"].includes(String(entry.name))), "Saved deck lacks an actual Drive connector write/upload session");
     const drafts = rows(afterMail.messages).filter((message) => message.isDraft === true && canonical(message).includes(marker));
     assert.equal(drafts.length, 1); assert.equal(drafts[0]?.conversationId, "thread-northwind");
     const file = rows(afterMail.files).find((file) => file.name === `${marker}-readiness.pptx`); assert.ok(file && typeof file.id === "string");
@@ -143,14 +157,20 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  assert len(slides)==1
  text=' '.join(n.text or '' for s in slides for n in E.fromstring(z.read(s)).iter() if n.tag.endswith('}t'))
  print(json.dumps({'slides':len(slides),'text':text,'zipEntries':len(names)}))`, pptx], { encoding: "utf8" }));
-    assert.ok(record(presentation)); assert.match(String(presentation.text), /497|99\.4/); assert.match(String(presentation.text), /aisle C|roam|Wi-Fi/i); assert.match(String(presentation.text), /pending|not.*ready|not.*production|not yet/i);
+    assert.ok(record(presentation));
+    assert.match(String(presentation.text), /497/); assert.match(String(presentation.text), /500/); assert.match(String(presentation.text), /99\.4/);
+    assert.match(String(presentation.text), /aisle\s*C/i); assert.match(String(presentation.text), /roam|Wi-Fi/i);
+    assert.match(String(presentation.text), /pending|not.*ready|not.*production|not yet/i);
+    assert.match(String(presentation.text), /Priya|Kenji|Jamal/i);
     assert.ok(canonical(drafts[0]).includes(String(file.webUrl))); assert.match(canonical(drafts[0]), /outlook\?message=|drive\?item=/);
     const sent = (value: Record<string, unknown>) => rows(value.messages).filter((message) => message.parentFolderId === "sentitems").length;
     assert.equal(sent(afterMail), sent(baselineMail)); assert.match(first, /pending|not.*ready|not.*production|not yet/i);
     assert.match(first, /https:\/\/[^\s)]+\/(?:outlook|drive)/);
     await pass("Actual one-slide PPTX independently downloaded and inspected; existing-thread reply stays unsent", presentation);
-    await turn("02-engineering-task-preserving-append", `Use connected Workshop Jira and Confluence. Create ONE ordinary engineering Task, NOT an IT service request, to verify aisle C Wi-Fi roaming before the Northwind pilot readiness decision. Include ${marker} in its summary. Find the EXISTING Northwind account plan in Confluence, preserve all existing content, and APPEND a clearly labeled "Workshop pilot follow-up ${marker}" section linking the new task and noting that site acceptance remains pending. Do not create a replacement page or alter unrelated records. No shell or external websites. Final response under 150 words with issue and page links.`);
+    await turn("02-engineering-task-preserving-append", `Use connected Workshop Jira and Confluence. Create ONE ordinary engineering Task, NOT an IT service request, to verify aisle C Wi-Fi roaming before the Northwind pilot readiness decision. Discover the existing engineering project from related Northwind issues; I authorize you to use that project based on the evidence rather than guess a key. Include ${marker} in its summary. Find the EXISTING Northwind account plan in Confluence, fetch its body in the stored format, keep the original body string intact, and APPEND a clearly labeled "Workshop pilot follow-up ${marker}" section linking the new task and noting that site acceptance remains pending. Do not create a replacement page or alter unrelated records. No shell or external websites. Final response under 150 words with issue and page links.`);
     const afterProjects = await state(aBrowser, "atlassian");
+    assert.ok(rows(afterProjects.audit).some((entry) => entry.name === "jira_create_issue" && entry.status === "completed" && canonical(entry.input).includes(marker)), "Ordinary task lacks an actual Jira connector creation");
+    assert.ok(rows(afterProjects.audit).some((entry) => entry.name === "confluence_update_page" && entry.status === "completed" && canonical(entry.input).includes(marker)), "Append lacks an actual Confluence connector update");
     const issues = rows(record(afterProjects.jira) ? afterProjects.jira.issues : []).filter((issue) => canonical(issue).includes(marker));
     assert.equal(issues.length, 1); assert.equal(issues[0]?.issuetype, "Task"); assert.notEqual(issues[0]?.project, "ITSD");
     const pages = rows(record(afterProjects.confluence) ? afterProjects.confluence.pages : []), beforePages = rows(record(baselineProjects.confluence) ? baselineProjects.confluence.pages : []);
@@ -162,15 +182,28 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     const tomorrow = new Date(`${today}T12:00:00Z`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1); const date = tomorrow.toISOString().slice(0, 10);
     const original = rows(baselineMail.events).find((event) => event.subject === "Northwind / Blue Harbor customer pilot review"); assert.ok(original);
+    const beforeCalendar = await state(aBrowser, "microsoft");
+    const calendarCursor = Math.max(0, ...rows(beforeCalendar.audit).map((entry) => Number(entry.sequence)));
+    const beforePolicy = await state(aBrowser, "atlassian");
+    const policyCursor = Math.max(0, ...rows(beforePolicy.audit).map((entry) => Number(entry.sequence)));
     const answer = await turn("03-calendar-and-missing-policy", `Today in America/Los_Angeles is ${today}. Move my EXISTING Northwind / Blue Harbor customer pilot review to tomorrow ${date} at 14:00 America/Los_Angeles. Keep its duration and ALL attendees; update the existing event, do not create a duplicate. Then check internal office guidance: may I bring my dog to the office? If a dog policy is absent, say you could not find one rather than inventing permission or prohibition, and cite the actual internal guidance with a clickable source link. Use Calendar and Confluence tools, no shell or external sites. Do not send mail or create/edit any other resources. Final response under 180 words.`);
     const calendarAfter = await state(aBrowser, "microsoft");
     const reviews = rows(calendarAfter.events).filter((event) => event.subject === original.subject); assert.equal(reviews.length, 1);
     const updated = reviews[0]; assert.ok(updated); assert.equal(updated.id, original.id);
     assert.equal(instant(updated.start), Date.parse(`${date}T21:00:00Z`)); assert.equal(instant(updated.end) - instant(updated.start), instant(original.end) - instant(original.start));
     assert.deepEqual(updated.attendees, original.attendees); assert.equal(rows(calendarAfter.events).length, rows(baselineMail.events).length);
+    assert.deepEqual(rows(calendarAfter.events).filter((event) => event.id !== original.id), rows(baselineMail.events).filter((event) => event.id !== original.id));
+    const calendarAudit = rows(calendarAfter.audit).filter((entry) => Number(entry.sequence) > calendarCursor && entry.status === "completed");
+    assert.ok(calendarAudit.some((entry) => entry.name === "calendar_update" && record(entry.input) && entry.input.event_id === original.id), "Existing event lacks an actual Calendar connector update");
+    assert.ok(!calendarAudit.some((entry) => entry.name === "calendar_create"), "Calendar turn created a duplicate event");
     assert.match(answer, /dog|pet/i); assert.match(answer, /couldn.t find|could not find|didn.t find|did not find|no (?:explicit |specific |published )?(?:dog|pet)|not (?:specified|covered|stated|found)|does(?:n.t| not) (?:mention|address|specify)|does not contain/i);
     assert.doesNotMatch(answer, /dogs? (?:are|is) (?:allowed|permitted|prohibited|banned)|you (?:can|may) bring (?:your |a )?dog/i);
     assert.match(answer, /https:\/\/[^\s)]+\/confluence/);
+    const afterPolicy = await state(aBrowser, "atlassian");
+    const policyAudit = rows(afterPolicy.audit).filter((entry) => Number(entry.sequence) > policyCursor && entry.status === "completed");
+    assert.ok(policyAudit.some((entry) => entry.name === "confluence_search" && /dog|pet|office|policy/i.test(canonical(entry.input))), "Missing-policy answer lacks a real internal search");
+    assert.ok(policyAudit.some((entry) => entry.name === "confluence_get_page" && /Working at the office/.test(canonical(entry.output))), "Missing-policy answer lacks a completed office-guidance read");
+    assert.deepEqual(businessState(afterPolicy), businessState(beforePolicy), "Calendar/policy turn must not mutate Jira or Confluence");
     await pass("Existing calendar review rescheduled with attendees and duration; absent dog policy not invented", { date, start: updated.start, attendees: updated.attendees });
     assert.ok(!canonical(await state(bBrowser, "microsoft")).includes(marker)); assert.ok(!canonical(await state(bBrowser, "atlassian")).includes(marker));
     assert.deepEqual(businessState(await state(bBrowser, "microsoft")), businessState(bMail)); assert.deepEqual(businessState(await state(bBrowser, "atlassian")), businessState(bProjects));
@@ -186,10 +219,13 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.deepEqual(businessState(await state(bBrowser, "microsoft")), businessState(bMail)); assert.deepEqual(businessState(await state(bBrowser, "atlassian")), businessState(bProjects));
     await capture(aBrowser, join(output, "04-personal-reset.png"));
     await pass("Personal reset restores all five services, preserves browser identity and leaves B unchanged");
+    const resetAuditBefore = await readWorkshopAudit(aBrowser);
+    const resetCursor = new Map<string, number>();
+    for (const { service, entry } of resetAuditBefore) resetCursor.set(service, Math.max(resetCursor.get(service) ?? 0, Number(entry.sequence) || 0));
     const resetAnswer = await turn("05-paid-read-after-reset", "Use the connected Workshop Outlook or Jira MCP tool to read one Northwind item now. Quote its exact subject/title and end with RESET_OAUTH_READY. Read only; no shell, fetch or website workaround. Under 80 words. If authorization fails, explain honestly without that marker.");
     assert.ok(resetAnswer.includes("RESET_OAUTH_READY"));
-    const resetTurn = turns.at(-1);
-    assert.ok(resetTurn?.completedTools.some((part) => /read|search|list|get|find|query/i.test(part.tool) && /northwind/i.test(part.output) && !/"isError"\s*:\s*true/i.test(part.output)), "Post-reset marker lacks a completed Northwind read");
+    const resetAudit = (await readWorkshopAudit(aBrowser)).filter(({ service, entry }) => Number(entry.sequence) > (resetCursor.get(service) ?? 0));
+    validateAuditedPilotRead(lastParts, resetAnswer, [], resetAudit, "RESET_OAUTH_READY");
     await foregroundWorkshopDesktop(aBrowser, a);
     await freshComposer(a);
     await foregroundWorkshopDesktop(bBrowser, b);

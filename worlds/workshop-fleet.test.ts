@@ -69,7 +69,9 @@ test("twenty stable ordinary attendee names; no admin seat", () => {
 test("maximum snapshot fallback fits the $180 infrastructure approval and $100 model estimate", () => {
   const budget = workshopBudget(20, 1440);
   assert.ok(budget.infrastructureUsd < 180);
-  assert.ok(budget.infrastructureUsd > 160);
+  assert.ok(budget.infrastructureUsd > 179);
+  assert.equal(budget.diskReserveUsd, 12);
+  assert.equal(budget.infrastructureUsd, budget.computeUsd + budget.diskReserveUsd);
   assert.equal(budget.modelAllowancePerMemberUsd, 5);
   assert.equal(budget.totalEstimatedModelAllowanceUsd, 100);
   assert.ok(workshopBudget(1, 60).infrastructureUsd < 1);
@@ -112,11 +114,11 @@ test("single VM pilot does not fan out", async () => {
   assert.deepEqual(calls, [1]);
 });
 
-const info = { public: false, organizationId: "802dbb61-97d4-445a-9c80-e9255852a4e0", sandboxClass: "container", target: "us", id: "12345678-1234-1234-1234-123456789abc", cpu: 2, memory: 4 };
+const info = { public: false, organizationId: "802dbb61-97d4-445a-9c80-e9255852a4e0", sandboxClass: "container", target: "us", id: "12345678-1234-1234-1234-123456789abc", cpu: 2, memory: 4, disk: 10 };
 test("handover fails closed for private org, actual hardware and Linux target", () => {
   assert.equal(validateSandboxInfo(info).memoryGiB, 4);
   assert.equal(validateSandboxInfo({ ...info, cpu: 4, memory: 8 }).cpu, 4);
-  for (const override of [{ public: true }, { public: undefined }, { cpu: 8 }, { memory: 16 }, { cpu: 0 }, { memory: -1 }, { organizationId: "other-org" }, { sandboxClass: "windows" }, { target: "eu" }, { id: "unverified-name" }]) {
+  for (const override of [{ public: true }, { public: undefined }, { cpu: 8 }, { memory: 16 }, { cpu: 0 }, { memory: -1 }, { disk: 20 }, { disk: undefined }, { organizationId: "other-org" }, { sandboxClass: "windows" }, { target: "eu" }, { id: "unverified-name" }]) {
     assert.throws(() => validateSandboxInfo({ ...info, ...override }));
   }
 });

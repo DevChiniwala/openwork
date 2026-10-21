@@ -25,6 +25,7 @@ import { targetFromEnv } from "../packages/world/src/target.ts";
 import { configureWorkshop, WORKSHOP_BUDGET_CAVEAT } from "./lib/workshop-setup.ts";
 import { redactWorkshopDiagnostic } from "./lib/workshop-redaction.ts";
 import { unlockWorkshopDesktop } from "./lib/workshop-unlock.ts";
+import { readWorkshopAudit, validateAuditedPilotRead } from "./lib/workshop-pilot-audit.ts";
 import { connectWorkshopBrowser, foregroundWorkshopDesktop, installWorkshopBrowser, verifyWorkshopBrowserHandoff, WORKSHOP_BROWSER_LAUNCHER, WORKSHOP_BROWSER_PROFILE } from "./lib/workshop-browser.ts";
 
 export const summary = "Private shared Den/Gateway and isolated workshop Linux desktops; pilot must pass before fan-out.";
@@ -63,9 +64,11 @@ export function attendeeKey(index: number): string {
 /** Conservative bound: snapshot fallback 4 CPU/8 GiB, shared backend 4/8, 24h. */
 export function workshopBudget(count: 1 | 20, lifetimeMinutes: number) {
   if ((count !== 1 && count !== 20) || !Number.isSafeInteger(lifetimeMinutes) || lifetimeMinutes < 1 || lifetimeMinutes > 1440) throw new Error("Unapproved workshop size or lifetime.");
-  const infrastructureUsd = (count + 1) * 4 * 0.083 * lifetimeMinutes / 60;
-  if (infrastructureUsd > 180) throw new Error("Workshop exceeds approved infrastructure ceiling.");
-  return { infrastructureUsd, modelAllowancePerMemberUsd: 5, totalEstimatedModelAllowanceUsd: 100 };
+  const computeUsd = (count + 1) * 4 * 0.083 * lifetimeMinutes / 60;
+  const diskReserveUsd = 12 * (count + 1) / 21 * lifetimeMinutes / 1440;
+  const infrastructureUsd = computeUsd + diskReserveUsd;
+  if (infrastructureUsd > 180) throw new Error("Workshop exceeds approved infrastructure ceiling including disk reserve.");
+  return { computeUsd, diskReserveUsd, infrastructureUsd, modelAllowancePerMemberUsd: 5, totalEstimatedModelAllowanceUsd: 100 };
 }
 
 /** Pilot is deliberately outside the worker pool. Settle in-flight owners before teardown. */
@@ -106,10 +109,11 @@ export function validateSandboxInfo(info: unknown) {
   if (!record(info) || info.public !== false || info.organizationId !== DAYTONA_ORG || info.sandboxClass !== "container"
     || info.target !== "us" || typeof info.id !== "string" || !/^[0-9a-f-]{36}$/i.test(info.id)
     || typeof info.cpu !== "number" || info.cpu < 1 || info.cpu > 4
-    || typeof info.memory !== "number" || info.memory < 1 || info.memory > 8) {
-    throw new Error("Workshop sandbox failed privacy, organization, Linux placement, or 4 CPU/8 GiB maximum check.");
+    || typeof info.memory !== "number" || info.memory < 1 || info.memory > 8
+    || typeof info.disk !== "number" || info.disk < 1 || info.disk > 10) {
+    throw new Error("Workshop sandbox failed privacy, organization, Linux placement, or 4 CPU/8 GiB/10 GiB disk maximum check.");
   }
-  return { id: info.id, cpu: info.cpu, memoryGiB: info.memory, public: false, organizationId: info.organizationId };
+  return { id: info.id, cpu: info.cpu, memoryGiB: info.memory, diskGiB: info.disk, public: false, organizationId: info.organizationId };
 }
 async function verifySandbox(sandbox: string) {
   const result = await defaultDaytonaExec(["info", sandbox, "-f", "json"], { timeoutMs: 30_000 });
@@ -205,8 +209,11 @@ export function validatePilotRead(parts: readonly EngineSessionProbePart[], fina
   throw new Error("Pilot lacks a completed workplace MCP read and a final Northwind fact matching its actual result; no bulk launch.");
 }
 
-async function provePilot(surface: Surface, workspaceId: string, member: DenSession, orgId: string, memberId: string, connectionIds: readonly string[], evidenceDir: string) {
+async function provePilot(surface: Surface, browser: Surface, workspaceId: string, member: DenSession, orgId: string, memberId: string, connectionIds: readonly string[], evidenceDir: string) {
   const before = await verifyMember(member, orgId, memberId);
+  const auditBefore = await readWorkshopAudit(browser);
+  const cursor = new Map<string, number>();
+  for (const { service, entry } of auditBefore) cursor.set(service, Math.max(cursor.get(service) ?? 0, Number(entry.sequence) || 0));
   await sendComposerMessage(surface, "Read-only workshop readiness check. Use a directly exposed Workshop Jira or Workshop Outlook MCP tool to look up one Northwind item (at most 2 tool calls; do not modify anything; no shell or fetch workaround). Reply in under 80 words, naming Northwind and quoting the exact title or subject field from the successful tool result, followed by WORKSHOP_READY. If tools fail, explain the failure honestly without that marker; never claim a successful lookup.");
   const reply = await waitForAssistantReply(surface, { timeoutMs: 240_000 });
   await waitFor(surface, () => {
@@ -217,10 +224,11 @@ async function provePilot(surface: Surface, workspaceId: string, member: DenSess
   if (!reply.text) throw new Error("Pilot has no generated assistant response.");
   const deadline = Date.now() + 60_000;
   let usageVerified = false;
+  let settledUsage = before;
   while (Date.now() < deadline) {
     const after = await verifyMember(member, orgId, memberId);
     if (typeof after.usedMicroUsd === "number" && after.usedMicroUsd > 0
-      && (typeof before.usedMicroUsd !== "number" || after.usedMicroUsd > before.usedMicroUsd)) { usageVerified = true; break; }
+      && (typeof before.usedMicroUsd !== "number" || after.usedMicroUsd > before.usedMicroUsd)) { usageVerified = true; settledUsage = after; break; }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   if (!usageVerified) throw new Error("Pilot final text was not accompanied by positive settled Gateway spend; no bulk launch.");
@@ -230,9 +238,12 @@ async function provePilot(surface: Surface, workspaceId: string, member: DenSess
   const finalReply = await waitForAssistantReply(surface, { timeoutMs: 5_000 });
   const messages = await engineSessionProbe({ surface, workspaceId, engine: "v2" }).messages(transcript.sessionId);
   if (!messages.ok) throw new Error("Pilot completed engine messages unavailable.");
-  const completedRead = validatePilotRead(messages.data.flatMap((message) => message.parts), finalReply.text, connectionIds);
+  const parts = messages.data.flatMap((message) => message.parts);
+  const audit = (await readWorkshopAudit(browser)).filter(({ service, entry }) => Number(entry.sequence) > (cursor.get(service) ?? 0));
+  await privateFile(join(evidenceDir, "pilot-observation.json"), redactWorkshopDiagnostic(JSON.stringify({ parts, finalText: finalReply.text, audit, usageBefore: before, usageAfter: settledUsage }, null, 2), [member.token, member.password]));
+  const completedRead = validateAuditedPilotRead(parts, finalReply.text, connectionIds, audit);
   await screenshot(surface, join(evidenceDir, "pilot-real-model.png"));
-  return { realModelVerified: true, settledGatewaySpendVerified: true, completedRead, observedToolCalls: calls.length,
+  return { realModelVerified: true, settledGatewaySpendVerified: true, usedMicroUsd: settledUsage.usedMicroUsd, completedRead, observedToolCalls: calls.length,
     observedMcpConnections: [...new Set(calls.flatMap((call) => call.connectionId ? [call.connectionId] : []))] };
 }
 
@@ -357,6 +368,17 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       if (response.status !== 404) throw new Error("Workshop backend exposed development email routes; no inference credential installed.");
     }
     const setup = await configureWorkshop(den, { upstreamKey, allowanceUsd: 5 });
+    stack.defer(async () => {
+      if (fullyReady) return;
+      const usage = await Promise.all(Object.entries(den.members).map(async ([attendee, member]) => {
+        try {
+          const status = await memberGet(member, setup.orgId, "/v1/gateway/usage-limits/me");
+          const bucket = record(status) && Array.isArray(status.buckets) ? status.buckets.find(record) : undefined;
+          return { attendee, usedMicroUsd: record(bucket) ? bucket.usedMicroUsd : null, allowanceMicroUsd: record(bucket) ? bucket.allowanceMicroUsd : null };
+        } catch { return { attendee, usedMicroUsd: null, allowanceMicroUsd: null }; }
+      }));
+      await privateFile(join(options.outputDir, "usage-at-failure.json"), `${JSON.stringify({ at: new Date().toISOString(), usage }, null, 2)}\n`).catch(() => {});
+    });
     // The raw upstream key never enters any VM environment or output manifest.
     const guests = new Set<string>();
     const outputs: Record<string, WorldOutput> = {
@@ -415,7 +437,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       await freshComposer(desktop);
       await selectWorkshopModel(desktop, model.modelId);
       console.log(`Workshop: ${key} managed model selected${index === 1 ? "; real pilot running" : ""}.`);
-      const pilot = index === 1 ? await provePilot(desktop, desktop.workspaceId, member, setup.orgId, model.memberId, setup.connections.map((connection) => connection.id), options.outputDir) : undefined;
+      const pilot = index === 1 ? await provePilot(desktop, browser, desktop.workspaceId, member, setup.orgId, model.memberId, setup.connections.map((connection) => connection.id), options.outputDir) : undefined;
       await verifyMember(member, setup.orgId, model.memberId);
       await foregroundWorkshopDesktop(browser, desktop);
       await freshComposer(desktop, model.modelId);
