@@ -24,7 +24,7 @@ struct Presence {
     }
 }
 
-/// Multiplayer-style presence for the approved window, in the acting agent's
+/// Multiplayer-style presence for the selected window, in the acting agent's
 /// color: a frame around the window, the agent's named cursor that springs to each dispatched input and narrates what it is doing, and a
 /// pill over the window's close/minimize/zoom buttons with Take over, Continue
 /// and Stop. Inputs are posted to the app, not the system pointer, so without
@@ -533,7 +533,7 @@ final class AgentCursor {
     @objc private func stopTapped() { onStop?() }
 }
 
-/// The pill over the approved window's buttons: a dot in the agent's color, its
+/// The pill over the selected window's buttons: a dot in the agent's color, its
 /// name and a "controlling this window" glyph; hovering widens it to say what
 /// the agent is doing.
 @MainActor

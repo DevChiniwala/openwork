@@ -7,9 +7,11 @@ final class SessionRuntime {
     private let input = MacInput()
     private let controls = SessionControls()
     private let policy: RuntimePolicy
+    private let clock: () -> TimeInterval
     private var session: Session?
     private var lease: ControlLease?
     private var busy = false
+    private var desktopAvailable = true
     private var resumingSessionID: String?
     private var watch = WatchLease()
     private var watchTimer: Timer?
@@ -21,7 +23,7 @@ final class SessionRuntime {
         let app: AppIdentity
         let target: WindowTarget
         let mode: AccessMode
-        let started: TimeInterval
+        var started: TimeInterval
         var lastUsed: TimeInterval
         var generation = 0
         var paused = false
@@ -36,16 +38,17 @@ final class SessionRuntime {
         var receiptInputs: [String: Data] = [:]
         var focus: ElementRecord?
     }
-    init(policy: RuntimePolicy = .desktop) {
-        self.policy = policy
+    init(policy: RuntimePolicy = .desktop, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.policy = policy; self.clock = clock
         controls.onPause = { [weak self] reason in self?.pause(reason) }
+        controls.onAvailability = { [weak self] available in self?.desktopAvailability(available) }
         controls.onUserInteraction = { [weak self] in self?.personInteracted() }
         controls.onResume = { [weak self] in Task { await self?.resume() } }
-        controls.onStop = { [weak self] in self?.close() }
+        controls.onStop = { [weak self] in self?.close(stoppedByPerson: true) }
         controls.onTick = { [weak self] in self?.expire() }
         controls.onWatch = { [weak self] visible in self?.watchWindow(visible: visible) }
     }
-    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+    private var now: TimeInterval { clock() }
 
     func call(_ name: String, _ values: [String: Any]) async throws -> [[String: Any]] {
         let a = Arguments(values: values)
@@ -64,7 +67,7 @@ final class SessionRuntime {
             try a.only([])
             return text(discover())
         case "computer_open_session":
-            try a.only(["app_id", "pid", "mode", "purpose"])
+            try a.only(["app_id", "pid", "window_id", "mode", "purpose"])
             guard session == nil else { throw UseError("session_exists", "Close this connection's session before opening another.", next: "close_session") }
             defer { if session == nil { controls.close() } }
             let appID = try a.string("app_id")
@@ -77,7 +80,7 @@ final class SessionRuntime {
             var windows = try await access.windows(identity)
             if windows.isEmpty {
                 // Reopen a running app's normal window through Launch Services.
-                // This grants no read/input access; window consent still follows.
+                // Resolve the opened app before reading or dispatching input.
                 if let url = identity.app.bundleURL {
                     let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = true
                     _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
@@ -86,18 +89,20 @@ final class SessionRuntime {
             }
             guard !windows.isEmpty else { throw UseError("window_unavailable", "The app opened, but did not expose a usable window. Check for a sign-in or app dialog, then request a session again.", next: "human_takeover") }
             try Task.checkCancellation()
-            let target = try await controls.chooseWindow(app: identity, mode: mode, windows: windows, purpose: purpose)
+            let requested = values["window_id"] == nil ? nil : try a.integer("window_id", min: 1, max: Int(UInt32.max))
+            let focusedID = access.focusedWindowID(identity, windows: windows)
+            let targetID = try WindowSelection.resolve(ids: windows.map { Int($0.id) }, requested: requested, focused: focusedID,
+                descriptions: windows.map { "\($0.id): \($0.title)" })
+            guard let target = windows.first(where: { Int($0.id) == targetID }) else { throw UseError("window_unavailable", "The resolved window closed.", next: "open_session") }
             try Task.checkCancellation()
             _ = try access.validate(target, app: identity)
             let id = UUID().uuidString.lowercased()
             session = Session(id: id, app: identity, target: target, mode: mode, started: now, lastUsed: now, purpose: purpose)
             lease = reservation
             controls.show(app: identity, target: target, mode: mode, purpose: purpose)
-            if mode == .control {
-                // The person's approval also authorizes initial foreground control. This is
-                // the helper's own startup, not a takeover, so hosts are not told it paused.
-                pause("Starting the approved window…", announce: false)
-                await resume()
+            if mode == .control, let current = session {
+                // Initial focus is technical startup, never a human pause/Continue flow.
+                try await focusTarget(current)
             }
             guard let opened = session, opened.id == id else { throw UseError("session_unavailable", "Access ended while starting. Stop work and wait for a new user request.", next: "human_takeover") }
             return text(["ok": true, "session_id": id, "app_id": identity.bundleID, "app_name": identity.name, "pid": Int(identity.pid),
@@ -146,7 +151,7 @@ final class SessionRuntime {
         let runningIDs = Set(running.compactMap { $0["app_id"] as? String })
         let apps = (running + AppIdentity.installedApps().filter { !runningIDs.contains($0["app_id"] as? String ?? "") })
             .sorted { String(describing: $0["name"]) < String(describing: $1["name"]) }
-        var limits = ["session_seconds": 900, "idle_seconds": 120, "observation_seconds": Int(policy.observationSeconds), "actions": 200]
+        var limits = ["lease_seconds": 900, "observation_seconds": Int(policy.observationSeconds), "actions_per_lease": 200]
         var result: [String: Any] = ["ok": true, "protocol": "openwork.computer-use/1", "platform": "macos",
             "permissions": Self.permissions(), "apps": apps,
             "modes": AccessMode.allCases.map { ["id": $0.rawValue, "description": $0.explanation] },
@@ -242,6 +247,7 @@ final class SessionRuntime {
         expire()
         guard let current = session, current.id == id else { throw UseError("session_unavailable", "This session ended or belongs to another connection. Open a new session.", next: "open_session") }
         if current.paused && !allowPaused { throw interruption(current) }
+        if !desktopAvailable && !allowPaused { throw UseError("desktop_unavailable", "The desktop is temporarily unavailable. Wait until it is available, then observe again.", next: "observe") }
         try Task.checkCancellation()
         try current.app.validate()
         return current
@@ -250,7 +256,7 @@ final class SessionRuntime {
         if policy == .embedded {
             // Say why it paused and where Continue is, so the model can tell the person in one sentence.
             let reason = current.pauseReason.map { " (\($0))" } ?? ""
-            return UseError("session_paused", "Paused for the person\(reason). They resume with Continue on your pill over the approved window or in OpenWork's Computer view. Tell them that once and stop; do not retry automatically.", next: "human_takeover")
+            return UseError("session_paused", "Paused for the person\(reason). They resume with Continue on your pill over the selected window or in OpenWork's Computer view. Tell them that once and stop; do not retry automatically.", next: "human_takeover")
         }
         return UseError("session_paused", "The person must choose Continue in the Computer Use controls. Do not retry automatically.", next: "human_takeover")
     }
@@ -260,11 +266,10 @@ final class SessionRuntime {
             throw UseError("session_changed", "Access ended during this operation. No remaining input is allowed.", next: "human_takeover")
         }
         if current.paused { throw interruption(current) }
+        if !desktopAvailable { throw UseError("desktop_unavailable", "The desktop became unavailable. No remaining input is allowed; observe again when available.", next: "observe") }
         guard current.generation == expected.generation else {
             throw UseError("session_changed", "Control changed during this operation. A new observation is required.", next: "human_takeover")
         }
-        if now - current.started >= 900 { close(); throw UseError("session_expired", "The session expired.", next: "human_takeover") }
-        if now - current.lastUsed >= 120 { pause("Paused after two minutes without activity."); throw interruption(current) }
         if let deadline, now >= deadline { throw UseError("action_timeout", "The bounded action time expired. Inspect the receipt before doing anything else.", next: "observe") }
     }
     private func observe(_ id: String, image: Bool, elements: String) async throws -> [[String: Any]] {
@@ -272,7 +277,7 @@ final class SessionRuntime {
         // Retry only read-only capture races. Never repeat an action or cross takeover.
         let generation = try current(id).generation
         session?.needsRefresh = true
-        controls.update("Refreshing the approved window before continuing…", paused: false)
+        controls.update("Refreshing the selected window before continuing…", paused: false)
         for attempt in 0..<3 {
             guard try current(id).generation == generation else {
                 throw UseError("session_changed", "Control changed during refresh.", next: "human_takeover")
@@ -387,9 +392,12 @@ final class SessionRuntime {
         }
         let current = try current(id)
         guard current.mode != .observe, !actions.contains(where: \.requiresControl) || current.mode == .control else {
-            throw UseError("scope_denied", "This action is outside the approved mode. Close the session and ask for the needed scope.", next: "open_session")
+            throw UseError("scope_denied", "This action is outside the selected mode. Close the session and open the needed mode.", next: "open_session")
         }
-        guard current.actionCount + actions.count <= 200 else { close(); throw UseError("action_limit", "The session reached its action limit.", next: "human_takeover") }
+        if current.actionCount + actions.count > 200 { session?.actionCount = 0 }
+        if current.receipts.count >= 200, let oldest = current.receipts.keys.first {
+            session?.receipts.removeValue(forKey: oldest); session?.receiptInputs.removeValue(forKey: oldest)
+        }
         guard let observation = current.observation else { throw UseError("observation_required", "Observe this window before acting. Each observation authorizes one act call.", next: "observe") }
         let bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
@@ -501,6 +509,15 @@ final class SessionRuntime {
         if current.paused { return "ready_to_continue" }
         return current.needsRefresh ? "refreshing" : "working"
     }
+    private func desktopAvailability(_ available: Bool) {
+        desktopAvailable = available
+        guard session != nil else { return }
+        session?.generation += 1; session?.observation = nil; session?.records = []; session?.focus = nil; session?.needsRefresh = true
+        stopWatching(); input.releaseAll()
+        // Sleep/idle availability is technical, not the person's Take over.
+        // Preserve any real pause, and require fresh validated reads on return.
+        if session?.paused != true { controls.update(available ? "Refreshing the selected window…" : "Waiting for the desktop…", paused: false) }
+    }
     private func personInteracted() {
         guard session != nil else { return }
         // Person input always hands control back; only an explicit Continue resumes.
@@ -522,28 +539,33 @@ final class SessionRuntime {
         input.releaseAll()
         if announce { controls.update(reason, paused: true) }
     }
+    private func focusTarget(_ current: Session) async throws {
+        guard desktopAvailable else { throw UseError("desktop_unavailable", "The desktop is temporarily unavailable. Observe again when available.", next: "observe") }
+        if current.mode == .control {
+            _ = try access.validate(current.target, app: current.app)
+            guard AXUIElementPerformAction(current.target.element, kAXRaiseAction as CFString) == .success,
+                  current.app.app.activate(options: []) else {
+                throw UseError("window_unavailable", "The selected window could not be focused. Refresh the app state.", next: "observe")
+            }
+            // Request focus once; never keep stealing it if a person intervenes.
+            for attempt in 0..<10 {
+                guard session?.id == current.id, session?.generation == current.generation else { throw UseError("session_changed", "Control changed during focus. No input was dispatched.", next: "observe") }
+                if (try? access.validate(current.target, app: current.app, requireFrontmost: true)) != nil { break }
+                if attempt < 9 { try await Task.sleep(nanoseconds: 50_000_000) }
+            }
+        }
+        guard desktopAvailable else { throw UseError("desktop_unavailable", "The desktop is temporarily unavailable. Observe again when available.", next: "observe") }
+        guard session?.id == current.id, session?.generation == current.generation else { throw UseError("session_changed", "Control changed during focus.", next: "observe") }
+        _ = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
+    }
     private func resume() async {
         guard let current = session, current.paused, resumingSessionID == nil,
               current.interactionDeadline.map({ now >= $0 }) ?? true else { return }
         resumingSessionID = current.id
         defer { if resumingSessionID == current.id { resumingSessionID = nil } }
         do {
-            // Approval or the person's explicit Continue can enter here.
-            // Actions and observations can never resume.
-            if current.mode == .control {
-                _ = try access.validate(current.target, app: current.app)
-                guard AXUIElementPerformAction(current.target.element, kAXRaiseAction as CFString) == .success,
-                      current.app.app.activate(options: []) else {
-                    throw UseError("window_unavailable", "Open the approved window, then click Continue.", next: "human_takeover")
-                }
-                // Activation is asynchronous. Request it once and wait briefly, without
-                // repeatedly stealing focus if the person changes their mind.
-                for attempt in 0..<10 {
-                    guard session?.id == current.id, session?.generation == current.generation else { return }
-                    if (try? access.validate(current.target, app: current.app, requireFrontmost: true)) != nil { break }
-                    if attempt < 9 { try await Task.sleep(nanoseconds: 50_000_000) }
-                }
-            }
+            // Only the person's explicit Continue can resume a human pause.
+            try await focusTarget(current)
             guard session?.id == current.id, session?.generation == current.generation else { return }
             _ = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
             expire(); guard session != nil else { return }
@@ -551,7 +573,7 @@ final class SessionRuntime {
             session?.interactionDeadline = nil
             session?.needsRefresh = true
             session?.paused = false; session?.generation += 1; session?.observation = nil; session?.lastUsed = now
-            controls.update("Refreshing the approved window before continuing…", paused: false)
+            controls.update("Refreshing the selected window before continuing…", paused: false)
         } catch {
             guard session?.id == current.id, session?.generation == current.generation else { return }
             session?.pauseReason = error.localizedDescription
@@ -566,16 +588,17 @@ final class SessionRuntime {
             controls.update(current.pauseReason ?? "You have control. Click Continue when you are ready.", paused: true)
         }
         controls.updateExpiry(seconds: max(0, Int(900 - (now - current.started))))
-        if now - current.started >= 900 || current.app.app.isTerminated { close(); return }
-        if !current.paused && now - current.lastUsed >= 120 { pause("Paused after two minutes without activity.") }
+        if current.app.app.isTerminated { close(); return }
+        // Renew technical accounting silently. Preserve paused state, generation,
+        // target validation, observation freshness and at-most-once receipts.
+        if now - current.started >= 900 { session?.started = now }
     }
-    func close() {
+    func close(stoppedByPerson: Bool = false) {
         stopWatching()
         resumingSessionID = nil; session = nil
-        input.releaseAll(); lease = nil; controls.close()
+        input.releaseAll(); lease = nil; controls.close(stoppedByPerson: stoppedByPerson)
     }
     func cancel() {
-        controls.cancelConsent()
         // Cancellation is terminal, including an idle agent turn's pending call.
         close()
     }

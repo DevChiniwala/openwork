@@ -460,14 +460,14 @@ export function createLocalComputerAdapter({
         throw error;
       }
       return {
-        /** Forwards a person's approve/deny/takeover/resume/stop/watch choice to the helper. */
+        /** Forwards a person's takeover/resume/stop/watch choice to the helper. */
         async notifyUi(params) {
           if (closed) throw new Error("Computer Use connection is closed.");
           if (!params || typeof params !== "object" || Array.isArray(params)
             || Object.keys(params).some((key) => !["id", "action", "windowId", "visible"].includes(key))
             || typeof params.id !== "string" || !params.id || params.id.length > 128
-            || !["approve", "deny", "takeover", "resume", "stop", "watch"].includes(params.action)
-            || (params.action === "approve" ? !Number.isSafeInteger(params.windowId) || params.windowId < 1 || params.windowId > 0xffffffff : params.windowId !== undefined)
+            || !["takeover", "resume", "stop", "watch"].includes(params.action)
+            || params.windowId !== undefined
             || (params.action === "watch" ? typeof params.visible !== "boolean" : params.visible !== undefined)) {
             throw new Error("A scoped native presentation action is required.");
           }

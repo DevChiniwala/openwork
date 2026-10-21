@@ -76,7 +76,7 @@ struct AppIdentity {
         guard !app.isTerminated, let current = NSRunningApplication(processIdentifier: pid),
               current.bundleIdentifier == bundleID, current.executableURL == executable, ProcessStart(pid: pid) == launched,
               Self.isAllowed(current) else {
-            throw UseError("app_changed", "The approved app exited or changed. Open a new session.", next: "open_session")
+            throw UseError("app_changed", "The selected app exited or changed. Open a new session.", next: "open_session")
         }
     }
     static func isAllowed(_ app: NSRunningApplication) -> Bool {
@@ -158,7 +158,7 @@ struct ElementRecord {
             throw UseError("invalid_geometry", "The observation geometry is invalid.", next: "observe")
         }
         guard bounds.contains(frame) else {
-            throw UseError("outside_window", "The accessible element is not fully inside the approved window. Scroll it into view and observe again.", next: "observe")
+            throw UseError("outside_window", "The accessible element is not fully inside the selected window. Scroll it into view and observe again.", next: "observe")
         }
         let x = (frame.minX - bounds.minX) * Double(width) / bounds.width
         let y = (frame.minY - bounds.minY) * Double(height) / bounds.height
@@ -266,6 +266,12 @@ final class MacAccessibility {
         return []
     }
 
+    func focusedWindowID(_ app: AppIdentity, windows: [WindowTarget]) -> Int? {
+        guard app.app.isActive,
+              let focused = elementAttribute(AXUIElementCreateApplication(app.pid), kAXFocusedWindowAttribute) else { return nil }
+        return windows.first(where: { CFEqual(focused, $0.element) }).map { Int($0.id) }
+    }
+
     func validate(_ target: WindowTarget, app: AppIdentity, requireFrontmost: Bool = false) throws -> CGRect {
         try requirePermissions()
         try app.validate()
@@ -277,13 +283,13 @@ final class MacAccessibility {
               let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, target.id) as? [[String: Any]],
               info.contains(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == app.pid
                   && ($0[kCGWindowIsOnscreen as String] as? Bool) == true }) else {
-            throw UseError("window_unavailable", "The approved window is closed, minimized, or no longer on this desktop.", next: "human_takeover")
+            throw UseError("window_unavailable", "The selected window is closed, minimized, or no longer on this desktop.", next: "human_takeover")
         }
         if requireFrontmost {
             let root = AXUIElementCreateApplication(app.pid)
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.pid,
                    let focused = try checkedElement(root, kAXFocusedWindowAttribute, budget), CFEqual(focused, target.element) else {
-                throw UseError("window_not_frontmost", "Choose Continue in the Computer Use controls to return to the approved window.", next: "human_takeover")
+                throw UseError("window_not_frontmost", "Choose Continue in the Computer Use controls to return to the selected window.", next: "human_takeover")
             }
         }
         return bounds
@@ -403,7 +409,7 @@ final class MacAccessibility {
         try prepare(root, budget)
         var hit: AXUIElement?
         guard AXUIElementCopyElementAtPosition(root, Float(point.x), Float(point.y), &hit) == .success,
-              let hit else { throw UseError("unverified_target", "This position cannot be verified as part of the approved window.", next: "observe") }
+              let hit else { throw UseError("unverified_target", "This position cannot be verified as part of the selected window.", next: "observe") }
         var pid: pid_t = 0
         guard AXUIElementGetPid(hit, &pid) == .success, pid == app.pid,
               expected.map({ CFEqual($0, hit) }) ?? true else {
@@ -437,7 +443,7 @@ final class MacAccessibility {
         var current: AXUIElement? = element
         var visited: Set<AXUIElement> = []
         var owner: pid_t = 0
-        guard AXUIElementGetPid(target.element, &owner) == .success else { throw UseError("window_unavailable", "The approved window exited.", next: "observe") }
+        guard AXUIElementGetPid(target.element, &owner) == .success else { throw UseError("window_unavailable", "The selected window exited.", next: "observe") }
         while let node = current, visited.count < 24, visited.insert(node).inserted {
             try budget.check()
             var pid: pid_t = 0
@@ -453,7 +459,7 @@ final class MacAccessibility {
             }
             current = try checkedElement(node, kAXParentAttribute, budget)
         }
-        throw UseError("unverified_target", "The target's protected ancestry could not be verified inside the approved window.", next: "observe")
+        throw UseError("unverified_target", "The target's protected ancestry could not be verified inside the selected window.", next: "observe")
     }
 
     /// `region` is window-local points (top-left origin); nil captures the whole window.

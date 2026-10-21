@@ -396,14 +396,13 @@ export type ComputerSnapshot = {
 /** The live watch view: recent redacted frames and dispatched input, never actionable. */
 export type ComputerPresentation = {
   id: string;
-  phase: "approval" | "working" | "paused" | "closed";
+  phase: "working" | "paused" | "closed";
   appName?: string;
   windowTitle?: string;
   task?: string;
   mode?: string;
   status?: string;
   canContinue?: boolean;
-  windows?: { id: number; title: string }[];
   frame?: { sequence: number; capturedAt: number; width: number; height: number; mimeType: "image/png"; data: string };
   inputs: { sequence: number; at: number; action: string; phase: string; x?: number; y?: number }[];
 };
@@ -458,11 +457,11 @@ export type DesktopCommandMap = {
   getOpenworkUiMcpCommand: { args: []; result: string[] };
   getOpenworkUiMcpEnvironment: { args: []; result: Record<string, string> };
 
-  // Computer use (macOS): per-chat consent, the watch view and permission setup
+  // Computer use (macOS): chat ownership, the watch view and permission setup
   computerSnapshot: { args: [sessionId: string]; result: ComputerSnapshot };
   computerPresentation: { args: [sessionId: string, visible: boolean]; result: ComputerPresentation | null };
   computerInteract: {
-    args: [input: { sessionId: string; id: string; action: "approve" | "deny" | "takeover" | "resume"; windowId?: number }];
+    args: [input: { sessionId: string; id: string; action: "takeover" | "resume" }];
     result: void;
   };
   computerSetup: { args: [permission: ComputerPermission]; result: { setupId: string } };
