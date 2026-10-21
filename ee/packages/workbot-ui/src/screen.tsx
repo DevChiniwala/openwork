@@ -36,8 +36,8 @@ import { WorkbotDocuments } from "./documents";
 import { WorkbotComputer } from "./computer";
 import { readBrowserSkillRunPrompt, type BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { readWorkbotCorrectionPrompt, workbotCorrectionPrompt, workbotViewContextSchema, type WorkbotViewContext } from "@openwork/types/workbot-context";
-import type { DocumentOpenRequest } from "@openwork/documents";
-import { ComputerNavigationContext, ComputerOffer, DocumentOffers, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
+import type { DocumentOpenOutcome, DocumentOpenRequest } from "@openwork/documents";
+import { ComputerNavigationContext, ComputerOffer, DocumentNavigationContext, DocumentNavigationStatus, DocumentOffers, type DocumentNavigationState, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNativeDictation } from "@openwork/ui/react";
 import { WorkbotDictation } from "./native-dictation";
@@ -141,18 +141,47 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   // Den reports guidedNavigation only with the workspace assistant; each destination keeps its own switch.
   const guided = host.workspaceAssistant === true && host.guidedNavigation === true;
   const [revealChat, setRevealChat] = useState(0);
+  // Which reply asked for each open request, and what became of it. Kept for this page only: history never replays.
+  const [navigationStatus, setNavigationStatus] = useState<Readonly<Record<string, DocumentNavigationState>>>({});
+  const navigationRequests = useRef(new Map<string, string>());
+  const currentRequest = useRef<string | null>(null);
+  const settleNavigation = useCallback((requestId: string, outcome: DocumentOpenOutcome) => {
+    const receipt = navigationRequests.current.get(requestId);
+    if (!receipt) return;
+    // Only a request still opening can be set aside; one that opened or failed keeps saying so.
+    setNavigationStatus(current => outcome === "superseded" && current[receipt] !== "opening" ? current : { ...current, [receipt]: outcome });
+  }, []);
   const navigateDocument = (fileId: string) => {
-    if (!host.workspaceAssistant || !host.documents) return;
-    setOpenDocument({ fileId, requestId: newMessageId() });
+    if (!host.workspaceAssistant || !host.documents) return null;
+    const requestId = newMessageId();
+    // A newer request replaces one still opening; that one never opens.
+    if (currentRequest.current) settleNavigation(currentRequest.current, "superseded");
+    currentRequest.current = requestId;
+    setOpenDocument({ fileId, requestId });
     setTab("documents");
+    return requestId;
   };
   // Guided navigation from a conversation: the same chat stays open beside the document, sharing that view.
   const navigateFromChat = (fileId: string) => {
-    navigateDocument(fileId);
-    if (!guided) return;
+    const requestId = navigateDocument(fileId);
+    if (!guided) return requestId;
     setIncludeContext(true);
     setRevealChat(count => count + 1);
+    return requestId;
   };
+  const followNavigation = (receipt: { id: string; fileId: string }) => {
+    const requestId = navigateFromChat(receipt.fileId);
+    if (!requestId) return;
+    navigationRequests.current.set(requestId, receipt.id);
+    setNavigationStatus(current => ({ ...current, [receipt.id]: "opening" }));
+  };
+  // What the person is looking at, so a late answer only navigates if they are still where they asked from.
+  const view = tab !== "documents" ? tab : documentContext?.kind === "document" ? `documents:${documentContext.fileId}` : documentContext?.kind === "documents" ? `documents:${documentContext.folderId}:${documentContext.query}` : "documents";
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  // Turns sent from this page, with the view they were sent from. Receipts on any other turn are never followed.
+  const sentFrom = useRef(new Map<string, string>());
+  const followed = useRef(new Set<string>());
   // The same move for Workbot's computer: open it and keep the conversation beside it. Null while it is on screen.
   const navigateComputerFromChat = guided && host.computer === true && tab !== "computer"
     ? () => { setTab("computer"); setRevealChat(count => count + 1); }
@@ -172,6 +201,17 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const editMessage = useEditWorkbotMessage();
   const uploads = { uploads: draft.uploads, add: composerState.add, remove: composerState.removeUpload, retry: composerState.retryUpload };
   const data = thread.data?.available ? thread.data : null;
+  useEffect(() => {
+    if (!guided || !host.documents || !data) return;
+    for (const turn of data.turns) {
+      const from = sentFrom.current.get(turn.id);
+      const target = turn.navigation.at(-1);
+      if (from === undefined || !target || followed.current.has(target.id)) continue;
+      for (const receipt of turn.navigation) followed.current.add(receipt.id);
+      if (from === viewRef.current) followNavigation(target);
+      else setNavigationStatus(current => ({ ...current, [target.id]: "superseded" }));
+    }
+  });
   // The open file at its newest version: when Workbot revises it, the preview follows (same id, newer updatedAt).
   const previewFile = useMemo(() => {
     if (!preview || !data) return preview;
@@ -205,6 +245,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   }, [data, composerState]);
 
   const sendPending = (id: string, again = false) => {
+    sentFrom.current.set(id, viewRef.current);
     return composerState.send(id, async (entry, attachments) => {
       const input = { text: entry.text, context: entry.context, attachments };
       if (entry.correctionOf) await editMessage.mutateAsync({ ...input, id: entry.correctionOf, newId: entry.id });
@@ -252,6 +293,9 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       onRetry={entry => submit(entry.text, entry)}
       onRetryTurn={turn => {
         if (turn.greeting) { setGreetingAwaited(true); start.mutate(); return; }
+        // A retry may ask again; what it asked before is never replayed.
+        for (const receipt of turn.navigation) followed.current.add(receipt.id);
+        sentFrom.current.set(turn.id, viewRef.current);
         retry.mutate(turn.id, { onError: error => setEditErrors(current => ({ ...current, [turn.id]: error.message })) });
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
@@ -270,6 +314,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       <OpenDocumentContext.Provider value={tab === "documents" && documentContext?.kind === "document" ? documentContext.fileId : null}>
       <WorkspaceNavigationContext.Provider value={host.workspaceAssistant && host.documents ? navigateFromChat : null}>
       <ComputerNavigationContext.Provider value={navigateComputerFromChat}>
+      <DocumentNavigationContext.Provider value={guided && host.documents ? { status: navigationStatus, open: followNavigation } : null}>
         <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased" data-workbot-workspace>
           <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null}
             files={filesEnabled ? <FilesButton open={filesOpen} onOpen={() => setFilesOpen(true)} /> : null}
@@ -282,7 +327,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ display: tab === "home" ? undefined : "none" }} hidden={tab !== "home"}>{home}</div>
           <div className="flex min-h-0 min-w-0 flex-1 border-t border-[var(--wb-hairline)]" style={{ display: tab === "documents" ? undefined : "none" }} hidden={tab !== "documents"}>
-            {(documentsVisited || tab === "documents") && <WorkbotDocuments onDirtyChange={reportDocumentDirty} onContextChange={setDocumentContext} openDocument={openDocument} />}
+            {(documentsVisited || tab === "documents") && <WorkbotDocuments onDirtyChange={reportDocumentDirty} onContextChange={setDocumentContext} openDocument={openDocument} onOpenSettled={settleNavigation} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 border-t border-[var(--wb-hairline)]" style={{ display: tab === "calendar" ? undefined : "none" }} hidden={tab !== "calendar"}>
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
@@ -298,6 +343,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             reveal={revealChat} stayOpen={guided} /></div>
           {filesEnabled && <FilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
         </div>
+      </DocumentNavigationContext.Provider>
       </ComputerNavigationContext.Provider>
       </WorkspaceNavigationContext.Provider>
       </OpenDocumentContext.Provider>
@@ -1556,6 +1602,7 @@ function TurnView(props: {
         {slot ? <WaitingSlot>{runningApps ? <StepsSegment steps={runningApps.steps} live /> : dots ? <TypingDots /> : null}</WaitingSlot> : null}
       </div>
       <DocumentOffers links={offers} />
+      <DocumentNavigationStatus receipts={turn.navigation} />
       {usedComputer ? <ComputerOffer /> : null}
       {turn.outputs.length ? <OutputFiles files={turn.outputs} /> : null}
       {turn.tasks.length ? <TaskCards tasks={turn.tasks} canRetry={props.canChange} onRetry={(task) => props.onSuggestion(`Try the "${task.title}" background task again.`)} /> : null}

@@ -67,11 +67,19 @@ HEADLESS_COMPUTER_SNAPSHOT=workbot-desktop
 DAYTONA_TARGET=<the snapshot's region>
 ```
 
-Keep `DAYTONA_API_KEY` in the runner's existing secret configuration. Build the
-runner normally; the headless computer build bundles the guest bridge and copies
-its startup helper. On first desktop use they are installed into the member's
-existing computer. Older computers need the desktop packages and Node 22+ before
-they can open a stream; this change does not replace an existing VM or its files.
+Keep `DAYTONA_API_KEY` in the runner's existing secret configuration and set
+`DAYTONA_API_URL=https://app.daytona.io/api`. On celld, these settings must also
+be in the `CELLD_RUNNER_VARS` secret of the `celld-production` GitHub environment:
+Render service variables alone are not Worker bindings. Deploy with the existing
+runner workflow and wait for every node to adopt the bundle. Keep its compatibility
+and real-turn checks enabled.
+
+The headless computer build embeds the same guest identity in the image and
+runner bundle, so celld needs no local package asset files. Build both from the
+same desktop sources and locked dependencies. The root-owned bridge is already
+installed in the snapshot; it rejects incompatible runners. Existing computers
+and their files are not replaced automatically, so snapshot upgrades need an
+explicit migration plan for computers already in use.
 
 ## Transport and rollout
 
@@ -89,10 +97,14 @@ mode; noVNC's `viewOnly` setting also disables accidental input. Both manual
 streams and structured tools operate the same broad desktop. Browser processes
 run as an unprivileged account with Chromium's sandbox and a protected X cookie.
 Workbot's model and connected-app tokens are not passed to the desktop.
-The member's VM has broad browser, native and shell access, including local
-web apps. This slice does not enforce the desktop app's organization website
-rules or a private-network egress policy. Deploy it on an isolated VM network;
-an organization requiring restricted egress needs enforcement at that boundary.
+The browser can reach public websites; its desktop egress guard blocks private
+and loopback destinations, with DNS exceptions restricted to the configured
+resolvers on port 53. Native apps cannot open network connections. The command
+account cannot reach the reserved desktop control ports; authenticated viewer
+and helper transports remain separate. The desktop image uses native nftables
+UID rules on microVM kernels without `xt_owner`, and startup fails if rule
+installation fails. Hosts without nftables retain the existing iptables guard.
+Organization website allowlists still need enforcement at the VM network boundary.
 
 ## Teach browser tasks
 

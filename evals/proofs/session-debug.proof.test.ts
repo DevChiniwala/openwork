@@ -8,9 +8,15 @@ const test = spec.world(sessionDebug, {
   needs: { commands: ["bun"] },
 });
 
-test("a developer can inspect, move, resize and dismiss session diagnostics without leaving the conversation", async ({ world, user, probe, step, evidence }) => {
+test("a developer can inspect, move and dismiss session diagnostics without leaving the conversation", async ({ world, user, probe, step, evidence }) => {
   const panel = '[data-testid="session-debug-panel"]';
   const rect = async () => (await probe.dom(panel)).elements[0]!.rect;
+  const closed = async () => {
+    await probe.eventually(async () => (await probe.dom(panel)).elements.length, {
+      within: 5_000, label: "the debug popover finishes closing", until: count => count === 0,
+    });
+    await user.notSee({ testId: "session-debug-panel" });
+  };
 
   await user.resizeViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
   await step("before: conversation diagnostics stay hidden until developer mode is enabled", async () => {
@@ -22,12 +28,22 @@ test("a developer can inspect, move, resize and dismiss session diagnostics with
     await user.screenshot();
   });
 
-  await step("after: developer mode shows versions, waiting state and measured connection health", async () => {
+  await step("after: the bottom rail bug opens diagnostics with a matching corner button", async () => {
     await user.press(world.paletteShortcut);
     await user.see({ role: "combobox" });
     await user.type({ role: "combobox" }, "Enable Developer Mode");
     await user.click({ text: "Enable Developer Mode" });
+    await user.notSee({ testId: "session-debug-panel" });
+    await user.see({ role: "button", label: "Show session debug" });
+    const rail = (await probe.dom('[data-testid="session-debug-rail"]')).elements[0]!.rect;
+    expect(rail.bottom).toBeGreaterThan(850);
+    expect(rail.right).toBeGreaterThan(1200);
+    await user.screenshot();
+    await user.click({ role: "button", label: "Show session debug" });
     await user.see({ testId: "session-debug-panel" });
+    const hide = (await probe.dom('[aria-label="Hide session debug"]')).elements[0]!.rect;
+    expect(Math.abs((hide.left + hide.right) / 2 - (rail.left + rail.right) / 2)).toBeLessThanOrEqual(2);
+    expect(Math.abs((hide.top + hide.bottom) / 2 - (rail.top + rail.bottom) / 2)).toBeLessThanOrEqual(2);
     await user.see({ text: /^Connected$/ }, { timeoutMs: 20_000 });
     const text = (await probe.dom(panel)).elements[0]?.text ?? "";
     expect(text).toContain("Waiting on");
@@ -38,29 +54,33 @@ test("a developer can inspect, move, resize and dismiss session diagnostics with
     await user.screenshot();
   });
 
-  await step("the panel moves and resizes using its keyboard-accessible handles", async () => {
+  await step("the compact panel moves from its header without a bottom handle", async () => {
     const before = await rect();
     await user.click({ role: "button", label: "Move session debug" });
     await user.press("ArrowLeft");
     await user.press("ArrowUp");
-    await user.click({ role: "button", label: "Resize session debug" });
-    await user.press("ArrowRight");
-    await user.press("ArrowDown");
     const after = await rect();
     expect(after.left).toBe(before.left - 10);
     expect(after.top).toBe(before.top - 10);
-    expect(after.width).toBe(before.width + 10);
-    expect(after.height).toBe(before.height + 10);
+    expect(after.width).toBe(before.width);
+    expect(after.height).toBe(before.height);
+    expect(after.height).toBeLessThan(300);
+    expect((await probe.dom('[aria-label="Resize session debug"]')).elements).toHaveLength(0);
     await user.click({ role: "button", label: "More details" });
     await user.see({ text: "Intended session" });
-    evidence.recordAssertionEvidence("Move, resize and details work in the conversation", `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`, after.width > before.width && after.left < before.left);
+    evidence.recordAssertionEvidence("Compact diagnostics move from the header and expand details", `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`, after.left < before.left && after.height < 300);
     await user.screenshot();
   });
 
   await step("dismissal is reversible and resizing the viewport keeps the controls reachable", async () => {
-    await user.click({ role: "button", label: "Dismiss session debug" });
-    await user.notSee({ testId: "session-debug-panel" });
+    await user.click({ role: "button", label: "Hide session debug" });
+    await closed();
     await user.see("composer");
+    await user.click({ role: "button", label: "Show session debug" });
+    const reopened = await rect();
+    expect(reopened.left).toBeGreaterThan(800);
+    await user.press("Escape");
+    await closed();
     await user.click({ role: "button", label: "Show session debug" });
     await user.resizeViewport({ width: 640, height: 480, deviceScaleFactor: 1 });
     const bounds = await probe.eventually(rect, { within: 5_000, label: "debug panel stays in the smaller viewport", until: value => value.right <= 640 && value.bottom <= 480 });

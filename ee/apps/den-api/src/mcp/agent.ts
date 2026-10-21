@@ -151,6 +151,11 @@ const connectionStatusOutputSchema = openworkCloudMcpConnectionActionSchema.exte
     surface: z.enum(["openwork_your_connections", "openwork_organization_connections", "provider_admin_console", "network_infrastructure", "openwork_support"]),
     retry: z.literal("search_capabilities"),
     url: z.string().url().optional(),
+    askForKey: z.object({
+      capability: z.literal("postMcpConnectionsCredentialPrompt"),
+      path: z.object({ connectionId: z.string() }),
+      body: z.object({ scope: z.enum(["shared", "personal"]) }),
+    }).optional(),
   }),
 })
 

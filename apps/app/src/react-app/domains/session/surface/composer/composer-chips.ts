@@ -47,6 +47,7 @@ export const CHIP_ICONS = {
   monitor: [["rect", { width: "20", height: "14", x: "2", y: "3", rx: "2" }], ["line", { x1: "8", x2: "16", y1: "21", y2: "21" }], ["line", { x1: "12", x2: "12", y1: "17", y2: "21" }]],
   cloud: [["path", { d: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" }]],
   chevron: [["path", { d: "m9 18 6-6-6-6" }]],
+  "message-square": [["path", { d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" }]],
 } satisfies Record<string, IconElement[]>;
 
 export type ChipIcon = keyof typeof CHIP_ICONS;
@@ -55,7 +56,7 @@ export type BadgeTone = "violet" | "sky" | "cyan" | "gray";
 
 export type ComposerBadge = {
   /** Stable kind, exposed as `data-composer-badge`. */
-  kind: "skill" | "connect-skill" | "connector" | "computer" | "agent" | "file" | "pasted";
+  kind: "skill" | "connect-skill" | "connector" | "computer" | "session" | "agent" | "file" | "pasted";
   label: string;
   /** Muted detail after the label, e.g. "42 lines". */
   meta?: string;
@@ -93,7 +94,17 @@ export function composerPillBadge(pill: ComposerPill): ComposerBadge {
       return { kind: "connector", label: pill.name, title, tone: "gray", slot: { logoUrls: composerConnectorLogoUrls({ name: pill.name }), fallback: "plug" } };
     case "computer":
       return { kind: "computer", label: `@${pill.target}`, title, tone: "sky", slot: { icon: pill.target === "cloud" ? "cloud" : "monitor" } };
+    case "session":
+      return sessionReferenceBadge(pill.title);
   }
+}
+
+/** A referenced task. `title` is its current title when known, else the one saved with the reference. */
+export function sessionReferenceBadge(title: string, options?: { unavailable?: boolean }): ComposerBadge {
+  const label = title.trim() || "Untitled task";
+  return options?.unavailable
+    ? { kind: "session", label, meta: "Unavailable", title: `Task unavailable: ${label}`, tone: "gray", slot: { icon: "message-square" } }
+    : { kind: "session", label, title: `Task: ${label}`, tone: "gray", slot: { icon: "message-square" } };
 }
 
 export function agentBadge(name: string): ComposerBadge {

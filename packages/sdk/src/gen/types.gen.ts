@@ -976,7 +976,7 @@ export type AdminOrganizationsPageResponse = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1190,7 +1190,7 @@ export type AdminOverviewResponse = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -4850,6 +4850,51 @@ export type ExternalMcpConnectionCreatedResponse = {
     signIn: string;
     oauthCallback: string;
   };
+  credentialPrompt?: {
+    schemaVersion: "1";
+    kind: "credential_prompt";
+    target:
+      | {
+          type: "mcp_connection_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
+        }
+      | {
+          type: "plugin_connection_key";
+          pluginId: string;
+          configObjectId: string;
+          serverName: string;
+          connectionId: string;
+        }
+      | {
+          type: "gateway_provider_key";
+          inferenceProviderId: string;
+          credentialSetId: string;
+        }
+      | {
+          type: "gateway_provider_credential";
+          inferenceProviderId: string;
+          credentialSetId: string;
+          credentialKind: "aws_keys" | "gcp_service_account" | "api_key_map";
+          envNames?: Array<string>;
+        };
+    name: string;
+    destination: string | null;
+  };
+  nextStep?: string;
 };
 
 export type ExternalMcpConnectionExternalKeyExistsError = {
@@ -4930,6 +4975,51 @@ export type ExternalMcpConnectionUpdatedResponse = {
   requestedScopes?: Array<string>;
   identityChanged: boolean;
   reconnectionRequired: boolean;
+  credentialPrompt?: {
+    schemaVersion: "1";
+    kind: "credential_prompt";
+    target:
+      | {
+          type: "mcp_connection_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
+        }
+      | {
+          type: "plugin_connection_key";
+          pluginId: string;
+          configObjectId: string;
+          serverName: string;
+          connectionId: string;
+        }
+      | {
+          type: "gateway_provider_key";
+          inferenceProviderId: string;
+          credentialSetId: string;
+        }
+      | {
+          type: "gateway_provider_credential";
+          inferenceProviderId: string;
+          credentialSetId: string;
+          credentialKind: "aws_keys" | "gcp_service_account" | "api_key_map";
+          envNames?: Array<string>;
+        };
+    name: string;
+    destination: string | null;
+  };
+  nextStep?: string;
 };
 
 export type ExternalMcpConnectionMarketplaceManagedError = {
@@ -4970,6 +5060,56 @@ export type ExternalMcpConnectionByKeyUpsertInput = {
 export type ExternalMcpConnectionDeleteByKeyResponse = {
   ok: true;
   deleted: boolean;
+};
+
+export type ExternalMcpConnectionCredentialPromptResponse = {
+  connectionId: string;
+  scope: "shared" | "personal";
+  credentialPrompt: {
+    schemaVersion: "1";
+    kind: "credential_prompt";
+    target:
+      | {
+          type: "mcp_connection_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
+        }
+      | {
+          type: "plugin_connection_key";
+          pluginId: string;
+          configObjectId: string;
+          serverName: string;
+          connectionId: string;
+        }
+      | {
+          type: "gateway_provider_key";
+          inferenceProviderId: string;
+          credentialSetId: string;
+        }
+      | {
+          type: "gateway_provider_credential";
+          inferenceProviderId: string;
+          credentialSetId: string;
+          credentialKind: "aws_keys" | "gcp_service_account" | "api_key_map";
+          envNames?: Array<string>;
+        };
+    name: string;
+    destination: string | null;
+  };
+  nextStep: string;
 };
 
 export type ExternalMcpConnectStartResponse = {
@@ -5398,6 +5538,20 @@ export type PluginArchPluginMcpRequirementConfigureResponse = {
       | {
           type: "mcp_connection_key";
           connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
         }
       | {
           type: "plugin_connection_key";
@@ -7140,6 +7294,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      browserDemonstrations: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7187,6 +7350,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       automationCalendar?: boolean | null;
       engineV2ForceUpgrade?: boolean | null;
       computerUse?: boolean | null;
+      browserDemonstrations?: boolean | null;
       browserFloatingView?: boolean | null;
       remoteComputers?: boolean | null;
       remoteSessionSubagents?: boolean | null;
@@ -7310,6 +7474,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserDemonstrations: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8530,7 +8703,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8732,7 +8905,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -20421,6 +20594,20 @@ export type PostV1InferenceProvidersResponses = {
             connectionId: string;
           }
         | {
+            type: "mcp_connection_member_key";
+            connectionId: string;
+          }
+        | {
+            type: "mcp_connection_shared_switch";
+            connectionId: string;
+            expectedUpdatedAt: string;
+            audience: {
+              orgWide: boolean;
+              memberCount: number;
+              teamCount: number;
+            };
+          }
+        | {
             type: "plugin_connection_key";
             pluginId: string;
             configObjectId: string;
@@ -29189,6 +29376,56 @@ export type PostV1McpConnectionsByConnectionIdDisconnectResponses = {
 
 export type PostV1McpConnectionsByConnectionIdDisconnectResponse =
   PostV1McpConnectionsByConnectionIdDisconnectResponses[keyof PostV1McpConnectionsByConnectionIdDisconnectResponses];
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptData = {
+  body: {
+    scope?: "shared" | "personal";
+  };
+  path: {
+    /**
+     * Den TypeID with 'emc_' prefix and a 26-character base32 suffix.
+     */
+    connectionId: string;
+  };
+  query?: never;
+  url: "/v1/mcp-connections/{connectionId}/credential-prompt";
+};
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptErrors = {
+  /**
+   * This connection does not take this kind of key.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * The caller cannot enter this key.
+   */
+  403: ForbiddenError;
+  /**
+   * Unknown connection.
+   */
+  404: ExternalMcpConnectionNotFoundError;
+  /**
+   * A marketplace plugin manages this connection's key.
+   */
+  409: ExternalMcpConnectionMarketplaceManagedError;
+};
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptError =
+  PostV1McpConnectionsByConnectionIdCredentialPromptErrors[keyof PostV1McpConnectionsByConnectionIdCredentialPromptErrors];
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptResponses = {
+  /**
+   * A private field is shown to the person.
+   */
+  200: ExternalMcpConnectionCredentialPromptResponse;
+};
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptResponse =
+  PostV1McpConnectionsByConnectionIdCredentialPromptResponses[keyof PostV1McpConnectionsByConnectionIdCredentialPromptResponses];
 
 export type PostV1McpConnectionsByConnectionIdDisconnectMyAccountData = {
   body?: never;

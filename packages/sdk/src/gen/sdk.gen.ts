@@ -863,6 +863,8 @@ import type {
   PostV1MarketplacesResponses,
   PostV1McpConnectionsByConnectionIdCheckErrors,
   PostV1McpConnectionsByConnectionIdCheckResponses,
+  PostV1McpConnectionsByConnectionIdCredentialPromptErrors,
+  PostV1McpConnectionsByConnectionIdCredentialPromptResponses,
   PostV1McpConnectionsByConnectionIdDisconnectErrors,
   PostV1McpConnectionsByConnectionIdDisconnectMyAccountErrors,
   PostV1McpConnectionsByConnectionIdDisconnectMyAccountResponses,
@@ -1275,6 +1277,7 @@ export class DenClient extends HeyApiClient {
         automationCalendar?: boolean | null;
         engineV2ForceUpgrade?: boolean | null;
         computerUse?: boolean | null;
+        browserDemonstrations?: boolean | null;
         browserFloatingView?: boolean | null;
         remoteComputers?: boolean | null;
         remoteSessionSubagents?: boolean | null;
@@ -12801,6 +12804,45 @@ export class DenClient extends HeyApiClient {
       url: "/v1/mcp-connections/{connectionId}/disconnect",
       ...options,
       ...params,
+    });
+  }
+
+  /**
+   * Ask a person to enter the API key of an existing MCP connection
+   *
+   * Shows the person a private field in OpenWork for an existing API-key connection, so the key never passes through you. Use it to finish a connection still waiting for its shared key, to let the caller add or replace their own key (scope personal), or to let an owner or admin replace each person's own key with one shared key (scope shared on a personal-key connection; its ID and access stay, and nothing changes until they save a key that works). Changes nothing by itself.
+   */
+  public postV1McpConnectionsByConnectionIdCredentialPrompt<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+      scope?: "shared" | "personal";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "connectionId" },
+            { in: "body", key: "scope" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1McpConnectionsByConnectionIdCredentialPromptResponses,
+      PostV1McpConnectionsByConnectionIdCredentialPromptErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/{connectionId}/credential-prompt",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 

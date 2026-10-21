@@ -1057,7 +1057,7 @@ function marketplaceRequirementAction(input: {
     label: `Ask an org admin to configure Connections for ${input.pluginName}`,
     surface: "openwork_organization_connections",
     retry: "search_capabilities",
-    url: openworkOrganizationConnectionsUrl(),
+    url: openworkOrganizationConnectionsUrl(input.connectionId),
   }
 }
 

@@ -151,11 +151,11 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
   const resources = setup.move();
   return {
     ...base, den, web, organizationId, keys, fingerprint, wire, proof, statusUrl, serviceAccount,
-    /** The admin asks; the agent creates the connection without its key and ends its turn. */
+    /** The admin asks; the agent sets the connection up by a stable key without its key and ends its turn. */
     async scriptConnection() {
       await script([
         { promptMarker: CONNECT_PROMPT, latestUserTurn: true, finalReply: "Add the key in the field above and I'll continue.", steps: [
-          cloudCall("execute_capability", { name: "postMcpConnections", body: { name: "Status service", url: statusUrl, authType: "apikey", credentialMode: "shared", access: { orgWide: true } } }),
+          cloudCall("execute_capability", { name: "putMcpConnectionsByKeyByExternalKey", path: { externalKey: "status-service" }, body: { name: "Status service", url: statusUrl, authType: "apikey", credentialMode: "shared", access: { orgWide: true } } }),
         ] },
         { promptMarker: KEY_SAVED_PROMPT, latestUserTurn: true, finalReply: "The status service did not answer", finalReplyFrom: "last-tool-text", steps: statusCall },
       ]);
