@@ -43,6 +43,27 @@ for (const appServers of [true, false]) {
   }
 }
 
+for (const toolShapes of [false, true]) {
+  test(`gateway instructions describe ${toolShapes ? "MCP tool shapes" : "the older match fields"} when connectToolShapes is ${toolShapes ? "on" : "off"}`, async () => {
+    const server = createAgentMcpServer({ toolShapes })
+    const client = new Client({ name: "gateway-tool-shapes-unit-test", version: "1" })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await server.connect(serverTransport)
+    try {
+      await client.connect(clientTransport)
+      const instructions = client.getInstructions() ?? ""
+      assert.equal(instructions.includes("Copy external argumentsSchema into body"), !toolShapes)
+      assert.equal(instructions.includes("arguments matching each match's inputSchema"), toolShapes)
+      const guidance = await client.readResource({ uri: AGENT_MCP_GUIDANCE_URI })
+      const text = guidance.contents.flatMap(content => "text" in content ? [content.text] : []).join("\n")
+      assert.equal(text.includes("execute_capability.body"), !toolShapes)
+    } finally {
+      await client.close()
+      await server.close()
+    }
+  })
+}
+
 test("an output schema cannot describe a proxy's optional structured content without breaking text-only results", async () => {
   const server = new McpServer({ name: "proxy-output-compatibility", version: "1" })
   const textResult = (): CallToolResult => ({ content: [{ type: "text", text: "Authorized skill instructions" }] })
