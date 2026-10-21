@@ -125,6 +125,8 @@ export interface DesktopSandboxOptions {
   autoStopMinutes?: number;
   private?: boolean;
   onCreated?: (sandbox: string) => Promise<void>;
+  /** Owned pre-launch configuration/audit after source checkout, before browser/app startup. */
+  onPrepared?: (sandbox: string) => Promise<void>;
   /** Test-only override for the sandbox exec-readiness budget. */
   sandboxReadyTimeoutMs?: number;
   /** Defer the throwaway Electron boot until a caller binds its private Den. */
@@ -782,6 +784,7 @@ async function provisionSandbox(
       });
     }
 
+    await options.onPrepared?.(sandbox);
     if (surface === "web") return { sandbox, created, source };
 
     await timedStep(log, "display gate", async () => {

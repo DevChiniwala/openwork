@@ -28,7 +28,8 @@ const load = () => JSON.parse(readFileSync(receiptPath, "utf8"));
 const update = (fn) => { const r = load(); fn(r); writeFileSync(receiptPath, JSON.stringify(r, null, 2), { mode: 0o600 }); };
 const initial = load();
 assert(initial.status.startsWith("pilot-passed"), "Existing functional pilot must have passed");
-assert(!initial.replication, "Existing replication receipt: attach its controller, never recreate blindly");
+const replaceAuditStoppedBuilder = initial.replication?.canaryStatus === "blocked-retained" && initial.templateBuild?.status === "active" && initial.templateBuild?.neverAuthenticated;
+assert(!initial.replication || replaceAuditStoppedBuilder, "Existing replication receipt: attach its controller, never recreate blindly");
 const raw = execFileSync(process.execPath, ["evals/bin/world.mjs", "outputs", "workshop", "--stage", initial.stage, "--reveal", "--json"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const outputs = Object.fromEntries(Object.entries(JSON.parse(raw.trim().split("\n").at(-1)).outputs).map(([k, v]) => [k, v.value]));
 const headers = { authorization: `Bearer ${process.env.DAYTONA_API_KEY}`, "content-type": "application/json" };
@@ -38,15 +39,28 @@ const api = async (path, method = "GET", body) => {
 };
 const redact = (s) => String(s).replace(/https?:\/\/[^\s"<>]+/g, "[private-url]").replace(/[a-z0-9-]+\.daytonaproxy[0-9]+\.net/g, "[private-host]");
 const log = (s) => { appendFileSync(`${directory}/replication.log`, `${new Date().toISOString()} ${redact(s)}\n`, { mode: 0o600 }); console.log(redact(s)); };
-const snapshot = await api("/snapshots/openwork-eval-vnc");
-assert.equal(snapshot.state.toLowerCase(), "active", "Maintained base must be active");
-assert(snapshot.id && snapshot.name === "openwork-eval-vnc");
+if (replaceAuditStoppedBuilder) {
+  const cleanupDeadline = Date.now() + 60000; let deleted = false;
+  while (Date.now() < cleanupDeadline) {
+    const check = await fetch(`https://app.daytona.io/api/sandbox/${initial.templateBuild.builderId}`, { headers });
+    if (check.status === 404) { deleted = true; break; }
+    assert(check.ok, "Owned builder cleanup check failed");
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  assert(deleted, "Temporary builder must be deleted before canary allocation");
+  update(r => { r.templateBuild.builderCleanup = "deletion confirmed HTTP 404"; });
+}
+const snapshotName = replaceAuditStoppedBuilder ? initial.templateBuild.snapshotName : "openwork-eval-vnc";
+const snapshot = await api(`/snapshots/${snapshotName}`);
+assert.equal(snapshot.state.toLowerCase(), "active", "Software base must be active");
+assert(snapshot.id && snapshot.name === snapshotName);
+if (replaceAuditStoppedBuilder) assert.equal(snapshot.id, initial.templateBuild.snapshotId);
 const recipe = readFileSync(`${root}/.devcontainer/Dockerfile.daytona-vnc`, "utf8");
 assert(recipe.includes("git clone") && recipe.includes("rm -rf") && !/sign-in|authToken|OPENAI_API_KEY/.test(recipe), "Review the clean base recipe");
-const template = { kind: "maintained-clean-base-plus-per-clone-bootstrap", snapshotId: snapshot.id, snapshotName: snapshot.name, recipeSha256: createHash("sha256").update(recipe).digest("hex"), sourceSha, newSnapshotCreated: false, authenticatedPilotCaptured: false };
+const template = { kind: replaceAuditStoppedBuilder ? "owned-never-authenticated-cold-software-snapshot" : "maintained-clean-base-plus-per-clone-bootstrap", snapshotId: snapshot.id, snapshotName: snapshot.name, recipeSha256: createHash("sha256").update(recipe).digest("hex"), sourceSha, newSnapshotCreated: Boolean(replaceAuditStoppedBuilder), authenticatedPilotCaptured: false, ...(replaceAuditStoppedBuilder ? { finalAudit: initial.templateBuild.finalAudit } : {}) };
 const seats = new Map(); let canaryMember, approval = false, fanoutRunning = false;
 let canaryResolve; const canaryReady = new Promise(resolve => { canaryResolve = resolve; });
-update(r => { r.replication = { template, deadline: new Date(deadline).toISOString(), socketPath, seats: [], canaryStatus: "preparing", fanoutStatus: "not-started", maxAdditionalComputeAndCanaryModelUsd: 15 }; });
+update(r => { if (replaceAuditStoppedBuilder) r.priorTemplateAudit = r.replication; r.replication = { template, deadline: new Date(deadline).toISOString(), socketPath, seats: [], canaryStatus: "preparing", fanoutStatus: "not-started", maxAdditionalComputeAndCanaryModelUsd: 15 }; });
 
 async function capacity(count) {
   const backend = await api(`/sandbox/${initial.finalResources.find(s => s.role === "backend").id}`);
@@ -57,20 +71,20 @@ async function capacity(count) {
   assert(pool.currentMemoryUsage + count * 8 + 16 <= pool.totalMemoryQuota, "Memory reserve insufficient");
   assert(pool.currentDiskUsage + count * 10 + 20 <= pool.totalDiskQuota, "Disk reserve insufficient");
   const remainingHours = (deadline - Date.now()) / 3600000;
-  const bound = 19 * (4 * 0.0504 + 8 * 0.0162 + 10 * 0.000108) * remainingHours + 5;
+  const bound = 19 * (4 * 0.0504 + 8 * 0.0162 + 10 * 0.000108) * remainingHours + 5.5;
   assert(bound <= 15, "Incremental 19-seat compute plus canary $5 model cap exceeds $15");
   assert(deadline - Date.now() > (count > 1 ? 45 : 15) * 60000, "Not enough fixed-event lifetime; renewal must be explicit");
   const facts = { observedAt: new Date().toISOString(), pool, activeSnapshots: usage.currentSnapshotUsage, snapshotLimit: usage.totalSnapshotQuota, newSnapshots: 0, newVolumes: 0, remainingToLaunch: count, worstCaseAdditional19ComputePlusCanaryModelUsd: bound };
   update(r => { r.replication.capacity = facts; }); return facts;
 }
-const remote = async (sandbox, source) => {
+const remote = async (sandbox, source, rootAudit = false) => {
   const payload = Buffer.from(source).toString("base64");
-  const r = await defaultDaytonaExec(["exec", sandbox, "--", `node -e "eval(Buffer.from('${payload}','base64').toString())"`], { timeoutMs: 120000 });
+  const r = await defaultDaytonaExec(["exec", sandbox, "--", `${rootAudit ? "sudo -n " : ""}node -e "eval(Buffer.from('${payload}','base64').toString())"`], { timeoutMs: 120000 });
   assert.equal(r.code, 0, `Owned remote check failed: ${redact(r.stdout + r.stderr).slice(-400)}`);
   return r.stdout.trim().split("\n").at(-1);
 };
 async function baseAudit(sandbox) {
-  const data = await remote(sandbox, `const fs=require('node:fs');const roots=['/home/daytona','/root'];const bad=[];const paths=['.git-credentials','.netrc','.aws/credentials','.ssh/id_rsa','.ssh/id_ed25519','.config/chromium/Default/Cookies','.config/google-chrome/Default/Cookies','.config/OpenWork','.config/openwork-desktop','.config/openwork','.config/opencode/auth.json','.local/share/opencode/auth.json','.local/share/opencode/opencode.db'];for(const root of roots)for(const p of paths)if(fs.existsSync(root+'/'+p))bad.push(root+'/'+p);for(const p of ['/workspace/.env','/workspace/.env.dev','/workspace/.env.local','/workspace/.openwork-daytona/desktop-bootstrap.json','/workspace/.openwork-daytona/den-env.sh'])if(fs.existsSync(p))bad.push(p);const processes=fs.readdirSync('/proc').filter(x=>/^\\d+$/.test(x)).flatMap(p=>{try{return [fs.readFileSync('/proc/'+p+'/comm','utf8').trim()]}catch{return[]}}).filter(x=>/^(electron|chromium|chrome|mysqld)$/.test(x));const sharedSecretsMounted=fs.readFileSync('/proc/mounts','utf8').includes('/daytona-secrets');console.log(JSON.stringify({credentialOrPersonalPaths:bad,appBrowserOrBackendProcesses:processes,sharedSecretsMounted}));`);
+  const data = await remote(sandbox, `const fs=require('node:fs');const roots=['/home/daytona','/root'];const bad=[];const paths=['.git-credentials','.netrc','.aws/credentials','.ssh/id_rsa','.ssh/id_ed25519','.config/chromium/Default/Cookies','.config/google-chrome/Default/Cookies','.config/OpenWork','.config/openwork-desktop','.config/openwork','.config/opencode/auth.json','.local/share/opencode/auth.json','.local/share/opencode/opencode.db'];for(const root of roots)for(const p of paths)if(fs.existsSync(root+'/'+p))bad.push(root+'/'+p);for(const p of ['/workspace/.env','/workspace/.env.dev','/workspace/.env.local','/workspace/.openwork-daytona/desktop-bootstrap.json','/workspace/.openwork-daytona/den-env.sh'])if(fs.existsSync(p))bad.push(p);const processes=fs.readdirSync('/proc').filter(x=>/^\\d+$/.test(x)).flatMap(p=>{try{return [fs.readFileSync('/proc/'+p+'/comm','utf8').trim()]}catch{return[]}}).filter(x=>/^(electron|chromium|chrome|mysqld)$/.test(x));const sharedSecretsMounted=fs.readFileSync('/proc/mounts','utf8').includes('/daytona-secrets');console.log(JSON.stringify({credentialOrPersonalPaths:bad,appBrowserOrBackendProcesses:processes,sharedSecretsMounted}));`, true);
   const audit = JSON.parse(data); assert.equal(audit.credentialOrPersonalPaths.length, 0, "Base contains personal/credential residue; stop before app launch"); assert.equal(audit.appBrowserOrBackendProcesses.length, 0); assert.equal(audit.sharedSecretsMounted, false); return audit;
 }
 async function signedUrl(sandbox, port) {
@@ -90,6 +104,12 @@ async function launch(number) {
   try {
     const provisioned = await provisionDesktopSandbox({ ref: sourceSha, name: `ww-parallel-${record.key}`, snapshot: snapshot.name, private: true, secrets: false, autoStopMinutes: 0, skipDesktopWarmup: true, retainOnFailure: true, exec,
       log: line => log(`${record.key} ${line}`),
+      onPrepared: async sandbox => {
+        // Git checkout can restore the public repository's demo .env.dev. It is
+        // not a private credential, but no root dev env is allowed in attendees.
+        const cleaned = JSON.parse(await remote(sandbox, `const fs=require('node:fs'),cp=require('node:child_process');const p='/workspace/.env.dev';if(fs.existsSync(p)){if(!fs.readFileSync(p).equals(cp.execFileSync('git',['-C','/workspace','show','HEAD:.env.dev'])))throw Error('Unexpected env content');fs.unlinkSync(p)}console.log(JSON.stringify({rootDevEnvAbsent:!fs.existsSync(p)}));`));
+        assert(cleaned.rootDevEnvAbsent); record.preLaunchDevEnvAbsent = true; writeSeat(record);
+      },
       onCreated: async name => {
         const info = await api(`/sandbox/${name}`); record.id = info.id; record.name = info.name; record.status = "auditing-base"; writeSeat(record);
         const ttl = Math.floor((deadline - 60000 - Date.now()) / 60000); assert(ttl >= 10);
@@ -107,7 +127,7 @@ async function launch(number) {
     let auth;
     try { auth = await evaluate(client, `({tokenPresent:!!localStorage.getItem('openwork.den.authToken'),sessionOriginPresent:!!localStorage.getItem('openwork.den.sessionOrigin'),text:document.body.innerText.slice(0,2500)})`); } finally { client.close(); }
     assert.equal(auth.tokenPresent, false, "Clone must remain signed out");
-    const probe = JSON.parse(await remote(record.id, `(async()=>{const result={};for(const [name,url] of Object.entries(${JSON.stringify({ api: outputs.denApi + "/health", ready: outputs.denApi + "/ready", web: outputs.denWeb + "/api/den/health", workplace: outputs.workplace + "/health" })})){const r=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(15000)});result[name]={status:r.status,contentType:r.headers.get('content-type')};if(!r.ok)throw Error(name+' HTTP '+r.status)}console.log(JSON.stringify(result));})().catch(e=>{console.log(JSON.stringify({error:e.message}));process.exitCode=1})`));
+    const probe = JSON.parse(await remote(record.id, `(async()=>{const result={};for(const [name,url] of Object.entries(${JSON.stringify({ api: outputs.denApi + "/health", ready: outputs.denApi + "/ready", web: outputs.denWeb, workplace: outputs.workplace + "/health" })})){const r=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(15000)});result[name]={status:r.status,contentType:r.headers.get('content-type')};if(r.status!==200)throw Error(name+' HTTP '+r.status);if(name==='web'){const html=await r.text();if(!/openwork/i.test(html)||/preview warning|visit site/i.test(html))throw Error('Wrong web HTML')}else{const body=await r.json();result[name].service=body.service;result[name].ok=body.ok;if(name==='api'&&(body.ok!==true||body.service!=='den-api'))throw Error('Wrong Den health');if(name==='ready'){result[name].database=body.checks?.database;if(body.checks?.database!=='ok')throw Error('Database not ready')}if(name==='workplace'&&(body.ok!==true||body.service!=='open-workplace-workshop'))throw Error('Wrong workplace')}}console.log(JSON.stringify(result));})().catch(e=>{console.log(JSON.stringify({error:e.message}));process.exitCode=1})`));
     record.denReachability = probe;
     const unsigned = await api(`/sandbox/${record.id}/ports/6080/preview-url`); const denied = await fetch(unsigned.url, { redirect: "manual", signal: AbortSignal.timeout(15000) }); assert.equal(denied.status, 401);
     const viewer = new URL(await signedUrl(record.id, 6080)); for (const [k, v] of Object.entries({ autoconnect: "1", resize: "scale", reconnect: "1", reconnect_delay: "2000" })) viewer.searchParams.set(k, v);
@@ -159,7 +179,7 @@ async function dispatch(q) {
   if (q.action === "navigate") return attached(q.seat, q.port, q.target, c => c.send("Page.navigate", { url: q.site === "den" ? outputs.denWeb + (q.path || "") : q.site === "workplace" ? outputs.workplace + (q.path || "") : q.url }));
   if (q.action === "fillCanaryLogin") { assert(q.seat === 2 && canaryMember); return attached(2, q.port, q.target, c => evaluate(c, `(()=>{const fields=[...document.querySelectorAll('input')];for(const [type,value]of [['email',${JSON.stringify(canaryMember.email)}],['password',${JSON.stringify(canaryMember.password)}]]){const e=fields.find(e=>e.type===type);if(!e)continue;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}return fields.map(e=>({type:e.type,name:e.name}));})()`)); }
   if (q.action === "shot") return attached(q.seat, q.port, q.target, async c => { assert(/^[a-z0-9-]+$/.test(q.name)); await c.send("Page.bringToFront"); const r = await c.send("Page.captureScreenshot", { format: "png" }); const path = `${directory}/${q.name}.png`; writeFileSync(path, Buffer.from(r.data, "base64")); update(x => x.evidencePaths.push(path)); return { path }; });
-  if (q.action === "approveCanary") { const r = load(); assert(r.replication.canaryEvidence?.normalDesktopSignin && r.replication.canaryEvidence?.independentGuest && r.replication.canaryEvidence?.pilotMarkerDenied && r.replication.canaryEvidence?.paidTaskComplete, "Measured canary evidence missing"); approval = true; update(x => { x.replication.canaryStatus = "passed"; }); return { approved: true }; }
+  if (q.action === "approveCanary") { const r = load(); assert(r.replication.canaryEvidence?.normalDesktopSignin && r.replication.canaryEvidence?.independentGuest && r.replication.canaryEvidence?.pilotMarkerDenied && r.replication.canaryEvidence?.paidTaskComplete, "Measured canary evidence missing"); approval = true; const canary = seats.get(2); assert(canary); canary.record.status = "canary-signed-in-ready"; canary.record.signedIn = true; writeSeat(canary.record); update(x => { x.replication.canaryStatus = "passed"; }); return { approved: true }; }
   if (q.action === "fanout") { assert(approval && !fanoutRunning); await capacity(18); fanoutRunning = true; update(r => { r.replication.fanoutStatus = "running"; }); const queue = Array.from({ length: 18 }, (_, i) => i + 3); void Promise.all(Array.from({ length: 2 }, async () => { for (let n = queue.shift(); n; n = queue.shift()) { try { await launch(n); } catch (e) { log(`Seat ${n} failed and retained: ${redact(e.message)}`); queue.length = 0; } } })).then(() => update(r => { r.replication.fanoutStatus = r.replication.seats.length === 19 && r.replication.seats.every(s => s.status === "signed-out-ready" || s.status === "canary-signed-in-ready") ? "checks-complete" : "incomplete"; })); return { launched: true, concurrency: 2 }; }
   throw Error("Unsupported controller action");
 }
