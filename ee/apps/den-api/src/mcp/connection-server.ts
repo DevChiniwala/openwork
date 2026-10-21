@@ -22,7 +22,6 @@ import { env } from "../env.js"
 import { getOrganizationFeatures, type FeatureMap } from "../features.js"
 import { publicRoute, tokenRoute } from "../middleware/index.js"
 import { appLogger } from "../observability/logger.js"
-import { executeCapabilityWithBudget } from "./agent.js"
 import { getMcpResourceContext, mcpPrincipalCredentialId, verifyMcpRequest, type McpPrincipal } from "./auth.js"
 import {
   createCapabilityRegistryContext,
@@ -390,6 +389,8 @@ export type ConnectionServerRouteDeps = {
   sources: ConnectionServerSources
   /** The executor execute_capability uses. */
   executeCapability: typeof executeCapability
+  /** execute_capability's time budget around each call. */
+  withBudget: (capability: string, invoke: () => Promise<ExecuteCapabilityToolResult>) => Promise<ExecuteCapabilityToolResult>
   revision: InventoryRevision
   pollMs?: number
 }
@@ -401,6 +402,8 @@ export const CONNECTION_SERVER_ROUTE_DEPS: ConnectionServerRouteDeps = {
   catalog: getCatalog,
   sources: CONNECTION_SERVER_SOURCES,
   executeCapability,
+  // Loaded on first call: agent.js also loads the App host bundles, which unit tests do not build.
+  withBudget: async (capability, invoke) => (await import("./agent.js")).executeCapabilityWithBudget({ capability, invoke }),
   revision: (organizationId) => cache.inventory.revision(normalizeDenTypeId("organization", organizationId)),
 }
 
@@ -460,10 +463,7 @@ export function registerConnectionServerRoutes<T extends { Variables: RequestIdV
     })
     const server = createConnectionServer({
       connection,
-      execute: (call) => executeCapabilityWithBudget({
-        capability: call.name,
-        invoke: () => deps.executeCapability(capabilityContext, call),
-      }),
+      execute: (call) => deps.withBudget(call.name, () => deps.executeCapability(capabilityContext, call)),
     })
     return handler.fetch(organizationId, c.req.raw, server)
   })

@@ -94,6 +94,7 @@ function app(overrides: Partial<ConnectionServerRouteDeps> = {}) {
       calls.push({ context, input })
       return { content: [{ type: "text", text: `ran ${input.name}` }], structuredContent: { ran: input.name } }
     },
+    withBudget: (_capability, invoke) => invoke(),
     revision: async () => null,
     ...overrides,
   }
