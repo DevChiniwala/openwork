@@ -10,6 +10,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile }
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { openworkServerDataDir } from "@openwork/paths";
+import { startupPhase, startupPhaseSync } from "./startup-phase.js";
 
 export const OPENCODE_GITHUB_REPO = "anomalyco/opencode";
 const NPM_PACKAGE = "openwork-server";
@@ -85,6 +86,10 @@ export function opencodeReleaseUrl(version: string, asset: string, repo = OPENCO
 }
 
 export function readBinaryVersion(bin: string): string | null {
+  return startupPhaseSync("engine.version-probe", () => readBinaryVersionInner(bin));
+}
+
+function readBinaryVersionInner(bin: string): string | null {
   try {
     const result = spawnSync(bin, ["--version"], { encoding: "utf8", timeout: 10_000 });
     if (result.status !== 0 || !result.stdout) return null;
@@ -275,6 +280,14 @@ export async function seedOpencodePluginDeps(input: {
   configDir: string;
   now?: () => number;
 }): Promise<PluginDepsSeedResult> {
+  return startupPhase("plugin-deps.seed", () => seedOpencodePluginDepsInner(input));
+}
+
+async function seedOpencodePluginDepsInner(input: {
+  archive: string;
+  configDir: string;
+  now?: () => number;
+}): Promise<PluginDepsSeedResult> {
   const now = input.now ?? Date.now;
   const startedAt = now();
   if (!await isFile(input.archive)) return { seeded: false, reason: "no-archive" };
@@ -285,7 +298,8 @@ export async function seedOpencodePluginDeps(input: {
   try {
     await mkdir(input.configDir, { recursive: true });
     staging = await mkdtemp(join(input.configDir, ".openwork-plugin-deps-"));
-    extractArchive(input.archive, basename(input.archive), staging);
+    const destination = staging;
+    startupPhaseSync("plugin-deps.extract", () => extractArchive(input.archive, basename(input.archive), destination));
     // node_modules first: if this stops part-way, OpenCode sees an
     // incomplete lockfile and runs its own install, as it would have.
     for (const name of OPENCODE_INSTALL_STATE) {

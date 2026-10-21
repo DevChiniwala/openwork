@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { withStartupPhase } from "./startup-log.mjs";
 
 export const WINDOWS_SHORTCUT_TIMEOUT_MS = 15000;
 
@@ -105,7 +106,7 @@ export function createWindowsShortcutScheduler({ ready, update = updateWindowsSh
           const started = performance.now();
           let status = "failed";
           try {
-            status = await update(next.request);
+            status = await withStartupPhase("windows.shortcut", () => update(next.request));
           } catch {
             // Cosmetic work must never reject activation/startup or show UI.
           }

@@ -93,6 +93,7 @@ import {
   runDetachedTask,
 } from "./process-resilience.mjs";
 import { createQuitSequencer } from "./quit-sequence.mjs";
+import { createStartupLog, startupPhase, withStartupPhase } from "./startup-log.mjs";
 
 // Startup milestones (epoch ms) for the renderer's one-per-launch startup
 // report to Den. The OS process creation time includes module loading; the
@@ -338,6 +339,9 @@ const userDataPath = BLANK_SLATE_LAUNCH.userDataPath ?? resolveUserDataPath({
   userDataOverride: process.env.OPENWORK_ELECTRON_USERDATA,
 });
 app.setPath("userData", userDataPath);
+const desktopStartupLog = createStartupLog({ directory: path.join(userDataPath, "logs") });
+const endAppReady = startupPhase("app.ready");
+app.once("quit", () => desktopStartupLog.close());
 const linuxDesktopIntegration = createLinuxDesktopIntegration({
   app,
   dialog,
@@ -1277,6 +1281,10 @@ async function acceptConnectLink(rawUrl) {
 }
 
 async function persistConnectLinkClaims(claims) {
+  return withStartupPhase("org.activation", () => persistConnectLinkClaimsInner(claims));
+}
+
+async function persistConnectLinkClaimsInner(claims) {
   const previous = workspaceStore.readDesktopBootstrapConfigSync();
   const config = await persistConnectLinkBranding(claims, {
     persistBootstrap: (config) => workspaceStore.setDesktopBootstrapConfig(config),
@@ -1613,7 +1621,7 @@ async function bootRuntimeForSelectedWorkspace() {
 }
 
 function startRuntimeBootstrap() {
-  runtimeBootstrapPromise = bootRuntimeForSelectedWorkspace().catch((error) => ({
+  runtimeBootstrapPromise = withStartupPhase("runtime.start", bootRuntimeForSelectedWorkspace).catch((error) => ({
     ok: false,
     error: error instanceof Error ? error.message : String(error),
   }));
@@ -1912,7 +1920,7 @@ const desktopCommandHandlers = {
       return ensureRuntimeBootstrap();
   },
   "runtimeStatus": async (event, ...args) => {
-      return runtimeManager.runtimeStatus();
+      return { ...await runtimeManager.runtimeStatus(), desktopStartupLog: desktopStartupLog.read() };
   },
   "engineStop": async (event, ...args) => {
       return runtimeManager.engineStop();
@@ -2577,6 +2585,10 @@ async function handleDesktopInvoke(event, command, ...args) {
 
 
 async function createMainWindow() {
+  return withStartupPhase("window.create", createMainWindowInner);
+}
+
+async function createMainWindowInner() {
   if (mainWindow) return mainWindow;
 
   const preloadPath = path.join(__dirname, "preload.mjs");
@@ -2662,11 +2674,13 @@ async function createMainWindow() {
   });
   mainWindow.setTitle(currentDisplayAppName);
 
+  const endWindowShow = startupPhase("window.show");
   mainWindow.once("ready-to-show", () => {
     if (startupTimings.windowShownAt === null) startupTimings.windowShownAt = Date.now();
     mainWindow?.setTitle(currentDisplayAppName);
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
     mainWindow?.show();
+    endWindowShow();
     resolveShortcutWindowReady();
     flushPendingDeepLinks();
   });
@@ -2909,7 +2923,8 @@ or use: pnpm dev:worktree`);
     });
   });
 
-  app.whenReady().then(async () => {
+  app.whenReady().then(() => withStartupPhase("bootstrap.apply", async () => {
+    endAppReady();
     holdSpellcheckerUntilActivation(workspaceStore.readDesktopBootstrapConfigSync());
     const systemCaCertificates = await runtimeManager.systemCaCertificates();
     session.defaultSession.setCertificateVerifyProc(createSystemCaCertificateVerifyProc(systemCaCertificates));
@@ -2999,7 +3014,7 @@ or use: pnpm dev:worktree`);
     // a working app first. Renderer-owned checks pass the selected release
     // channel explicitly, avoiding stale stable-feed results for alpha users.
     runDetachedTask("initialize updater", ensureAutoUpdater);
-  }).catch((error) => {
+  })).catch((error) => {
     console.error("[desktop] startup failed", error);
     // A quit that arrives mid-startup aborts the pending window load and
     // rejects this chain. showErrorBox is a synchronous modal: raised here it

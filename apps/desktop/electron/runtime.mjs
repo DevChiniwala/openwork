@@ -1,3 +1,4 @@
+import { startupPhase, withStartupPhase } from "./startup-log.mjs";
 import { randomUUID, X509Certificate } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -1442,11 +1443,11 @@ export function createRuntimeManager({
   let systemCaPromise = null;
 
   function systemCa() {
-    systemCaPromise ??= resolveSystemCa({
+    systemCaPromise ??= withStartupPhase("ca.bundle", () => resolveSystemCa({
       tlsModule: tls,
       userDataDir,
       parentEnv: { ...loadUserEnvFile(process.env), ...process.env },
-    });
+    }));
     return systemCaPromise;
   }
 
@@ -1666,6 +1667,12 @@ export function createRuntimeManager({
   }
 
   function resolveOpencodeBinary(opencodeBinPath) {
+    const end = startupPhase("engine.v1.resolve");
+    try { const result = resolveOpencodeBinaryInner(opencodeBinPath); end(); return result; }
+    catch (error) { end(true); throw error; }
+  }
+
+  function resolveOpencodeBinaryInner(opencodeBinPath) {
     const explicitPath = typeof opencodeBinPath === "string" ? opencodeBinPath.trim() : "";
     return explicitPath ? { path: explicitPath, source: "custom" } : resolveBinaryInfo("opencode");
   }
@@ -1857,7 +1864,7 @@ export function createRuntimeManager({
     // The inner start stops any previous runtime before mutating state, so a
     // throw below always happens with nothing left running.
     try {
-      return await startOpenworkServerInner(options);
+      return await withStartupPhase("server.start", () => startOpenworkServerInner(options));
     } catch (error) {
       resetRuntimeStatesAfterFailedServerStart(openworkServerState, engineState, options);
       throw error;
@@ -2183,6 +2190,10 @@ export function createRuntimeManager({
   }
 
   async function engineRestart(options = {}) {
+    return withStartupPhase("engine.restart.requested", () => engineRestartInner(options), options.diagnosticsCause ?? "requested");
+  }
+
+  async function engineRestartInner(options = {}) {
     const projectDir = engineState.projectDir;
     if (!projectDir) {
       throw new Error("OpenCode is not configured for a local workspace");
@@ -2216,6 +2227,10 @@ export function createRuntimeManager({
   }
 
   async function openworkServerRestart(options = {}) {
+    return withStartupPhase("server.restart.requested", () => openworkServerRestartInner(options), options.diagnosticsCause ?? "requested");
+  }
+
+  async function openworkServerRestartInner(options = {}) {
     const workspacePaths = prioritizeWorkspacePaths(engineState.projectDir, await listLocalWorkspacePaths(), {
       platform: workspacePlatform,
     });

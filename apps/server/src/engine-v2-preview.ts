@@ -1,3 +1,4 @@
+import { startupPhase } from "./startup-phase.js";
 import { withEngineSwitchFence } from "./engine-switch-fence.js";
 import { acquireHistoryCopyLock } from "./opencode-v2-history-lock.js";
 import { engineAutoUpgradeRetry, historyRevision, runEngineAutoUpgrade, waitForEngineIdle, type EngineAutoUpgradeRetry } from "./engine-auto-upgrade.js";
@@ -319,12 +320,16 @@ function exec(file: string, args: string[], options: { cwd?: string; timeout?: n
 }
 
 async function resolveBinary(config: ServerConfig): Promise<ResolvedBinary> {
+  return startupPhase("engine.v2.resolve", () => resolveBinaryInner(config));
+}
+
+async function resolveBinaryInner(config: ServerConfig): Promise<ResolvedBinary> {
   const override = process.env.OPENWORK_OPENCODE2_BIN?.trim();
   if (override) return { bin: override, source: "env" };
 
   let pathError = "not found";
   try {
-    await exec("opencode2", ["--version"]);
+    await startupPhase("engine.v2.version-probe", () => exec("opencode2", ["--version"]));
     return { bin: "opencode2", source: "path" };
   } catch (error) {
     pathError = errorMessage(error);

@@ -1,3 +1,4 @@
+import { startupPhase } from "./startup-phase.js";
 import type { EnginePermissionRule } from "./managed-policy-rules.js";
 import { agentPermissionEngineV2Rules, type AgentPermissionRule, type EngineV2PermissionRule } from "./agent-permission-engine.js";
 import type { OrganizationMcpServers } from "./organization-mcp-names.js";
@@ -322,6 +323,12 @@ export function renderOpencodeV2Config(input: {
 }
 
 export async function createManagedOpencodeV2Server(
+  options: ManagedOpencodeV2ServerOptions,
+): Promise<ManagedOpencodeV2Server> {
+  return startupPhase("engine.v2.serve", () => createManagedOpencodeV2ServerInner(options));
+}
+
+async function createManagedOpencodeV2ServerInner(
   options: ManagedOpencodeV2ServerOptions,
 ): Promise<ManagedOpencodeV2Server> {
   const hostname = options.hostname ?? "127.0.0.1";
