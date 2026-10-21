@@ -52,7 +52,7 @@ jobs:
               return;
             }
             // Keep in sync with swiftPaths in scripts/ci/check-codeql-results.mjs.
-            const swiftPaths = ["packages/computer-use/native/"]; // TEMP: prove the empty-result path
+            const swiftPaths = ["packages/computer-use/native/", ".github/workflows/codeql.yml"];
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner: context.repo.owner,
               repo: context.repo.repo,
