@@ -133,8 +133,11 @@ resources to recover it. Normal runs still clean up failed startup automatically
 pnpm world down workshop --stage <event>
 ```
 
-Then confirm Daytona lists no sandboxes for the event. Desktops also expire
-by provider TTL; don't rely on that alone.
+Then confirm Daytona lists no owned sandboxes for the event. Verify each VM's
+actual provider `autoDestroyAt`; do not assume ordinary world startup set a hard
+provider TTL. The isolated replication controller sets and checks it explicitly.
+Never rely on process lifetime or provider TTL alone, and coordinate shared-backend
+teardown with other active lanes.
 
 ## Rules learned the hard way
 
