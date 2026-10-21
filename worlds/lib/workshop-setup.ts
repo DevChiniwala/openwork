@@ -105,7 +105,7 @@ export async function configureWorkshop(den: Den, options: WorkshopSetupOptions)
     attendees.push({ key, memberId, session });
   }
 
-  // allMembers is an organization-wide provider grant. Refuse a pre-seeded/demo
+  // The provider is granted to these member IDs only. Still refuse a pre-seeded/demo
   // directory with extra people: those unapproved accounts would be unbudgeted.
   const approvedIds = new Set([adminMemberId, ...attendees.map((attendee) => attendee.memberId)]);
   const directory = record(context) && Array.isArray(context.members) ? context.members.filter(record) : [];
@@ -143,7 +143,9 @@ export async function configureWorkshop(den: Den, options: WorkshopSetupOptions)
   const created = await request(den.admin, "/v1/inference-providers", orgId, {
     name: "Workshop Sol 6.1", providerId: options.provider ?? "openai", modelIds: [upstreamModelId],
     credential: { kind: "api_key", secret: options.upstreamKey },
-    settings: { upstreamBaseUrl: "https://api.openai.com/v1" }, allMembers: true,
+    // Grant only the validated, budgeted attendees: a member added later gets no
+    // provider access, so nobody can use the shared key outside an allowance.
+    settings: { upstreamBaseUrl: "https://api.openai.com/v1" }, memberIds: attendees.map((attendee) => attendee.memberId),
   });
   const providerId = id(object(created, "inferenceProvider"));
   const models: { key: string; memberId: string; modelId: string; allowanceUsd: number }[] = [];

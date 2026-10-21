@@ -74,8 +74,10 @@ test("workshop setup uses real managed-provider payload, twenty member-ID budget
   assert.ok(calls.slice(1).every((call) => call.org === "org_workshop"), "all subsequent calls are scoped to the same organization");
   assert.deepEqual(writes.find((call) => call.path === "/v1/inference-providers")?.body, {
     name: "Workshop Sol 6.1", providerId: "openai", modelIds: ["gpt-6.1-sol"],
-    credential: { kind: "api_key", secret: upstreamKey }, settings: { upstreamBaseUrl: "https://api.openai.com/v1" }, allMembers: true,
+    credential: { kind: "api_key", secret: upstreamKey }, settings: { upstreamBaseUrl: "https://api.openai.com/v1" },
+    memberIds: Array.from({ length: 20 }, (_, i) => `member_seat-${i}`),
   });
+  assert.ok(!JSON.stringify(writes.find((call) => call.path === "/v1/inference-providers")?.body).includes("allMembers"), "no organization-wide grant: later members get no unbudgeted access");
   const providerIndex = calls.findIndex((call) => call.path === "/v1/inference-providers" && call.method === "POST");
   assert.equal(calls.slice(0, providerIndex).filter((call) => call.path === "/v1/gateway/usage-limits/me").length, 20, "verify every effective budget before granting the real provider");
   assert.equal(calls.filter((call) => call.path.endsWith("/connect")).length, 20);
