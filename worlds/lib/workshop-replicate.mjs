@@ -111,7 +111,15 @@ async function launch(number, resume = false) {
   };
   try {
     const provisioned = await provisionDesktopSandbox({ ref: sourceSha, name: `ww-parallel-${record.key}`, snapshot: snapshot.name, ...(resume ? { reuse: record.id } : { private: true }), secrets: false, autoStopMinutes: 0, skipDesktopWarmup: true, retainOnFailure: true, exec,
-      onExecReady: async sandbox => { record.baseAudit = await baseAudit(sandbox); writeSeat(record); },
+      onExecReady: async sandbox => {
+        if (!record.baseAudit) record.baseAudit = await baseAudit(sandbox);
+        assert.deepEqual(record.baseAudit.credentialOrPersonalPaths, []);
+        // The image intentionally omits the tracked public dev config. Restore
+        // only that reviewed blob for Git's clean-source gate; remove it again
+        // in onPrepared, before any browser/app startup. Never relax dirty checks.
+        const prepared = JSON.parse(await remote(sandbox, `const fs=require('node:fs'),cp=require('node:child_process');const p='/workspace/.env.dev';const blob=cp.execFileSync('git',['-C','/workspace','show','HEAD:.env.dev']);if(fs.existsSync(p)&&!fs.readFileSync(p).equals(blob))throw Error('Unexpected env residue');if(!fs.existsSync(p))fs.writeFileSync(p,blob);console.log(JSON.stringify({reviewedPublicBuildConfigRestored:true}));`));
+        assert(prepared.reviewedPublicBuildConfigRestored); record.publicDevConfigBuildOnly = true; writeSeat(record);
+      },
       log: line => log(`${record.key} ${line}`),
       onPrepared: async sandbox => {
         // Git checkout can restore the public repository's demo .env.dev. It is
