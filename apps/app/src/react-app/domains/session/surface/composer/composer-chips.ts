@@ -4,6 +4,7 @@ import { formatAttachmentBytes } from "@/app/lib/v2-prompt-context";
 import { humanizeCapabilityName } from "./composer-plus-menu-model";
 import { composerConnectorLogoUrls } from "./composer-connector-logos";
 import { composerPillTitle, type ComposerPill } from "./composer-pills";
+import { resolveExtensionIconSrc } from "@/react-app/design-system/extension-icon-src";
 
 /**
  * How composer chips look. The composer draws them as raw Lexical DOM and the
@@ -62,7 +63,8 @@ export type ComposerBadge = {
   meta?: string;
   title: string;
   tone: BadgeTone;
-  slot: { icon: ChipIcon } | { initial: string } | { logoUrls: string[]; fallback: ChipIcon };
+  /** `invertInDark`: a monochrome logo drawn in black, inverted on dark themes. */
+  slot: { icon: ChipIcon } | { initial: string } | { logoUrls: string[]; fallback: ChipIcon; invertInDark?: boolean };
   /** Shows a chevron: the badge opens a preview. */
   disclosure?: boolean;
 };
@@ -99,12 +101,17 @@ export function composerPillBadge(pill: ComposerPill): ComposerBadge {
   }
 }
 
+/** The OpenWork mark, the same one task links in the transcript use. */
+function openworkMarkSlot(): ComposerBadge["slot"] {
+  return { logoUrls: [resolveExtensionIconSrc("/openwork-sidebar-mark.svg")], fallback: "message-square", invertInDark: true };
+}
+
 /** A referenced task. `title` is its current title when known, else the one saved with the reference. */
 export function sessionReferenceBadge(title: string, options?: { unavailable?: boolean }): ComposerBadge {
   const label = title.trim() || "Untitled task";
   return options?.unavailable
-    ? { kind: "session", label, meta: "Unavailable", title: `Task unavailable: ${label}`, tone: "gray", slot: { icon: "message-square" } }
-    : { kind: "session", label, title: `Task: ${label}`, tone: "gray", slot: { icon: "message-square" } };
+    ? { kind: "session", label, meta: "Unavailable", title: `Task unavailable: ${label}`, tone: "gray", slot: openworkMarkSlot() }
+    : { kind: "session", label, title: `Task: ${label}`, tone: "gray", slot: openworkMarkSlot() };
 }
 
 export function agentBadge(name: string): ComposerBadge {
@@ -175,6 +182,10 @@ function span(className: string, text?: string) {
   return element;
 }
 
+export function composerBadgeLogoClass(slot: ComposerBadge["slot"]) {
+  return "invertInDark" in slot && slot.invertInDark ? "size-3.5 object-contain dark:invert" : "size-3.5 object-contain";
+}
+
 /** A logo carries its own color; icons and initials sit on the badge's tone. */
 export function composerBadgeSlotClass(badge: ComposerBadge, showsLogo: boolean) {
   return showsLogo ? COMPOSER_BADGE_SLOT_CLASS : `${COMPOSER_BADGE_SLOT_CLASS} ${COMPOSER_BADGE_TONE_CLASS[badge.tone]}`;
@@ -196,7 +207,7 @@ function createBadgeSlotDom(badge: ComposerBadge) {
   const img = document.createElement("img");
   img.alt = "";
   img.decoding = "async";
-  img.className = "size-3.5 object-contain";
+  img.className = composerBadgeLogoClass(content);
   let attempt = 0;
   img.src = logoUrls[0] ?? "";
   img.addEventListener("error", () => {
