@@ -716,6 +716,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
             ? "One object matching the match's inputSchema. For an App (kind mcp_app), an optional launch input object the App receives."
             : "One object matching the match's inputSchema."),
           schemaDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional().describe("Optional schemaDigest from the match, to report schema drift since that search."),
+          // Older inputs, accepted for a while; capabilityCallInput explains why.
           path: z.union([z.record(z.string(), z.unknown()), z.string()]).optional().describe("Older form of arguments.path; prefer arguments."),
           query: z.union([z.record(z.string(), z.unknown()), z.string()]).optional().describe("Older form of arguments.query; prefer arguments."),
           body: z.unknown().optional().describe("Older form of arguments (or arguments.body for an API operation); prefer arguments."),

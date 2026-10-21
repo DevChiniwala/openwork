@@ -93,6 +93,12 @@ type CapabilityCall = { name: string; arguments?: unknown; path?: unknown; query
  * The input a source executes: `arguments`, when given, replaces the older
  * path/query/body fields. Misplaced arguments become a tool execution error
  * the model can correct.
+ *
+ * The older fields stay accepted for a while because callers still send them:
+ * sessions that listed tools or searched on a Den build from before
+ * `arguments` (including old instances still serving during a rollout),
+ * Automation instructions written for that form, and outside MCP clients
+ * following older guidance. Remove them once those have moved to `arguments`.
  */
 export function capabilityCallInput<T extends CapabilityCall>(
   input: T,

@@ -103,6 +103,7 @@ const boundedGatewayTools: ExternalMcpProxyTool[] = [
       properties: {
         name: { type: "string", minLength: 1 },
         arguments: { type: "object" },
+        // Older input, accepted for a while; capabilityCallInput explains why.
         body: { type: "object", description: "Older form of arguments." },
       },
       required: ["name"],

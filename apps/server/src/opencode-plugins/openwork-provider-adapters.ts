@@ -313,6 +313,8 @@ function connectContribution(
           argument("name", "string", false, "Exact capability ref returned by Connect search or remote skill guidance."),
           argument("arguments", "object", false, "Arguments matching the search match's inputSchema."),
           argument("schemaDigest", "string", false, "Optional schema digest from the search match."),
+          // Den keeps accepting these older inputs for a while, for callers
+          // and older Den builds from before `arguments`.
           argument("path", "object", false, "Older form of arguments.path."),
           argument("query", "object", false, "Older form of arguments.query."),
           argument("body", "object", false, "Older form of arguments."),
