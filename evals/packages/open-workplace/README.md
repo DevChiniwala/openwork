@@ -16,7 +16,7 @@ Everything is seeded with the **Acme Robotics** sample organization: people, cus
 
 ## Multi-participant workshops
 
-Use the opt-in authenticated [workshop gateway](WORKSHOP.md) for individual exercises. It provides per-participant private service processes, browser sign-in and workshop OAuth for MCP. Publishing the standalone entry points below does **not** provide participant isolation.
+Use the authenticated [workshop gateway](WORKSHOP.md) for individual exercises. Opening it automatically creates/restores a private browser workspace—no password or account card. It provides private service processes, durable storage and explicit OAuth consent for MCP. Publishing the standalone entry points below does **not** provide participant isolation.
 
 ## Run
 

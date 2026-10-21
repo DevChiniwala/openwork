@@ -49,7 +49,7 @@ export async function workshopAgent(seed: Seed) {
     if (configured && new URL(origin).protocol !== "https:") throw new Error("Hosted workshop proof requires HTTPS");
     if (!configured) {
       const child = spawn(process.execPath, [fileURLToPath(new URL("../packages/open-workplace/src/workshop.mjs", import.meta.url))], {
-        env: { PATH: process.env.PATH, HOST: "127.0.0.1", PORT: new URL(origin).port, PUBLIC_URL: origin, OPEN_WORKPLACE_PARTICIPANTS: JSON.stringify(participants) },
+        env: { PATH: process.env.PATH, HOST: "127.0.0.1", PORT: new URL(origin).port, PUBLIC_URL: origin, OPEN_WORKPLACE_JOIN_MODE: "assigned", OPEN_WORKPLACE_PARTICIPANTS: JSON.stringify(participants) },
         stdio: ["ignore", "pipe", "pipe"],
       });
       child.stdout.resume(); child.stderr.resume();

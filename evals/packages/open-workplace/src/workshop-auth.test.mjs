@@ -11,7 +11,7 @@ const participants = [
   { id: "alice", name: "Alice <Workshop>", token: "alice-" + "a".repeat(40) },
   { id: "bob", name: "Bob Workshop", token: "bob-" + "b".repeat(40) },
 ];
-async function fixture(t, storage) {
+async function fixture(t, storage, options = {}) {
   let auth;
   const server = createServer(async (req, res) => {
     if (await auth.handle(req, res, new URL(req.url, origin))) return;
@@ -22,13 +22,13 @@ async function fixture(t, storage) {
   });
   server.listen(0, "127.0.0.1"); await once(server, "listening");
   const origin = `http://127.0.0.1:${server.address().port}`;
-  auth = createWorkshopAuth({ origin, participants, storage });
+  auth = createWorkshopAuth({ origin, participants, storage, ...options });
   const restart = async (roster = participants, nextStorage = storage) => {
-    await auth.close(); auth = createWorkshopAuth({ origin, participants: roster, storage: nextStorage });
-    await request("/login");
+    await auth.close(); auth = createWorkshopAuth({ origin, participants: roster, storage: nextStorage, ...options });
+    await request(options.automaticJoin ? "/signed-out" : "/login");
   };
   t.after(async () => { await auth.close(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); });
-  const request = (path, options = {}) => fetch(origin + path, { redirect: "manual", ...options });
+  const request = (path, requestOptions = {}) => fetch(origin + path, { redirect: "manual", ...requestOptions, headers: { ...(options.automaticJoin ? { Accept: "text/html" } : {}), ...requestOptions.headers } });
   const form = (path, fields, headers = {}) => request(path, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: origin, ...headers }, body: new URLSearchParams(fields) });
   const login = async (participant, next = "/", headers = {}) => {
     const response = await form("/login", { token: participant.token, next }, headers);
@@ -49,7 +49,7 @@ async function fixture(t, storage) {
     const consent = await request(attempt.path, { headers: { Cookie: cookie } });
     assert.equal(consent.status, 200); assert.equal(consent.headers.get("location"), null);
     const html = await consent.text(); assert.match(html, /Allow workplace access/); assert.match(html, /Test &lt;client&gt;/);
-    const response = await form("/oauth/authorize", attempt.fields, { Cookie: cookie });
+    const response = await form("/oauth/authorize", { ...attempt.fields, decision: "allow" }, { Cookie: cookie });
     assert.equal(response.status, 303);
     const target = new URL(response.headers.get("location")); assert.equal(target.searchParams.get("state"), "opaque-state");
     return { ...attempt, code: target.searchParams.get("code") };
@@ -457,4 +457,247 @@ test("pre-queue body failures and normal API reads cannot steal a pending auth c
   const signedIn = await complete;
   assert.equal(signedIn.status, 303); assert.equal(signedIn.headers.get("location"), "/drive"); assert.ok(signedIn.headers.get("set-cookie"));
   assert.equal((await f.request("/who", { headers: { Cookie: signedIn.headers.get("set-cookie").split(";")[0] } })).status, 200);
+});
+
+// Native HTTP allows an honest navigation Fetch Metadata combination; undici
+// fetch always sends Sec-Fetch-Mode: cors, even if a test sets a document dest.
+const documentGet = (f, path, headers = {}) => new Promise((resolve, reject) => {
+  const req = httpRequest(f.origin + path, { headers: { Accept: "text/html", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", ...headers } }, (res) => {
+    const chunks = [];
+    res.on("data", (chunk) => chunks.push(chunk));
+    res.on("end", () => resolve(new Response(Buffer.concat(chunks), { status: res.statusCode, headers: res.headers })));
+  });
+  req.once("error", reject); req.end();
+});
+const join = async (f, cookie, next = "/") => {
+  const response = await f.request("/login?next=" + encodeURIComponent(next), { headers: cookie ? { Cookie: cookie } : {} });
+  assert.equal(response.status, 303);
+  return { response, cookie: response.headers.get("set-cookie")?.split(";")[0] || cookie };
+};
+
+test("automatic browser join reuses one private guest; separate jars and assigned roster stay isolated", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true });
+  for (const path of ["/", "/unknown", "/outlook/mcp", "/api/state"]) {
+    const response = await f.request(path);
+    assert.equal(response.status, 401); assert.equal(response.headers.get("set-cookie"), null);
+  }
+  assert.equal(storage.data.size, 0, "API and unknown routes do not create guests");
+  const first = await join(f, null, "/jira"), second = await join(f);
+  assert.match(first.response.headers.get("set-cookie"), /HttpOnly; SameSite=Lax; Max-Age=2592000/);
+  assert.equal(first.response.headers.get("location"), "/jira");
+  assert.equal((await join(f, first.cookie)).response.headers.get("set-cookie"), null);
+  const who = (cookie) => f.request("/who", { headers: { Cookie: cookie } }).then((response) => response.json());
+  const a = await who(first.cookie), b = await who(second.cookie);
+  assert.match(a.id, /^guest-[a-f0-9]{24}$/); assert.equal(a.name, "Workshop guest 1"); assert.notEqual(a.id, b.id);
+  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 2);
+  assert.equal((await f.request("/who", { headers: { Authorization: `Bearer ${participants[0].token}` } })).status, 401, "Automatic mode does not accept obsolete passwords as API credentials");
+  for (const next of ["//foreign.example", "/%5cforeign.example", "https://foreign.example"]) assert.equal((await join(f, first.cookie, next)).response.headers.get("location"), "/");
+  assert.equal((await f.form("/login", { token: participants[0].token })).status, 405);
+  for (const key of ["token", "code", "password"]) assert.equal((await f.request(`/login?${key}=obsolete`)).status, 400);
+});
+
+test("automatic OAuth validates before joining, always requires explicit consent, and shares one guest across five resources and Den origins", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true });
+  const client = await f.register("https://den-one.example/callback"), other = await f.register("https://den-two.example/callback");
+  const initial = f.authorization(client);
+  for (const extra of [{ client_id: "unknown" }, { resource: f.origin }, { code_challenge_method: "plain" }, { code_challenge: "short" }]) {
+    const response = await f.request("/oauth/authorize?" + new URLSearchParams({ ...initial.fields, ...extra }));
+    assert.equal(response.status, 400); assert.equal(response.headers.get("set-cookie"), null);
+    assert.equal(storage.data.get("workshop-auth:v1").guests.length, 0);
+  }
+  const first = await documentGet(f, initial.path, { Referer: "https://den-one.example/" });
+  assert.equal(first.status, 200); assert.equal(first.headers.get("location"), null);
+  assert.match(first.headers.get("set-cookie"), /SameSite=Lax/);
+  const cookie = first.headers.get("set-cookie").split(";")[0], html = await first.text();
+  assert.match(html, /Private workspace/); assert.match(html, /not a verified person/); assert.match(html, /Allow workplace access/);
+  assert.doesNotMatch(html, /password|account card|assigned sandbox/i);
+  assert.equal(storage.data.get("workshop-auth:v1").tables.codes.length, 0, "GET cannot issue a code");
+  assert.equal((await f.form("/oauth/authorize", initial.fields, { Cookie: cookie })).status, 400, "Missing allow decision is not consent");
+  assert.equal((await f.form("/oauth/authorize", { ...initial.fields, decision: "allow" })).status, 401, "POST cannot mint a guest");
+  const guestId = (await (await f.request("/who", { headers: { Cookie: cookie } })).json()).id;
+  for (const [index, path] of ["/outlook/mcp", "/calendar/mcp", "/drive/mcp", "/jira/mcp", "/confluence/mcp"].entries()) {
+    const current = index % 2 ? other : client, attempt = f.authorization(current, f.origin + path);
+    const consent = await documentGet(f, attempt.path, { Cookie: cookie, Referer: new URL(current.redirectUri).origin });
+    assert.equal(consent.status, 200); assert.equal(consent.headers.get("set-cookie"), null);
+    const token = await (await f.redeem(current, await f.issue(current, cookie, f.origin + path))).json();
+    assert.equal((await (await f.request(path, bearer(token))).json()).id, guestId);
+    assert.equal((await f.request("/state", bearer(token))).status, 401);
+    assert.equal((await refresh(f, current, token, { resource: f.origin })).status, 400);
+  }
+  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 1);
+});
+
+test("automatic joins reject web fetches, foreign origins and embedded destinations without consuming guest slots", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true }), client = await f.register();
+  for (const path of ["/login", f.authorization(client).path]) {
+    for (const headers of [{ Origin: "https://foreign.example" }, { "Sec-Fetch-Dest": "iframe" }, { "Sec-Fetch-Dest": "image" }, { "Sec-Fetch-Dest": "empty" }, { Accept: "application/json" }, { Accept: "*/*" }]) {
+      const response = await f.request(path, { headers });
+      assert.equal(response.status, 403); assert.equal(response.headers.get("set-cookie"), null);
+    }
+  }
+  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 0);
+  const response = await documentGet(f, "/login", { Referer: "https://foreign.example/" });
+  assert.equal(response.status, 303, "Real top-level cross-site navigation can join");
+});
+
+test("automatic guest registry restores across restarts; fingerprints are not bearer tokens and actual capabilities stay hashed", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true });
+  const session = await join(f), client = await f.register(), attempt = await f.issue(client, session.cookie);
+  const token = await (await f.redeem(client, attempt)).json();
+  const before = storage.data.get("workshop-auth:v1"), guest = before.guests[0];
+  assert.deepEqual(Object.keys(guest).sort(), ["createdAt", "fingerprint", "id", "name"]);
+  assert.match(guest.fingerprint, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal((await f.request("/outlook/mcp", { headers: { Authorization: `Bearer ${guest.fingerprint}` } })).status, 401);
+  const saved = JSON.stringify(before);
+  for (const value of [session.cookie.split("=")[1], attempt.code, token.access_token, token.refresh_token]) assert.equal(saved.includes(value), false);
+  await f.restart();
+  assert.equal((await join(f, session.cookie)).response.headers.get("set-cookie"), null);
+  assert.equal((await (await f.request("/who", { headers: { Cookie: session.cookie } })).json()).id, guest.id);
+  assert.equal((await f.request("/outlook/mcp", bearer(token))).status, 200);
+  const rotated = await (await refresh(f, client, token)).json();
+  await f.restart();
+  assert.equal((await refresh(f, client, token)).status, 400);
+  assert.equal((await f.request("/outlook/mcp", bearer(rotated))).status, 401);
+  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 1);
+});
+
+test("automatic capacity preserves existing sessions and guest creation allows a venue cohort before per-IP throttling", async (t) => {
+  for (const automaticLimit of [0, -1, 1001, 1.5, "200", null]) assert.throws(() => createWorkshopAuth({ origin: "http://localhost", automaticLimit }), /configuration/);
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true, automaticLimit: 2 });
+  const first = await join(f), second = await join(f);
+  assert.equal((await f.request("/login")).status, 503);
+  assert.equal((await join(f, first.cookie)).response.headers.get("set-cookie"), null);
+  assert.equal((await f.request("/who", { headers: { Cookie: second.cookie } })).status, 200);
+  const cohort = await fixture(t, memoryStorage(), { automaticJoin: true });
+  const attendees = [];
+  for (let index = 0; index < 60; index++) attendees.push(await join(cohort));
+  assert.equal((await cohort.request("/login")).status, 429);
+  for (const attendee of attendees) assert.equal((await join(cohort, attendee.cookie)).response.status, 303);
+});
+
+test("automatic sign-out leaves the browser without immediately creating a new workspace; grants survive and sessions last thirty days", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true });
+  const session = await join(f), client = await f.register(), token = await (await f.redeem(client, await f.issue(client, session.cookie))).json();
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now + 9 * 60 * 60 * 1000);
+  assert.equal((await f.request("/who", { headers: { Cookie: session.cookie } })).status, 200);
+  assert.equal((await refresh(f, client, token)).status, 400, "Thirty-day browser lifetime must not extend eight-hour OAuth grants");
+  t.mock.method(Date, "now", () => now);
+  const currentClient = await f.register();
+  const active = await (await f.redeem(currentClient, await f.issue(currentClient, session.cookie))).json();
+  const logout = await f.form("/logout", {}, { Cookie: session.cookie });
+  assert.equal(logout.headers.get("location"), "/signed-out"); assert.match(logout.headers.get("set-cookie"), /Max-Age=0/);
+  const signedOut = await f.request("/signed-out"), html = await signedOut.text();
+  assert.equal(signedOut.status, 200); assert.equal(signedOut.headers.get("set-cookie"), null);
+  assert.match(html, /Open a new private workspace/); assert.doesNotMatch(html, /password|account card/i);
+  assert.equal((await f.request("/who", { headers: { Cookie: session.cookie } })).status, 401);
+  assert.equal((await f.request("/outlook/mcp", bearer(active))).status, 200);
+  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 1);
+  assert.notEqual((await join(f)).cookie, session.cookie);
+  t.mock.method(Date, "now", () => now + 30 * 24 * 60 * 60 * 1000 + 1000);
+  assert.equal((await f.request("/who", { headers: { Cookie: session.cookie } })).status, 401);
+});
+
+test("v1 assigned snapshots migrate to v2 without changing legacy identities", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage), session = await f.login(participants[0]);
+  const saved = storage.data.get("workshop-auth:v1"); saved.version = 1; delete saved.guests;
+  storage.data.set("workshop-auth:v1", saved);
+  await f.restart();
+  assert.equal((await f.request("/who", { headers: { Cookie: session.cookie } })).status, 200);
+  await f.login(participants[1]);
+  assert.equal(storage.data.get("workshop-auth:v1").version, 2);
+  assert.deepEqual(storage.data.get("workshop-auth:v1").guests, []);
+});
+
+test("corrupt automatic guest registries and failed guest commits fail closed without reseeding", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true }), session = await join(f);
+  const baseline = structuredClone(storage.data.get("workshop-auth:v1"));
+  const changes = [
+    (saved) => { delete saved.guests; },
+    (saved) => { saved.guests.push(saved.guests[0]); },
+    (saved) => { saved.guests[0].id = participants[0].id; },
+    (saved) => { saved.guests[0].token = "forged"; },
+    (saved) => { saved.guests[0].createdAt = "yesterday"; },
+    (saved) => { saved.guests[0].fingerprint = "invalid"; },
+    (saved) => { saved.guests[0].fingerprint = "x".repeat(43); },
+    (saved) => { saved.guests = []; },
+  ];
+  for (const change of changes) {
+    const corrupt = memoryStorage(), saved = structuredClone(baseline); change(saved); corrupt.data.set("workshop-auth:v1", saved);
+    await f.restart(participants, corrupt);
+    assert.equal((await f.request("/login")).status, 503);
+    assert.equal(f.auth.authenticate({ headers: { cookie: session.cookie }, url: "/who" }), null);
+    assert.deepEqual(corrupt.data.get("workshop-auth:v1"), saved);
+  }
+  await f.restart(participants, storage);
+  storage.write = () => { throw new Error("disk unavailable"); };
+  const failed = await f.request("/login");
+  assert.equal(failed.status, 503); assert.equal(failed.headers.get("set-cookie"), null); assert.equal(failed.headers.get("location"), null);
+});
+
+test("automatic default capacity is 200 guests, with no global session eviction", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true }), now = Date.now();
+  let first;
+  for (let index = 0; index < 200; index++) {
+    // New minutes renew the per-IP budget, not the registry capacity.
+    t.mock.method(Date, "now", () => now + Math.floor(index / 50) * 61000);
+    const attendee = await join(f);
+    if (!first) first = attendee;
+  }
+  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 200);
+  assert.equal((await f.request("/login")).status, 503);
+  assert.equal((await join(f, first.cookie)).response.headers.get("set-cookie"), null);
+  assert.equal((await f.request("/who", { headers: { Cookie: first.cookie } })).status, 200);
+});
+
+test("automatic browser expiry is thirty days and HTTPS cookies are host-only secure", async (t) => {
+  const f = await fixture(t, memoryStorage(), { automaticJoin: true }), session = await join(f), now = Date.now();
+  t.mock.method(Date, "now", () => now + 29 * 24 * 60 * 60 * 1000);
+  await f.restart();
+  assert.equal((await f.request("/who", { headers: { Cookie: session.cookie } })).status, 200);
+  t.mock.method(Date, "now", () => now + 30 * 24 * 60 * 60 * 1000 + 1000);
+  assert.equal((await f.request("/who", { headers: { Cookie: session.cookie } })).status, 401);
+  const auth = createWorkshopAuth({ origin: "https://workshop.example", automaticJoin: true });
+  t.after(() => auth.close());
+  const headers = new Map();
+  const res = { setHeader(key, value) { headers.set(key.toLowerCase(), value); }, getHeader(key) { return headers.get(key.toLowerCase()); }, writeHead(status) { this.status = status; }, end() {} };
+  assert.equal(await auth.handle({ method: "GET", url: "/login", headers: { accept: "text/html" } }, res, new URL("https://workshop.example/login")), true);
+  assert.equal(res.status, 303);
+  assert.match(headers.get("set-cookie"), /^__Host-workshop_session=.*; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure$/);
+  assert.doesNotMatch(headers.get("set-cookie"), /Domain=/);
+});
+
+test("automatic GET guest commits serialize durably without blocking existing API traffic or pre-queue body failures", { timeout: 4000 }, async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true }), session = await join(f);
+  const write = storage.write; let entered, release;
+  const blocked = new Promise((resolve) => { entered = resolve; }), gate = new Promise((resolve) => { release = resolve; });
+  storage.write = async (key, value) => { entered(); await gate; write(key, value); };
+  const creating = f.request("/login"); await blocked;
+  const upload = await unfinishedPost(t, f, "/login");
+  try {
+    const invalid = await f.request("/oauth/token", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "bad", signal: AbortSignal.timeout(1000) });
+    assert.equal(invalid.status, 415);
+    const api = await f.request("/who", { headers: { Cookie: session.cookie }, signal: AbortSignal.timeout(1000) });
+    assert.equal(api.status, 200);
+    assert.equal(storage.data.get("workshop-auth:v1").guests.length, 1, "Uncommitted guest must not be acknowledged");
+  } finally { release(); upload.req.destroy(); }
+  const joined = await creating;
+  assert.equal(joined.status, 303); assert.ok(joined.headers.get("set-cookie"));
+  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 2);
+});
+
+test("guest restore rejects valid-format roster collisions, duplicate fingerprints and capacity reductions", async (t) => {
+  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true }), first = await join(f);
+  await join(f);
+  const saved = structuredClone(storage.data.get("workshop-auth:v1"));
+  await f.restart([...participants, { id: saved.guests[0].id, name: "Roster collision", token: "assigned-only" }]);
+  assert.equal((await f.request("/login")).status, 503);
+  assert.equal(f.auth.authenticate({ headers: { cookie: first.cookie }, url: "/who" }), null);
+  const duplicate = memoryStorage(), corrupt = structuredClone(saved);
+  corrupt.guests[1].fingerprint = corrupt.guests[0].fingerprint; duplicate.data.set("workshop-auth:v1", corrupt);
+  await f.restart(participants, duplicate);
+  assert.equal((await f.request("/login")).status, 503);
+  const limited = createWorkshopAuth({ origin: f.origin, participants, storage, automaticJoin: true, automaticLimit: 1 });
+  assert.equal(limited.isReady(), false); await limited.close();
+  assert.deepEqual(storage.data.get("workshop-auth:v1"), saved);
 });

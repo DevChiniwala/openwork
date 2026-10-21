@@ -66,8 +66,10 @@ function backend(path) {
   return null;
 }
 
-export async function startWorkshop({ participants, origin, host = "127.0.0.1", port = 3990, dataDir } = {}) {
-  const roster = validateParticipants(participants);
+export async function startWorkshop({ participants = [], origin, host = "127.0.0.1", port = 3990, dataDir, joinMode = "assigned", automaticLimit = 200, maxActiveParticipants = 32, idleEvictionMs = 60_000 } = {}) {
+  if (!["assigned", "automatic"].includes(joinMode)) throw new Error("Workshop join mode must be automatic or assigned.");
+  if (!Number.isInteger(maxActiveParticipants) || maxActiveParticipants < 1 || maxActiveParticipants > 100 || !Number.isInteger(idleEvictionMs) || idleEvictionMs < 0) throw new Error("Invalid workshop worker capacity.");
+  const roster = joinMode === "automatic" && Array.isArray(participants) && participants.length === 0 ? [] : validateParticipants(participants);
   const startedAt = new Date().toISOString();
   let publicOrigin = origin ? new URL(origin).origin : null;
   if (origin && (!/^https?:$/.test(new URL(origin).protocol) || new URL(origin).username || new URL(origin).password || new URL(origin).pathname !== "/" || new URL(origin).search || new URL(origin).hash)) throw new Error("PUBLIC_URL must be an HTTP(S) origin without credentials, path, query or fragment.");
@@ -77,8 +79,8 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
   if (dataDir !== undefined && (typeof dataDir !== "string" || !isAbsolute(dataDir))) throw new Error("OPEN_WORKPLACE_DATA_DIR must be an absolute private directory.");
   if (dataDir) await mkdir(join(dataDir, "participants"), { recursive: true, mode: 0o700 });
   const storage = dataDir ? createSnapshotStore({ file: join(dataDir, "auth.sqlite") }) : undefined;
-  const stacks = new Map(), uploads = new Map(), active = new Map(), resetting = new Set();
-  let auth, closing = false;
+  const stacks = new Map(), uploads = new Map(), active = new Map(), resetting = new Set(), lastUse = new Map();
+  let auth, closing = false, admissions = Promise.resolve();
   function invalidateUploads(id) { for (const [token, entry] of uploads) if (entry.participant.id === id) uploads.delete(token); }
   async function createStack(participant) {
     const env = { OPEN_WORKPLACE_PERSON: `${participant.name}|${participant.id}|Workshop participant`, PUBLIC_URL: publicOrigin, UPLOAD_URL: publicOrigin, JIRA_PUBLIC_URL: `${publicOrigin}/jira`, CONFLUENCE_PUBLIC_URL: `${publicOrigin}/confluence`, OPEN_WORKPLACE_GATEWAY: "1" };
@@ -90,19 +92,36 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
     return stack;
   }
   function stackFor(participant) {
-    if (!stacks.has(participant.id)) {
-      const pending = createStack(participant);
-      stacks.set(participant.id, pending);
-      pending.catch(() => { if (stacks.get(participant.id) === pending) stacks.delete(participant.id); });
-    }
-    return stacks.get(participant.id);
+    lastUse.set(participant.id, Date.now());
+    if (stacks.has(participant.id)) return stacks.get(participant.id);
+    // Reserve slots serially, but never hold the reservation queue while a child boots.
+    const admitted = admissions.then(async () => {
+      if (closing) throw new Error("Workshop is stopping.");
+      if (!stacks.has(participant.id)) {
+        if (stacks.size >= maxActiveParticipants && dataDir) {
+          const candidate = [...lastUse].filter(([id, at]) => id !== participant.id && stacks.has(id) && !(active.get(id) > 0) && Date.now() - at >= idleEvictionMs).sort((a, b) => a[1] - b[1])[0];
+          if (candidate) await disposeStack(candidate[0]);
+        }
+        if (stacks.size >= maxActiveParticipants) {
+          lastUse.delete(participant.id);
+          const error = new Error("All workshop workers are busy."); error.code = "workshop_busy"; throw error;
+        }
+        if (closing) throw new Error("Workshop is stopping.");
+        const pending = createStack(participant);
+        stacks.set(participant.id, pending);
+        pending.catch(() => { if (stacks.get(participant.id) === pending) { stacks.delete(participant.id); lastUse.delete(participant.id); } });
+      }
+      return { pending: stacks.get(participant.id) };
+    });
+    admissions = admitted.then(() => undefined, () => undefined);
+    return admitted.then(({ pending }) => pending);
   }
   async function disposeStack(id) {
     const pending = stacks.get(id);
     if (!pending) return;
     // Keep the entry until all children have stopped; never overlap two stacks for one identity.
     try { const stack = await pending; stack.stopped = true; await stop(stack.microsoft.child); }
-    finally { stacks.delete(id); invalidateUploads(id); }
+    finally { stacks.delete(id); lastUse.delete(id); invalidateUploads(id); }
   }
   function uploadCount(participant) {
     for (const [token, item] of uploads) if (item.expires < Date.now()) uploads.delete(token);
@@ -185,7 +204,7 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
       // Reject absolute-form targets, encoded separators and dot-segment aliases before routing.
       if (!req.url?.startsWith("/") || req.url.startsWith("//") || /\\|%2f|%5c|%2e|[\x00-\x20]/i.test(req.url.split("?")[0])) return send(res, 400, { error: "invalid_path" });
       const url = new URL(req.url, publicOrigin);
-      if (url.pathname === "/health" && req.method === "GET") return send(res, auth?.isReady() ? 200 : 503, { ok: Boolean(auth?.isReady()), service: "open-workplace-workshop", isolated: true, storage: dataDir ? "sqlite" : "memory", startedAt });
+      if (url.pathname === "/health" && req.method === "GET") return send(res, auth?.isReady() ? 200 : 503, { ok: Boolean(auth?.isReady()), service: "open-workplace-workshop", isolated: true, storage: dataDir ? "sqlite" : "memory", joinMode, startedAt });
       if (await auth.handle(req, res, url)) return;
       participant = auth.authenticate(req);
       let uploadToken;
@@ -212,7 +231,8 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
         if (entry.inFlight) return send(res, 409, { error: "upload_in_progress" });
         entry.inFlight = true; claimedUpload = entry;
       }
-      if (url.pathname === "/" && req.method === "GET") return send(res, 200, page(participant.name, `<p class="muted">Private workshop sandbox · Fictional sample data</p><nav><a href="/outlook">Open Outlook</a><a href="/calendar">Open Calendar</a><a href="/drive">Open Drive</a><a href="/jira">Open Jira</a><a href="/confluence">Open Confluence</a></nav><details><summary>Connect to OpenWork</summary><p>Use OAuth with these connector addresses:</p><ul>${["outlook", "calendar", "drive", "jira", "confluence"].map((name) => `<li>${escape(publicOrigin)}/${name}/mcp</li>`).join("")}</ul></details><p><a href="/_workshop/reset">Reset my sample data</a></p><form method="post" action="/logout"><button>Sign out</button></form>`));
+      if (url.pathname === "/" && req.method === "GET") return send(res, 200, page(participant.name, `<p class="muted">Private workshop sandbox · Fictional sample data</p>${joinMode === "automatic" ? '<p>Your private workspace is remembered in this browser. No password or account card is needed.</p><p class="muted">Use a separate browser profile per person. Clearing cookies or switching devices starts a new workspace.</p>' : ''}<nav><a href="/outlook">Open Outlook</a><a href="/calendar">Open Calendar</a><a href="/drive">Open Drive</a><a href="/jira">Open Jira</a><a href="/confluence">Open Confluence</a></nav><details><summary>Connect to OpenWork</summary><p>Use OAuth with these connector addresses:</p><ul>${["outlook", "calendar", "drive", "jira", "confluence"].map((name) => `<li>${escape(publicOrigin)}/${name}/mcp</li>`).join("")}</ul></details><p><a href="/_workshop/reset">Reset my sample data</a></p>${joinMode === "automatic" ? '<p><a href="/_workshop/leave">Forget this browser’s workspace</a></p>' : '<form method="post" action="/logout"><button>Sign out</button></form>'}`));
+      if (joinMode === "automatic" && url.pathname === "/_workshop/leave" && req.method === "GET") return send(res, 200, page("Forget this browser’s workspace?", '<p>This removes this browser’s access to the current private workspace. Opening the link again will create a different workspace. There is no password or sign-in account to recover this browser access.</p><p>Saved data is not deleted. Connected apps keep their independent OAuth grants until they expire or are revoked.</p><form method="post" action="/logout"><button>Forget this browser’s workspace</button></form><p><a href="/">Keep my workspace</a></p>'));
       if (url.pathname === "/_workshop/reset") {
         if (req.method === "GET") return send(res, 200, page("Reset my sample data?", '<p>This deletes your workshop changes in all five services. Other participants are not affected.</p><form method="post"><button>Reset my sample data</button></form><p><a href="/">Keep my changes</a></p>'));
         if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" });
@@ -230,8 +250,11 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
       const service = backend(url.pathname);
       if (!service) return send(res, 404, { error: "not_found" });
       return await proxy(req, res, participant, service, url.pathname + url.search);
-    } catch {
-      if (!res.headersSent) send(res, 503, { error: "sandbox_unavailable", message: "Your private sandbox could not start. Try again or ask the facilitator." });
+    } catch (error) {
+      if (!res.headersSent) {
+        if (error.code === "workshop_busy") send(res, 503, { error: "workshop_busy", message: "All workshop connections are busy. Try again in a minute; your saved work is retained." }, { "retry-after": "60" });
+        else send(res, 503, { error: "sandbox_unavailable", message: "Your private sandbox could not start. Try again or ask the facilitator." });
+      }
     } finally {
       if (claimedUpload) claimedUpload.inFlight = false;
       if (counted) active.set(participant.id, Math.max(0, active.get(participant.id) - 1));
@@ -242,13 +265,14 @@ export async function startWorkshop({ participants, origin, host = "127.0.0.1", 
   try { await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); }); }
   catch (error) { storage?.close(); throw error; }
   publicOrigin ||= `http://${host === "::1" ? "[::1]" : host}:${server.address().port}`;
-  try { auth = createWorkshopAuth({ origin: publicOrigin, participants: roster, storage }); }
+  try { auth = createWorkshopAuth({ origin: publicOrigin, participants: roster, storage, automaticJoin: joinMode === "automatic", automaticLimit }); }
   catch (error) {
     server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); storage?.close(); throw error;
   }
   const close = async () => {
     closing = true;
     const stopped = new Promise((resolve) => server.close(resolve)); server.closeAllConnections();
+    await admissions;
     await Promise.all([...stacks.keys()].map(disposeStack)); await stopped; await auth.close?.();
   };
   return { server, origin: publicOrigin, close };
@@ -258,8 +282,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     // Credentials stay in operator configuration, never in source, URLs or startup logs.
     const raw = process.env.OPEN_WORKPLACE_PARTICIPANTS_FILE ? await readFile(process.env.OPEN_WORKPLACE_PARTICIPANTS_FILE, "utf8") : process.env.OPEN_WORKPLACE_PARTICIPANTS;
-    if (!raw) throw new Error("Set OPEN_WORKPLACE_PARTICIPANTS_FILE to a private roster JSON file (or OPEN_WORKPLACE_PARTICIPANTS).");
-    const workshop = await startWorkshop({ participants: JSON.parse(raw), origin: process.env.PUBLIC_URL, host: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 3990), dataDir: process.env.OPEN_WORKPLACE_DATA_DIR });
+    const joinMode = process.env.OPEN_WORKPLACE_JOIN_MODE || "automatic";
+    if (!raw && joinMode === "assigned") throw new Error("Assigned mode requires a private participant roster.");
+    const workshop = await startWorkshop({ participants: raw ? JSON.parse(raw) : [], joinMode, automaticLimit: Number(process.env.OPEN_WORKPLACE_GUEST_LIMIT || 200), maxActiveParticipants: Number(process.env.OPEN_WORKPLACE_WORKER_LIMIT || 32), origin: process.env.PUBLIC_URL, host: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 3990), dataDir: process.env.OPEN_WORKPLACE_DATA_DIR });
     console.log(`Private workshop ingress listening at ${workshop.origin}`);
     for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, async () => { await workshop.close(); process.exit(0); });
   } catch (error) { console.error(error instanceof SyntaxError ? "Invalid workshop roster JSON." : error.message); process.exitCode = 1; }

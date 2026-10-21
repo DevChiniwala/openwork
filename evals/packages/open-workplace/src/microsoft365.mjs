@@ -147,8 +147,12 @@ function preview(bytes, name) {
 let state;
 let auditSequence = 0;
 function auditCall(at, name, input, output, status) {
-  // Snapshot actual provider values: later event/file mutations cannot rewrite provenance.
-  state.audit.push(JSON.parse(JSON.stringify({ sequence: ++auditSequence, at, name: name ?? null, input, output, status })));
+  // Snapshot bounded provider values; binary/base64 tool traffic must not multiply file storage in audit history.
+  const bounded = (value) => {
+    const json = JSON.stringify(value ?? null);
+    return Buffer.byteLength(json) <= 65536 ? JSON.parse(json) : { truncated: true, bytes: Buffer.byteLength(json), sha256: createHash("sha256").update(json).digest("hex") };
+  };
+  state.audit.push({ sequence: ++auditSequence, at, name: name ?? null, input: bounded(input), output: bounded(output), status });
   if (state.audit.length > 1000) state.audit.shift();
 }
 function message(input = {}, draft = true) {

@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { workshopPage as page, escapeHtml } from "./workshop-html.mjs";
 
 const SESSION_MS = 8 * 60 * 60 * 1000;
+const AUTOMATIC_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const TOKEN_MS = 60 * 60 * 1000;
 const CODE_MS = 5 * 60 * 1000;
 const LIMIT = 2048;
@@ -16,27 +17,44 @@ const safeNext = (value) => {
   return value;
 };
 
-export function createWorkshopAuth({ origin, participants, storage }) {
+// Assigned mode is the backwards-compatible default. automaticJoin creates a fictional
+// private workspace on a browser GET /login (or validated GET /oauth/authorize).
+// POST /login is deliberately unsupported in automatic mode: no credential/code API.
+export function createWorkshopAuth({ origin, participants = [], storage, automaticJoin = false, automaticLimit = 200 }) {
+  if (typeof automaticJoin !== "boolean" || !Number.isInteger(automaticLimit) || automaticLimit < 1 || automaticLimit > 1000) throw new Error("Invalid automatic workshop configuration");
   const base = new URL(origin);
   if (base.origin !== origin || !["http:", "https:"].includes(base.protocol)) throw new Error("Workshop origin must be an HTTP(S) origin");
   const identities = new Map(participants.map((participant) => [digest(participant.token), participant]));
   const sessions = new Map(), clients = new Map(), codes = new Map(), tokens = new Map(), refreshes = new Map(), rates = new Map();
   const byId = new Map(participants.map((participant) => [participant.id, participant]));
+  const guests = new Map();
+  const participantFingerprint = (participant) => guests.get(participant.id)?.fingerprint ?? digest(participant.token);
   const tables = { sessions, clients, codes, tokens, refreshes };
   const storageKey = "workshop-auth:v1";
   let unavailable = false, closed = false, queue = Promise.resolve();
   const pendingResponses = new WeakMap();
   function snapshot() {
-    return { version: 1, origin, tables: Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, [...table].map(([key, entry]) => {
+    return { version: 2, origin, guests: [...guests.values()], tables: Object.fromEntries(Object.entries(tables).map(([name, table]) => [name, [...table].map(([key, entry]) => {
       const { participant, ...fields } = entry;
-      return [key, participant ? { ...fields, participantId: participant.id, credentialFingerprint: digest(participant.token) } : fields];
+      return [key, participant ? { ...fields, participantId: participant.id, credentialFingerprint: participantFingerprint(participant) } : fields];
     })])) };
   }
   function restore(saved) {
     if (saved === undefined) return;
     saved = structuredClone(saved);
     const invalid = () => { unavailable = true; throw new Error("Workshop authentication storage is invalid; restore a trusted backup before restarting."); };
-    if (!saved || saved.version !== 1 || saved.origin !== origin || !saved.tables || Object.keys(saved.tables).sort().join() !== Object.keys(tables).sort().join()) invalid();
+    if (!saved || ![1, 2].includes(saved.version) || saved.origin !== origin || !saved.tables || Object.keys(saved.tables).sort().join() !== Object.keys(tables).sort().join()) invalid();
+    if (Object.keys(saved).sort().join() !== (saved.version === 1 ? "origin,tables,version" : "guests,origin,tables,version")) invalid();
+    // Restore the registry first; fingerprints bind durable capabilities to guests,
+    // but are never bearer credentials and never enter the assigned identities map.
+    if (saved.version === 2) {
+      if (!Array.isArray(saved.guests) || saved.guests.length > automaticLimit) invalid();
+      const fingerprints = new Set();
+      for (const guest of saved.guests) {
+        if (!guest || typeof guest !== "object" || Object.keys(guest).sort().join() !== "createdAt,fingerprint,id,name" || typeof guest.id !== "string" || !/^guest-[a-f0-9]{24}$/.test(guest.id) || typeof guest.name !== "string" || guest.name.length > 80 || !/^Workshop guest [1-9][0-9]*$/.test(guest.name) || typeof guest.fingerprint !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(guest.fingerprint) || !Number.isSafeInteger(guest.createdAt) || guest.createdAt < 0 || byId.has(guest.id) || fingerprints.has(guest.fingerprint)) invalid();
+        fingerprints.add(guest.fingerprint); guests.set(guest.id, guest); byId.set(guest.id, guest);
+      }
+    }
     for (const [name, table] of Object.entries(tables)) {
       const rows = saved.tables[name];
       if (!Array.isArray(rows) || rows.length > LIMIT * 2) invalid();
@@ -62,7 +80,8 @@ export function createWorkshopAuth({ origin, participants, storage }) {
           if (["tokens", "refreshes"].includes(name) && !/^[A-Za-z0-9_-]{43}$/.test(entry.family || "")) invalid();
           if (name === "refreshes" && typeof entry.used !== "boolean") invalid();
           const participant = byId.get(entry.participantId);
-          if (!participant || digest(participant.token) !== entry.credentialFingerprint) continue;
+          if (saved.version === 2 && (guests.has(entry.participantId) || (!participant && entry.participantId.startsWith("guest-"))) && (!guests.has(entry.participantId) || participantFingerprint(participant) !== entry.credentialFingerprint)) invalid();
+          if (!participant || participantFingerprint(participant) !== entry.credentialFingerprint) continue;
           entry.participant = participant;
           delete entry.participantId; delete entry.credentialFingerprint;
         }
@@ -120,7 +139,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
       const match = /^Bearer ([A-Za-z0-9._~+/-]+=*)$/i.exec(req.headers.authorization);
       if (!match) return null;
       const hash = digest(match[1]);
-      if (identities.has(hash)) return identities.get(hash);
+      if (!automaticJoin && identities.has(hash)) return identities.get(hash);
       prune(tokens);
       const token = tokens.get(hash);
       if (!token || !resource(token.resource)) return null;
@@ -154,7 +173,31 @@ export function createWorkshopAuth({ origin, participants, storage }) {
     pendingResponses.set(res, () => { res.writeHead(303, { Location: location, "Cache-Control": "no-store", "Referrer-Policy": "same-origin" }); res.end(); });
   }
   function setCookie(res, value, age) {
-    res.setHeader("Set-Cookie", `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${base.protocol === "https:" ? "; Secure" : ""}`);
+    res.setHeader("Set-Cookie", `${cookieName}=${value}; Path=/; HttpOnly; SameSite=${automaticJoin ? "Lax" : "Strict"}; Max-Age=${age}${base.protocol === "https:" ? "; Secure" : ""}`);
+  }
+  function browserNavigation(req) {
+    if (req.headers.origin !== undefined && req.headers.origin !== origin) return false;
+    // Lax supports top-level OAuth returns from different Den origins, not
+    // embedded frames, images, scripts or fetches that could exhaust guest slots.
+    const destination = req.headers["sec-fetch-dest"];
+    if (destination !== undefined) return destination === "document" && (!req.headers["sec-fetch-mode"] || req.headers["sec-fetch-mode"] === "navigate");
+    return /(?:^|[,\s])text\/html(?:[;,\s]|$)/i.test(req.headers.accept || "");
+  }
+  function automaticParticipant(req, res) {
+    if (!browserNavigation(req)) { error(res, 403, "browser_navigation_required"); return null; }
+    const existing = browserParticipant(req);
+    if (existing) return existing;
+    prune(sessions);
+    if (guests.size >= automaticLimit || sessions.size >= LIMIT) { error(res, 503, "workshop_capacity_reached"); return null; }
+    if (!budget(req, "guest_creation", 60)) { error(res, 429, "too_many_requests"); return null; }
+    let id;
+    do { id = "guest-" + randomBytes(12).toString("hex"); } while (byId.has(id));
+    const guest = { id, name: `Workshop guest ${guests.size + 1}`, fingerprint: secret(), createdAt: Date.now() };
+    guests.set(id, guest); byId.set(id, guest);
+    const session = secret();
+    sessions.set(digest(session), { participant: guest, expires: Date.now() + AUTOMATIC_SESSION_MS });
+    setCookie(res, session, AUTOMATIC_SESSION_MS / 1000);
+    return guest;
   }
   async function body(req, json = false) {
     const expected = json ? "application/json" : "application/x-www-form-urlencoded";
@@ -202,7 +245,7 @@ export function createWorkshopAuth({ origin, participants, storage }) {
     const path = url.pathname;
     const metadata = path === "/.well-known/oauth-authorization-server" || path === "/.well-known/oauth-protected-resource" || path.startsWith("/.well-known/oauth-protected-resource/");
     const clientEndpoint = path === "/oauth/register" || path === "/oauth/token" || path === "/oauth/revoke";
-    if (!["/login", "/logout", "/oauth/authorize"].includes(path) && !metadata && !clientEndpoint) return false;
+    if (!["/login", "/logout", "/oauth/authorize", ...(automaticJoin ? ["/signed-out"] : [])].includes(path) && !metadata && !clientEndpoint) return false;
     res.setHeader("Cache-Control", "no-store");
     if (metadata || clientEndpoint) {
       // Credentialless public OAuth clients may run on another origin. Cookies are never used here.
@@ -216,12 +259,18 @@ export function createWorkshopAuth({ origin, participants, storage }) {
         if (path === "/.well-known/oauth-authorization-server") send(res, 200, { issuer: origin, authorization_endpoint: origin + "/oauth/authorize", token_endpoint: origin + "/oauth/token", registration_endpoint: origin + "/oauth/register", response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], revocation_endpoint: origin + "/oauth/revoke", revocation_endpoint_auth_methods_supported: ["none"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], scopes_supported: ["workplace"] });
         else if (path === "/.well-known/oauth-protected-resource" || resource(origin + path.slice("/.well-known/oauth-protected-resource".length))) send(res, 200, { resource: origin + path.slice("/.well-known/oauth-protected-resource".length), authorization_servers: [origin], scopes_supported: ["workplace"], bearer_methods_supported: ["header"] });
         else error(res, 404, "resource_not_found");
+      } else if (automaticJoin && path === "/signed-out" && req.method === "GET") {
+        send(res, 200, page("You left this workspace", `<p class="muted">Existing application connections remain active until disconnected or expired.</p><a class="button" href="/login">Open a new private workspace</a>`), "text/html");
       } else if (path === "/login" && req.method === "GET") {
-        if (url.searchParams.has("token")) error(res, 400, "Access codes must be sent by POST");
+        if (automaticJoin) {
+          if (["token", "code", "password"].some((key) => url.searchParams.has(key))) error(res, 400, "invalid_request");
+          else if (automaticParticipant(req, res)) redirect(res, safeNext(url.searchParams.get("next")));
+        } else if (url.searchParams.has("token")) error(res, 400, "Access codes must be sent by POST");
         else loginPage(res, safeNext(url.searchParams.get("next")), browserParticipant(req));
       } else if ((path === "/login" || path === "/logout") && req.method === "POST") {
         if (!browserOrigin(req)) { error(res, 403, "Same-origin request required"); return true; }
-        if (path === "/logout") { sessions.delete(cookieKey(req)); setCookie(res, "", 0); redirect(res, "/login"); return true; }
+        if (path === "/logout") { sessions.delete(cookieKey(req)); setCookie(res, "", 0); redirect(res, automaticJoin ? "/signed-out" : "/login"); return true; }
+        if (automaticJoin) { error(res, 405, "method_not_allowed"); return true; }
         const form = parsedBody;
         if (form.get("decision") === "cancel") {
           const next = new URL(safeNext(form.get("next")), origin);
@@ -263,8 +312,16 @@ export function createWorkshopAuth({ origin, participants, storage }) {
         const redirectUri = query.get("redirect_uri");
         if (!client || !client.redirect_uris.includes(redirectUri)) { error(res, 400, "invalid_request"); return true; }
         if (query.get("response_type") !== "code" || query.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(query.get("code_challenge") || "") || (query.has("scope") && query.get("scope") !== "workplace") || !resource(query.get("resource"))) { error(res, 400, "invalid_request"); return true; }
-        const participant = browserParticipant(req);
-        if (!participant) { redirect(res, "/login?next=" + encodeURIComponent(safeNext("/oauth/authorize?" + query.toString()))); return true; }
+        let participant = browserParticipant(req);
+        if (automaticJoin && req.method === "GET") {
+          participant = automaticParticipant(req, res);
+          if (!participant) return true;
+        }
+        if (!participant) {
+          if (automaticJoin) error(res, 401, "browser_session_required");
+          else redirect(res, "/login?next=" + encodeURIComponent(safeNext("/oauth/authorize?" + query.toString())));
+          return true;
+        }
         if (req.method === "GET") {
           const permissions = {
             "/outlook/mcp": ["Read sample mail and threads.", "Draft, send or update fictional messages."],
@@ -277,9 +334,9 @@ export function createWorkshopAuth({ origin, participants, storage }) {
           // Chromium checks the final redirect of a form POST against form-action too.
           // Only this client's already-validated callback origin is added to the consent form.
           res.setHeader("Content-Security-Policy", `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${new URL(redirectUri).origin}; frame-ancestors 'none'; base-uri 'none'`);
-          send(res, 200, page(`Connect ${client.client_name}`, `<div class="account"><span class="muted">Signed in as</span><strong>${escapeHtml(participant.name)}</strong></div><h2>Application requesting access</h2><p>${escapeHtml(client.client_name)}<br><span class="muted">${escapeHtml(new URL(redirectUri).host)} · Unverified workshop application</span></p><h2>Workplace permissions</h2><ul class="permissions">${permissions.map((permission) => `<li>${escapeHtml(permission)}</li>`).join("")}<li>Keep this connection active for up to 8 hours.</li></ul><p class="muted">Only your assigned sandbox account is shared. No real work accounts are connected.</p><details><summary>Connection details</summary><p>Resource: <code>${escapeHtml(query.get("resource") || origin)}</code></p><p>Scope: <code>workplace</code></p><p>Access expires after 1 hour. Sign out ends the browser session; the application can disconnect to revoke its connection.</p></details><form action="/oauth/authorize" method="post">${fields}<div class="actions"><button type="submit" name="decision" value="allow">Allow workplace access</button><button class="secondary" type="submit" name="decision" value="deny">Deny access</button></div></form>`), "text/html"); return true;
+          send(res, 200, page(`Connect ${client.client_name}`, `<div class="account"><span class="muted">${automaticJoin ? "Private workspace" : "Signed in as"}</span><strong>${escapeHtml(participant.name)}</strong></div><h2>Application requesting access</h2><p>${escapeHtml(client.client_name)}<br><span class="muted">${escapeHtml(new URL(redirectUri).host)} · Unverified workshop application</span></p><h2>Workplace permissions</h2><ul class="permissions">${permissions.map((permission) => `<li>${escapeHtml(permission)}</li>`).join("")}<li>Keep this connection active for up to 8 hours.</li></ul><p class="muted">${automaticJoin ? "Only this private fictional workspace is shared. This guest label is not a verified person." : "Only your assigned sandbox account is shared."} No real work accounts are connected.</p><details><summary>Connection details</summary><p>Resource: <code>${escapeHtml(query.get("resource") || origin)}</code></p><p>Scope: <code>workplace</code></p><p>Access expires after 1 hour. Sign out ends the browser session; the application can disconnect to revoke its connection.</p></details><form action="/oauth/authorize" method="post">${fields}<div class="actions"><button type="submit" name="decision" value="allow">Allow workplace access</button><button class="secondary" type="submit" name="decision" value="deny">Deny access</button></div></form>`), "text/html"); return true;
         }
-        if (query.has("decision") && !["allow", "deny"].includes(query.get("decision"))) { error(res, 400, "invalid_request"); return true; }
+        if ((automaticJoin && !query.has("decision")) || (query.has("decision") && !["allow", "deny"].includes(query.get("decision")))) { error(res, 400, "invalid_request"); return true; }
         if (query.get("decision") === "deny") {
           const target = new URL(redirectUri); target.searchParams.set("error", "access_denied");
           if (query.has("state")) target.searchParams.set("state", query.get("state"));
@@ -360,19 +417,22 @@ export function createWorkshopAuth({ origin, participants, storage }) {
     await ready;
     if (unavailable || closed) return immediateError(req, res, 503, "authentication_unavailable");
     const path = url.pathname;
-    const mutation = req.method === "POST" && ["/login", "/logout", "/oauth/authorize", "/oauth/register", "/oauth/token", "/oauth/revoke"].includes(path);
+    // Automatic GETs can create a session: commit the registry + hashed cookie
+    // atomically before returning either a redirect or the explicit consent page.
+    const automaticGet = automaticJoin && req.method === "GET" && ["/login", "/oauth/authorize"].includes(path);
+    const mutation = automaticGet || (req.method === "POST" && ["/login", "/logout", "/oauth/authorize", "/oauth/register", "/oauth/token", "/oauth/revoke"].includes(path));
     if (!mutation) {
       // Normal MCP/UI traffic never joins the authentication mutation queue.
       const handled = dispatch(req, res, url); flush(res); return handled;
     }
-    if (["/login", "/logout", "/oauth/authorize"].includes(path) && !browserOrigin(req)) return immediateError(req, res, 403, "Same-origin request required", true);
+    if (req.method === "POST" && ["/login", "/logout", "/oauth/authorize"].includes(path) && !browserOrigin(req)) return immediateError(req, res, 403, "Same-origin request required", true);
     if (["/oauth/register", "/oauth/token", "/oauth/revoke"].includes(path)) {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     }
     let parsedBody;
-    try { parsedBody = await body(req, path === "/oauth/register"); }
+    try { if (req.method === "POST") parsedBody = await body(req, path === "/oauth/register"); }
     catch (caught) { return immediateError(req, res, caught.status || 400, caught.status === 408 ? "request_timeout" : "invalid_request", true); }
     // Only completed, bounded bodies may serialize mutation + atomic storage commit.
     const operation = queue.then(async () => {
