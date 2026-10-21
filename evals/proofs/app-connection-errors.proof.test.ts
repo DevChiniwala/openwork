@@ -29,7 +29,7 @@ test("a member gets compact App connection errors in OpenCode v2 without enablin
   });
 
   await step("technical details remain available on request", async () => {
-    await user.click("Technical details");
+    await user.click({ text: "Technical details" });
     await user.see({ text: new RegExp(APP_CONNECTION_ERROR) });
     const details = await probe.dom("details[open] pre");
     const ok = details.elements.some(element => element.text.includes(APP_CONNECTION_ERROR));
