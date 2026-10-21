@@ -66,7 +66,7 @@ import { isComputerTarget } from "./composer/computer-mentions";
 import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import { openDesktopUrl } from "@/app/lib/desktop";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
-import { COMPOSER_DRAFT_TOKEN_RE, composerPillText, parseComposerPillToken } from "./composer/composer-pills";
+import { COMPOSER_DRAFT_TOKEN_RE, COMPOSER_PILL_TOKEN_GLOBAL_RE, composerPillText, parseComposerPillToken } from "./composer/composer-pills";
 import { createPastedTextChip, insertDraftToken, resolvePastedTextPlaceholders } from "./composer/pasted-text";
 import {
   canAdmitNextQueuedItem,
@@ -2068,6 +2068,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
         return [{ type: "connect-skill", slug: pill.slug, name: pill.name, marketplace: pill.marketplace, capability: pill.capability } satisfies ComposerDraft["parts"][number]];
       }
       if (pill?.kind === "skill") return [{ type: "skill", name: pill.name } satisfies ComposerDraft["parts"][number]];
+      if (pill?.kind === "session") {
+        return [{ type: "session", workspaceId: pill.workspaceId, sessionId: pill.sessionId, title: pill.title } satisfies ComposerDraft["parts"][number]];
+      }
       const attachmentMatch = segment.match(/^\[attachment (.+)\]$/);
       if (attachmentMatch) {
         // Attachment chips are visual tokens only; bytes travel via draft.attachments.
@@ -2097,7 +2100,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     resolved = resolved.replace(/\[attachment [^\]]+\]/g, "");
     // Pills keep their short visible text; their instructions travel as
     // synthetic parts and never expand into the user's message.
-    resolved = resolved.replace(/\[connect-skill [^\]]+\]|\[skill [^\]]+\]|\[connector [^\]]+\]/g, (match) => {
+    resolved = resolved.replace(COMPOSER_PILL_TOKEN_GLOBAL_RE, (match) => {
       const pill = parseComposerPillToken(match);
       return pill ? composerPillText(pill) : match;
     });
