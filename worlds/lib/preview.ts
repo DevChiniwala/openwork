@@ -126,7 +126,7 @@ async function noVncRfbBanner(viewerUrl: string): Promise<string> {
   });
 }
 
-async function waitForNoVnc(viewerUrl: string): Promise<void> {
+export async function waitForNoVnc(viewerUrl: string): Promise<void> {
   const deadline = Date.now() + 45_000;
   let last = "not attempted";
   while (Date.now() < deadline) {
