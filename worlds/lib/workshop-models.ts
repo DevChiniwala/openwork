@@ -49,7 +49,9 @@ export async function selectWorkshopModel(surface: Surface, modelId: string) {
   const selector = 'input[aria-label="Search all models"]';
   if (!await evalIn(surface, browserScript((selector) => Boolean(document.querySelector(selector)), [selector]))) await control(surface, "session.model_picker.open");
   await waitFor(surface, browserScript((selector) => Boolean(document.querySelector(selector)), [selector]), { timeoutMs: 30_000, label: "current native model search" });
-  await fill(surface, selector, model.displayName);
+  // Do not feed provider-like model words into the semantic search parser:
+  // inspect the real full catalog by its stable model identity instead.
+  await fill(surface, selector, "");
   const key = `${model.providerId}:${model.modelId}`;
   await waitFor(surface, browserScript((key) => [...document.querySelectorAll<HTMLElement>("[data-model-key]")].some((row) => row.dataset.modelKey === key && row.getAttribute("aria-disabled") !== "true" && !row.hasAttribute("data-disabled")), [key]), { timeoutMs: 30_000, label: "managed alias selectable in the real native model picker" });
   await evalIn(surface, browserScript((key) => {
@@ -58,6 +60,7 @@ export async function selectWorkshopModel(surface: Surface, modelId: string) {
   }, [key]));
   await waitFor(surface, browserScript((selector) => !document.querySelector(selector), [selector]), { timeoutMs: 30_000, label: "native picker selection applied" });
   const transcript = await control(surface, "session.read_transcript", { count: 1 }); assert.ok(record(transcript) && typeof transcript.sessionId === "string");
-  await control(surface, "session.set_model", { workspaceId: app.workspaceId, sessionId: transcript.sessionId, providerId: model.providerId, modelId: model.modelId, variant: "low" });
+  const binding = await control(surface, "session.set_model", { workspaceId: app.workspaceId, sessionId: transcript.sessionId, providerId: model.providerId, modelId: model.modelId, variant: "low" });
+  assert.ok(record(binding) && binding.ok === true, "Managed model/low-effort binding did not verify");
   return model;
 }

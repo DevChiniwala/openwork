@@ -74,7 +74,8 @@ export async function runWorkshopProof(aId: string, bId: string, output: string)
     const sessions = await control(desktop, "session.list_sessions");
     const previous = rows(sessions).find((session) => record(session.model));
     if (previous && record(previous.model)) {
-      await control(desktop, "session.set_model", { workspaceId: app.workspaceId, sessionId, providerId: previous.model.providerId, modelId: previous.model.modelId, variant: "low" });
+      const binding = await control(desktop, "session.set_model", { workspaceId: app.workspaceId, sessionId, providerId: previous.model.providerId, modelId: previous.model.modelId, variant: "low" });
+      assert.ok(record(binding) && binding.ok === true, "Paid workshop turn did not verify its managed low-effort model binding");
     }
     const start = Date.now();
     await sendComposerMessage(desktop, prompt);

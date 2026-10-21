@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Surface } from "../evals/packages/cdp/src/index.ts";
-import { control, parseSessionToolCalls, waitFor } from "../evals/packages/behaviors/src/desktop.ts";
+import { control, parseSessionToolCalls, waitFor, waitUntilInteractive, evalIn } from "../evals/packages/behaviors/src/desktop.ts";
 import { linkWorkshopRuntime, selectWorkshopModel } from "./lib/workshop-models.ts";
 import { engineSessionProbe } from "../evals/packages/behaviors/src/engine-session-probe.ts";
 import type { EngineSessionProbePart } from "../evals/packages/behaviors/src/engine-session-probe.ts";
@@ -404,6 +404,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         workspacePath: "/home/daytona/workshop/workspace", env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER } }));
       diagnosticSurface = desktop;
       await linkWorkshopRuntime(desktop, member, setup.orgId, desktop.workspaceId);
+      // Sign-in booted this renderer before the owned server's member broker
+      // was linked. A normal renderer reload re-reads the now-ready catalog;
+      // the persisted member sign-in, workspace and browser OAuth remain intact.
+      await desktop.client.send("Page.reload", { ignoreCache: true });
+      await waitUntilInteractive(desktop, { timeoutMs: 90_000 });
       console.log(`Workshop: ${key} desktop booted and broker linked as its ordinary member.`);
       seatPhase = `${key} real model picker and pilot proof`; phase = seatPhase;
       await foregroundWorkshopDesktop(browser, desktop);
@@ -435,7 +440,17 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return seat;
       } catch (error) {
         phase = seatPhase;
-        if (diagnosticSurface) await screenshot(diagnosticSurface, join(options.outputDir, `${key}-failure.png`)).catch(() => {});
+        if (diagnosticSurface) {
+          await screenshot(diagnosticSurface, join(options.outputDir, `${key}-failure.png`)).catch(() => {});
+          const surface = diagnosticSurface;
+          await (async () => {
+            const workspaceId = await evalIn(surface, () => window.__openwork?.slice("route").selectedWorkspaceId ?? "", { timeoutMs: 5000 });
+            const catalog = typeof workspaceId === "string" && workspaceId ? await control(surface, "models.list", { workspaceId }, { timeoutMs: 5000 }) : null;
+            const models = record(catalog) && Array.isArray(catalog.models) ? catalog.models.filter(record).map((model) => ({ providerId: model.providerId, modelId: model.modelId, displayName: model.displayName, available: model.available })) : [];
+            const ui = await evalIn(surface, () => [...document.querySelectorAll<HTMLElement>("[data-model-key]")].map((row) => ({ key: row.dataset.modelKey, label: row.innerText, disabled: row.getAttribute("aria-disabled") })), { timeoutMs: 5000 });
+            await privateFile(join(options.outputDir, `${key}-catalog-failure.json`), redact(JSON.stringify({ models, ui }, null, 2)));
+          })().catch(() => {});
+        }
         await privateFile(join(options.outputDir, `${key}-failure.txt`), redact(`${seatPhase}\n${error instanceof Error ? error.message : String(error)}\n`)).catch(() => {});
         throw error;
       }
