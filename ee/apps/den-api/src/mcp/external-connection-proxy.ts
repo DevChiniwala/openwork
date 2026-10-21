@@ -97,12 +97,13 @@ const boundedGatewayTools: ExternalMcpProxyTool[] = [
   {
     name: EXECUTE_CAPABILITY_TOOL_NAME,
     title: "Execute capability",
-    description: "Execute an exact tool returned by search_capabilities on this connected MCP server.",
+    description: "Execute an exact tool returned by search_capabilities on this connected MCP server, with arguments matching its inputSchema.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", minLength: 1 },
-        body: { type: "object" },
+        arguments: { type: "object" },
+        body: { type: "object", description: "Older form of arguments." },
       },
       required: ["name"],
       additionalProperties: false,
@@ -268,20 +269,18 @@ export function createExternalConnectionProxyServer(input: {
           if (score <= 0) return []
           const resourceUri = input.appHostClient ? externalMcpAppResourceUri(tool) : null
           return [{
-            name: tool.name,
-            method: "MCP",
-            path: connection.name,
             score,
-            summary,
-            pathParams: [],
-            queryParams: [],
-            hasBody: true,
-            argumentsSchema: tool.inputSchema,
-            schemaDigest: externalMcpToolSchemaDigest(tool.inputSchema),
-            invocation: { argumentsField: "body" },
-            ...(resourceUri ? { kind: "mcp_app", mcpApp: { resourceUri } } : {}),
+            match: {
+              name: tool.name,
+              description: summary,
+              inputSchema: tool.inputSchema,
+              schemaDigest: externalMcpToolSchemaDigest(tool.inputSchema),
+              ...(tool.annotations ? { annotations: tool.annotations } : {}),
+              ...(resourceUri ? { kind: "mcp_app", mcpApp: { resourceUri } } : {}),
+            },
           }]
-        }).sort((left, right) => (right.score - left.score) || left.name.localeCompare(right.name)).slice(0, limit)
+        }).sort((left, right) => (right.score - left.score) || left.match.name.localeCompare(right.match.name)).slice(0, limit)
+          .map(({ match }) => match)
         return {
           content: [{ type: "text" as const, text: JSON.stringify({ matches }) }],
           structuredContent: { matches },
@@ -291,7 +290,7 @@ export function createExternalConnectionProxyServer(input: {
         const toolName = typeof args.name === "string" ? args.name.trim() : ""
         const tool = (await listProviderTools()).find((candidate) => candidate.name === toolName)
         if (!tool) throw new McpError(ErrorCode.InvalidRequest, "The capability is unavailable. Call search_capabilities again.")
-        return callTool(tool, toolArguments(args.body))
+        return callTool(tool, toolArguments(args.arguments ?? args.body))
       }
       if (!input.appHostClient) {
         throw new McpError(
