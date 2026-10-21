@@ -730,6 +730,304 @@ export type AdminDashboard = {
   }>;
 };
 
+export type AdminOpportunityOverview = {
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  generatedAt: string;
+  timeZone: "UTC";
+  signups: {
+    current: number;
+    previous: number;
+  };
+  joinedMembers: {
+    current: number;
+    previous: number;
+  };
+  activeUsers: {
+    current: number;
+    previous: number;
+  };
+  activeOrganizations: {
+    current: number;
+    previous: number;
+  };
+  daily: Array<{
+    date: string;
+    signups: number;
+    joinedMembers: number;
+  }>;
+  recentSignups: Array<{
+    id: string;
+    name: string;
+    createdAt: string;
+  }>;
+  growingTeams: Array<{
+    id: string;
+    name: string;
+    joinedMembers: number;
+  }>;
+  risingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  fallingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  queue: Array<{
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  }>;
+  waiting: Array<{
+    organizationId: string;
+    organizationName: string;
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    };
+  }>;
+  hidden: {
+    closed: number;
+    dismissed: number;
+  };
+  progress: {
+    reviewed: number;
+    outreach: number;
+    followUpsCompleted: number;
+    followUpsOnTime: number;
+    conversations: number;
+    confirmedExpansion: number;
+    confirmedCommercial: number;
+    activationProgress: number;
+    dueToday: number;
+    overdue: number;
+  };
+};
+
+export type AdminOpportunityAccount = {
+  organization: {
+    id: string;
+    name: string;
+    createdAt: string;
+    planTier: string;
+    seatLimit: number;
+    memberCount: number;
+  };
+  people: Array<{
+    memberId: string;
+    userId: string | null;
+    name: string | null;
+    email: string | null;
+    role: string;
+    joinedAt: string | null;
+    signedUpAt: string | null;
+    lastObservedAt: string | null;
+  }>;
+  opportunity: {
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  } | null;
+  adoption: {
+    stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+    members: number;
+    joinedThisWeek: number;
+    activeUsers: {
+      current: number;
+      previous: number;
+    };
+    lastObservedAt: string | null;
+    skills: number;
+    mcpConnections: number;
+  };
+  followUp: {
+    stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+    ownerUserId: string | null;
+    ownerName: string | null;
+    nextAction: string | null;
+    nextFollowUpAt: string | null;
+    lastContactedAt: string | null;
+    lastActionKind:
+      | "reviewed"
+      | "contacted"
+      | "replied"
+      | "meeting"
+      | "note"
+      | "closed"
+      | "dismissed"
+      | "reopened"
+      | null;
+    lastActionAt: string | null;
+    confirmedOpportunity: "expansion" | "commercial" | null;
+    updatedAt: string;
+  } | null;
+  history: Array<{
+    id: string;
+    kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+    occurredAt: string;
+    actorName: string | null;
+    contactName: string | null;
+    note: string | null;
+    followUpDueAt: string | null;
+  }>;
+  generatedAt: string;
+  timeZone: "UTC";
+};
+
+export type AccountFollowUpActionInput = {
+  requestId: string;
+  kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+  contactUserId?: string | null;
+  note?: string | null;
+  nextAction?: string | null;
+  /**
+   * UTC calendar date (YYYY-MM-DD) of the next follow-up. Null clears it.
+   */
+  followUpOn?: string | null;
+  assignToMe?: boolean;
+  confirmedOpportunity?: "expansion" | "commercial" | null;
+};
+
 export type AdminOpportunities = {
   from: string;
   to: string;
@@ -8113,6 +8411,122 @@ export type GetV1AdminDashboardResponses = {
 };
 
 export type GetV1AdminDashboardResponse = GetV1AdminDashboardResponses[keyof GetV1AdminDashboardResponses];
+
+export type GetV1AdminOpportunitiesOverviewData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/admin/opportunities/overview";
+};
+
+export type GetV1AdminOpportunitiesOverviewErrors = {
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesOverviewError =
+  GetV1AdminOpportunitiesOverviewErrors[keyof GetV1AdminOpportunitiesOverviewErrors];
+
+export type GetV1AdminOpportunitiesOverviewResponses = {
+  /**
+   * Weekly opportunity overview returned.
+   */
+  200: AdminOpportunityOverview;
+};
+
+export type GetV1AdminOpportunitiesOverviewResponse =
+  GetV1AdminOpportunitiesOverviewResponses[keyof GetV1AdminOpportunitiesOverviewResponses];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}";
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdError =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdErrors[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdErrors];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponses = {
+  /**
+   * Account context returned.
+   */
+  200: AdminOpportunityAccount;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponse =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdResponses[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdResponses];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsData = {
+  body: AccountFollowUpActionInput;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}/actions";
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsError =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses = {
+  /**
+   * Step recorded, or the original retry returned.
+   */
+  200: {
+    ok: true;
+    actionId: string;
+  };
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponse =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses];
 
 export type GetV1AdminOpportunitiesData = {
   body?: never;

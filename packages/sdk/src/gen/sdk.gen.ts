@@ -3,6 +3,7 @@
 import { client } from "./client.gen.js";
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js";
 import type {
+  AccountFollowUpActionInput,
   ActivateAutomationErrors,
   ActivateAutomationResponses,
   AgentPermissionPolicyWrite,
@@ -209,7 +210,11 @@ import type {
   GetV1AdminFreeAutoUsageResponses,
   GetV1AdminMetricsErrors,
   GetV1AdminMetricsResponses,
+  GetV1AdminOpportunitiesAccountsByOrganizationIdErrors,
+  GetV1AdminOpportunitiesAccountsByOrganizationIdResponses,
   GetV1AdminOpportunitiesErrors,
+  GetV1AdminOpportunitiesOverviewErrors,
+  GetV1AdminOpportunitiesOverviewResponses,
   GetV1AdminOpportunitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
@@ -679,6 +684,8 @@ import type {
   PostRegisterResponses,
   PostV1AdminAdminsErrors,
   PostV1AdminAdminsResponses,
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors,
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
@@ -1611,6 +1618,81 @@ export class DenClient extends HeyApiClient {
     return (options?.client ?? this.client).get<GetV1AdminDashboardResponses, GetV1AdminDashboardErrors, ThrowOnError>({
       url: "/v1/admin/dashboard",
       ...options,
+    });
+  }
+
+  /**
+   * Get this week's actionable platform activity
+   *
+   * Platform-admin-only Monday-to-now UTC summary compared with the same elapsed period last week. Counts registered accounts, current joined human memberships and organization-scoped observed telemetry. Returns daily signup and membership counts, at most eight records per signal list, and a prioritized queue built from transparent, dated signals and recorded internal follow-ups. Missing telemetry does not establish inactivity or service health. No emails, content, credentials or external enrichment.
+   */
+  public getV1AdminOpportunitiesOverview<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesOverviewResponses,
+      GetV1AdminOpportunitiesOverviewErrors,
+      ThrowOnError
+    >({ url: "/v1/admin/opportunities/overview", ...options });
+  }
+
+  /**
+   * Get an account's sales context
+   *
+   * Platform-admin-only. Returns the organization's current people (owners first, at most 25) with their existing admin-visible name, email and role, observed adoption, the transparent recommendation and its dated signals, and internal follow-up history. Internal context only: not visible to the organization.
+   */
+  public getV1AdminOpportunitiesAccountsByOrganizationId<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesAccountsByOrganizationIdResponses,
+      GetV1AdminOpportunitiesAccountsByOrganizationIdErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/accounts/{organizationId}",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Record a sales follow-up step
+   *
+   * Platform-admin-only. Appends what happened (reviewed, contacted, reply, meeting, note, closed, dismissed or reopened) and sets the next action, owner and UTC follow-up date in one idempotent request. Never sends a message, changes the organization or writes to its audit log.
+   */
+  public postV1AdminOpportunitiesAccountsByOrganizationIdActions<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      accountFollowUpActionInput: AccountFollowUpActionInput;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { key: "accountFollowUpActionInput", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses,
+      PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/accounts/{organizationId}/actions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 
