@@ -16,11 +16,20 @@ function isPE(file) {
   }
 }
 
+function isNonWindowsNative(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const magic = Buffer.alloc(4);
+    if (fs.readSync(fd, magic, 0, 4, 0) !== 4) return false;
+    return [0x7f454c46, 0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe, 0xbebafeca].includes(magic.readUInt32BE(0));
+  } finally { fs.closeSync(fd); }
+}
+
 function sign(configuration, { env = process.env, execute = execFileSync } = {}) {
   // Keep the existing unsigned packaging path, including developer builds.
   if (env.SIGN_WINDOWS !== "true") return;
   if (!isPE(configuration.path)) {
-    if (path.extname(configuration.path).toLowerCase() === ".node") return;
+    if (path.extname(configuration.path).toLowerCase() === ".node" && isNonWindowsNative(configuration.path)) return;
     throw new Error(`Refusing to sign a non-PE executable: ${path.basename(configuration.path)}`);
   }
   execute("pwsh", ["-NoProfile", "-NonInteractive", "-File",

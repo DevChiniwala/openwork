@@ -30,11 +30,23 @@ try {
     $before = (Get-FileHash $thirdParty).Hash
     $output = @(Invoke-TestScript -Arguments @('-Mode', 'Sign', '-Path', $thirdParty))
     if ($output[-1] -ne 0 -or (Get-FileHash $thirdParty).Hash -ne $before) { throw 'Valid third-party binary changed' }
+    [IO.File]::WriteAllBytes((Join-Path $payload 'linux.node'), [byte[]]@(0x7f, 0x45, 0x4c, 0x46))
+    [IO.File]::WriteAllBytes((Join-Path $payload 'darwin.node'), [byte[]]@(0xcf, 0xfa, 0xed, 0xfe))
     $output = @(Invoke-TestScript -Arguments @('-Mode', 'Verify', '-Path', $payload, '-Installer', $installer, '-Report', (Join-Path $root 'valid.json')))
     if ($output[-1] -ne 0) { throw 'Valid payload rejected' }
     $rows = @(Get-Content (Join-Path $root 'valid.json') -Raw | ConvertFrom-Json)
     if ($rows.Count -ne 2 -or @($rows | Where-Object { -not $_.accepted }).Count) { throw 'Incomplete PE verification' }
     if (-not ($rows | Where-Object file -eq 'cmd.exe').preserved) { throw 'Third-party preservation was not verified' }
+    $corrupt = Join-Path $payload 'corrupt.node'
+    [IO.File]::WriteAllText($corrupt, 'invalid native module')
+    $output = @(Invoke-TestScript -Arguments @('-Mode', 'Verify', '-Path', $payload, '-Installer', $installer) 2>&1)
+    if ($output[-1] -eq 0) { throw 'Unrecognized native module silently ignored' }
+    Remove-Item $corrupt
+    $fakeExe = Join-Path $payload 'versions.json.exe'
+    [IO.File]::WriteAllText($fakeExe, '{}')
+    $output = @(Invoke-TestScript -Arguments @('-Mode', 'Verify', '-Path', $payload, '-Installer', $installer) 2>&1)
+    if ($output[-1] -eq 0) { throw 'Non-PE .exe silently ignored' }
+    Remove-Item $fakeExe
     Remove-Item $env:WINDOWS_PRESERVED_SIGNATURES
     $output = @(Invoke-TestScript -Arguments @('-Mode', 'Verify', '-Path', $payload, '-Installer', $installer) 2>&1)
     if ($output[-1] -eq 0) { throw 'Unexpected publisher accepted without preservation evidence' }
@@ -56,3 +68,6 @@ try {
     }
     Remove-Item $root -Recurse -Force
 }
+# GitHub's pwsh wrapper forwards LASTEXITCODE; expected negative child tests
+# must not leave their exit=1 as the successful test suite's final status.
+exit 0

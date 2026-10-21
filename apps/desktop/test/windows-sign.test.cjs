@@ -44,7 +44,10 @@ test('retains the exact signed NSIS uninstaller before builder deletes it', t =>
   assert.deepEqual(fs.readFileSync(path.join(path.dirname(file), 'signature-evidence/uninstaller.exe')), fs.readFileSync(file));
 });
 test('non-Windows native prebuilds are not signed, but JSON .exe is rejected', t => {
-  sign({ path: fixture(t, 'unix.node', Buffer.from('ELF')) }, { env: { SIGN_WINDOWS: 'true' }, execute() { assert.fail(); } });
+  for (const magic of [[0x7f, 0x45, 0x4c, 0x46], [0xcf, 0xfa, 0xed, 0xfe]]) {
+    sign({ path: fixture(t, 'unix.node', Buffer.from(magic)) }, { env: { SIGN_WINDOWS: 'true' }, execute() { assert.fail(); } });
+  }
+  assert.throws(() => sign({ path: fixture(t, 'corrupt.node', Buffer.from('invalid')) }, { env: { SIGN_WINDOWS: 'true' } }), /non-PE/);
   assert.throws(() => sign({ path: fixture(t, 'versions.json.exe', Buffer.from('{}')) }, { env: { SIGN_WINDOWS: 'true' } }), /non-PE/);
 });
 test('hook propagates signing failures instead of silently shipping unsigned files', t => {

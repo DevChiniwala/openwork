@@ -20,6 +20,15 @@ function Test-PE([string]$File) {
     } finally { $reader.Dispose() }
 }
 
+function Test-NonWindowsNative([string]$File) {
+    $stream = [IO.File]::OpenRead($File)
+    $reader = [IO.BinaryReader]::new($stream)
+    try {
+        if ($stream.Length -lt 4) { return $false }
+        return $reader.ReadUInt32().ToString('X8') -in @('464C457F', 'CEFAEDFE', 'CFFAEDFE', 'FEEDFACE', 'FEEDFACF', 'BEBAFECA', 'CAFEBABE')
+    } finally { $reader.Dispose() }
+}
+
 if ($Mode -eq 'Sign') {
     if (-not (Test-PE $Path)) { throw 'Signing requires a PE file' }
     $signature = Get-AuthenticodeSignature -LiteralPath $Path
@@ -94,7 +103,7 @@ if ($Mode -eq 'VerifyPackage') {
     } finally {
         $uninstaller = @(Get-ChildItem -LiteralPath $installed -Filter 'Uninstall *.exe' -ErrorAction SilentlyContinue)
         if ($uninstaller.Count -eq 1) {
-            $cleanup = Start-Process -FilePath $uninstaller[0].FullName -ArgumentList @('/S', "/_?=$installed") -PassThru
+            $cleanup = Start-Process -FilePath $uninstaller[0].FullName -ArgumentList @('/S', "_?=$installed") -PassThru
             if (-not $cleanup.WaitForExit(60000)) { $cleanup.Kill(); throw 'Uninstaller timed out' }
         }
         Remove-Item -LiteralPath $installed -Recurse -Force -ErrorAction SilentlyContinue
@@ -113,7 +122,11 @@ $root = (Resolve-Path -LiteralPath $Path).Path
 $rows = @(foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File) {
     if (-not (Test-PE $file.FullName)) {
         if ($file.Extension -in @('.exe', '.dll')) { throw "Non-PE file masquerades as executable: $($file.Name)" }
-        continue # ELF/Mach-O prebuilds are not Windows PE files.
+        if ($file.Extension -eq '.node') {
+            if (-not (Test-NonWindowsNative $file.FullName)) { throw "Unrecognized native module: $($file.Name)" }
+            Write-Host "Non-Windows ELF/Mach-O prebuild (not a PE): $([IO.Path]::GetRelativePath($root, $file.FullName))"
+        }
+        continue
     }
     $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
     $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
