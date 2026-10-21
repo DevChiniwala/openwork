@@ -154,7 +154,8 @@ passes `save: true`; a file with no open window is edited headlessly and saved.
 Cell strings are always stored as text, so content copied from a page or file
 is never evaluated. Formulas are explicit `{formula}` cells and are refused if
 they fetch or link outside the workbook (`WEBSERVICE`, `DDE`, `HYPERLINK`,
-`INDIRECT` or external references), to keep workbook content from becoming a request to outside services.
+`INDIRECT`, `IMAGE` or external references), including URLs constructed from cell
+contents. This also protects saved files opened outside the desktop's network isolation.
 
 Scripts run as `openwork-app`, separated from the browser and command accounts.
 The private browser home is inaccessible and IPv4/IPv6 egress is denied, including

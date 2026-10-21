@@ -115,6 +115,38 @@ class AppScriptingSafety(unittest.TestCase):
             with patch.object(office, 'OUTPUT_DIRECTORY', str(out)), self.assertRaises(office.Failure):
                 office.pdf_output(str(out / 'result.pdf'))
 
+    def test_external_image_formulas_refuse_the_whole_write_before_mutating_cells(self):
+        from unittest.mock import Mock
+        office = self.office()
+        address = types.SimpleNamespace(StartColumn=0, EndColumn=1, StartRow=0, EndRow=0)
+        formulas = ['=IMAGE(A1&ENCODEURL(B1))', '=image (A1)',
+                    '=_xlfn.IMAGE(A1)', '=COM.MICROSOFT.IMAGE(A1)',
+                    '=IF(B1;IMAGE(A1);"no image")']
+        for formula in formulas:
+            with self.subTest(formula=formula):
+                cells = Mock()
+                with patch.object(office, 'sheet_range', return_value=(Mock(), cells, address)):
+                    with self.assertRaises(office.Failure):
+                        office.operate(Mock(), {'operation': 'write_range', 'range': 'A1:B1',
+                                               'values': [['Keep the existing value', {'formula': formula}]]})
+                cells.getDataArray.assert_not_called()
+                cells.getCellByPosition.assert_not_called()
+
+    def test_workbook_math_still_runs_and_formula_shaped_text_stays_literal(self):
+        from unittest.mock import Mock
+        office = self.office()
+        address = types.SimpleNamespace(StartColumn=0, EndColumn=0, StartRow=0, EndRow=0)
+        for value, setter, text in [({'formula': '=SUM(B2:B4)'}, 'setFormula', '=SUM(B2:B4)'),
+                                    ('=IMAGE(A1&ENCODEURL(B1))', 'setString', '=IMAGE(A1&ENCODEURL(B1))')]:
+            with self.subTest(value=value):
+                cell = Mock()
+                cells = Mock(getDataArray=Mock(return_value=[['']]), getCellByPosition=Mock(return_value=cell))
+                sheet = Mock(getName=Mock(return_value='Sheet1'))
+                with patch.object(office, 'sheet_range', return_value=(sheet, cells, address)):
+                    office.operate(Mock(), {'operation': 'write_range', 'range': 'A1', 'values': [[value]]})
+                getattr(cell, setter).assert_called_once_with(text)
+                getattr(cell, 'setString' if setter == 'setFormula' else 'setFormula').assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
