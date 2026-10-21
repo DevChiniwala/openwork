@@ -10,6 +10,44 @@ On September 5, 2026, PR #4517 had Actions and JavaScript/TypeScript results for
 3427828, but Python was added to default setup after that scan. GitHub consequently
 reported one missing result for the PR head or its merge commit e322949.
 
+## Exclude evals and tests from analysis
+
+`.github/codeql/codeql-config.yml` excludes all `evals/` trees (including their
+shared packages), test-suite/support directories, and extension-independent test
+filenames such as `*.test.*`, `*.spec.*`, `*.e2e.*`, `test_*`, `*_test.*`,
+`test-*`, `*Test.*`, and `*Tests.*`. Compound names such as `*.api.test.ts`,
+`*.live.test.ts`, and `*.proof.test.ts` are covered too. Singular `test/`
+directories are scoped to workspace package roots and `src/test/`: a blanket
+`**/test/**` would also exclude the production SSO routes in
+`ee/apps/den-web/app/sso/test/`. Production files that merely contain "test" in
+their names (for example `latest-assistant-tool-parts.ts` and `model-test.ts`)
+remain scanned.
+
+**Committing the file alone does not activate it.** Keep default setup and enable
+its supported custom-configuration repository property:
+
+1. In the organization settings, create the **Text** custom repository property
+   `github-codeql-config-file` if it does not exist. Do not set an organization-wide
+   default: these exclusions are specific to this repository.
+2. After the configuration is available on the default branch, set that property
+   for `different-ai/openwork` to `.github/codeql/codeql-config.yml`.
+3. Trigger a fresh scan with a normal push. Inspect the CodeQL run to confirm it
+   loads this configuration, excludes eval/test sources, and still analyzes
+   production sources. Local pattern checks are not proof of live activation.
+4. Run `node scripts/ci/check-codeql-results.mjs` after scanning completes to
+   verify uploaded language coverage for open PRs.
+
+These are **analysis** exclusions, not workflow trigger filters; scans still run
+for test-only PRs and upload the required language results. They apply to
+JavaScript/TypeScript, Python, and other supported no-build analyses. Compiled
+languages analyzed through a build require build-level exclusions instead.
+Languages, security queries, alert thresholds, and the coverage monitor are
+unchanged. Repository settings are a separate activation step, not changed by
+this file.
+
+See [custom configuration with default setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/edit-default-setup#customizing-default-setup-with-a-configuration-file)
+and [CodeQL path patterns](https://docs.github.com/en/code-security/reference/code-scanning/workflow-configuration-options#specifying-directories-to-scan).
+
 ## Detect
 
 The daily `CodeQL Result Coverage` workflow checks open same-repository PRs targeting the default branch

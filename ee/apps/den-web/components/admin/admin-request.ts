@@ -41,6 +41,7 @@ export async function requestAdmin<T>(path: string, parse: (payload: unknown) =>
   const endpoint = denBrowserEndpoint(path);
   const response = await fetch(endpoint, {
     method: "GET",
+    cache: "no-store",
     credentials: denApiCredentials(endpoint),
     signal,
     headers: withStoredBearer({ Accept: "application/json" }),

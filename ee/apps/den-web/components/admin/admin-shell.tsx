@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, Building2, ChartNoAxesCombined, Flag, LayoutDashboard, ScanSearch, Server, Users } from "lucide-react";
 import { AdminBreadcrumbs } from "./admin-breadcrumbs";
+import { AdminAccessScreen } from "./admin-access-screen";
+import { requestAdmin, withStoredBearer, type AdminResult } from "./admin-request";
 
 const SessionCookieContext = createContext(false);
 export const useAdminSessionCookie = () => useContext(SessionCookieContext);
@@ -20,10 +22,50 @@ const SECTIONS = [
 ];
 
 export function AdminShell({ hasSessionCookie, children }: { hasSessionCookie: boolean; children: ReactNode }) {
+  const pathname = usePathname();
   return (
     <SessionCookieContext.Provider value={hasSessionCookie}>
-      <AdminShellContent>{children}</AdminShellContent>
+      <AdminAccessGate key={pathname} hasSessionCookie={hasSessionCookie}>
+        <AdminShellContent>{children}</AdminShellContent>
+      </AdminAccessGate>
     </SessionCookieContext.Provider>
+  );
+}
+
+function AdminAccessGate({ hasSessionCookie, children }: { hasSessionCookie: boolean; children: ReactNode }) {
+  const [state, setState] = useState<AdminResult<true> | { access: "checking" }>({ access: "checking" });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!hasSessionCookie && !withStoredBearer({}).Authorization) {
+      setState({ access: "signed-out", message: "" });
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+      setState({ access: "error", message: "Could not check admin access. Retry to check your access." });
+    }, 12_000);
+    setState({ access: "checking" });
+    // A cookie/token is only a hint. Confirm the platform allowlist before
+    // mounting navigation or any page. Each data endpoint still authorizes itself.
+    void requestAdmin<true>("/v1/admin/features", payload =>
+      payload && typeof payload === "object" && "features" in payload && Array.isArray(payload.features) ? true : null,
+    controller.signal).then(result => {
+      if (!controller.signal.aborted) setState(result);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setState({ access: "error", message: error instanceof Error ? error.message : "Could not check admin access." });
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { controller.abort(); window.clearTimeout(timeout); };
+  }, [hasSessionCookie, attempt]);
+
+  if (state.access === "ready") return children;
+  return (
+    <main id="admin-content" className="mx-auto flex min-h-screen w-full max-w-xl items-center px-4 py-8">
+      <div className="w-full">
+        <AdminAccessScreen state={state.access} message={"message" in state ? state.message : undefined} onRetry={() => setAttempt(value => value + 1)} />
+      </div>
+    </main>
   );
 }
 

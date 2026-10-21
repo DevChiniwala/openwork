@@ -51,7 +51,9 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     void readLatest()
     const update = () => { if (document.visibilityState === "visible") void readLatest() }
-    const timer = window.setInterval(() => { if (open || setupOpen || request || working || !snapshot || snapshot.readiness === "unsupported") update() }, 1_500)
+    // Agent work can start without a request or open popover. Keep the watch
+    // controls discoverable across silent renewal and follow-up messages.
+    const timer = window.setInterval(update, 1_500)
     window.addEventListener("focus", update)
     document.addEventListener("visibilitychange", update)
     return () => {
