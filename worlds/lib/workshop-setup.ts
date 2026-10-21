@@ -4,7 +4,9 @@ import type { Den } from "../../evals/packages/env/src/den.ts";
 
 export const WORKSHOP_MODEL = "gpt-6.1-sol";
 export const WORKSHOP_ATTENDEES = 20;
-export const WORKSHOP_BUDGET_CAVEAT = "Estimated cost, not a prepaid balance or an upstream billing cap. Admission checks settled spend; in-flight requests can overshoot. Weekly allowances reset Monday at 05:00 UTC; stop the workshop before that reset to keep the event's estimated allowance at $100.";
+/** Upper bound for one Den: seat names stay two digits (attendee01..attendee99). */
+export const WORKSHOP_MAX_ATTENDEES = 99;
+export const WORKSHOP_BUDGET_CAVEAT = "Estimated cost, not a prepaid balance or an upstream billing cap. Admission checks settled spend; in-flight requests can overshoot. Weekly allowances reset Monday at 05:00 UTC; stop the workshop before that reset so each seat keeps one allowance for the event.";
 
 export const WORKSHOP_CONNECTIONS = [
   { key: "outlook", name: "Workshop Outlook" },
@@ -72,7 +74,7 @@ export async function configureWorkshop(den: Den, options: WorkshopSetupOptions)
   }
   if (!den.gateway?.publicUrl) throw new Error("Boot the shared Den with its real co-located Gateway before configuring the workshop.");
   const expected = options.attendees ?? WORKSHOP_ATTENDEES;
-  if (!Number.isSafeInteger(expected) || expected < 1 || expected > WORKSHOP_ATTENDEES) throw new Error("Workshop attendee count must be 1..20.");
+  if (!Number.isSafeInteger(expected) || expected < 1 || expected > WORKSHOP_MAX_ATTENDEES) throw new Error(`Workshop attendee count must be 1..${WORKSHOP_MAX_ATTENDEES}.`);
   const sessions = Object.entries(den.members);
   if (sessions.length !== expected) throw new Error(`Workshop requires exactly ${expected} approved ordinary member sessions.`);
   const emails = sessions.map(([, session]) => session.email.trim().toLowerCase());

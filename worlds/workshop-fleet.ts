@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { assertTrustedWorkshopRef } from "./lib/workshop-trust.ts";
 import { chmod, lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -268,6 +269,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const place = resolvePlace();
   const base = place.denBase();
   if (base.kind !== "daytona" || !/^[a-f0-9]{40}$/.test(base.ref)) throw new Error("Pin OPENWORK_EVAL_REF (or --ref) to the reviewed full pushed commit SHA.");
+  await assertTrustedWorkshopRef(base.ref, REPO_ROOT);
   const upstreamKey = process.env.OPENAI_API_KEY;
   if (!upstreamKey?.trim()) throw new Error("Fetch OPENAI_API_KEY once into the controller before starting.");
   const budget = workshopBudget(options.count, options.lifetimeMinutes);

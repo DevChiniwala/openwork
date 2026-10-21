@@ -5,6 +5,7 @@
  * operator can inspect, fix and rerun checks. `pnpm world down` (or the
  * provider TTL) removes it. Checks run separately: worlds/workshop-pair-check.ts.
  */
+import { assertTrustedWorkshopRef } from "./lib/workshop-trust.ts";
 import { randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -22,7 +23,8 @@ import { trackResource } from "../packages/world/src/ledger.ts";
 import { output, secret } from "../packages/world/src/outputs.ts";
 import type { WorldOutput } from "../packages/world/src/outputs.ts";
 import { targetFromEnv } from "../packages/world/src/target.ts";
-import { configureWorkshop } from "./lib/workshop-setup.ts";
+import { configureWorkshop, WORKSHOP_MAX_ATTENDEES } from "./lib/workshop-setup.ts";
+import { assertDaytonaCapacity } from "./lib/workshop-capacity.ts";
 import { pagedSnapshotListExec } from "./lib/workshop-snapshot.ts";
 import { grantOpenWorkWebAccess } from "../evals/packages/behaviors/src/workflows.ts";
 import { redactWorkshopDiagnostic } from "./lib/workshop-redaction.ts";
@@ -44,6 +46,7 @@ export function parsePairOptions(argv: readonly string[]) {
   let seats = 1;
   let concurrency = 10;
   let snapshot: string | undefined;
+  let budgetUsd = 200;
   const seen = new Set<string>();
   for (let i = 0; i < argv.length; i += 2) {
     const flag = argv[i];
@@ -53,19 +56,20 @@ export function parsePairOptions(argv: readonly string[]) {
     if (flag === "--lifetime" && /^\d+$/.test(value) && Number(value) >= 30 && Number(value) <= 1440) lifetimeMinutes = Number(value);
     else if (flag === "--output-dir" && isAbsolute(value)) outputDir = resolve(value);
     else if (flag === "--timezone" && /^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value) && Intl.supportedValuesOf("timeZone").includes(value)) timezone = value;
-    else if (flag === "--seats" && /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 20) seats = Number(value);
+    else if (flag === "--seats" && /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= WORKSHOP_MAX_ATTENDEES) seats = Number(value);
+    else if (flag === "--budget-usd" && /^\d+(\.\d+)?$/.test(value) && Number(value) > 0 && Number(value) <= 2000) budgetUsd = Number(value);
     else if (flag === "--concurrency" && /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 20) concurrency = Number(value);
     else if (flag === "--snapshot" && /^workshop-desktop-[a-z0-9-]{1,80}$/.test(value)) snapshot = value;
-    else throw new Error("Use --output-dir <private absolute path outside git>, optional --seats 1..20 (default 1), --snapshot workshop-desktop-<name> (clean, signed-out), --concurrency 1..20 (default 10), --lifetime 30..1440 (minutes, default 240) and --timezone <IANA zone, default America/Los_Angeles>.");
+    else throw new Error("Use --output-dir <private absolute path outside git>, optional --seats 1..99 (default 1), --budget-usd <infrastructure ceiling, default 200>, --snapshot workshop-desktop-<name> (clean, signed-out), --concurrency 1..20 (default 10), --lifetime 30..1440 (minutes, default 240) and --timezone <IANA zone, default America/Los_Angeles>.");
   }
   if (!outputDir) throw new Error("Pair requires --output-dir outside git (it holds a member test login and a private viewer link).");
   const rel = relative(REPO_ROOT, outputDir);
   if (rel !== ".." && !rel.startsWith(`..${sep}`)) throw new Error("Pair output directory must be outside this checkout.");
-  return { lifetimeMinutes, outputDir, timezone, seats, concurrency, snapshot };
+  return { lifetimeMinutes, outputDir, timezone, seats, concurrency, snapshot, budgetUsd };
 }
 
 export function seatKey(index: number): string {
-  if (!Number.isSafeInteger(index) || index < 1 || index > 20) throw new Error("Seat index must be 1..20.");
+  if (!Number.isSafeInteger(index) || index < 1 || index > WORKSHOP_MAX_ATTENDEES) throw new Error(`Seat index must be 1..${WORKSHOP_MAX_ATTENDEES}.`);
   return `attendee${String(index).padStart(2, "0")}`;
 }
 
@@ -146,11 +150,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   if (target.provider !== "daytona" || target.os !== "linux") throw new Error("Workshop pair supports only --place daytona --os linux.");
   const upstreamKey = process.env.OPENAI_API_KEY;
   if (!upstreamKey?.trim()) throw new Error("Fetch OPENAI_API_KEY into the controller environment before starting.");
-  if (pairInfrastructureUsd(options.lifetimeMinutes, options.seats) > 180) throw new Error("Workshop exceeds the approved $180 infrastructure ceiling; shorten --lifetime or use fewer --seats.");
+  const estimateUsd = pairInfrastructureUsd(options.lifetimeMinutes, options.seats);
+  if (estimateUsd > options.budgetUsd) throw new Error(`Estimated infrastructure $${estimateUsd.toFixed(0)} exceeds --budget-usd ${options.budgetUsd}; shorten --lifetime, use fewer --seats, or raise --budget-usd deliberately.`);
+  console.log(`Workshop: ${options.seats} seats for ${options.lifetimeMinutes} min, estimated infrastructure $${estimateUsd.toFixed(0)} (budget $${options.budgetUsd}).`);
+  await assertDaytonaCapacity(options.seats + 1);
   await privateDirectory(options.outputDir);
   const place = resolvePlace();
   const base = place.denBase();
   if (base.kind !== "daytona" || !/^[a-f0-9]{40}$/.test(base.ref)) throw new Error("Pin OPENWORK_EVAL_REF to a full pushed commit SHA.");
+  await assertTrustedWorkshopRef(base.ref, REPO_ROOT);
 
   const startedAtMs = Date.now();
   const deadline = startedAtMs + options.lifetimeMinutes * 60_000;

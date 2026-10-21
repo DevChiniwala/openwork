@@ -166,6 +166,25 @@ test("cohosting requires private confirmation, production mode and Gateway befor
   assert.equal(disabled.status, 0, disabled.stderr);
 });
 
+test("private-interface MySQL has no network root or fixed password: only a per-boot, single-database, single-host Den account", () => {
+  const sqlBlock = start.slice(start.indexOf('if [ "${OPENWORK_WORKSHOP_PRIVATE_COHOST:-0}" = "1" ]; then\n  # MySQL listens'), start.indexOf('echo "==> Installing dependencies if needed..."'));
+  assert.ok(sqlBlock.includes("CREATE USER 'openwork_den'"), "cohost SQL block found");
+  const run = (flag) => spawnSync("bash", ["-c", `MYSQL_ROOT_CMD=(cat)\n${sqlBlock}`], {
+    env: { ...process.env, OPENWORK_WORKSHOP_PRIVATE_COHOST: flag, COHOST_IP: "172.20.0.34", WORKSHOP_DB_PASSWORD: "f".repeat(48) }, encoding: "utf8" });
+  const cohost = run("1");
+  assert.equal(cohost.status, 0, cohost.stderr);
+  assert.match(cohost.stdout, /DROP USER IF EXISTS 'root'@'%';/);
+  assert.match(cohost.stdout, /CREATE USER 'openwork_den'@'172\.20\.0\.34' IDENTIFIED BY 'f{48}';/);
+  assert.match(cohost.stdout, /GRANT ALL PRIVILEGES ON openwork_den\.\* TO 'openwork_den'@'172\.20\.0\.34';/);
+  assert.doesNotMatch(cohost.stdout, /'root'@'%' IDENTIFIED|ON \*\.\* TO 'root'@'%'|'openwork_den'@'%' IDENTIFIED/);
+  // Normal previews keep their existing loopback-only defaults unchanged.
+  assert.match(run("0").stdout, /CREATE USER IF NOT EXISTS 'root'@'%'/);
+  // The Den URL on the private interface never carries the fixed root credential.
+  const url = start.slice(start.indexOf("WORKSHOP_DB_PASSWORD=\"$(node"), start.indexOf('export GATEWAY_PROXY_BASE_URL="http://$COHOST_IP'));
+  assert.match(url, /mysql:\/\/openwork_den:\$WORKSHOP_DB_PASSWORD@\$COHOST_IP:3306\/openwork_den/);
+  assert.doesNotMatch(url, /root:password/);
+});
+
 test("production workshop Gateway CORS uses only existing public HTTPS app origins", () => {
   const block = start.slice(start.indexOf('  GATEWAY_CORS_ORIGINS="$CORS_ORIGINS"'), start.indexOf('  pkill -f "tsx src/server.ts"'));
   const env = { ...process.env, CORS_ORIGINS: "http://localhost:3005", DEN_WEB_PUBLIC_URL: "https://web.example.test", DEN_API_PUBLIC_URL: "https://api.example.test" };

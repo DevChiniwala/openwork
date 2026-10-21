@@ -146,7 +146,11 @@ COHOST_IP_JS
   printf '[mysqld]\nbind-address = %s\n' "$COHOST_IP" | run_root tee "$cohost_mysql_config" >/dev/null
   # The snapshot may already have MySQL running with its old loopback binding.
   run_root service mysql stop >/dev/null 2>&1 || run_root service mariadb stop >/dev/null 2>&1
-  export DATABASE_URL="mysql://root:password@$COHOST_IP:3306/openwork_den"
+  # The private interface carries no shared or fixed credential: Den uses a
+  # per-boot random password for an account limited to its own database and to
+  # connections from this backend's own address. Root stays socket/loopback-only.
+  WORKSHOP_DB_PASSWORD="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("hex"))')"
+  export DATABASE_URL="mysql://openwork_den:$WORKSHOP_DB_PASSWORD@$COHOST_IP:3306/openwork_den"
   export GATEWAY_PROXY_BASE_URL="http://$COHOST_IP:$GATEWAY_PORT"
 
   # Private workshop mail is deliberately discarded, never delivered or exposed
@@ -362,7 +366,21 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-"${MYSQL_ROOT_CMD[@]}" <<'SQL'
+if [ "${OPENWORK_WORKSHOP_PRIVATE_COHOST:-0}" = "1" ]; then
+  # MySQL listens on the private interface here, so no network root account and
+  # no fixed password may exist: only the per-boot Den account, from this host.
+  "${MYSQL_ROOT_CMD[@]}" <<SQL
+CREATE DATABASE IF NOT EXISTS openwork_den;
+ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';
+DROP USER IF EXISTS 'root'@'%';
+DROP USER IF EXISTS 'openwork_den'@'%';
+DROP USER IF EXISTS 'openwork_den'@'$COHOST_IP';
+CREATE USER 'openwork_den'@'$COHOST_IP' IDENTIFIED BY '$WORKSHOP_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON openwork_den.* TO 'openwork_den'@'$COHOST_IP';
+FLUSH PRIVILEGES;
+SQL
+else
+  "${MYSQL_ROOT_CMD[@]}" <<'SQL'
 CREATE DATABASE IF NOT EXISTS openwork_den;
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';
 CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'password';
@@ -370,6 +388,7 @@ GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION;
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 SQL
+fi
 
 echo "==> Installing dependencies if needed..."
 mkdir -p "$PNPM_STORE" .openwork-daytona

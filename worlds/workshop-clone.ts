@@ -12,6 +12,7 @@
  * `all` = base + clones + signin; `cleanup` (run explicitly) deletes every
  * recorded clone and the base, and keeps the snapshot, which holds no identity.
  */
+import { assertTrustedWorkshopRef } from "./lib/workshop-trust.ts";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -139,6 +140,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const options = parseCloneOptions(argv);
   const pair = await readPair(options.pairDir);
   assert.match(pair.ref, /^[0-9a-f]{40}$/, "pair ref must be a full SHA");
+  await assertTrustedWorkshopRef(pair.ref, REPO_ROOT);
   await privateDirectory(options.outputDir);
   const reportPath = join(options.outputDir, "report.json");
   const existing: unknown = await readFile(reportPath, "utf8").then((text) => JSON.parse(text), () => null);
