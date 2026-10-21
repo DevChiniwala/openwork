@@ -28,8 +28,10 @@ const load = () => JSON.parse(readFileSync(receiptPath, "utf8"));
 const update = (fn) => { const r = load(); fn(r); writeFileSync(receiptPath, JSON.stringify(r, null, 2), { mode: 0o600 }); };
 const initial = load();
 assert(initial.status.startsWith("pilot-passed"), "Existing functional pilot must have passed");
-const replaceAuditStoppedBuilder = initial.replication?.canaryStatus === "blocked-retained" && initial.templateBuild?.status === "active" && initial.templateBuild?.neverAuthenticated;
-assert(!initial.replication || replaceAuditStoppedBuilder, "Existing replication receipt: attach its controller, never recreate blindly");
+const failedOwnedCanary = initial.replication?.canaryStatus === "blocked-retained" && initial.templateBuild?.status === "active" && initial.templateBuild?.neverAuthenticated;
+const replaceAuditStoppedBuilder = failedOwnedCanary && initial.replication.template.snapshotId !== initial.templateBuild.snapshotId;
+const resumeExistingCanary = failedOwnedCanary && initial.replication.template.snapshotId === initial.templateBuild.snapshotId && initial.replication.seats.length === 1 && initial.replication.seats[0].status === "failed-retained";
+assert(!initial.replication || replaceAuditStoppedBuilder || resumeExistingCanary, "Existing replication receipt: attach its controller, never recreate blindly");
 const raw = execFileSync(process.execPath, ["evals/bin/world.mjs", "outputs", "workshop", "--stage", initial.stage, "--reveal", "--json"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 const outputs = Object.fromEntries(Object.entries(JSON.parse(raw.trim().split("\n").at(-1)).outputs).map(([k, v]) => [k, v.value]));
 const headers = { authorization: `Bearer ${process.env.DAYTONA_API_KEY}`, "content-type": "application/json" };
@@ -50,17 +52,17 @@ if (replaceAuditStoppedBuilder) {
   assert(deleted, "Temporary builder must be deleted before canary allocation");
   update(r => { r.templateBuild.builderCleanup = "deletion confirmed HTTP 404"; });
 }
-const snapshotName = replaceAuditStoppedBuilder ? initial.templateBuild.snapshotName : "openwork-eval-vnc";
+const snapshotName = replaceAuditStoppedBuilder || resumeExistingCanary ? initial.templateBuild.snapshotName : "openwork-eval-vnc";
 const snapshot = await api(`/snapshots/${snapshotName}`);
 assert.equal(snapshot.state.toLowerCase(), "active", "Software base must be active");
 assert(snapshot.id && snapshot.name === snapshotName);
-if (replaceAuditStoppedBuilder) assert.equal(snapshot.id, initial.templateBuild.snapshotId);
+if (replaceAuditStoppedBuilder || resumeExistingCanary) assert.equal(snapshot.id, initial.templateBuild.snapshotId);
 const recipe = readFileSync(`${root}/.devcontainer/Dockerfile.daytona-vnc`, "utf8");
 assert(recipe.includes("git clone") && recipe.includes("rm -rf") && !/sign-in|authToken|OPENAI_API_KEY/.test(recipe), "Review the clean base recipe");
 const template = { kind: replaceAuditStoppedBuilder ? "owned-never-authenticated-cold-software-snapshot" : "maintained-clean-base-plus-per-clone-bootstrap", snapshotId: snapshot.id, snapshotName: snapshot.name, recipeSha256: createHash("sha256").update(recipe).digest("hex"), sourceSha, newSnapshotCreated: Boolean(replaceAuditStoppedBuilder), authenticatedPilotCaptured: false, ...(replaceAuditStoppedBuilder ? { finalAudit: initial.templateBuild.finalAudit } : {}) };
 const seats = new Map(); let canaryMember, approval = false, fanoutRunning = false;
 let canaryResolve; const canaryReady = new Promise(resolve => { canaryResolve = resolve; });
-update(r => { if (replaceAuditStoppedBuilder) r.priorTemplateAudit = r.replication; r.replication = { template, deadline: new Date(deadline).toISOString(), socketPath, seats: [], canaryStatus: "preparing", fanoutStatus: "not-started", maxAdditionalComputeAndCanaryModelUsd: 15 }; });
+if (!resumeExistingCanary) update(r => { if (replaceAuditStoppedBuilder) r.priorTemplateAudit = r.replication; r.replication = { template, deadline: new Date(deadline).toISOString(), socketPath, seats: [], canaryStatus: "preparing", fanoutStatus: "not-started", maxAdditionalComputeAndCanaryModelUsd: 15 }; });
 
 async function capacity(count) {
   const backend = await api(`/sandbox/${initial.finalResources.find(s => s.role === "backend").id}`);
@@ -93,16 +95,23 @@ async function signedUrl(sandbox, port) {
   assert.equal(result.code, 0); const value = result.stdout.match(/https:\/\/[^\s"<>]+/)?.[0]; assert(value); return value;
 }
 const writeSeat = (record) => update(r => { const i = r.replication.seats.findIndex(s => s.number === record.number); if (i < 0) r.replication.seats.push(record); else r.replication.seats[i] = record; });
-async function launch(number) {
-  const record = { number, key: `seat-${String(number).padStart(2, "0")}`, status: "allocating", signedIn: false, sourceSha, snapshotId: snapshot.id };
+async function launch(number, resume = false) {
+  const record = resume ? initial.replication.seats.find(s => s.number === number) : { number, key: `seat-${String(number).padStart(2, "0")}`, status: "allocating", signedIn: false, sourceSha, snapshotId: snapshot.id };
+  assert(record && record.signedIn === false && record.snapshotId === snapshot.id);
+  if (resume) { const info = await api(`/sandbox/${record.id}`); assert.equal(info.labels["ww-parallel-stage"], initial.stage); assert.equal(info.public, false); assert(Date.parse(info.autoDestroyAt) <= deadline); record.status = "repairing-owned-canary"; delete record.error; }
   writeSeat(record); const profileRoot = `/tmp/ww-parallel-seat-${number}-fresh`;
   const exec = async (args, options) => {
+    if (resume && args[0] === "sandbox" && args[1] === "start") {
+      assert.equal(args[2], record.id); const info = await api(`/sandbox/${record.id}`);
+      return info.state === "stopped" ? defaultDaytonaExec(["start", record.id], options) : { code: 0, stdout: "Owned canary is already starting/started", stderr: "" };
+    }
     if (args[0] === "snapshot" && args[1] === "list") return { code: 0, stdout: JSON.stringify([{ id: snapshot.id, name: snapshot.name }]), stderr: "" };
     if (args[0] === "create") assert.equal(args[args.indexOf("--snapshot") + 1], snapshot.id, "Immutable base ID must not drift");
     return defaultDaytonaExec(args, options);
   };
   try {
-    const provisioned = await provisionDesktopSandbox({ ref: sourceSha, name: `ww-parallel-${record.key}`, snapshot: snapshot.name, private: true, secrets: false, autoStopMinutes: 0, skipDesktopWarmup: true, retainOnFailure: true, exec,
+    const provisioned = await provisionDesktopSandbox({ ref: sourceSha, name: `ww-parallel-${record.key}`, snapshot: snapshot.name, ...(resume ? { reuse: record.id } : { private: true }), secrets: false, autoStopMinutes: 0, skipDesktopWarmup: true, retainOnFailure: true, exec,
+      onExecReady: async sandbox => { record.baseAudit = await baseAudit(sandbox); writeSeat(record); },
       log: line => log(`${record.key} ${line}`),
       onPrepared: async sandbox => {
         // Git checkout can restore the public repository's demo .env.dev. It is
@@ -116,7 +125,7 @@ async function launch(number) {
         await api(`/sandbox/${info.id}/labels`, "PUT", { labels: { ...info.labels, "ww-parallel-stage": initial.stage, "ww-parallel-seat": String(number), "ww-parallel-owner": "workshop-world" } });
         await api(`/sandbox/${info.id}/ttl/${ttl}`, "POST");
         const confirmed = await api(`/sandbox/${info.id}`); assert.equal(confirmed.public, false); assert(Date.parse(confirmed.autoDestroyAt) <= deadline); record.autoDestroyAt = confirmed.autoDestroyAt;
-        record.baseAudit = await baseAudit(info.id); writeSeat(record);
+        writeSeat(record);
       },
     });
     record.sourceReceipt = provisioned.source; assert.equal(provisioned.source.actualSha, sourceSha);
@@ -188,6 +197,6 @@ const server = createServer(socket => { let input = ""; socket.on("data", chunk 
 server.listen(socketPath, () => chmodSync(socketPath, 0o600));
 process.on("SIGTERM", () => { server.close(); try { unlinkSync(socketPath); } catch {} process.exit(0); });
 setTimeout(() => { server.close(); process.exit(0); }, Math.max(1, deadline - Date.now()));
-try { await capacity(19); await launch(2); await createCanaryMember(); update(r => { r.replication.canaryStatus = "signed-out-ready-awaiting-normal-signin"; }); log("Canary prepared; credentials stay in controller memory. Normal UI sign-in is next."); }
+try { await capacity(resumeExistingCanary ? 18 : 19); await launch(2, resumeExistingCanary); await createCanaryMember(); update(r => { r.replication.canaryStatus = "signed-out-ready-awaiting-normal-signin"; }); log("Canary prepared; credentials stay in controller memory. Normal UI sign-in is next."); }
 catch (e) { update(r => { r.replication.canaryStatus = "blocked-retained"; r.replication.blocker = redact(e.message).slice(0,600); }); log(`Canary blocked: ${redact(e.message)}`); }
 finally { canaryResolve(); }

@@ -125,6 +125,8 @@ export interface DesktopSandboxOptions {
   autoStopMinutes?: number;
   private?: boolean;
   onCreated?: (sandbox: string) => Promise<void>;
+  /** Called after the provider's exec-readiness gate, before checkout mutates the base. */
+  onExecReady?: (sandbox: string) => Promise<void>;
   /** Owned pre-launch configuration/audit after source checkout, before browser/app startup. */
   onPrepared?: (sandbox: string) => Promise<void>;
   /** Test-only override for the sandbox exec-readiness budget. */
@@ -751,6 +753,7 @@ async function provisionSandbox(
         log(`==> ${surface} sandbox created: ${sandbox}`);
       }
       await waitForExecReady(exec, sandbox, options.sandboxReadyTimeoutMs);
+      await options.onExecReady?.(sandbox);
     });
 
     if (release) {
