@@ -24,6 +24,7 @@ import type { WorldOutput } from "../packages/world/src/outputs.ts";
 import { targetFromEnv } from "../packages/world/src/target.ts";
 import { configureWorkshop } from "./lib/workshop-setup.ts";
 import { pagedSnapshotListExec } from "./lib/workshop-snapshot.ts";
+import { grantOpenWorkWebAccess } from "../evals/packages/behaviors/src/workflows.ts";
 import { redactWorkshopDiagnostic } from "./lib/workshop-redaction.ts";
 import { unlockWorkshopDesktop } from "./lib/workshop-unlock.ts";
 import { linkWorkshopRuntime, selectWorkshopModel } from "./lib/workshop-models.ts";
@@ -221,6 +222,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     });
     const setup = await stage(stages, "den", "models-and-connectors", () => configureWorkshop(den, { upstreamKey, allowanceUsd: 5, attendees: options.seats }));
     Object.assign(shared, { orgId: setup.orgId, connections: setup.connections });
+    // Automations need OpenWork Web access; a fictional workshop org gets the
+    // complimentary grant from the Den's own bootstrap admin, not billing.
+    await stage(stages, "den", "automations-access", () => grantOpenWorkWebAccess(den.admin, setup.orgId, "Hands-on workshop (fictional org)"));
 
     const results = await forEachSeat(options.seats, options.concurrency, async (index) => {
       const key = seatKey(index);

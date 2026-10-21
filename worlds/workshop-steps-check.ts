@@ -31,8 +31,8 @@ export const STEPS = [
   { id: "4-one-connector", fresh: true, prompt: "Using Workshop Outlook, find my most recent email. Summarize it in 3 bullet points and tell me who sent it and when. Don't change anything." },
   { id: "5-three-connectors", fresh: true, prompt: "Prepare me for my Northwind Logistics account review. Use Workshop Outlook for the latest emails, Workshop Jira for open issues, and Workshop Confluence for the account plan. Give me a one-page brief with: current status, open risks, next steps, and a link to each source you used. Don't change anything." },
   { id: "6-pptx", fresh: false, prompt: "Turn that brief into a 3-slide PowerPoint: a title slide, a status-and-risks slide, and a next-steps slide. Save it to my Workshop Drive as \"Northwind-brief.pptx\" and give me the link." },
-  { id: "7-automation", fresh: true, prompt: "Create an automation that runs every weekday at 9:00 AM Pacific time: check my Workshop Outlook for new emails about Northwind and save a short summary to my Workshop Drive. Don't send any email. Show me the automation once it's created." },
-  { id: "8-live-app", fresh: true, prompt: "Create a live app that shows my open Workshop Jira issues grouped by status, with a link to each issue." },
+  { id: "7-skill", fresh: true, prompt: "Create a skill called \"Account brief\" that, for any customer I name, reads Workshop Outlook, Workshop Jira and Workshop Confluence and writes a one-page brief with status, open risks, next steps and source links. Save it so I can reuse it, then show me how to run it." },
+  { id: "8-automation", fresh: true, prompt: "Create an automation that runs every weekday at 9:00 AM Pacific time: check my Workshop Outlook for new emails about Northwind and save a short summary to my Workshop Drive. Don't send any email. Show me the automation once it's created." },
 ] as const;
 
 async function attach(id: string, port: number, kind: "chrome" | "electron") {
@@ -101,7 +101,12 @@ export async function main(argv = process.argv.slice(2)) {
   } catch (error) { results.push({ id: "3-library", error: error instanceof Error ? error.message.slice(0, 500) : String(error) }); }
   await save();
 
-  const steps = colleague ? [...STEPS, { id: "8b-share", fresh: false, prompt: `Share that live app with my colleague ${colleague} so they can open it.` }] : STEPS;
+  const only = process.env.WORKSHOP_STEPS?.split(",").map((value) => value.trim()).filter(Boolean);
+  const chosen = only?.length ? STEPS.filter((step) => only.some((prefix) => step.id.startsWith(prefix))) : [...STEPS];
+  // Sharing follows the skill step, in the same conversation.
+  const steps = chosen.flatMap((step) => step.id === "7-skill" && colleague
+    ? [step, { id: "7b-share-skill", fresh: false, prompt: `Share the "Account brief" skill with my colleague ${colleague} so they can use it too.` }]
+    : [step]);
   for (const step of steps) {
     const started = Date.now();
     const before = await verifyMember(member, orgId, memberId).catch(() => null);

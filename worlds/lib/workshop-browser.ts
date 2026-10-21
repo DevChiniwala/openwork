@@ -89,9 +89,17 @@ export async function connectWorkshopBrowser(browser: Surface, member: DenSessio
   await navigate(browser, WORKPLACE_ORIGIN);
   const headers = { authorization: `Bearer ${member.token}`, "x-openwork-org-id": orgId };
   for (const connection of connections) {
-    const started = await denFetch(member, `/v1/mcp-connections/${encodeURIComponent(connection.id)}/connect/start`, { headers });
+    // Den's OAuth handshake with the workplace (discovery + client registration)
+    // can fail transiently when many seats start at once: retry with backoff.
+    let started = await denFetch(member, `/v1/mcp-connections/${encodeURIComponent(connection.id)}/connect/start`, { headers });
+    for (let attempt = 2; attempt <= 5 && (started.response.status === 424 || started.response.status === 429 || started.response.status >= 500); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 3_000 * attempt + Math.floor(Math.random() * 2_000)));
+      started = await denFetch(member, `/v1/mcp-connections/${encodeURIComponent(connection.id)}/connect/start`, { headers });
+    }
     if (!started.response.ok || !record(started.body) || typeof started.body.authorizeUrl !== "string") {
-      throw new Error(`Attendee OAuth start failed for ${connection.key}: HTTP ${started.response.status}.`);
+      // The 424 body is Den's provider diagnostic; it carries no credentials.
+      const reason = record(started.body) ? String(started.body.message ?? started.body.error ?? started.body.reason ?? "").slice(0, 300) : "";
+      throw new Error(`Attendee OAuth start failed for ${connection.key}: HTTP ${started.response.status}${reason ? ` (${reason})` : ""}.`);
     }
     const authorize = new URL(started.body.authorizeUrl);
     if (authorize.origin !== WORKPLACE_ORIGIN) throw new Error("Unexpected workplace OAuth issuer.");
