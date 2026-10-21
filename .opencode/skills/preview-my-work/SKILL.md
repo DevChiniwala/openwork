@@ -151,6 +151,28 @@ Windows accepts `--lifetime 0-1410` (0 until stopped), reserving 30 minutes
 for a VM provider TTL after startup. The installer resolves the exact `v<x.y.z>` GitHub release asset and verifies
 its API-published SHA-256 digest inside the VM before installation.
 
+### Bounded Windows failure diagnostics
+
+Windows release previews select the installed executable by distribution:
+`OpenWork.exe`, `OpenWork Cloud.exe`, or `OpenWork Enterprise.exe` in the installer’s
+`@openworkdesktop` directory. Never create an executable alias or rebuild release
+bytes to satisfy a launcher probe. Installer SHA-256/size and Authenticode are
+checked before interactive installation. Shipping CDP is loopback-only; the
+launcher exposes a separate **private VM relay** on 19825 to local 9223 after the
+local app responds, without changing the app’s TLS or making the VM public.
+
+A failed outer noVNC/RFB gate normally deletes the VM. To diagnose an explicitly
+owned pilot, set `OPENWORK_DAYTONA_RETAIN_FAILED=1` and
+`OPENWORK_WINDOWS_PREVIEW_DEADLINE=<absolute ISO timestamp>` in the controller
+command’s environment before launch. Retention requires a deadline 1–90 minutes
+in the future; provider TTL is capped to its remaining whole minutes rather than
+the normal lifetime-plus-startup reserve. Verify `autoDestroyAt` independently
+against the event deadline. A retained VM is **not a ready viewer** and may have no
+world outputs: record its exact created ID immediately and mint any diagnostic
+viewer privately for that ID. Do not retry allocations automatically. An outer
+viewer/RFB success explicitly acknowledges readiness; normal expiry/disposal then
+deletes the successful preview. Retention also covers failures inside provisioning.
+
 ## Saved web evidence checkpoints
 
 Checkpoint images appear in the PR's normal **OpenWork Evidence** report (specs

@@ -63,19 +63,36 @@ Bind only the existing authorized private Den origins, create a distinct ordinar
 member and own workspace, and complete real GUI first-launch sign-in. Do not
 reuse the Linux attendee/admin desktop session, regenerate OAuth issuer hosts,
 change model flags, or reset the shared world. Verify all five consents in the
-same Windows browser, actual model aliases, paid local/Drive writes, Ctrl+Enter
+same Windows browser; scroll each real Allow control into view and verify its
+connected callback/Ready state rather than inferring success from a mouse event.
+Reuse saved private CDP/viewer origins instead of minting a signed URL per click.
+Verify actual model aliases, paid local/Drive writes, Ctrl+Enter
 while busy, own-attendee reset and rerun. Only then queue the presenter's eleven
 canonical prompts, excluding T07 lockout. Track per-task outcomes honestly.
-**Windows attempt on 2026-10-20 was blocked before GUI sign-in.** The official
-0.18.59 enterprise installer is signed and digest-verified, but installs
-`OpenWork Enterprise.exe`; this driver's `windows-release.ts` hardcodes
-`OpenWork.exe`. A same-byte executable alias got as far as a session-1 process,
-not acceptance. Private CDP/RFB readiness then failed; the wrapper deleted the VM
-before ready outputs despite the inner CDP stage's retained-viewer wording.
-Do not promise a retained viewer, start a fleet, or claim Windows support from
-this run. Repair executable selection and transport/retention, then obtain a
-fresh authorized rehearsal. All eleven canonical exercises were **not submitted**.
-See `research/workshop-windows-validation.md` for exact findings and cleanup.
+**Windows result on 2026-10-20 remains Incomplete.** The first launch exposed
+an executable-name bug and misleading retained-viewer wording. The maintained
+launcher now uses actual distribution-specific filenames, checks Authenticode,
+and supports bounded failure retention with `OPENWORK_DAYTONA_RETAIN_FAILED=1`
+plus `OPENWORK_WINDOWS_PREVIEW_DEADLINE` (an absolute deadline 1–90 minutes away).
+Nine launcher tests pass, and one explicitly authorized replacement proved the
+real Enterprise filename/session-1 path and actual failure retention without an
+alias. The shipping app binds CDP to loopback 9223; its private relay is 19825.
+The viewer is port 6080 with `/websockify`; test HTTP **and** RFB, not HTTP alone.
+
+A single same-VM restart recovered guest transports. A fresh Windows Edge profile
+then completed real ordinary-member Den GUI sign-in, with a screenshot. The
+member's Den install config advertised **Cloud**, not Enterprise activation:
+use the backend-compatible signed distribution, never fabricate activation or
+change Den flags. The official signed Cloud 0.18.59 installer also completed on
+that same VM. A real first consent was shown, but its callback was not confirmed;
+no five-grant pass is claimed. Desktop launch again coincided with intermittent
+CDP/toolbox timeouts despite a private relay and disabled GPU. A recovered real
+Cloud log reports `Managed OpenCode process did not exit after SIGKILL` during
+managed/embedded server startup. CDP later listed the app page but renderer and
+WebSocket operations still timed out; transport root cause remains unestablished. No paid task, reset/rerun or canonical exercise ran. All eleven were
+**not submitted**. Do not start a fleet or treat the browser screenshot as desktop
+acceptance. See `research/workshop-windows-validation.md` for exact evidence,
+retention semantics, cost ceiling and the fixed cleanup deadline.
 
 ## Before the event (do this first, 5 minutes)
 
