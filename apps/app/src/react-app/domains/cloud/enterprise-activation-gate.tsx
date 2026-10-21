@@ -28,7 +28,7 @@ function subscribeToBootstrap(onStoreChange: () => void) {
 
 type PendingServerConfirmation =
   | { kind: "browser"; baseUrl: string }
-  | { kind: "manual"; baseUrl: string; grant: string };
+  | { kind: "manual"; baseUrl: string; grant: string; pasted: string };
 
 export function useEnterpriseActivationRequired() {
   const bootstrap = useSyncExternalStore(
@@ -61,7 +61,7 @@ function EnterpriseActivationPage() {
     if (pastedLink?.baseUrl && pastedLink.grant) {
       const linkBaseUrl = normalizeOrganizationServerInput(pastedLink.baseUrl);
       if (linkBaseUrl) {
-        setPendingConfirmation({ kind: "manual", baseUrl: linkBaseUrl, grant: pastedLink.grant });
+        setPendingConfirmation({ kind: "manual", baseUrl: linkBaseUrl, grant: pastedLink.grant, pasted: serverInput });
         setServerError(null);
         setAuthError(null);
         setStatusMessage(`Confirm ${linkBaseUrl} before continuing.`);
@@ -123,11 +123,14 @@ function EnterpriseActivationPage() {
     if (!pending || browserBusy || authBusy) return;
 
     setPendingConfirmation(null);
-    setServerInput(pending.baseUrl);
     if (pending.kind === "manual") {
+      // Keep the pasted code in the field: if the exchange fails (for example a
+      // timeout on a busy machine), Continue retries it without pasting again.
+      setServerInput(pending.pasted);
       await exchangeConfirmedGrant(pending.grant, pending.baseUrl);
       return;
     }
+    setServerInput(pending.baseUrl);
 
     setBrowserBusy(true);
     setServerError(null);
