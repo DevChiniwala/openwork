@@ -48,19 +48,27 @@ What it looks like from the page, measured on Electron 43.7.7, macOS, with
 - With OpenWork's listeners attached (feature on), nothing changes: no event,
   same failure. OpenWork never shows a QR code on stock Electron.
 
-Other paths, rejected:
+Scope of that result: macOS (measured) and Linux (same code path). On
+Windows 11, Chromium hands WebAuthn to the Windows WebAuthn API, and when that
+API supports hybrid, Chromium doesn't start its own (`device/fido/fido_discovery_factory.cc`,
+"Windows handles it"). So the embedded browser probably already gets the
+Windows dialog with its phone option there. Not tested yet.
 
-- Drawing our own QR and running caBLE v2 in Node: OpenWork would own the
-  tunnel handshake, the BLE advert decryption and the CTAP bridge back into
-  the page. That's custom cryptography plus a WebAuthn shim in the page, and
-  `clientDataJSON` would no longer come from Chromium.
-- Apple's system sheet (`ASAuthorizationController`, which offers "iPhone,
-  iPad or Android device"): Electron 45 `platformPasskeys` works only for the
-  app's associated domains. Serving any site needs Apple's managed
-  `com.apple.developer.web-browser.public-key-credential` entitlement, plus a
-  page shim. That's a separate project and macOS-only.
-- Signing in through an external Chrome: that doesn't sign in the
-  `persist:openwork-browser` partition, and copying cookies across is out.
+## Standard ways to do this, compared (2026-10-20)
+
+| Path | Who owns the phone QR and checks | What it needs | Fit |
+| --- | --- | --- | --- |
+| 1. Embedded Electron + hybrid events (this PR) | Chromium | Electron to merge #53733 or similar (draft, never built) | Keeps the built-in browser. Blocked upstream |
+| 2. Apple browser passkey API | macOS (Apple's sheet can offer a phone; Chromium turns that off with `shouldShowHybridTransport = false` in `device/fido/mac/icloud_keychain_sys.mm`) | Apple-approved `com.apple.developer.web-browser.public-key-credential`, available only to apps that act as a web browser: http/https handler, a URL field or search on launch. Plus a provisioning profile and an Electron change (`set_nswindow`) | macOS only. A product decision to be a Mac browser |
+| 3. `ASWebAuthenticationSession` | The default browser | Our own sign-in only | Doesn't sign the built-in browser in to other sites. Our own sign-in already uses the system browser and an `openwork://` link, the RFC 8252 pattern |
+| 4. Installed Chrome or Edge with a dedicated OpenWork profile | Chrome (full phone, Bluetooth and passkey UI) | Chrome installed. The whole site session lives in that profile, driven through the same conversation-owned browser tools over `--remote-debugging-pipe` (Chrome 136+ requires a non-default `--user-data-dir`) | Most standard for arbitrary sites today. A different browser surface, not the embedded panel |
+| 5. Windows 11 WebAuthn API | Windows | Nothing, if the check above holds | Windows only |
+
+Rejected: drawing our own QR and running caBLE v2 in Node (custom
+cryptography and a page shim); forwarding a site's WebAuthn request from the
+built-in browser to another browser (`chrome.webAuthenticationProxy` is for
+remote desktop, and overriding the origin breaks phishing resistance); copying
+cookies from Chrome into the built-in browser.
 
 ## What ships behind the flag
 
