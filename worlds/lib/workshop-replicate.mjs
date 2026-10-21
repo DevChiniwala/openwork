@@ -175,7 +175,8 @@ async function createCanaryMember() {
   const organizations = await request("/v1/me/orgs", undefined, admin.token);
   organizationId = organizations.orgs?.find(o => o.name === `Workshop ${initial.stage}`)?.id;
   assert(organizationId, "Owned workshop organization required");
-  const email = `attendee-02-${randomBytes(4).toString("hex")}@example.test`, password = `Workshop-${randomBytes(20).toString("base64url")}`;
+  const email = `attendee-02-${randomBytes(4).toString("hex")}@example.test`, password = `Workshop-${randomBytes(12).toString("base64url")}`;
+  assert(password.length <= 32, "Den account password length must be valid before invitation");
   const invitation = await request("/v1/invitations", { email, role: "member" }, admin.token); assert(invitation.inviteToken);
   await request("/api/auth/sign-up/email", { email, name: "Attendee 02", password });
   const signed = await request("/api/auth/sign-in/email", { email, password }); assert(signed.token);
@@ -220,6 +221,6 @@ const server = createServer(socket => { let input = ""; socket.on("data", chunk 
 server.listen(socketPath, () => chmodSync(socketPath, 0o600));
 process.on("SIGTERM", () => { server.close(); try { unlinkSync(socketPath); } catch {} process.exit(0); });
 setTimeout(() => { server.close(); process.exit(0); }, Math.max(1, deadline - Date.now()));
-try { await capacity(resumeExistingCanary || resumePreparedCanary ? 18 : 19); if (resumePreparedCanary) await restorePreparedCanary(); else await launch(2, resumeExistingCanary); await createCanaryMember(); update(r => { r.replication.canaryStatus = "signed-out-ready-awaiting-normal-signin"; }); log("Canary prepared; credentials stay in controller memory. Normal UI sign-in is next."); }
+try { await capacity(resumeExistingCanary || resumePreparedCanary ? 18 : 19); if (resumePreparedCanary) await restorePreparedCanary(); else await launch(2, resumeExistingCanary); await createCanaryMember(); update(r => { r.replication.canaryStatus = "signed-out-ready-awaiting-normal-signin"; delete r.replication.blocker; }); log("Canary prepared; credentials stay in controller memory. Normal UI sign-in is next."); }
 catch (e) { update(r => { r.replication.canaryStatus = "blocked-retained"; r.replication.blocker = redact(e.message).slice(0,600); }); log(`Canary blocked: ${redact(e.message)}`); }
 finally { canaryResolve(); }
