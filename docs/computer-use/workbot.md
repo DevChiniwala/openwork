@@ -14,6 +14,11 @@ The two views use one conversation computer:
 - **Return to Workbot** ends the manual connection and releases the tools.
 - **Pause** suspends the VM; reopening the tab leaves it paused until **Resume**.
   Memory, browser tabs and unsaved applications survive VM pause/resume.
+- **Rebuild computer** appears when the computer won't connect. After the person
+  confirms, Workbot stops the current turn and the runner deletes the VM and
+  creates a fresh one from the configured snapshot. The VM's disk, open apps and
+  browser tabs are erased; the chat and its kept Files stay. This is also how a
+  person moves an existing computer onto a rebuilt snapshot.
 
 The main Workbot conversation's existing `hc-…` computer owns both views. The
 viewer does not create a second computer or accept a sandbox/session id from the
@@ -82,8 +87,9 @@ rest of the lockfile, Mac-only code and tests do not change it. The root-owned
 bridge is already installed in the snapshot; it rejects incompatible runners.
 The runner then logs the bridge's reason and Workbot tells the person their
 computer needs an update (`desktop_outdated`) instead of asking them to
-reconnect. Existing computers and their files are not replaced automatically,
-so snapshot upgrades need an explicit migration plan for computers already in use.
+reconnect. Existing computers and their files are not replaced automatically:
+after a snapshot upgrade, each person can use **Rebuild computer**, which erases
+that computer's disk, so tell people to keep anything they need in Files first.
 
 ## Transport and rollout
 

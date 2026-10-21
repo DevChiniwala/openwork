@@ -135,8 +135,15 @@ export class Computers {
     } finally { this.release(sessionId) }
   }
 
-  async desktopAction(sessionId: string, action: "continue" | "pause" | "resume") {
+  async desktopAction(sessionId: string, action: "continue" | "pause" | "resume" | "rebuild") {
     if (!this.desktop) throw new Error("Desktop access is not configured.")
+    if (action === "rebuild") {
+      // A fresh VM from the configured snapshot, without waking the old one first. Kept Files survive; the VM's own disk does not.
+      await this.delete(sessionId)
+      try { await this.desktop.start(await this.vm(sessionId)) }
+      finally { this.release(sessionId) }
+      return { ok: true }
+    }
     const pending = this.vms.get(sessionId)
     const existing = action === "pause" ? pending ? await this.provider.inspect(await pending) : await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels }) : null
     if (action === "pause" && (!existing || existing.state === "stopped" || existing.state === "stopping")) return { ok: true }

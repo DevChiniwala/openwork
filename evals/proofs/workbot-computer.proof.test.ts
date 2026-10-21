@@ -36,6 +36,16 @@ test("a member opens Workbot's Computer tab directly when the rollout is enabled
     evidence.recordAssertionEvidence("Direct access and honest availability", "The real Workbot tab opens without consent. This fixture has no desktop provider, so it offers Reconnect instead of a fake stream.", visible);
     await user.screenshot();
   });
+  await step("after: a computer that won't connect offers Rebuild, which asks before erasing it", async () => {
+    await user.click({ role: "button", label: "Rebuild computer" });
+    await user.see({ text: "Rebuild your computer?" });
+    await user.see({ text: "Its open apps, browser tabs and files are erased." });
+    await user.screenshot();
+    // This fixture has no desktop provider to rebuild against, so the proof stops at the confirmation.
+    await user.click({ role: "button", label: "Cancel" });
+    await user.notSee({ text: "Rebuild your computer?" });
+    await user.see({ role: "button", label: "Reconnect" });
+  });
   await step("the workspace navigation also opens the same Computer view", async () => {
     await user.click({ role: "button", label: "Home" });
     await world.setEnabled(true, true);
