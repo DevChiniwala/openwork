@@ -25,6 +25,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # After a rebase the event's base SHA can still be the PR's old base, which
+      # may predate the script below. Read the base branch tip once, before the
+      # checkouts, and use that commit for both the policy and the diff.
+      - name: Resolve the current base commit
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          sha=$(gh api "repos/$REPO/git/ref/heads/$BASE_REF" --jq .object.sha)
+          if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Could not resolve the tip of $BASE_REF"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       # Full history (blobs on demand) to fingerprint earlier reviewed commits.
       - name: Checkout source for analysis
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -35,11 +52,11 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
-      # Only the immutable base supplies executable code, policy and skills.
+      # Only the pinned base commit supplies executable code, policy and skills.
       - name: Checkout trusted policy and script
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ steps.base.outputs.sha }}
           path: .warden-policy
           persist-credentials: false
           sparse-checkout: |
@@ -82,7 +99,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_REF: ${{ github.head_ref }}
           RUN_ID: ${{ github.run_id }}
           PR_DIR: ${{ github.workspace }}/pr
