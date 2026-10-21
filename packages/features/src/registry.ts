@@ -55,7 +55,7 @@ const everywhere = ["cloud", "self_hosted"] as const
 export const FEATURES = defineFeatures({
   nativeDictation: {
     label: "Native dictation",
-    description: "Dictate editable prompts in OpenWork and Workbot using your operating system's dictation.",
+    description: "Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

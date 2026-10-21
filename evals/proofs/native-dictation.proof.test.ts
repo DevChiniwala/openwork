@@ -4,56 +4,66 @@ import { nativeDictation } from "../worlds/native-dictation.ts";
 
 const test = spec.world(nativeDictation, { timeout: 90_000, needs: { placement: "local" }, resources: { surfaces: [], services: [] } });
 
-test("a member uses native dictation guidance and reviews an editable message before sending", async ({ world, user, probe, step, evidence }) => {
+test("a member dictates directly into Workbot and sends while words are still arriving", async ({ world, user, probe, step, evidence }) => {
   await user.resizeViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
-  await step("before: the microphone is absent while native dictation is off", async () => {
+  await step("before: the microphone is absent while dictation is off", async () => {
     await user.see({ role: "textbox", label: "Message Workbot" });
     await user.notSee({ role: "button", label: "Dictate message" });
-    evidence.recordAssertionEvidence("The feature starts off", "Workbot is usable without a microphone entry point", (await probe.dom("[data-native-dictation]")).elements.length === 0);
+    evidence.recordAssertionEvidence("Dictation starts off", "The composer works without a microphone entry point", (await probe.dom("[data-native-dictation]")).elements.length === 0);
     await user.screenshot();
   });
-  await step("after: the microphone focuses the draft and offers Windows voice typing", async () => {
+  await step("after: a plain microphone starts live words without an extra panel", async () => {
     await user.navigate(`${world.url}?dictation=on&chat=sidechat000000001`);
-    await user.type({ role: "textbox", label: "Message Workbot" }, "Plan my week");
+    await world.installSpeech();
+    await user.type({ role: "textbox", label: "Message Workbot" }, "Please ");
     await user.click({ role: "button", label: "Dictate message" });
-    await user.see({ text: "Use Windows voice typing" });
-    await user.see({ text: /Press Windows \+ H/ });
-    const input = (await probe.dom('textarea[aria-label="Message Workbot"]')).elements[0];
-    expect(input?.focused).toBe(true);
-    evidence.recordAssertionEvidence("Native instructions preserve the message and its focus", "Windows + H is offered; the draft stays editable; no message was sent", input?.focused === true && world.attempts().length === 0);
+    await user.see({ role: "button", label: "Stop dictation" });
+    await world.recognize("plan the weak");
+    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Please plan the weak" });
+    await world.recognize("plan the week");
+    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Please plan the week" });
+    expect((await probe.dom("[data-dictation-waveform]")).elements).toHaveLength(1);
+    expect((await probe.dom('[role="dialog"]')).elements).toHaveLength(0);
+    expect(world.attempts()).toHaveLength(0);
+    evidence.recordAssertionEvidence("Interim words update the draft without duplicating speech", "Please plan the week is editable; the waveform is inline; no message was sent", world.attempts().length === 0);
     await user.screenshot();
   });
-  await step("finishing speech with Enter cannot accidentally send the draft", async () => {
-    await user.press("Escape");
-    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Plan my week" });
-    await user.press("Enter");
-    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Plan my week\n" });
-    expect(world.attempts()).toHaveLength(0);
-    evidence.recordAssertionEvidence("Enter adds a line during dictation review", "Plan my week remains unsent and editable", world.attempts().length === 0);
-  });
-  await step("the review controls fit beside the message on a narrow screen", async () => {
+  await step("live dictation fits in the composer at a narrow width", async () => {
     await user.resizeViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-    await user.type({ role: "textbox", label: "Message Workbot" }, "Prepare a concise weekly plan", { replace: true });
-    await user.see({ role: "button", label: "Return to typing" });
+    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Please plan the week" });
     const layout = await probe.dom("[data-workbot-composer]");
     expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(world.attempts()).toHaveLength(0);
-    evidence.recordAssertionEvidence("Review is available at a phone-sized width", "The draft and Send remain visible without horizontal scrolling", layout.documentWidth <= layout.viewportWidth);
+    await user.see({ role: "button", label: "Stop dictation" });
+    evidence.recordAssertionEvidence("Speech and Send remain together at phone width", "The mic and original waveform fit without extra prose or a popover", layout.documentWidth <= layout.viewportWidth);
     await user.screenshot();
   });
-  await step("the member sends explicitly and can return to ordinary typing", async () => {
+  await step("Send includes current interim words and late speech cannot refill the cleared draft", async () => {
     await user.click({ role: "button", label: "Send" });
-    const sent = await probe.eventually(() => world.attempts(), { within: 5000, label: "the reviewed message reaches Workbot", until: attempts => attempts.length === 1 });
-    expect(sent[0]).toMatchObject({ text: "Prepare a concise weekly plan" });
-    await probe.eventually(() => probe.dom("[data-dictation-review]"), { within: 3000, label: "sending ends dictation review", until: layout => layout.elements.length === 0 });
-    await user.notSee({ role: "button", label: "Return to typing" });
+    const sent = await probe.eventually(() => world.attempts(), { within: 5000, label: "the current words reach Workbot", until: attempts => attempts.length === 1 });
+    expect(sent[0]).toMatchObject({ text: "Please plan the week" });
+    await world.recognize("This late result must not appear");
+    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "" });
+    await user.see({ role: "button", label: "Dictate message" });
+    expect((await probe.dom("[data-dictation-waveform]")).elements).toHaveLength(0);
+    evidence.recordAssertionEvidence("Send commits speech once and stops the recognizer", "Please plan the week was sent; the next draft stays empty", world.attempts().length === 1);
+    await user.screenshot();
+  });
+  await step("stopping dictation keeps the transcript for editing before a later send", async () => {
     await user.click({ role: "button", label: "Dictate message" });
-    await user.click({ role: "button", label: "Back to message" });
-    await user.click({ role: "button", label: "Return to typing" });
-    await user.type({ role: "textbox", label: "Message Workbot" }, "Start with Monday");
+    await world.recognize("Start with Monday");
+    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Start with Monday" });
+    await user.click({ role: "button", label: "Stop dictation" });
+    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Start with Monday" });
+    await user.click({ role: "button", label: "Dictate message" });
+    await user.type({ role: "textbox", label: "Message Workbot" }, "Start with Tuesday", { replace: true });
+    await user.see({ role: "button", label: "Dictate message" });
+    await world.recognize("A late result must not overwrite the edit");
+    await user.see({ role: "textbox", label: "Message Workbot" }, { value: "Start with Tuesday" });
+    expect(world.attempts()).toHaveLength(1);
     await user.press("Enter");
-    await probe.eventually(() => world.attempts(), { within: 5000, label: "ordinary Enter-to-send is restored", until: attempts => attempts.length === 2 });
-    evidence.recordAssertionEvidence("Only explicit Send or restored keyboard submission sends messages", "The two chosen messages reached Workbot; no speech was auto-submitted", world.attempts().length === 2);
+    const sent = await probe.eventually(() => world.attempts(), { within: 5000, label: "the edited transcript is sent", until: attempts => attempts.length === 2 });
+    expect(sent[1]).toMatchObject({ text: "Start with Tuesday" });
+    evidence.recordAssertionEvidence("Stop keeps editable text without sending it", "The member corrected Monday to Tuesday and chose when to send", sent.length === 2);
     await user.screenshot();
   });
 });

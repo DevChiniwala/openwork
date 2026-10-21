@@ -1,111 +1,109 @@
 import { useEffect, useRef, useState } from "react"
+import { browserSpeechConstructor, createBrowserDictation } from "./browser-dictation"
 
 export type NativeDictationResult = { ok: true } | { ok: false; reason: "unavailable" | "not_focused" | "failed" }
 export type DictationPlatform = "macos" | "windows" | "mobile" | "unsupported"
-
-/** OS detection only selects instructions; it never selects a speech service. */
 export function dictationPlatform(userAgent: string, touchPoints = 0): DictationPlatform {
   if (/iPhone|iPad|iPod|Android/i.test(userAgent) || (/Macintosh/i.test(userAgent) && touchPoints > 1)) return "mobile"
   if (/Macintosh|Mac OS X/i.test(userAgent)) return "macos"
   if (/Windows/i.test(userAgent)) return "windows"
   return "unsupported"
 }
-
 export function useNativeDictation(options: {
   enabled: boolean
   scope?: string
   text: string
+  onText(text: string): void
+  selection(): { start: number; end: number }
   focusInput(): void
   startNative?: (signal: AbortSignal) => Promise<NativeDictationResult>
 }) {
   const [platform, setPlatform] = useState<DictationPlatform>("unsupported")
-  const [helpOpen, setHelpOpen] = useState(false)
-  const [reviewRequired, setReviewRequired] = useState(false)
-  const [starting, setStarting] = useState(false)
-  const [failed, setFailed] = useState(false)
-  const generation = useRef(0)
-  const pending = useRef(false)
+  const [state, setState] = useState<"starting" | "listening" | "stopping" | "idle">("idle")
+  const [nativeMode, setNativeMode] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const session = useRef<ReturnType<typeof createBrowserDictation> | null>(null)
   const request = useRef<AbortController | null>(null)
+  const generation = useRef(0)
+  const currentOptions = useRef(options)
+  currentOptions.current = options
+  const Constructor = browserSpeechConstructor()
+  const native = Boolean(options.startNative && (platform === "macos" || platform === "windows"))
+  const available = native || Boolean(Constructor)
+  useEffect(() => { setPlatform(dictationPlatform(navigator.userAgent, navigator.maxTouchPoints)) }, [])
   useEffect(() => {
-    setPlatform(dictationPlatform(navigator.userAgent, navigator.maxTouchPoints))
-  }, [])
-  useEffect(() => {
-    generation.current++
-    pending.current = false
-    setStarting(false)
-    setHelpOpen(false)
-    setReviewRequired(false)
-    setFailed(false)
-    return () => { generation.current++; request.current?.abort(); request.current = null }
+    setState("idle"); setNativeMode(false); setError(null)
+    return () => {
+      generation.current++
+      request.current?.abort(); request.current = null
+      session.current?.commit(); session.current = null
+    }
   }, [options.enabled, options.scope])
+  function commit() {
+    generation.current++
+    request.current?.abort(); request.current = null
+    const text = session.current?.commit() ?? currentOptions.current.text
+    session.current = null
+    setState("idle"); setNativeMode(false)
+    return text
+  }
   useEffect(() => {
-    if (options.text !== "") return
-    if (request.current) {
-      generation.current++
-      request.current.abort()
-      request.current = null
-      pending.current = false
-      setStarting(false)
-    }
-    setReviewRequired(false)
+    // Edits outside the text input (chips, imported drafts, navigation) also
+    // fence recognition so a late interim result cannot overwrite them.
+    if (session.current && options.text !== session.current.text()) commit()
   }, [options.text])
-
-  async function start() {
-    if (!options.enabled || pending.current) return
+  useEffect(() => {
+    const hidden = () => { if (document.visibilityState === "hidden" && session.current) commit() }
+    document.addEventListener("visibilitychange", hidden)
+    return () => document.removeEventListener("visibilitychange", hidden)
+  }, [])
+  async function toggle() {
+    if (!options.enabled || request.current || state === "starting" || state === "stopping") return
+    if (session.current) { if (state === "listening") session.current.stop(); return }
     options.focusInput()
-    setFailed(false)
-    if (platform === "unsupported") { setHelpOpen(true); return }
-    // The OS owns its microphone UI. We cannot observe when it stops, so keep
-    // Enter as a newline until the person explicitly returns to typing or sends.
-    setReviewRequired(true)
-    if (!options.startNative || platform === "mobile") { setHelpOpen(true); return }
-    const current = generation.current
-    const controller = new AbortController()
-    request.current = controller
-    pending.current = true
-    setStarting(true)
-    let result: NativeDictationResult
-    try { result = await options.startNative(controller.signal) }
-    catch { result = { ok: false, reason: "failed" } }
-    if (generation.current !== current) return
-    request.current = null
-    pending.current = false
-    setStarting(false)
-    if (!result.ok) { setFailed(true); setHelpOpen(true) }
+    setError(null)
+    if (native && options.startNative) {
+      const id = ++generation.current
+      const controller = new AbortController()
+      request.current = controller
+      setState("starting")
+      try {
+        const result = await options.startNative(controller.signal)
+        if (id !== generation.current) return
+        setNativeMode(result.ok)
+        if (!result.ok) setError(platform === "windows" ? "Press Windows + H to dictate." : "Enable Dictation in System Settings › Keyboard.")
+      } catch { if (id === generation.current) setError("Couldn’t open system dictation. Use your keyboard’s Dictation shortcut.") }
+      finally { if (id === generation.current) { request.current = null; setState("idle") } }
+      return
+    }
+    const Speech = browserSpeechConstructor()
+    if (!Speech) return
+    const id = ++generation.current
+    const owner = createBrowserDictation({
+      recognition: new Speech(), text: options.text, selection: options.selection(),
+      language: document.documentElement.lang || navigator.language || "en-US",
+      onText: text => { if (id === generation.current) currentOptions.current.onText(text) },
+      onState: next => {
+        if (id !== generation.current) return
+        setState(next)
+        if (next === "idle") session.current = null
+      },
+      onError: message => { if (id === generation.current) setError(message) },
+    })
+    session.current = owner
+    owner.start()
   }
-
   return {
-    platform, helpOpen, setHelpOpen, reviewRequired, starting, failed, start,
-    finishReview() {
-      generation.current++
-      request.current?.abort()
-      request.current = null
-      pending.current = false
-      setStarting(false)
-      setHelpOpen(false)
-      setReviewRequired(false)
-      options.focusInput()
+    available, error, nativeMode, state,
+    active: options.enabled && (state !== "idle" || nativeMode),
+    busy: state === "starting" || state === "stopping",
+    toggle, commit,
+    edit(text: string) {
+      if (session.current && text !== session.current.text()) commit()
+      currentOptions.current.onText(text)
     },
-  }
-}
-
-export function dictationInstructions(platform: DictationPlatform) {
-  switch (platform) {
-    case "macos": return {
-      title: "Use macOS Dictation",
-      instruction: "Press your Dictation shortcut or the microphone key on your keyboard. Enable Dictation and choose its language in System Settings › Keyboard.",
-    }
-    case "windows": return {
-      title: "Use Windows voice typing",
-      instruction: "Press Windows + H with your cursor in the message. Windows manages your microphone, language and speech permissions. Voice typing may need an internet connection.",
-    }
-    case "mobile": return {
-      title: "Use keyboard dictation",
-      instruction: "Tap the microphone on your device’s keyboard to dictate into this message.",
-    }
-    case "unsupported": return {
-      title: "Dictation isn’t available here",
-      instruction: "Use your system’s speech input if available, or continue typing. OpenWork can open native dictation on macOS and Windows desktop.",
-    }
+    title: error ?? (native ? "Dictate message with system dictation" : available
+      ? state === "listening" ? "Stop dictation" : "Dictate message · Your browser handles speech recognition"
+      : platform === "windows" ? "Use Windows + H to dictate" : platform === "macos" ? "Use your keyboard’s Dictation shortcut" : "Speech recognition isn’t available in this browser"),
   }
 }

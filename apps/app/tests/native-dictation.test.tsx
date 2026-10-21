@@ -17,7 +17,7 @@ test("system dictation uses the matching platform and keeps iPad desktop mode on
   expect(dictationPlatform("Mozilla/5.0 (Linux; Android 15)")).toBe("mobile");
 });
 
-test("revoking dictation during a native handoff cannot reopen help or change the draft", async () => {
+test("revoking dictation during a native handoff cannot change the draft or leave a microphone indicator active", async () => {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -29,7 +29,7 @@ test("revoking dictation during a native handoff cannot reopen help or change th
   const agent = Object.getOwnPropertyDescriptor(window.navigator, "userAgent");
   Object.defineProperty(window.navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" });
   function Harness({ enabled, text = "Existing draft" }: { enabled: boolean; text?: string }) {
-    controller = useNativeDictation({ enabled, text, focusInput: () => focused++, startNative: input => {
+    controller = useNativeDictation({ enabled, text, onText: () => {}, selection: () => ({ start: text.length, end: text.length }), focusInput: () => focused++, startNative: input => {
       signal = input;
       launches++;
       return new Promise(resolve => { complete = resolve });
@@ -39,18 +39,18 @@ test("revoking dictation during a native handoff cannot reopen help or change th
   try {
     await act(async () => { root.render(<Harness enabled />) });
     let handoff: Promise<void> | undefined;
-    await act(async () => { handoff = controller?.start(); void controller?.start() });
+    await act(async () => { handoff = controller?.toggle(); void controller?.toggle() });
     expect(launches).toBe(1);
     expect(focused).toBe(1);
-    expect(controller?.reviewRequired).toBe(true);
+    expect(controller?.busy).toBe(true);
     await act(async () => { root.render(<Harness enabled={false} />) });
     expect(signal?.aborted).toBe(true);
     await act(async () => { complete?.({ ok: false, reason: "failed" }); await handoff });
-    expect(controller?.helpOpen).toBe(false);
-    expect(controller?.reviewRequired).toBe(false);
-    expect(controller?.starting).toBe(false);
+    expect(controller?.error).toBe(null);
+    expect(controller?.active).toBe(false);
+    expect(controller?.busy).toBe(false);
     expect(container.textContent).toBe("Existing draft");
-    await act(async () => { await controller?.start() });
+    await act(async () => { await controller?.toggle() });
     expect(launches).toBe(1);
   } finally {
     await act(async () => { root.unmount() });

@@ -26,7 +26,7 @@
                 true,
                 false
               ],
-              "description": "Native dictation: Dictate editable prompts in OpenWork and Workbot using your operating system's dictation. Renders DEN_FEATURE_NATIVE_DICTATION."
+              "description": "Native dictation: Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition. Renders DEN_FEATURE_NATIVE_DICTATION."
             },
             "organizationGrants": {
               "enum": [

@@ -115,7 +115,7 @@ jobs:
       - name: Test native dictation focus and draft boundaries
         run: |
           node --test apps/desktop/test/native-dictation.test.mjs
-          pnpm --filter @openwork/app exec bun test --isolate ./tests/native-dictation.test.tsx ./tests/composer-caret-refocus.test.tsx
+          pnpm --filter @openwork/app exec bun test --isolate ./tests/native-dictation.test.tsx ./tests/browser-dictation.test.ts ./tests/composer-caret-refocus.test.tsx
       - name: Check desktop links open real Den pages
         run: pnpm --filter @openwork/app test:den-links
       - name: Test the shared Calendar logic
