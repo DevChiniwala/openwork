@@ -144,8 +144,11 @@ export const platformAuditRoutes: readonly AuditRouteDeclaration[] = [
   platform("POST", "/internal/audit/usage/refresh", "audit.usage.refresh", "platform.maintenance", "audit_usage", null, "Called by the den-audit-usage cron (Helm CronJob, Render cron job). Recomputes every organization's audit_state totals from stored rows; no organization activity, so platform evidence only."),
 
   // Global platform admin
+  platform("GET", "/v1/admin/services", "platform.service_readiness.read", "platform.admin", "service_readiness", null, `${ADMIN} Cached diagnostics; stale-while-revalidate schedules read-only outbound probes through bounded durable admission (not a pure metadata read). No credentials or upstream error bodies.`),
+  platform("POST", "/v1/admin/services/check", "platform.service_readiness.check", "platform.admin", "service_readiness", null, `${ADMIN} Queues read-only deployment probes, globally rate limited; request evidence only. Never sends messages, invokes inference or provisions resources.`),
   platform("GET", "/v1/admin/overview", "platform.overview.read", "platform.admin", "platform_report", null, ADMIN),
   platform("GET", "/v1/admin/dashboard", "platform.dashboard.read", "platform.admin", "platform_report", null, ADMIN),
+  platform("GET", "/v1/admin/opportunities", "platform.opportunities.read", "platform.admin", "platform_report", null, ADMIN),
   platform("GET", "/v1/admin/metrics", "platform.metrics.read", "platform.admin", "platform_report", null, ADMIN),
   platform("GET", "/v1/admin/free-auto/usage", "platform.free_auto_usage.read", "platform.admin", "platform_report", null, ADMIN),
   platform("GET", "/v1/admin/free-auto/conversions", "platform.free_auto_conversions.read", "platform.admin", "platform_report", null, ADMIN),

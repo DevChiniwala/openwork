@@ -1,5 +1,21 @@
 import { randomUUID } from "node:crypto"
 import type { SqlDriver } from "./sql.js"
+import { migrateCells } from "./cells-store.js"
+import {
+  ackIndexUpdate,
+  deferIndexUpdate,
+  dropIndexUpdatesBefore,
+  enqueueIndexUpdate,
+  INDEX_SIZE_STEP_BYTES,
+  indexSnapshotAll,
+  nextIndexUpdateAt,
+  pendingIndexUpdates,
+  setIndexCapability,
+  type PendingIndexUpdate,
+} from "./storage/index-outbox.js"
+import type { LargeBodyRef } from "./storage/large-bodies.js"
+import { runMigrations } from "./storage/migrations.js"
+import { storageSchema } from "./storage/schema.js"
 import { z } from "zod"
 import type { Usage } from "./model.js"
 import { stepStateSchema, type StepState } from "./steps.js"
@@ -32,11 +48,13 @@ const sessionOptions = z.object({
   repeats: repeatLimitsSchema.optional(),
   files: z.boolean().optional(),
   computer: z.boolean().optional(),
+  desktop: z.boolean().optional(),
   reactions: z.boolean().optional(),
   tasks: z.boolean().optional(),
   timeZone: z.string().optional(),
   autoTitle: z.boolean().optional(),
   memoryOf: z.string().optional(),
+  memoryScope: z.literal("owner").optional(),
 })
 type SessionOptions = z.infer<typeof sessionOptions>
 const tableColumns = z.array(z.object({ name: z.string() }).loose())
@@ -76,6 +94,7 @@ export type Session = {
    */
   files: boolean
   computer: boolean
+  desktop: boolean
   /** Whether the model may react to the person's message with an emoji (the caller shows it). */
   reactions: boolean
   /** Whether the conversation may hand work to background tasks (start_task) and keep talking meanwhile. */
@@ -92,6 +111,8 @@ export type Session = {
   autoTitle: boolean
   /** Another conversation of the same person whose memory/ this one reads and writes, so they remember together. */
   memoryOf: string | null
+  /** `owner`: memory/ is the owner's, shared by all their conversations (see memory.ts); replaces memoryOf. */
+  memoryScope: "owner" | null
   createdAt: number
   updatedAt: number
 }
@@ -102,6 +123,7 @@ export type SessionInput = {
   repeats?: RepeatLimits
   files?: boolean
   computer?: boolean
+  desktop?: boolean
   reactions?: boolean
   tasks?: boolean
   owner?: string
@@ -109,6 +131,7 @@ export type SessionInput = {
   timeZone?: string
   autoTitle?: boolean
   memoryOf?: string
+  memoryScope?: "owner"
 }
 
 /** The settings part of a session, leaving out what the caller didn't set. */
@@ -116,21 +139,25 @@ function optionsOf(input: {
   repeats?: RepeatLimits | null
   files?: boolean
   computer?: boolean
+  desktop?: boolean
   reactions?: boolean
   tasks?: boolean
   timeZone?: string | null
   autoTitle?: boolean
   memoryOf?: string | null
+  memoryScope?: "owner" | null
 }): SessionOptions {
   return {
     ...(input.repeats ? { repeats: input.repeats } : {}),
     ...(input.files !== undefined ? { files: input.files } : {}),
     ...(input.computer !== undefined ? { computer: input.computer } : {}),
+    ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
     ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
     ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
     ...(input.timeZone ? { timeZone: input.timeZone } : {}),
     ...(input.autoTitle !== undefined ? { autoTitle: input.autoTitle } : {}),
     ...(input.memoryOf ? { memoryOf: input.memoryOf } : {}),
+    ...(input.memoryScope ? { memoryScope: input.memoryScope } : {}),
   }
 }
 
@@ -143,11 +170,14 @@ function serializeOptions(options: SessionOptions) {
     ...(options.repeats ? { repeats: options.repeats } : {}),
     ...(options.files ? { files: true } : {}),
     ...(options.computer ? { computer: true } : {}),
+    ...(options.desktop ? { desktop: true } : {}),
     ...(options.reactions ? { reactions: true } : {}),
     ...(options.tasks ? { tasks: true } : {}),
     ...(options.timeZone ? { timeZone: options.timeZone } : {}),
     ...(options.autoTitle ? { autoTitle: true } : {}),
-    ...(options.memoryOf ? { memoryOf: options.memoryOf } : {}),
+    // Owner-scoped memory replaces another conversation's: never both.
+    ...(options.memoryOf && !options.memoryScope ? { memoryOf: options.memoryOf } : {}),
+    ...(options.memoryScope ? { memoryScope: options.memoryScope } : {}),
   }
   return Object.keys(ordered).length ? JSON.stringify(ordered) : null
 }
@@ -224,7 +254,7 @@ function toSavedFile(row: unknown): { file: SavedFile; storageKey: string } {
   }
 }
 
-function parseMessageRow(row: unknown): StoredMessage {
+export function parseMessageRow(row: unknown): StoredMessage {
   const value = messageRow.parse(row)
   return {
     seq: value.seq,
@@ -234,7 +264,7 @@ function parseMessageRow(row: unknown): StoredMessage {
   }
 }
 
-function toTurn(row: unknown): Turn {
+export function toTurn(row: unknown): Turn {
   const value = turnRow.parse(row)
   return {
     sessionId: value.session_id,
@@ -259,7 +289,7 @@ function toTurn(row: unknown): Turn {
  * A turn's columns without its prompt and attachments (a prompt can be 100k characters), so listing turns reads only
  * their state. The prompt is read where it is needed (startTranscript, waitingPrompts).
  */
-const TURN_COLUMNS =
+export const TURN_COLUMNS =
   "session_id, message_id, status, model, model_access_required, error, input_tokens, cached_input_tokens, output_tokens, created_at, updated_at, kind, parent, title, error_detail, execution"
 
 /** Leaves out background tasks' own transcripts: the conversation hears from a task through its report. */
@@ -273,12 +303,40 @@ export class Store {
   /** Called after every write to a turn or its transcript, so live readers can re-read. */
   onChange: ((sessionId: string, messageId: string, status?: TurnStatus) => void) | null = null
 
+  /**
+   * Why the schema couldn't be brought up to date, when it couldn't: the host reports it as `store_migration_failed`
+   * and stops (createRuntime), as it does when startup recovery fails.
+   */
+  readonly migrationError: unknown = null
+  /** Turns ended in this process so far: the sealer looks for work after one ends (see storage/sealer.ts). */
+  turnsEnded = 0
+  private transactionDepth = 0
+
   constructor(readonly db: SqlDriver, private readonly now: () => number = Date.now) {
-    this.migrate()
+    try {
+      this.migrate()
+    } catch (error) {
+      this.migrationError = error
+    }
   }
 
-  /** Schema changes are shared by every SQLite host; connection settings belong to the driver. */
+  /**
+   * Schema changes are shared by every SQLite host; connection settings belong to the driver. Numbered migrations
+   * (storage/migrations.ts): each runs once per database, in order, and is additive and repeatable.
+   */
   migrate() {
+    runMigrations(this.db, [
+      // Every table and column from before numbered migrations; a no-op on any database that already has them.
+      { version: 1, name: "base", up: () => this.baseSchema() },
+      // Sealed segments, large bodies, the Den index outbox (storage/schema.ts).
+      { version: 2, name: "session-storage", up: storageSchema },
+      // Session cells: owner directory, owner-scoped memory, forwarding rows, splits (cells-store.ts).
+      { version: 3, name: "session-cells", up: migrateCells },
+    ])
+  }
+
+  /** Migration 1: the schema as the ad-hoc column checks before numbered migrations left it. */
+  private baseSchema() {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -383,19 +441,35 @@ export class Store {
     this.db.close()
   }
 
+  /** One atomic transaction; a call inside another joins it (so a change and its index update commit together). */
   transaction<T>(fn: () => T): T {
-    return this.db.transaction(fn)
+    if (this.transactionDepth > 0) return fn()
+    this.transactionDepth += 1
+    try {
+      return this.db.transaction(fn)
+    } finally {
+      this.transactionDepth -= 1
+    }
   }
 
   createSession(input: SessionInput): Session {
     const at = this.now()
     const id = `hs_${randomUUID().replaceAll("-", "")}`
-    this.db
-      .prepare("INSERT INTO sessions (id, title, instructions, options, owner, ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, initialTitle(input), input.instructions ?? "", serializeOptions(optionsOf(input)), input.owner ?? null, input.ref ?? null, at, at)
+    this.transaction(() => {
+      this.db
+        .prepare("INSERT INTO sessions (id, title, instructions, options, owner, ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, initialTitle(input), input.instructions ?? "", serializeOptions(optionsOf(input)), input.owner ?? null, input.ref ?? null, at, at)
+      this.sessionCreated(id)
+    })
     const session = this.getSession(id)
     if (!session) throw new Error("session_missing_after_create")
     return session
+  }
+
+  /** A new session starts with nothing hot, and the Den index hears of it (same transaction as its row). */
+  private sessionCreated(id: string) {
+    this.db.prepare("UPDATE sessions SET hot_bytes = 0 WHERE id = ?").run(id)
+    enqueueIndexUpdate(this.db, id, this.now())
   }
 
   /**
@@ -404,12 +478,17 @@ export class Store {
    * conversation per person without storing the runner's id itself.
    */
   putSession(id: string, input: SessionInput): { session: Session; created: boolean } {
+    return this.transaction(() => this.putSessionRow(id, input))
+  }
+
+  private putSessionRow(id: string, input: SessionInput): { session: Session; created: boolean } {
     const existing = this.getSession(id)
     const at = this.now()
     if (!existing) {
       this.db
         .prepare("INSERT INTO sessions (id, title, instructions, options, owner, ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run(id, initialTitle(input), input.instructions ?? "", serializeOptions(optionsOf(input)), input.owner ?? null, input.ref ?? null, at, at)
+      this.sessionCreated(id)
     } else {
       // Settings the caller leaves out keep their current value.
       const options = { ...optionsOf(existing), ...optionsOf(input) }
@@ -431,6 +510,8 @@ export class Store {
             at,
             id,
           )
+        // Renamed (or otherwise changed): a fresh index snapshot.
+        enqueueIndexUpdate(this.db, id, at)
       }
     }
     const session = this.getSession(id)
@@ -451,13 +532,15 @@ export class Store {
       repeats: options.repeats ?? null,
       files: options.files ?? false,
       computer: options.computer ?? false,
+      desktop: options.desktop ?? false,
       reactions: options.reactions ?? false,
       tasks: options.tasks ?? false,
       owner: value.owner ?? null,
       ref: value.ref ?? null,
       timeZone: options.timeZone ?? null,
       autoTitle: options.autoTitle ?? false,
-      memoryOf: options.memoryOf ?? null,
+      memoryOf: options.memoryScope ? null : options.memoryOf ?? null,
+      memoryScope: options.memoryScope ?? null,
       createdAt: value.created_at,
       updatedAt: value.updated_at,
     }
@@ -483,7 +566,10 @@ export class Store {
 
   /** Names a conversation without counting as activity: the list order stays when it was last used. */
   setTitle(id: string, title: string) {
-    this.db.prepare("UPDATE sessions SET title = ? WHERE id = ?").run(title, id)
+    this.transaction(() => {
+      this.db.prepare("UPDATE sessions SET title = ? WHERE id = ?").run(title, id)
+      enqueueIndexUpdate(this.db, id, this.now())
+    })
   }
 
   /**
@@ -500,8 +586,17 @@ export class Store {
     this.db.prepare("UPDATE sessions SET context_from = ? WHERE id = ?").run(seq, id)
   }
 
-  deleteSession(id: string) {
-    return Number(this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id).changes) > 0
+  /**
+   * Deletes the session's rows (its turns, messages, files and storage bookkeeping go with it) and queues the Den
+   * index's `deleted` update, in one transaction. Objects in the blob store are the storage module's to delete
+   * (SessionStorage.deleteSession), after this commits.
+   */
+  deleteSession(id: string, options: { inTransaction?: () => void } = {}) {
+    return this.transaction(() => {
+      enqueueIndexUpdate(this.db, id, this.now(), { deleted: true })
+      options.inTransaction?.()
+      return Number(this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id).changes) > 0
+    })
   }
 
   /**
@@ -522,16 +617,64 @@ export class Store {
     const removed = turns.filter((turn) => roots.has(rootOf(turn.messageId)))
     if (removed.some((turn) => ACTIVE.has(turn.status))) return null
     const ids = removed.map((turn) => turn.messageId)
-    this.transaction(() => {
-      const deleteMessages = this.db.prepare("DELETE FROM messages WHERE session_id = ? AND message_id = ?")
-      const deleteTurn = this.db.prepare("DELETE FROM turns WHERE session_id = ? AND message_id = ?")
-      for (const id of ids) {
-        deleteMessages.run(sessionId, id)
-        deleteTurn.run(sessionId, id)
-      }
-    })
+    this.transaction(() => this.deleteHotTurns(sessionId, ids))
     for (const id of ids) this.onChange?.(sessionId, id)
     return ids
+  }
+
+  /**
+   * Deletes these turns' hot rows (turn, transcript, large-body references) and keeps the session's hot byte count
+   * and Den index snapshot current. Call inside a transaction. Returns the large-body storage keys nothing references
+   * any more (the caller deletes those objects after the commit).
+   */
+  deleteHotTurns(sessionId: string, ids: string[]): string[] {
+    const freed = new Set<string>()
+    let bytes = 0
+    for (const id of ids) {
+      bytes += countRow.parse(
+        this.db
+          .prepare("SELECT COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0) AS n FROM messages WHERE session_id = ? AND message_id = ?")
+          .get(sessionId, id),
+      ).n
+      bytes += countRow.parse(
+        this.db
+          .prepare("SELECT COALESCE(SUM(LENGTH(CAST(prompt AS BLOB)) + COALESCE(LENGTH(CAST(attachments AS BLOB)), 0)), 0) AS n FROM turns WHERE session_id = ? AND message_id = ?")
+          .get(sessionId, id),
+      ).n
+      for (const row of this.db
+        .prepare("SELECT storage_key FROM large_bodies WHERE session_id = ? AND seq IN (SELECT seq FROM messages WHERE session_id = ? AND message_id = ?)")
+        .all(sessionId, sessionId, id)) {
+        freed.add(z.object({ storage_key: z.string() }).parse(row).storage_key)
+      }
+      this.db.prepare("DELETE FROM large_bodies WHERE session_id = ? AND seq IN (SELECT seq FROM messages WHERE session_id = ? AND message_id = ?)").run(sessionId, sessionId, id)
+      this.db.prepare("DELETE FROM messages WHERE session_id = ? AND message_id = ?").run(sessionId, id)
+      this.db.prepare("DELETE FROM turns WHERE session_id = ? AND message_id = ?").run(sessionId, id)
+    }
+    this.addHotBytes(sessionId, -bytes)
+    enqueueIndexUpdate(this.db, sessionId, this.now())
+    return [...freed].filter((key) => !this.db.prepare("SELECT 1 AS n FROM large_bodies WHERE storage_key = ? LIMIT 1").get(key))
+  }
+
+  /** Moves the session's hot byte count (when it is counted); an index update when it crosses a size step. */
+  private addHotBytes(sessionId: string, delta: number) {
+    if (delta === 0) return
+    const row = this.db.prepare("SELECT hot_bytes FROM sessions WHERE id = ?").get(sessionId)
+    const before = z.object({ hot_bytes: z.number().nullable() }).safeParse(row)
+    if (!before.success || before.data.hot_bytes === null) return
+    const after = Math.max(0, before.data.hot_bytes + delta)
+    this.db.prepare("UPDATE sessions SET hot_bytes = ? WHERE id = ?").run(after, sessionId)
+    if (Math.floor(after / INDEX_SIZE_STEP_BYTES) !== Math.floor(before.data.hot_bytes / INDEX_SIZE_STEP_BYTES)) enqueueIndexUpdate(this.db, sessionId, this.now())
+  }
+
+  /** Counts a session's hot bytes from its rows (a database from before they were kept, or after a rollback). */
+  countHotBytes(sessionId: string): number {
+    const messages = countRow.parse(this.db.prepare("SELECT COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0) AS n FROM messages WHERE session_id = ?").get(sessionId)).n
+    const prompts = countRow.parse(
+      this.db.prepare("SELECT COALESCE(SUM(LENGTH(CAST(prompt AS BLOB)) + COALESCE(LENGTH(CAST(attachments AS BLOB)), 0)), 0) AS n FROM turns WHERE session_id = ?").get(sessionId),
+    ).n
+    const total = messages + prompts
+    this.db.prepare("UPDATE sessions SET hot_bytes = ? WHERE id = ?").run(total, sessionId)
+    return total
   }
 
   getTurn(sessionId: string, messageId: string): Turn | null {
@@ -615,24 +758,28 @@ export class Store {
     execution?: Execution
   }): Turn {
     const at = this.now()
-    this.db
-      .prepare(
-        "INSERT INTO turns (session_id, message_id, status, prompt, model, error, attachments, kind, parent, title, model_access_required, execution, created_at, updated_at) VALUES (?, ?, 'queued', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        input.sessionId,
-        input.messageId,
-        input.prompt,
-        input.model,
-        input.attachments?.length ? JSON.stringify(input.attachments) : null,
-        input.kind ?? null,
-        input.parent ?? null,
-        input.title ?? null,
-        input.modelAccessRequired ? 1 : 0,
-        input.execution ?? null,
-        at,
-        at,
-      )
+    const attachments = input.attachments?.length ? JSON.stringify(input.attachments) : null
+    this.transaction(() => {
+      this.db
+        .prepare(
+          "INSERT INTO turns (session_id, message_id, status, prompt, model, error, attachments, kind, parent, title, model_access_required, execution, created_at, updated_at) VALUES (?, ?, 'queued', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          input.sessionId,
+          input.messageId,
+          input.prompt,
+          input.model,
+          attachments,
+          input.kind ?? null,
+          input.parent ?? null,
+          input.title ?? null,
+          input.modelAccessRequired ? 1 : 0,
+          input.execution ?? null,
+          at,
+          at,
+        )
+      this.addHotBytes(input.sessionId, Buffer.byteLength(input.prompt) + (attachments ? Buffer.byteLength(attachments) : 0))
+    })
     const turn = this.getTurn(input.sessionId, input.messageId)
     if (!turn) throw new Error("turn_admission_failed")
     return turn
@@ -660,10 +807,15 @@ export class Store {
 
   private updateStatus(sessionId: string, messageId: string, status: TurnStatus, error: string | null, errorDetail: string | null) {
     const at = this.now()
-    this.db
-      .prepare("UPDATE turns SET status = ?, error = ?, error_detail = ?, updated_at = ? WHERE session_id = ? AND message_id = ?")
-      .run(status, error, errorDetail, at, sessionId, messageId)
-    this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(at, sessionId)
+    this.transaction(() => {
+      this.db
+        .prepare("UPDATE turns SET status = ?, error = ?, error_detail = ?, updated_at = ? WHERE session_id = ? AND message_id = ?")
+        .run(status, error, errorDetail, at, sessionId, messageId)
+      this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(at, sessionId)
+      // A turn started or ended: the Den index's activeTurnSince moves (same transaction).
+      if (status !== "queued") enqueueIndexUpdate(this.db, sessionId, at)
+    })
+    if (!ACTIVE.has(status)) this.turnsEnded += 1
   }
 
   addUsage(sessionId: string, messageId: string, usage: Usage) {
@@ -726,29 +878,44 @@ export class Store {
    * on from what is stored (queued, or running with a next step): the runner continues those (Runner.recoverSteps).
    */
   recoverInterruptedTurns() {
-    const result = this.db
-      .prepare(
-        `UPDATE turns SET status = 'interrupted', error = 'runner_restarted', updated_at = ? WHERE status IN ('queued', 'running')
+    const where = `status IN ('queued', 'running')
          AND NOT (execution IS 'steps' AND (status = 'queued' OR EXISTS (
            SELECT 1 FROM step_schedule WHERE step_schedule.session_id = turns.session_id AND step_schedule.message_id = turns.message_id
-         )))`,
-      )
-      .run(this.now())
-    return Number(result.changes)
+         )))`
+    return this.transaction(() => {
+      const sessions = this.db
+        .prepare(`SELECT DISTINCT session_id FROM turns WHERE ${where}`)
+        .all()
+        .map((row) => z.object({ session_id: z.string() }).parse(row).session_id)
+      const result = this.db.prepare(`UPDATE turns SET status = 'interrupted', error = 'runner_restarted', updated_at = ? WHERE ${where}`).run(this.now())
+      // Those turns ended: the Den index's activeTurnSince moves.
+      for (const sessionId of sessions) enqueueIndexUpdate(this.db, sessionId, this.now())
+      return Number(result.changes)
+    })
   }
 
-  appendMessage(sessionId: string, messageId: string, message: Message) {
-    this.insertMessage(sessionId, messageId, message)
+  /** `body`: the message's large part, already in the blob store (see storage/large-bodies.ts). */
+  appendMessage(sessionId: string, messageId: string, message: Message, body?: LargeBodyRef) {
+    this.transaction(() => this.insertMessage(sessionId, messageId, message, body))
     this.onChange?.(sessionId, messageId)
   }
 
-  private insertMessage(sessionId: string, messageId: string, message: Message) {
+  private insertMessage(sessionId: string, messageId: string, message: Message, body?: LargeBodyRef) {
+    // Sealed messages keep their seq: a new one never reuses one (a sealed turn's can be the newest).
     const row = countRow.parse(
-      this.db.prepare("SELECT COALESCE(MAX(seq), 0) AS n FROM messages WHERE session_id = ?").get(sessionId),
+      this.db
+        .prepare("SELECT MAX(COALESCE((SELECT MAX(seq) FROM messages WHERE session_id = ?), 0), COALESCE((SELECT MAX(seq_to) FROM segments WHERE session_id = ?), 0)) AS n")
+        .get(sessionId, sessionId),
     )
-    this.db
-      .prepare("INSERT INTO messages (session_id, seq, message_id, body, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run(sessionId, row.n + 1, messageId, JSON.stringify(messageSchema.parse(message)), this.now())
+    const seq = row.n + 1
+    const json = JSON.stringify(messageSchema.parse(message))
+    this.db.prepare("INSERT INTO messages (session_id, seq, message_id, body, created_at) VALUES (?, ?, ?, ?, ?)").run(sessionId, seq, messageId, json, this.now())
+    if (body) {
+      this.db
+        .prepare("INSERT OR REPLACE INTO large_bodies (session_id, seq, part, storage_key, bytes, sha256) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(sessionId, seq, body.part, body.storageKey, body.bytes, body.sha256)
+    }
+    this.addHotBytes(sessionId, Buffer.byteLength(json))
   }
 
   // ------------------------------------------------------------------ step mode (see steps.ts)
@@ -830,12 +997,14 @@ export class Store {
     sessionId: string
     messageId: string
     messages?: Message[]
+    /** Each message's large part already in the blob store, by index (see storage/large-bodies.ts). */
+    bodies?: Array<LargeBodyRef | undefined>
     usage?: Usage
     outcome: { next: { dueAt: number; state: StepState } } | { end: { status: TurnStatus; error?: string | null; errorDetail?: string | null } }
   }) {
     const { sessionId, messageId } = input
     this.transaction(() => {
-      for (const message of input.messages ?? []) this.insertMessage(sessionId, messageId, message)
+      for (const [index, message] of (input.messages ?? []).entries()) this.insertMessage(sessionId, messageId, message, input.bodies?.[index])
       if (input.usage) this.addUsage(sessionId, messageId, input.usage)
       if ("next" in input.outcome) {
         this.db
@@ -933,7 +1102,10 @@ export class Store {
         const value = messageRow.parse(row)
         const message = messageSchema.parse(JSON.parse(value.body))
         const stripped = withoutAttachments(message)
-        if (stripped !== message) update.run(JSON.stringify(messageSchema.parse(stripped)), sessionId, value.seq)
+        if (stripped === message) continue
+        const json = JSON.stringify(messageSchema.parse(stripped))
+        update.run(json, sessionId, value.seq)
+        this.addHotBytes(sessionId, Buffer.byteLength(json) - Buffer.byteLength(value.body))
       }
     })
   }
@@ -1128,7 +1300,7 @@ export class Store {
     const session = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id)
     if (!session) return null
     const rows = (table: ConversationTable) => z.array(sqlRow).parse(this.db.prepare(`SELECT * FROM ${table} WHERE session_id = ? ORDER BY rowid`).all(id))
-    return { session: sqlRow.parse(session), turns: rows("turns").map(withoutGrant), messages: rows("messages"), files: rows("files"), saved_files: rows("saved_files") }
+    return { session: withoutBookkeeping(sqlRow.parse(session)), turns: rows("turns").map(withoutGrant), messages: rows("messages"), files: rows("files"), saved_files: rows("saved_files") }
   }
 
   /** The columns this database has for a table: an export from a newer runner can name ones it lacks. */
@@ -1144,10 +1316,57 @@ export class Store {
       this.db.prepare(`INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`).run(...names.map((name) => row[name] ?? null))
     }
     this.transaction(() => {
-      insert("sessions", conversation.session)
+      insert("sessions", withoutBookkeeping(conversation.session))
       for (const table of CONVERSATION_TABLES) for (const row of conversation[table]) insert(table, table === "turns" ? withoutGrant(row) : row)
+      const id = z.string().parse(conversation.session.id)
+      // Everything imported is hot; it is counted once here, and the Den index hears of the session.
+      this.countHotBytes(id)
+      enqueueIndexUpdate(this.db, id, this.now())
     })
   }
+
+  // ------------------------------------------------------------------ Den index outbox (storage/index-outbox.ts)
+
+  /** Keeps the Den index capability from the session's latest turn token. Never logged, never exported. */
+  setIndexCapability(sessionId: string, capability: string): void {
+    setIndexCapability(this.db, sessionId, capability)
+  }
+
+  pendingIndexUpdates(now: number, limit: number): PendingIndexUpdate[] {
+    return pendingIndexUpdates(this.db, now, limit)
+  }
+
+  /** Den took this version: the row goes, unless a newer snapshot replaced it meanwhile. */
+  ackIndexUpdate(sessionId: string, version: number): void {
+    ackIndexUpdate(this.db, sessionId, version)
+  }
+
+  deferIndexUpdate(sessionId: string, version: number, retryAt: number): void {
+    deferIndexUpdate(this.db, sessionId, version, retryAt)
+  }
+
+  nextIndexUpdateAt(): number | null {
+    return nextIndexUpdateAt(this.db)
+  }
+
+  dropIndexUpdatesBefore(createdBefore: number): number {
+    return dropIndexUpdatesBefore(this.db, createdBefore)
+  }
+
+  indexSnapshotAll(now: number): void {
+    this.transaction(() => indexSnapshotAll(this.db, now))
+  }
+
+  /** Queues a fresh index snapshot of one session (same transaction as the caller's change). */
+  enqueueIndexUpdate(sessionId: string, options: { deleted?: boolean } = {}) {
+    enqueueIndexUpdate(this.db, sessionId, this.now(), options)
+  }
+}
+
+/** Storage bookkeeping on a session row that belongs to this runner, not to the conversation: never exported. */
+const BOOKKEEPING_COLUMNS = new Set(["hot_bytes", "index_capability", "index_version"])
+function withoutBookkeeping(row: SqlRow): SqlRow {
+  return Object.fromEntries(Object.entries(row).filter(([name]) => !BOOKKEEPING_COLUMNS.has(name)))
 }
 
 export type StepTurnRef = { sessionId: string; messageId: string; kind: "task" | "report" | undefined }

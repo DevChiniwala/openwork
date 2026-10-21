@@ -173,6 +173,15 @@ export type AppBuildInfo = {
   arch?: string | null;
 };
 
+/** This launch's startup milestones in epoch milliseconds; null until reached. */
+export type DesktopStartupTimings = {
+  processStartedAt: number;
+  windowShownAt: number | null;
+  engineSettledAt: number | null;
+  /** How the launch's first runtime boot settled; "skipped" means no local workspace. */
+  engine: "ready" | "failed" | "skipped" | null;
+};
+
 export type DesktopDistributionInfo = {
   flavor: "public" | "enterprise";
   appName: string;
@@ -341,11 +350,70 @@ export type UiControlBridgeInfo = {
   token?: string;
 };
 
+export type ComputerPermission = "accessibility" | "screenRecording";
+
+/** The agent needs computer use this chat does not have yet: setup, or the person's allowance. */
+export type ComputerRequest = {
+  id: string;
+  reason: "setup";
+  /** The computer the chat uses, e.g. "This Mac" or "Freestyle VM". */
+  computer: string;
+  placement: "local" | "remote";
+  /** What a remote computer still needs; macOS setup uses the checklist instead. */
+  detail?: string;
+  appId?: string;
+  purpose?: string;
+};
+
+/** One chat's computer use state, as the broker reports it. */
+export type ComputerSnapshot = {
+  revision: number;
+  /** Usable right now (allowed and not paused after an automatic stop this turn). */
+  enabled: boolean;
+  /** The app macOS lists in System Settings for these permissions; `ours` when OpenWork can reset it. */
+  entry: { name: string; ours: boolean };
+  request: ComputerRequest | null;
+  /** The computer this chat uses, and every computer it could use (this Mac, connected VMs). */
+  targetId: string;
+  targets: { id: string; label: string; placement: "local" | "remote" }[];
+  placement: "local" | "remote";
+  readiness: "ready" | "setup-required" | "unsupported" | "unavailable";
+  permissions?: { accessibility: boolean; screenRecording: boolean };
+  detail: string;
+  busyElsewhere: boolean;
+  session: {
+    state: string;
+    purpose: string;
+    appName?: string;
+    windowTitle?: string;
+    phase?: string;
+    expiresAt?: string;
+    reason?: string;
+  } | null;
+  cleanupPending?: boolean;
+};
+
+/** The live watch view: recent redacted frames and dispatched input, never actionable. */
+export type ComputerPresentation = {
+  id: string;
+  phase: "working" | "paused" | "closed";
+  appName?: string;
+  windowTitle?: string;
+  task?: string;
+  mode?: string;
+  status?: string;
+  canContinue?: boolean;
+  frame?: { sequence: number; capturedAt: number; width: number; height: number; mimeType: "image/png"; data: string };
+  inputs: { sequence: number; at: number; action: string; phase: string; x?: number; y?: number }[];
+};
+
 // ---------------------------------------------------------------------------
 // The command map
 // ---------------------------------------------------------------------------
 
 export type DesktopCommandMap = {
+  __startNativeDictation: { args: [requestId: string]; result: { ok: true } | { ok: false; reason: "unavailable" | "not_focused" | "failed" } };
+  __cancelNativeDictationStart: { args: [requestId: string]; result: boolean };
   // Workspace state
   workspaceBootstrap: { args: []; result: WorkspaceList };
   workspaceSetSelected: { args: [workspaceId: string]; result: WorkspaceList };
@@ -371,6 +439,7 @@ export type DesktopCommandMap = {
 
   // App / bridge info
   appBuildInfo: { args: []; result: AppBuildInfo };
+  startupTimings: { args: []; result: DesktopStartupTimings };
   desktopNotificationShow: {
     args: [input: DesktopNotificationInput];
     result: DesktopNotificationResult;
@@ -389,6 +458,23 @@ export type DesktopCommandMap = {
   getUiControlBridgeInfo: { args: []; result: UiControlBridgeInfo | null };
   getOpenworkUiMcpCommand: { args: []; result: string[] };
   getOpenworkUiMcpEnvironment: { args: []; result: Record<string, string> };
+
+  // Computer use (macOS): chat ownership, the watch view and permission setup
+  computerSnapshot: { args: [sessionId: string]; result: ComputerSnapshot };
+  computerPresentation: { args: [sessionId: string, visible: boolean]; result: ComputerPresentation | null };
+  computerInteract: {
+    args: [input: { sessionId: string; id: string; action: "takeover" | "resume" }];
+    result: void;
+  };
+  computerSetup: { args: [permission: ComputerPermission]; result: { setupId: string } };
+  computerDismissSetup: { args: [setupId?: string]; result: void };
+  computerChoose: { args: [input: { sessionId: string; targetId: string }]; result: ComputerSnapshot };
+  computerHalt: { args: [sessionId: string]; result: ComputerSnapshot };
+  computerAnswerRequest: { args: [input: { sessionId: string; answer: "dismiss" }]; result: ComputerSnapshot };
+  computerSetFeatureEnabled: { args: [enabled: boolean]; result: boolean };
+  computerSetRemoteEnabled: { args: [enabled: boolean]; result: boolean };
+  computerResetPermission: { args: [permission: ComputerPermission]; result: { setupId: string } };
+  computerEndTurn: { args: [sessionId: string]; result: boolean };
 
   // Bootstrap config
   getDesktopBootstrapConfig: { args: []; result: DesktopBootstrapConfig };

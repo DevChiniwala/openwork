@@ -1,5 +1,5 @@
 /**
- * Workbot's live-events relay: with `stepTurns` (headlessStepTurns) it reads the runner's events over a WebSocket,
+ * Workbot's live-events relay: with `stepTurns` (saved step turns) it reads the runner's events over a WebSocket,
  * falling back to the runner's SSE when the runner doesn't upgrade; without it, SSE only. The page gets the same SSE
  * either way.
  */
@@ -55,6 +55,8 @@ test("Workbot reads live events over the runner's socket only with stepTurns, an
   const streams: IncomingMessage[] = []
   const open = new Set<Duplex>()
   const runner = createServer((request, response) => {
+    // Workbot lists the person's chats once per process to find which session each chat lives in.
+    if (request.url?.startsWith("/v1/sessions?")) return void response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ sessions: [] }))
     streams.push(request)
     response.writeHead(200, { "content-type": "text/event-stream" })
     response.end(["event: ready\ndata: {}", ": keep-alive", ...runnerEvents("via sse").map((event) => `data: ${JSON.stringify(event)}`), ""].join("\n\n"))

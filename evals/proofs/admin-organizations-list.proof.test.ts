@@ -28,23 +28,23 @@ test("a platform admin scans organizations as compact rows and jumps back to the
     const first = await world.firstRow("organizations", "Routing", 1);
     await admin.see({ testId: first }, { timeoutMs: 60_000 });
     const rows = await adminProbe.dom('[data-testid^="admin-org-row-"]');
-    const editors = await adminProbe.dom('[data-testid="admin-openwork-web-access"]');
+    const editors = await adminProbe.dom('[id^="admin-org-manage-"]');
     const tallest = Math.max(...rows.elements.map((row) => row.rect.height));
     const ok = rows.elements.length === 50 && tallest <= 120 && editors.elements.length === 0;
-    evidence.recordAssertionEvidence("A full page of organizations reads as short rows with no open editors", `rows=${rows.elements.length}; tallest row=${Math.round(tallest)}px; open access editors=${editors.elements.length}`, ok);
+    evidence.recordAssertionEvidence("A full page of organizations reads as short rows with no open editors", `rows=${rows.elements.length}; tallest row=${Math.round(tallest)}px; open Manage panels=${editors.elements.length}`, ok);
     expect(ok).toBe(true);
     await admin.screenshot();
   });
 
-  await step("Manage opens plan, seats, free seats and OpenWork Web access for that one organization", async () => {
+  await step("Manage opens plan, seats and free seats for that one organization", async () => {
     await admin.navigate(world.url("/admin/organizations?search=Overview%20workspace"));
     await admin.click({ role: "button", label: `Manage ${organizationName}` });
     await admin.see({ role: "button", label: "Save access" });
-    await admin.see({ testId: "admin-openwork-web-access" }, { text: /OpenWork Web billing access/ });
-    const editors = await adminProbe.dom('[data-testid="admin-openwork-web-access"]');
+    await admin.see({ role: "button", label: `Edit free seats for ${organizationName}` });
+    const editors = await adminProbe.dom('[id^="admin-org-manage-"]');
     const seats = await adminProbe.dom('[data-testid^="admin-org-row-"]');
     const ok = editors.elements.length === 1 && /\/ 100/.test(seats.elements[0]?.text ?? "");
-    evidence.recordAssertionEvidence("Only the chosen organization's access panel opens, next to its seat usage", `open panels=${editors.elements.length}; row=${(seats.elements[0]?.text ?? "missing").slice(0, 120)}`, ok);
+    evidence.recordAssertionEvidence("Only the chosen organization's Manage panel opens, next to its seat usage", `open panels=${editors.elements.length}; row=${(seats.elements[0]?.text ?? "missing").slice(0, 120)}`, ok);
     expect(ok).toBe(true);
     await admin.screenshot();
   });

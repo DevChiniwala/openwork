@@ -821,6 +821,7 @@ export class CloudProviderSync {
   private materializationContextHash: string | null = null;
   private ownedEnvKeys = new Map<string, string>();
   private managedProviderIds = new Set<string>();
+  private providerEnvHashes = new Map<string, Record<string, string>>();
   private importedAtByCloudProviderId = new Map<string, number>();
   private reloadPending = false;
   private queue: Promise<void> = Promise.resolve();
@@ -1065,6 +1066,7 @@ export class CloudProviderSync {
     this.fingerprint = null;
     this.ownedEnvKeys.clear();
     this.managedProviderIds.clear();
+    this.providerEnvHashes.clear();
     this.importedAtByCloudProviderId.clear();
   }
 
@@ -1278,6 +1280,14 @@ export class CloudProviderSync {
         && value !== undefined && hashString(value) === hash;
     }).map(([key]) => key);
     for (const providerId of Object.keys(desiredProviders)) this.managedProviderIds.add(providerId);
+    // Approve only values delivered for this provider, not other Settings
+    // secrets that a remote definition happens to name. Hashes also prevent a
+    // shared env name from leaking another provider's later replacement value.
+    const providerEnvHashes = new Map(prepared.providers.map(entry => [entry.runtimeProviderId,
+      Object.fromEntries(entry.envEntries.map(env => [env.key, hashString(env.value)])),
+    ]));
+    const templateBindingsChanged = stableJson(Object.fromEntries(providerEnvHashes)) !== stableJson(Object.fromEntries(this.providerEnvHashes));
+    this.providerEnvHashes = providerEnvHashes;
     for (const entry of prepared.envEntries) this.ownedEnvKeys.set(entry.key, hashString(entry.value));
     if (this.materializationContextHash !== contextHash) this.materializationContextHash = null;
     // Keep retired rows until auth removal has been persisted by its owner.
@@ -1351,6 +1361,7 @@ export class CloudProviderSync {
     // still reloads. Without a rollover-capable engine pool it is deferred
     // while sessions are live; with one, reloadEngine flips generations.
     this.reloadPending = this.reloadPending
+      || templateBindingsChanged
       || providerStateChanged
       || workspaceCleanup.runtimeChanged
       || runtimeFileChanged
@@ -1402,6 +1413,7 @@ export class CloudProviderSync {
       reloadDeferred,
     };
     const changed = detail.fingerprintChanged
+      || templateBindingsChanged
       || providerStateChanged
       || envUpserts.length > 0
       || envDeletes.length > 0
@@ -1498,6 +1510,7 @@ export class CloudProviderSync {
     });
     this.ownedEnvKeys.clear();
     this.managedProviderIds.clear();
+    this.providerEnvHashes.clear();
     this.materializationContextHash = null;
     await this.persistOwnership();
     this.reloadPending = this.reloadPending
@@ -1524,6 +1537,7 @@ export class CloudProviderSync {
     await writeOpenworkWorkspaceConfig(this.config, "__cloud_provider_ownership__", () => ({
       envHashes: Object.fromEntries(this.ownedEnvKeys),
       providerIds: [...this.managedProviderIds],
+      providerEnvHashes: Object.fromEntries(this.providerEnvHashes),
       ...(this.managedProviderIds.size > 0 && this.materializationContextHash !== null
         ? { materializationContextHash: this.materializationContextHash }
         : {}),
@@ -1542,6 +1556,13 @@ export class CloudProviderSync {
       }
     }
     for (const id of readStringList(saved.providerIds)) this.managedProviderIds.add(id);
+    if (isRecord(saved.providerEnvHashes)) {
+      for (const [id, hashes] of Object.entries(saved.providerEnvHashes)) {
+        if (!isRecord(hashes)) continue;
+        this.providerEnvHashes.set(id, Object.fromEntries(Object.entries(hashes)
+          .filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^[a-f0-9]{64}$/.test(entry[1]))));
+      }
+    }
     // Workspace import baselines are collaborator-writable metadata, not proof
     // of ownership for runtime, credential, or auth cleanup.
     const runtimes = [await readGlobalRuntimeOpencodeConfig(this.config)];

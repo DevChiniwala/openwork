@@ -14,7 +14,6 @@ import { gatewayCredentialBody, promptFields, promptFieldsProblem } from "./cred
 import { Button, buttonVariants } from "@/components/ui/button"
 import { DenReauthNotice } from "@/react-app/domains/cloud/den-reauth-notice"
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider"
-import { useOrgFeatureState } from "@/react-app/domains/cloud/use-org-feature"
 import { useOptionalMessageList } from "./message-list-provider"
 import { credentialPromptFromToolPart } from "./credential-prompt"
 
@@ -88,7 +87,6 @@ export function CredentialPromptCard({ part, continueToolCallId = part.toolCallI
   const signedIn = auth.isSignedIn && Boolean(token && organizationId)
   const key = prompt ? targetKey(prompt) : ""
   const local = useSyncExternalStore(subscribe, () => savedHere.has(key), () => false)
-  const enabled = useOrgFeatureState("secureSecretFields", { active: signedIn })
   // Den's own answer, so a reopened conversation shows what is true now.
   const stored = useQuery({
     queryKey: ["den", "credential-prompt", organizationId, key],
@@ -111,10 +109,8 @@ export function CredentialPromptCard({ part, continueToolCallId = part.toolCallI
   const readOnly = messageList?.readOnly === true
   const saved = local || stored.data === true
   const dashboardUrl = denDashboardUrl(settings.baseUrl, prompt)
-  // The field, and its show control, appear only once the rollout is confirmed on.
-  const confirmed = enabled.data === true
-  const blocked = !signedIn ? "signed_out" : readOnly ? "read_only" : enabled.data === false ? "off" : enabled.isError ? "unverified" : phase === "denied" ? "denied" : phase === "gone" ? "gone" : null
-  const showField = confirmed && !blocked && phase !== "reauth" && (!saved || replacing)
+  const blocked = !signedIn ? "signed_out" : readOnly ? "read_only" : phase === "denied" ? "denied" : phase === "gone" ? "gone" : null
+  const showField = !blocked && phase !== "reauth" && (!saved || replacing)
 
   const specs = promptFields(prompt.target)
   const clearAll = () => {
@@ -186,10 +182,8 @@ export function CredentialPromptCard({ part, continueToolCallId = part.toolCallI
     : `Add the ${what} for ${name}`
   const blockedLine = blocked === "read_only" ? "This conversation is read-only."
     : blocked === "signed_out" ? "Sign in to OpenWork Cloud to add this key here."
-    : blocked === "off" ? "Adding keys in chat is off for your organization. Use OpenWork Cloud instead."
     : blocked === "denied" ? "You can't change this key. Ask an organization admin."
     : blocked === "gone" ? "Ask the agent to set it up again."
-    : blocked === "unverified" ? "OpenWork couldn't check whether keys can be added here. Use OpenWork Cloud instead."
     : null
   // One state line: who uses the key and where it goes (P9).
   const consent = `Shared with people who can use ${name}${prompt.destination ? ` · sent only to ${prompt.destination}` : ""} · never shown to the agent`
@@ -237,7 +231,7 @@ export function CredentialPromptCard({ part, continueToolCallId = part.toolCallI
                     onChange={(event) => track(spec.id, event.currentTarget.value.length > 0)} />
                 </Field>
               ) : (
-                <SecretField key={spec.id} id={`${fieldId}-${spec.id}`} label={spec.label} revealable={confirmed} multiline={spec.kind === "json"}
+                <SecretField key={spec.id} id={`${fieldId}-${spec.id}`} label={spec.label} multiline={spec.kind === "json"}
                   disabled={phase === "saving"} onSubmit={() => void save()}
                   handleRef={(handle) => { if (handle) fields.current.set(spec.id, handle); else fields.current.delete(spec.id) }}
                   onValueChange={(has) => track(spec.id, has)} />
@@ -248,7 +242,7 @@ export function CredentialPromptCard({ part, continueToolCallId = part.toolCallI
           <div className="flex items-start gap-2">
             {specs.length === 1 && specs[0]?.kind === "secret" ? (
               <div className="min-w-0 flex-1">
-                <SecretField id={fieldId} label="API key" labelHidden revealable={confirmed} error={error} disabled={phase === "saving"}
+                <SecretField id={fieldId} label="API key" labelHidden error={error} disabled={phase === "saving"}
                   handleRef={(handle) => { if (handle) fields.current.set("apiKey", handle); else fields.current.delete("apiKey") }}
                   onSubmit={() => void save()} onValueChange={(has) => track("apiKey", has)} />
               </div>

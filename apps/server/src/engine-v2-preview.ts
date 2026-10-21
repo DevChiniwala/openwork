@@ -40,6 +40,8 @@ import {
 import type { EnvService } from "./env-file.js";
 import { selectPrimaryCredentialEnvName } from "./managed-provider-auth.js";
 import type { ServerConfig } from "./types.js";
+import { approvedProviderEnvironmentNames, machineOwnedProviderIds, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP, resolveProviderConfigTemplates } from "./provider-config-templates.js";
+import { readOpenworkWorkspaceConfig } from "./openwork-workspace-config-store.js";
 
 /**
  * A stable id for this OpenWork app's engine config. Each desktop app gives
@@ -342,6 +344,7 @@ export function mapRuntimeProvidersToV2Specs(
   providerMap: Record<string, unknown>,
   storedCredentials: ReadonlyMap<string, string> = new Map(),
   localApiKeys: ReadonlyMap<string, string> = new Map(),
+  configuredProviderIds: ReadonlySet<string> = new Set(),
 ): { specs: OpencodeV2ProviderSpec[]; skippedProviderIds: string[] } {
   const specs: OpencodeV2ProviderSpec[] = [];
   const skippedProviderIds: string[] = [];
@@ -358,12 +361,27 @@ export function mapRuntimeProvidersToV2Specs(
       "@ai-sdk/anthropic": "@opencode/ai/providers/anthropic",
       "@openrouter/ai-sdk-provider": "@opencode/ai/providers/openrouter",
       "@ai-sdk/openai-compatible": "@opencode/ai/providers/openai-compatible",
+      "@ai-sdk/azure": "@opencode/ai/providers/azure/responses",
     };
     const options = isRecord(value.options) ? value.options : {};
+    const isConfigured = configuredProviderIds.has(id);
     // Catalog `api` metadata may use only the native adapter's trusted origin.
-    // Custom destinations must use the existing explicit options.baseURL path.
+    // Custom destinations must be explicitly configured (or use options.baseURL).
     const explicitBaseUrl = typeof options.baseURL === "string" && options.baseURL.trim()
       ? options.baseURL : undefined;
+    const endpoint = explicitBaseUrl ?? value.api;
+    const baseUrl = typeof endpoint === "string" && endpoint.trim() ? endpoint : undefined;
+    const safeBaseUrl = (candidate: string | undefined): boolean => {
+      if (candidate === undefined) return true;
+      try {
+        const url = new URL(candidate);
+        return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+      } catch { return false; }
+    };
+    if (!safeBaseUrl(baseUrl)) {
+      skippedProviderIds.push(id);
+      continue;
+    }
     if (!explicitBaseUrl && value.api !== undefined) {
       const nativeOrigins: Record<string, string> = {
         "@ai-sdk/openai": "https://api.openai.com",
@@ -374,12 +392,10 @@ export function mapRuntimeProvidersToV2Specs(
       try {
         const url = new URL(typeof value.api === "string" ? value.api : "");
         trusted = typeof value.npm === "string" && Object.hasOwn(nativeOrigins, value.npm)
-          && url.origin === nativeOrigins[value.npm] && !url.username && !url.password;
+          && url.origin === nativeOrigins[value.npm];
       } catch { /* Invalid endpoint metadata is never mirrored. */ }
-      if (!trusted) { skippedProviderIds.push(id); continue; }
+      if (!trusted && !isConfigured) { skippedProviderIds.push(id); continue; }
     }
-    const endpoint = explicitBaseUrl ?? value.api;
-    const baseUrl = typeof endpoint === "string" && endpoint.trim() ? endpoint : undefined;
     const packageName = typeof value.npm === "string" && Object.hasOwn(packages, value.npm) ? packages[value.npm] : undefined;
     if ((value.npm !== undefined && !packageName)
       || (!baseUrl && (!packageName || value.npm === "@ai-sdk/openai-compatible"))) {
@@ -387,6 +403,16 @@ export function mapRuntimeProvidersToV2Specs(
       continue;
     }
     const { apiKey, baseURL, headers, ...settings } = options;
+    let normalizedBaseUrl = baseUrl;
+    if (value.npm === "@ai-sdk/azure" && settings.useDeploymentBasedUrls !== true && baseUrl !== undefined) {
+      try {
+        const url = new URL(baseUrl);
+        if (url.protocol === "https:" && url.hostname.endsWith(".openai.azure.com") && /\/openai\/v1\/?$/.test(url.pathname)) {
+          url.pathname = url.pathname.replace(/\/v1\/?$/, "");
+          normalizedBaseUrl = url.toString().replace(/\/$/, "");
+        }
+      } catch { /* The general safe endpoint check above rejects malformed URLs. */ }
+    }
     const envNames = Array.isArray(value.env)
       ? value.env.filter((name): name is string => typeof name === "string") : [];
     const credentialName = selectPrimaryCredentialEnvName(envNames, storedCredentials.keys());
@@ -411,7 +437,7 @@ export function mapRuntimeProvidersToV2Specs(
     specs.push({
       id,
       name: typeof value.name === "string" ? value.name : id,
-      ...(baseUrl ? { baseUrl } : {}),
+      ...(normalizedBaseUrl ? { baseUrl: normalizedBaseUrl } : {}),
       ...(packageName ? { package: packageName } : {}),
       ...(Object.keys(settings).length ? { settings } : {}),
       ...(isRecord(headers) ? { headers } : {}),
@@ -845,7 +871,20 @@ export function createEngineV2Preview(options: {
     const providerMap = Object.fromEntries(Object.entries(combinedProviders)
       .filter(([id]) => !ownsGateway() || !/^ipr_/i.test(id)));
     const credentials = new Map((await options.env?.list() ?? []).map((entry) => [entry.key, entry.value]));
-    const mapped = mapRuntimeProvidersToV2Specs(providerMap, credentials, localKeys);
+    // Persisted cloud ownership is written before managed runtime rows. Do not
+    // treat a Den-pushed definition as local merely because it is in that map.
+    const ownership = await readOpenworkWorkspaceConfig(config, "__cloud_provider_ownership__");
+    const managedIds = new Set(Array.isArray(ownership.providerIds) ? ownership.providerIds : []);
+    const localOwnership = await readOpenworkWorkspaceConfig(config, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP);
+    const localProviderIds = machineOwnedProviderIds(configured, localOwnership);
+    for (const id of localProviderIds) {
+      if (managedIds.has(id) || /^(?:lpr_|ipr_|openwork$)/i.test(id)) localProviderIds.delete(id);
+    }
+    const templates = await resolveProviderConfigTemplates(providerMap, {
+      directory: runtimeStorageDir(config), environment: credentials, localProviderIds,
+      remoteEnvironmentNames: approvedProviderEnvironmentNames(ownership.providerEnvHashes, credentials),
+    });
+    const mapped = mapRuntimeProvidersToV2Specs(templates.providers, credentials, localKeys, new Set(Object.keys(configured)));
     const specs = mapped.specs.filter((spec) => !disabled.has(spec.id));
     if (ownsGateway()) mirroredSpecs = specs;
     discovered();
@@ -860,14 +899,14 @@ export function createEngineV2Preview(options: {
     mirroredSpecs = specs.filter(spec => !ownsGateway() || !/^ipr_/i.test(spec.id));
     workspaceReadiness.clear();
     mirroredProviderIds = nextMirroredProviderIds.filter(id => !ownsGateway() || !/^ipr_/i.test(id));
-    skippedProviderIds = [...mapped.skippedProviderIds];
+    skippedProviderIds = [...new Set([...mapped.skippedProviderIds, ...templates.errors.map(error => error.providerId)])].sort();
     lastMirroredAt = new Date().toISOString();
     pushed();
     // Re-check folders already in use now, so their next prompt pays nothing.
     for (const directory of mcpLocations.keys()) void ensureWorkspaceReady(directory).catch(() => undefined);
     const catalog = await waitForEngineV2Catalog(active, workspaceDir, specs, CATALOG_MIRROR_TIMEOUT_MS, ownsGateway);
     currentCatalogModelIds = catalog.modelIds;
-    lastError = catalog.lastError;
+    lastError = [...templates.errors.map(error => error.message), ...(catalog.lastError ? [catalog.lastError] : [])].join("\n") || undefined;
   }
 
   function scheduleMirror(): void {

@@ -10,6 +10,7 @@ import { loadConfig } from "./config.js"
 import { createDen } from "./den.js"
 import { closeErrorReporting, initErrorReporting, reportError } from "./error-reporting.js"
 import { registerWorkbotRoutes } from "./routes.js"
+import { registerReadinessRoute } from "./readiness.js"
 
 const config = loadConfig()
 await initErrorReporting(config.errorReporting)
@@ -29,13 +30,14 @@ app.onError((error, c) => {
   return c.json({ error: "internal_error" }, 500)
 })
 app.get("/healthz", (c) => c.json({ ok: true }))
+registerReadinessRoute(app, config)
 auth.register(app)
 registerWorkbotRoutes(app, { config, den, member: auth.member, sameOrigin: auth.sameOrigin })
 app.all("/v1/*", (c) => c.json({ error: "not_found" }, 404))
 app.all("/auth/*", (c) => c.json({ error: "not_found" }, 404))
 
 const clientDir = join(dirname(fileURLToPath(import.meta.url)), config.dev ? "../client" : "client")
-const isApi = (path: string) => path === "/healthz" || path.startsWith("/v1/") || path === "/v1" || path.startsWith("/auth/")
+const isApi = (path: string) => path === "/healthz" || path.startsWith("/internal/") || path.startsWith("/v1/") || path === "/v1" || path.startsWith("/auth/")
 
 let server: ReturnType<typeof createServer>
 if (config.dev) {

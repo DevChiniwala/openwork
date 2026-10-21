@@ -11,13 +11,14 @@ standalone servers.
 
 ## Organization-managed rollout
 
-`engineV2ForceUpgrade` is off by default on cloud and self-hosted deployments.
-When an organization's resolved flag is on, desktop and web hosts reuse the
-same backup/copy migration in the background, wait for idle, and select v2
-without consent. Desktop shows only the existing non-blocking progress banner;
-web shows no engine upgrade UI. Fresh profiles select v2 without a history copy.
-The optional desktop `engineV2Upgrade` invitation still works when force is off.
-All app feature observers use the shared guarded `useOrgFeature` hook: cached
+`engineV2ForceUpgrade` ("Upgrade to OpenCode v2") is off by default on cloud
+and self-hosted deployments. When an organization's resolved flag is on, desktop
+and web hosts still on v1 reuse the same backup/copy migration in the
+background, wait for idle, and select v2 without consent. Desktop shows only the
+existing non-blocking progress banner; web shows no engine upgrade UI. Fresh
+profiles select v2 without a history copy. There is no separate upgrade
+invitation: when the flag is off, people can still switch or migrate manually
+from the command palette or Advanced settings. All app feature observers use the shared guarded `useOrgFeature` hook: cached
 organization data cannot bypass a desktop-only guard.
 
 Turning the flag off switches only force-owned instances back to v1, once idle.

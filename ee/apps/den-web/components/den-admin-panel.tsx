@@ -766,7 +766,7 @@ function buildFixtureOrganization(index: number, includeFeatures = false): Admin
     seatsFreeAdditional: target ? 20 : 0,
     billableSeatCount: target ? 103 : 0,
     features: includeFeatures ? mapFeatures((key) => {
-      const enabled = target && (key === "secureSecretFields" || key === "workbotTeamLinks");
+      const enabled = target && key === "workbotDocuments";
       return { enabled, source: "everyone", everyone: enabled, killed: false, override: null, overrideApplies: true };
     }) : null,
     openworkWebAccess: {
@@ -1336,25 +1336,6 @@ function PlanPill({ tier }: { tier: AdminOrganization["plan"]["tier"] }) {
   );
 }
 
-function OpenWorkWebAccessPill({ access }: { access: AdminOpenWorkWebAccess }) {
-  const label = access.hasOngoingSubscription
-    ? "Paid subscription"
-    : access.complimentaryAccess
-      ? "Complimentary"
-      : "No access";
-  const palette = access.hasOngoingSubscription
-    ? "border-violet-200 bg-violet-50 text-violet-700"
-    : access.complimentaryAccess
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : "border-slate-200 bg-slate-100 text-slate-600";
-
-  return (
-    <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium ${palette}`}>
-      {label}
-    </span>
-  );
-}
-
 export function DenAdminPanel({ initialPayload, section }: { initialPayload: unknown; section: AdminDataSection }) {
   const viewMode = section;
   const { search: routeSearch, draftSearch, page: routePage, offset: routeOffset, setSearch, setPage } = useAdminListLocation();
@@ -1376,9 +1357,6 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
   const [savingOrgId, setSavingOrgId] = useState<string | null>(null);
   const [freeSeatsDialog, setFreeSeatsDialog] = useState<{ org: AdminOrganization; totalFreeSeats: string } | null>(null);
   const [savingFreeSeatsOrgId, setSavingFreeSeatsOrgId] = useState<string | null>(null);
-  const [openworkWebAccessDialog, setOpenWorkWebAccessDialog] = useState<{ org: AdminOrganization; enabled: boolean; reason: string } | null>(null);
-  const [savingOpenWorkWebAccessOrgId, setSavingOpenWorkWebAccessOrgId] = useState<string | null>(null);
-  const [openworkWebAccessError, setOpenWorkWebAccessError] = useState<{ orgId: string; message: string } | null>(null);
   const [deleteUserDialog, setDeleteUserDialog] = useState<AdminUser | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState("");
@@ -1975,60 +1953,6 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
     }
   }, [freeSeatsDialog]);
 
-  const saveOpenWorkWebAccess = useCallback(async () => {
-    if (!openworkWebAccessDialog) {
-      return;
-    }
-
-    const reason = openworkWebAccessDialog.reason.trim();
-    if (reason.length < 3) {
-      setOpenWorkWebAccessError({ orgId: openworkWebAccessDialog.org.id, message: "Add a short reason for the audit log." });
-      return;
-    }
-
-    const { org, enabled } = openworkWebAccessDialog;
-    setSavingOpenWorkWebAccessOrgId(org.id);
-    setOpenWorkWebAccessError(null);
-    setError(null);
-
-    try {
-      const { response, payload: nextPayload } = await putJson(`/v1/admin/organizations/${org.id}/openwork-web-access`, {
-        enabled,
-        reason
-      });
-      if (!response.ok) {
-        const message = getErrorMessage(nextPayload, `Could not update OpenWork Web access for ${org.name}.`);
-        setOpenWorkWebAccessError({ orgId: org.id, message });
-        setError(message);
-        return;
-      }
-
-      const updatedOrganization = isRecord(nextPayload) && isRecord(nextPayload.organization) ? nextPayload.organization : null;
-      if (!updatedOrganization) {
-        throw new Error("The OpenWork Web access response was incomplete.");
-      }
-      const openworkWebAccess = parseAdminOpenWorkWebAccess(updatedOrganization.openworkWebAccess);
-      setPayload((current) => {
-        if (!current) {
-          return current;
-        }
-        return {
-          ...current,
-          organizations: current.organizations.map((entry) => entry.id === org.id
-            ? { ...entry, openworkWebAccess }
-            : entry)
-        };
-      });
-      setOpenWorkWebAccessDialog(null);
-    } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : "Unknown network error";
-      setOpenWorkWebAccessError({ orgId: org.id, message });
-      setError(message);
-    } finally {
-      setSavingOpenWorkWebAccessOrgId(null);
-    }
-  }, [openworkWebAccessDialog]);
-
   const deleteUser = useCallback(async () => {
     if (!deleteUserDialog) {
       return;
@@ -2387,8 +2311,8 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
           {viewMode === "organizations" ? (
             filteredOrganizations.length > 0 ? (
               <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                <div aria-hidden="true" className="hidden border-b border-slate-200 bg-slate-50/80 px-4 py-2 text-xs font-medium text-slate-500 lg:grid lg:grid-cols-[minmax(0,1fr)_9rem_8.5rem_10rem] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_9rem_8.5rem_6rem_10rem]">
-                  <span>Organization</span><span>Seats</span><span>OpenWork Web</span><span className="hidden xl:block">Created</span><span className="text-right">Actions</span>
+                <div aria-hidden="true" className="hidden border-b border-slate-200 bg-slate-50/80 px-4 py-2 text-xs font-medium text-slate-500 lg:grid lg:grid-cols-[minmax(0,1fr)_10rem_16rem] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_10rem_7rem_16rem]">
+                  <span>Organization</span><span>Seats</span><span className="hidden xl:block">Created</span><span className="text-right">Actions</span>
                 </div>
                 <ul className="divide-y divide-slate-200">
                 {filteredOrganizations.map((org) => {
@@ -2401,7 +2325,7 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
 
               return (
                 <li key={org.id} data-testid={`admin-org-row-${org.slug}`} style={{ contentVisibility: "auto", containIntrinsicSize: expanded ? "auto 320px" : "auto 72px" }} className={`min-w-0 ${expanded ? "bg-slate-50/50" : ""}`}>
-                  <div className="grid min-w-0 grid-cols-2 items-center gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_9rem_8.5rem_10rem] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_9rem_8.5rem_6rem_10rem]">
+                  <div className="grid min-w-0 grid-cols-2 items-center gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_10rem_16rem] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_10rem_7rem_16rem]">
                     <div className="col-span-2 min-w-0 lg:col-span-1">
                       <div className="flex min-w-0 items-center gap-2">
                         <Link href={adminOrganizationHref(org.id, routeSearch, routePage)} prefetch={false} className="min-w-0 truncate text-sm font-semibold text-slate-950 hover:underline">{org.name}</Link>
@@ -2435,14 +2359,16 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
                       </p>
                     </div>
 
-                    <div className="min-w-0"><OpenWorkWebAccessPill access={org.openworkWebAccess} /></div>
-
                     <p className="text-sm text-slate-600 lg:hidden xl:block" title={formatDateTime(org.createdAt)}><span className="xl:hidden">Created </span>{org.createdAt ? formatRelativeTime(org.createdAt) : "—"}</p>
 
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="col-span-2 flex flex-wrap items-center justify-end gap-1 lg:col-span-1">
                       <Link href={adminOrganizationHref(org.id, routeSearch, routePage, "features")} prefetch={false}
                         data-testid="admin-organization-features-link" className="rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-950">
                         Features
+                      </Link>
+                      <Link href={adminOrganizationHref(org.id, routeSearch, routePage, "control-panel")} prefetch={false}
+                        data-testid="admin-organization-control-panel-link" className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-950">
+                        Control panel
                       </Link>
                       <button
                         type="button"
@@ -2460,7 +2386,7 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
                   </div>
 
                   {expanded ? (
-                  <div id={panelId} className="grid min-w-0 gap-5 border-t border-slate-200 px-4 py-4 lg:grid-cols-3 lg:gap-0 lg:divide-x lg:divide-slate-200">
+                  <div id={panelId} className="grid min-w-0 gap-5 border-t border-slate-200 px-4 py-4 lg:grid-cols-2 lg:gap-0 lg:divide-x lg:divide-slate-200">
                     <div className="min-w-0 lg:pr-5">
                       <p className="text-sm font-semibold text-slate-950">Plan and seat limit</p>
                       <p className="mt-0.5 text-xs text-slate-500">Plan source: {formatProvider(org.plan.source)}</p>
@@ -2519,7 +2445,7 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
                       </div>
                     </div>
 
-                    <div className="min-w-0 lg:px-5">
+                    <div className="min-w-0 lg:pl-5">
                       <p className="text-sm font-semibold text-slate-950">Free seats</p>
                       <div className="mt-2 flex items-center gap-2">
                         <p className="text-2xl font-semibold tabular-nums text-slate-950">{org.freeSeatCount}</p>
@@ -2537,46 +2463,6 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
                       </p>
                     </div>
 
-                    <div className="min-w-0 lg:pl-5" data-testid="admin-openwork-web-access">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-950">OpenWork Web billing access</p>
-                        <OpenWorkWebAccessPill access={org.openworkWebAccess} />
-                      </div>
-                      <p className="mt-2 text-xs leading-5 text-slate-600">
-                        {org.openworkWebAccess.hasOngoingSubscription
-                          ? `A ${org.openworkWebAccess.subscriptionStatus ?? "current"} Stripe subscription controls access and billing.`
-                          : org.openworkWebAccess.complimentaryAccess
-                            ? "All joined members can use OpenWork Web without a Stripe subscription or per-member charge, even when deployment-wide availability is off."
-                            : "No complimentary grant or ongoing paid OpenWork Web subscription."}
-                      </p>
-                      <button
-                        type="button"
-                        data-testid="admin-openwork-web-access-action"
-                        onClick={() => setOpenWorkWebAccessDialog({
-                          org,
-                          enabled: !org.openworkWebAccess.complimentaryAccess,
-                          reason: ""
-                        })}
-                        disabled={savingOpenWorkWebAccessOrgId === org.id || (!org.openworkWebAccess.complimentaryAccess && org.openworkWebAccess.hasOngoingSubscription)}
-                        className="mt-3 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {savingOpenWorkWebAccessOrgId === org.id
-                          ? "Saving..."
-                          : org.openworkWebAccess.complimentaryAccess
-                            ? "Revoke complimentary access"
-                            : "Grant complimentary access"}
-                      </button>
-                      {!org.openworkWebAccess.complimentaryAccess && org.openworkWebAccess.hasOngoingSubscription ? (
-                        <p className="mt-2 text-xs leading-5 text-amber-700">
-                          Cancel or finish the paid subscription in Stripe before granting complimentary access.
-                        </p>
-                      ) : null}
-                      {openworkWebAccessError?.orgId === org.id ? (
-                        <p data-testid="admin-openwork-web-access-error" className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
-                          {openworkWebAccessError.message}
-                        </p>
-                      ) : null}
-                    </div>
                   </div>
                   ) : null}
                 </li>
@@ -2834,73 +2720,6 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
 
         <p className="mt-6 text-xs leading-6 text-slate-500">Snapshot generated {formatDateTime(payload.generatedAt)}.</p>
       </div> : null}
-
-      {openworkWebAccessDialog ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="openwork-web-access-dialog-title"
-          onClick={() => setOpenWorkWebAccessDialog(null)}
-        >
-          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Organization billing access</p>
-            <h2 id="openwork-web-access-dialog-title" className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-slate-950">
-              {openworkWebAccessDialog.enabled ? "Grant" : "Revoke"} complimentary OpenWork Web?
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {openworkWebAccessDialog.enabled
-                ? `${openworkWebAccessDialog.org.name} will receive OpenWork Web for every joined member without a Stripe subscription or per-member charge, even when deployment-wide availability is off.`
-                : `${openworkWebAccessDialog.org.name} will lose complimentary access immediately unless an independently eligible paid subscription exists.`}
-            </p>
-
-            <label className="mt-5 grid gap-2">
-              <span className="text-xs font-medium text-slate-500">Reason for audit log</span>
-              <textarea
-                data-testid="admin-openwork-web-access-reason"
-                rows={3}
-                maxLength={500}
-                value={openworkWebAccessDialog.reason}
-                onChange={(event) => setOpenWorkWebAccessDialog({ ...openworkWebAccessDialog, reason: event.target.value })}
-                placeholder="For example: Internal OpenWork administration organization"
-                className="resize-none rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-hidden transition focus:border-slate-400"
-              />
-            </label>
-
-            {openworkWebAccessError?.orgId === openworkWebAccessDialog.org.id ? (
-              <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-xs leading-5 text-red-700">
-                {openworkWebAccessError.message}
-              </p>
-            ) : null}
-
-            <div className="mt-6 flex flex-wrap justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setOpenWorkWebAccessDialog(null)}
-                disabled={savingOpenWorkWebAccessOrgId === openworkWebAccessDialog.org.id}
-                className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                data-testid="admin-openwork-web-access-confirm"
-                onClick={() => {
-                  void saveOpenWorkWebAccess();
-                }}
-                disabled={savingOpenWorkWebAccessOrgId === openworkWebAccessDialog.org.id || openworkWebAccessDialog.reason.trim().length < 3}
-                className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {savingOpenWorkWebAccessOrgId === openworkWebAccessDialog.org.id
-                  ? "Saving..."
-                  : openworkWebAccessDialog.enabled
-                    ? "Grant access"
-                    : "Revoke access"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {freeSeatsDialog ? (
         <div

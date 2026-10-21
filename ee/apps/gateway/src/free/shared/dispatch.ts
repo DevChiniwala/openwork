@@ -28,7 +28,7 @@ export async function dispatchFreeCompletion(input: {
   const admission = await store.admit(principal)
   if (!admission.ok) return freeError(admission.code === "free_principal_rejected" ? 403 : 429, admission.code)
   const charge = (receipt: FreeUsageReceipt | null) => retryFreeSettlement(
-    () => store.charge({ requestId, principal, windows: admission.windows, receipt }),
+    () => store.charge({ requestId, principal, windows: admission.windows, grantAdmission: admission.grantAdmission, receipt }),
     () => Sentry.captureMessage("Free Auto charge pending database recovery", {
       level: "error", tags: { route: principal.kind === "member" ? "openwork_free" : "anonymous_free" },
       extra: { requestId, receipt, principal, windows: admission.windows },

@@ -1,3 +1,4 @@
+import { readBrowserTeachingPrompt, readBrowserSkillRunPrompt } from "@openwork/types/browser-demonstration"
 import type { RunnerMessage, RunnerSnapshot, RunnerTurn } from "@openwork-ee/headless-protocol"
 import { readWorkbotContextPrompt, type WorkbotViewContext } from "@openwork/types/workbot-context"
 
@@ -226,7 +227,7 @@ function appOf(name: string, input: Record<string, unknown>): string | null {
 /** The conversation's kept files, so the ones Workbot made show under the answer that made them. */
 export type FileNames = ReadonlyMap<string, { name: string; createdAt: number; updatedAt?: number; mediaType?: string; size?: number; source?: "user" | "agent" }>
 
-const COMPUTER_TOOLS: ReadonlySet<string> = new Set(["bash", "look"])
+const COMPUTER_TOOLS: ReadonlySet<string> = new Set(["bash", "look", "desktop"])
 
 /**
  * Work on Workbot's computer reads as one step, however many commands it took: the person sees that it is using
@@ -373,7 +374,7 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
     const outputs = outputsOf(files, turn.createdAt ?? null, working ? null : (turn.updatedAt ?? null))
     // A report is Workbot speaking first: the task's notes to it stay hidden, and it brings back what the task made.
     const task = turn.kind === "report" ? snapshot.turns.find((entry) => entry.messageId === turn.parent) : undefined
-    const visible = readWorkbotContextPrompt(user.text)
+    const visible = readWorkbotContextPrompt(readBrowserSkillRunPrompt(readBrowserTeachingPrompt(user.text)))
     turns.push({
       id: turn.messageId.slice(WORKBOT_MESSAGE_PREFIX.length),
       text: turn.kind === "report" || greeting ? "" : visible.text,

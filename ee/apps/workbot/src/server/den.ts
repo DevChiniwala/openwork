@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { skillCreatedPayloadSchema } from "@openwork/types/skill-created-app"
 import { headlessModelAccessSchema } from "@openwork-ee/headless-protocol"
 import type { Tokens } from "./sealed.js"
 
@@ -26,15 +29,16 @@ export const denSessionSchema = z.object({
   organization: z.object({ id: z.string(), name: z.string(), brandAppName: z.string().nullable() }),
   memberId: z.string(),
   enabled: z.boolean(),
-  firstRun: z.boolean().optional(),
-  canEnableWorkbot: z.boolean().optional(),
   canSchedule: z.boolean(),
+  computer: z.boolean().default(false),
+  browserDemonstrations: z.boolean().default(false),
   /** Workbot's Calendar tab is on (while Workbot is on). Older Dens omit it: off. */
   calendar: z.boolean().optional(),
   documents: z.boolean().default(false),
+  documentEditing: z.boolean().default(false),
+  nativeDictation: z.boolean().default(false),
   workspaceAssistant: z.boolean().default(false),
   guidedNavigation: z.boolean().default(false),
-  teamLinks: z.object({ enabled: z.boolean(), settings: z.boolean(), apps: z.boolean() }).optional(),
   /** Side chats are on for this person. A Den from before side chats doesn't say: off. */
   sideChats: z.boolean().default(false),
   /** The organization's default model for Workbot's turns. Null, or a Den from before it, means the runner's default. */
@@ -42,14 +46,18 @@ export const denSessionSchema = z.object({
   verifyModel: z.boolean().default(false),
   /** Den validates the exact gateway alias and mints model access for each turn. Older Dens stay on runner credentials. */
   gatewayModels: z.boolean().default(false),
-  /** Turns run one step at a time on the runner (`headlessStepTurns`). A Den from before it doesn't say: off. */
+  /** Turns run one step at a time on the runner (saved step turns). A Den from before it doesn't say: off. */
   stepTurns: z.boolean().default(false),
+  /** New chats get their own session cell on the runner (per-chat session cells). A Den from before it doesn't say: off. */
+  sessionCells: z.boolean().default(false),
 })
 
 const runTokenSchema = z.object({
   token: z.string(),
   resumeGrant: z.string().optional(),
   modelAccess: headlessModelAccessSchema.optional(),
+  /** Den's session index capability: passed to the runner with the turn, never to the browser. */
+  indexCapability: z.string().optional(),
 })
 export type DenSession = z.infer<typeof denSessionSchema>
 
@@ -187,6 +195,19 @@ export function createDen(options: { apiUrl: string; publicUrl: string; serviceT
         signal: AbortSignal.timeout(TIMEOUT_MS),
       }).catch(() => undefined)
     },
+    /** The normal private Cloud-skill path: Den owns permissions, audit, and persistence. */
+    async saveBrowserSkill(accessToken: string, pluginName: string, skillMarkdown: string) {
+      const client = new Client({ name: "openwork-workbot", version: "1" })
+      const transport = new StreamableHTTPClientTransport(new URL(`${options.apiUrl}/mcp/agent`), {
+        requestInit: { headers: { authorization: `Bearer ${accessToken}` } },
+      })
+      try {
+        await client.connect(transport, { timeout: TIMEOUT_MS })
+        const result = await client.callTool({ name: "create_skill", arguments: { pluginName, skillMarkdown } }, undefined, { timeout: TIMEOUT_MS })
+        if (result.isError) throw new Error("The skill could not be saved. Check your skill-creation permission or choose a different name.")
+        return skillCreatedPayloadSchema.parse(result.structuredContent)
+      } finally { await client.close() }
+    },
     async session(accessToken: string): Promise<DenSession> {
       const { status, payload } = await authorized("GET", "/v1/workbot/session", accessToken)
       const parsed = denSessionSchema.safeParse(payload)
@@ -195,7 +216,7 @@ export function createDen(options: { apiUrl: string; publicUrl: string; serviceT
     },
     /**
      * A token for one turn. With the turn's runner `sessionId` and `messageId`, Den also returns a resume grant where
-     * turns keep going on their own (`headlessDurableTurns`); older Dens ignore both and never return one.
+     * turns keep going on their own (saved step turns); older Dens ignore both and never return one.
      */
     async runToken(
       accessToken: string,

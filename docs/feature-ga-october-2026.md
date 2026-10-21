@@ -19,6 +19,29 @@ organization override, deployment rollout row, or operator feature lock.
 | Invitations | `inviteLinkVerifiesEmail` |
 | Sign-in navigation | `rememberLastOrganization` |
 | Team membership lookup | `teamMembershipCache` |
+| Cloud-agent models through the AI Gateway | `cloudAgentGateway` |
+| Secure keys in chat | `secureSecretFields` |
+| Slack Assistant (still needs the Slack connector set up) | `slackAssistant` |
+| Workbot sign-in and account connection | `workbotFirstRun`, `workbotInlineConnect` |
+| Content-free chat index for admins | `headlessSessionIndex` |
+
+## Folded into another switch
+
+| Retired switch | Now controlled by |
+| --- | --- |
+| `workbotGuidedNavigation` | `workbotWorkspaceAssistant` |
+| `engineV2Upgrade` (the optional desktop invitation is gone) | `engineV2ForceUpgrade` ("Upgrade to OpenCode v2") |
+| `headlessStepTurns` | Saved step turns (generally available, including `headlessDurableTurns`) |
+
+The remaining switches stay off by default. An old override for a folded key
+does not turn on its new switch.
+
+## Removed with their feature
+
+`workbotTeamLinks` (Workbot's team settings links), `remoteSessionEvents` (MCP
+resource subscriptions for remote session receipts; poll with
+`remote-session:status` instead), and the deprecated `modelsAnalyticsUi` and
+`taskAnalyticsUi` screens with the API routes only they used.
 
 Removing a rollout does not remove authorization, connector consent, model
 availability checks, or operator configuration. Self-hosted installations must
@@ -41,3 +64,16 @@ authenticated installer enrollment or health reports.
 Self-hosted installations can use the generally available product features, but
 cannot use this hosted control-plane rollout to provision more installations.
 Other switches that were not globally enabled are not graduated by this change.
+
+
+## Durable turns and per-chat cells
+
+`headlessDurableTurns` and `headlessSessionCells` are now generally available on cloud and self-hosted.
+Their registry entries, organization checks, Helm keys and off paths are removed. Legacy disabled overrides,
+killed rollout rows and operator locks do not disable them. Resume grants retain callback authentication,
+turn binding, membership checks, expiry, revocation and rate limits; service configuration is still required.
+
+Den returns `stepTurns: true` and `sessionCells: true` for older clients. Workbot continues treating missing
+optional fields from older Dens as false. Existing turns keep their persisted execution mode; existing sessions
+remain readable and move only through lossless split logic and forwarding. Owner-shared memory, legacy history,
+and fallback event transports remain intact. Deploy a compatible runner before the GA Den.

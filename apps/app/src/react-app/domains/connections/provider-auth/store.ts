@@ -2480,7 +2480,13 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         );
         if (!isCurrent()) return;
         if (!result) throw new Error("Cloud provider sync returned no result.");
-        if (result.status === "live") return { outcome: "handled_live" };
+        if (result.status === "live") {
+          // Live ownership skips legacy reconciliation, not server sync facts.
+          // Reread rather than treating ownership as proof a failed run recovered.
+          await refreshImportedCloudProviders();
+          if (!isCurrent()) return;
+          return { outcome: "handled_live" };
+        }
         // Re-derive the imported records (and reloadPending/skips) from the
         // server's status after EVERY server-handled pass. Without this the
         // Cloud Providers rows kept whatever the one-shot start() read found

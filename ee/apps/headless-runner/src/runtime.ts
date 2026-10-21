@@ -1,7 +1,9 @@
 import { createApp } from "./app.js"
+import { BackgroundJobs } from "./background.js"
 import { SessionEvents } from "./events.js"
 import { diskBlobStore, s3BlobStore } from "./blobs.js"
 import { denResumeClient } from "./den-resume.js"
+import { denIndexClient, denIndexJob, type IndexOutbox } from "./den-index.js"
 import { createErrorReporter } from "./error-reporting.js"
 import { REACTION_TOOL_NAMES } from "./reactions.js"
 import { TASK_TOOL_NAMES } from "./tasks.js"
@@ -18,8 +20,11 @@ import { workbotTelemetryReporter } from "./workbot-telemetry.js"
 import type { Store } from "./store.js"
 import { grantVault } from "./resume-grants.js"
 import { SelfResume } from "./self-resume.js"
+import { SessionStorage } from "./storage/index.js"
 import { readToolFile } from "./tool-files.js"
 import type { SessionComputer } from "./types.js"
+import type { CellsStore } from "./cells-store.js"
+import type { MemoryResolver } from "./memory.js"
 
 /**
  * How the host runs step-mode turns' steps (see steps.ts). Without it (Node), each step runs as soon as it is due, in
@@ -28,9 +33,22 @@ import type { SessionComputer } from "./types.js"
  */
 export type StepHost = { stepAlarm: true; wake: () => void }
 
+/** What a cell host changes (src/worker): where owner-scoped memory lives, and its session-cell tables. */
+export type CellsHost = {
+  memory?: MemoryResolver
+  cells?: CellsStore
+  /** While true, nothing goes to the Den index from this cell (a moved chat waiting for its owner cell's handoff). */
+  indexHeld?: () => boolean
+}
+
 /** Both hosts build the same runner, tools, file store and live events; only SQLite ownership differs. */
-export async function createRuntime(config: Config, store: Store, stepHost?: StepHost) {
+export async function createRuntime(config: Config, store: Store, stepHost?: StepHost, cellsHost: CellsHost = {}) {
   const errors = createErrorReporter(config.errorReporting)
+  if (store.migrationError) {
+    // The schema couldn't be brought up to date (storage/migrations.ts): stop here, as when recovery fails.
+    await errors.report({ code: "store_migration_failed", error: store.migrationError })
+    throw store.migrationError
+  }
   let recovered: number
   try {
     recovered = store.recoverInterruptedTurns()
@@ -40,8 +58,28 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
     throw error
   }
   const events = new SessionEvents()
+  // Storage upkeep with no request (sealing, the Den index outbox, owner-cell splits); see background.ts.
+  const background = new BackgroundJobs((job, error) => errors.report({ code: "background_job_failed", tags: { job }, error }))
+  // Den's content-free session index: needs Den's address and the callback token.
+  if (config.selfResume) {
+    const held = cellsHost.indexHeld
+    const outbox: IndexOutbox = held
+      ? {
+          pendingIndexUpdates: (now, limit) => (held() ? [] : store.pendingIndexUpdates(now, limit)),
+          nextIndexUpdateAt: () => (held() ? null : store.nextIndexUpdateAt()),
+          ackIndexUpdate: (sessionId, version) => store.ackIndexUpdate(sessionId, version),
+          deferIndexUpdate: (sessionId, version, retryAt) => store.deferIndexUpdate(sessionId, version, retryAt),
+          dropIndexUpdatesBefore: (createdBefore) => store.dropIndexUpdatesBefore(createdBefore),
+          indexSnapshotAll: (now) => store.indexSnapshotAll(now),
+        }
+      : store
+    background.register(denIndexJob({ outbox, send: denIndexClient({ url: config.selfResume.denApiUrl, token: config.selfResume.callbackToken }), errors }))
+  }
   const blobs = config.files.kind === "disk" ? diskBlobStore(config.files.directory) : config.files.kind === "s3" ? s3BlobStore(config.files) : null
   const files = blobs ? new SavedFiles(store, blobs, config.fileLimits) : undefined
+  // Sealed history and large outputs (storage/): sealing is off unless HEADLESS_SEGMENTS=on; reading always works.
+  const storage = new SessionStorage(store, blobs, { ...config.storage, contextCharBudget: config.limits.contextCharBudget }, errors)
+  for (const job of storage.jobs()) background.register(job)
   // Provider SDKs load only when configured, including on the Worker host.
   let computer: SessionComputer | undefined
   if (config.computer) {
@@ -77,7 +115,7 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
       ? remoteMcpConnector({
           url: config.mcp.url,
           allowlist: config.mcp.toolAllowlist,
-          reservedNames: new Set([...FILE_TOOL_NAMES, ...SAVED_FILE_TOOL_NAMES, ...REACTION_TOOL_NAMES, ...TASK_TOOL_NAMES, ...(computer?.toolNames ?? [])]),
+          reservedNames: new Set([...FILE_TOOL_NAMES, ...SAVED_FILE_TOOL_NAMES, ...REACTION_TOOL_NAMES, ...TASK_TOOL_NAMES, ...(computer?.toolNames ?? []), ...(computer?.desktopTools?.map(tool => tool.name) ?? [])]),
         })
       : undefined,
     limits: config.limits,
@@ -88,11 +126,13 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
     errors,
     workbotTelemetry: workbotTelemetryReporter(config),
     resume,
+    storage,
+    ...(cellsHost.memory ? { memory: cellsHost.memory } : {}),
     ...(stepHost ? { stepAlarm: stepHost.stepAlarm, wake: stepHost.wake } : {}),
   })
   // Step-mode turns that startup recovery left going continue from their next step (never throws).
   const steps = runner.recoverSteps()
-  const app = createApp({ store, runner, apiToken: config.apiToken, models: gatewayModelCatalog(config), modelProbe: createModelProbe(config, modelFetch), events, files, computer, errors })
+  const app = createApp({ store, runner, apiToken: config.apiToken, healthConfig: config, models: gatewayModelCatalog(config), modelProbe: createModelProbe(config, modelFetch), events, files, computer, errors, cells: cellsHost.cells, memory: cellsHost.memory, storage })
   return {
     app,
     runner,
@@ -101,6 +141,10 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
     steps,
     blobKind: blobs?.kind ?? "off",
     computer,
+    /** Storage upkeep jobs, for the host to run when due (a timer on Node, the durable alarm in a cell). */
+    background,
+    /** Session storage (sealed history, large bodies, object deletions), for a host that hands it a moved chat's. */
+    storage,
     /** Live session events, for a host that also publishes them to its WebSockets (a celld cell). */
     events,
     /** Self-resume, for the host to run on its own schedule (a timer on Node, a durable alarm in a cell). */
