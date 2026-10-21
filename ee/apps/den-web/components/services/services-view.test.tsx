@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NOW, services } from "../diagnostics/diagnostics-test-fixtures";
 import type { ServicesViewState } from "./service-readiness-data";
 import { ServicesView } from "./services-view";
 
 function render(state: ServicesViewState): string {
-  return renderToStaticMarkup(createElement(ServicesView, {
-    state, cooldown: false, checkNow: () => undefined, refresh: () => undefined, now: NOW, testId: "admin-services-page",
-  }));
+  return renderToStaticMarkup(<ServicesView
+    state={state} cooldown={false} checkNow={() => undefined} refresh={() => undefined} now={NOW} testId="admin-services-page"
+  />);
 }
 
 function text(html: string): string {

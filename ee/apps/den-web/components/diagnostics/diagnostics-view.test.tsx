@@ -7,13 +7,13 @@ import { DiagnosticsView, type DiagnosticsViewProps } from "./diagnostics-view";
 import { lockedReport, NOW, report } from "./diagnostics-test-fixtures";
 
 function render(value: OrgDiagnostics | null, overrides: Partial<DiagnosticsViewProps> = {}): string {
-  return renderToStaticMarkup(createElement(DiagnosticsView, {
-    report: value, loading: false, loadFailure: null, checkFailed: false, checking: false, cooldownSeconds: null,
-    copied: false, now: NOW, orgSlug: "workspace",
-    onCheckNow: () => undefined, onCopyReport: () => undefined, onRetry: () => undefined,
-    renderNetworkCheck: () => createElement("div", { "data-testid": "network-check-mounted" }),
-    ...overrides,
-  }));
+  return renderToStaticMarkup(<DiagnosticsView
+    report={value} loading={false} loadFailure={null} checkFailed={false} checking={false} cooldownSeconds={null}
+    copied={false} now={NOW} orgSlug="workspace"
+    onCheckNow={() => undefined} onCopyReport={() => undefined} onRetry={() => undefined}
+    renderNetworkCheck={() => createElement("div", { "data-testid": "network-check-mounted" })}
+    {...overrides}
+  />);
 }
 
 function text(html: string): string {
