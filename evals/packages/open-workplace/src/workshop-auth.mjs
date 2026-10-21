@@ -20,8 +20,8 @@ const safeNext = (value) => {
 // Assigned mode is the backwards-compatible default. automaticJoin creates a fictional
 // private workspace on a browser GET /login (or validated GET /oauth/authorize).
 // POST /login is deliberately unsupported in automatic mode: no credential/code API.
-export function createWorkshopAuth({ origin, participants = [], storage, automaticJoin = false, automaticLimit = 200 }) {
-  if (typeof automaticJoin !== "boolean" || !Number.isInteger(automaticLimit) || automaticLimit < 1 || automaticLimit > 1000) throw new Error("Invalid automatic workshop configuration");
+export function createWorkshopAuth({ origin, participants = [], storage, automaticJoin = false }) {
+  if (typeof automaticJoin !== "boolean") throw new Error("Invalid automatic workshop configuration");
   const base = new URL(origin);
   if (base.origin !== origin || !["http:", "https:"].includes(base.protocol)) throw new Error("Workshop origin must be an HTTP(S) origin");
   const identities = new Map(participants.map((participant) => [digest(participant.token), participant]));
@@ -48,7 +48,7 @@ export function createWorkshopAuth({ origin, participants = [], storage, automat
     // Restore the registry first; fingerprints bind durable capabilities to guests,
     // but are never bearer credentials and never enter the assigned identities map.
     if (saved.version === 2) {
-      if (!Array.isArray(saved.guests) || saved.guests.length > automaticLimit) invalid();
+      if (!Array.isArray(saved.guests)) invalid();
       const fingerprints = new Set();
       for (const guest of saved.guests) {
         if (!guest || typeof guest !== "object" || Object.keys(guest).sort().join() !== "createdAt,fingerprint,id,name" || typeof guest.id !== "string" || !/^guest-[a-f0-9]{24}$/.test(guest.id) || typeof guest.name !== "string" || guest.name.length > 80 || !/^Workshop guest [1-9][0-9]*$/.test(guest.name) || typeof guest.fingerprint !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(guest.fingerprint) || !Number.isSafeInteger(guest.createdAt) || guest.createdAt < 0 || byId.has(guest.id) || fingerprints.has(guest.fingerprint)) invalid();
@@ -57,7 +57,9 @@ export function createWorkshopAuth({ origin, participants = [], storage, automat
     }
     for (const [name, table] of Object.entries(tables)) {
       const rows = saved.tables[name];
-      if (!Array.isArray(rows) || rows.length > LIMIT * 2) invalid();
+      // Guest browser sessions grow with the durable registry, not a cohort ceiling.
+      // OAuth protocol tables retain their independent abuse-protection bounds.
+      if (!Array.isArray(rows) || (name !== "sessions" && rows.length > LIMIT * 2)) invalid();
       for (const row of rows) {
         if (!Array.isArray(row) || row.length !== 2) invalid();
         const [key, entry] = row;
@@ -187,9 +189,9 @@ export function createWorkshopAuth({ origin, participants = [], storage, automat
     if (!browserNavigation(req)) { error(res, 403, "browser_navigation_required"); return null; }
     const existing = browserParticipant(req);
     if (existing) return existing;
-    prune(sessions);
-    if (guests.size >= automaticLimit || sessions.size >= LIMIT) { error(res, 503, "workshop_capacity_reached"); return null; }
-    if (!budget(req, "guest_creation", 60)) { error(res, 429, "too_many_requests"); return null; }
+    // A fresh browser is a new fictional workspace, even behind a shared venue IP.
+    // Registry/session counts are not a registration quota; protocol and failed-auth
+    // budgets remain separate from this credentialless browser-navigation path.
     let id;
     do { id = "guest-" + randomBytes(12).toString("hex"); } while (byId.has(id));
     const guest = { id, name: `Workshop guest ${guests.size + 1}`, fingerprint: secret(), createdAt: Date.now() };

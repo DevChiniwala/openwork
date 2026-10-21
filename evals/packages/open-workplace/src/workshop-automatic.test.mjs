@@ -9,7 +9,7 @@ import { once } from "node:events";
 
 test("automatic browser workspaces remain private and durable after restart and idle worker eviction", { timeout: 90000 }, async (t) => {
   const directory = await mkdtemp(join(process.env.TMPDIR || tmpdir(), "workshop-automatic-"));
-  const options = { joinMode: "automatic", dataDir: directory, automaticLimit: 2, maxActiveParticipants: 1, idleEvictionMs: 0 };
+  const options = { joinMode: "automatic", dataDir: directory, automaticLimit: 2, maxActiveParticipants: 1, idleEvictionMs: 30 };
   let workshop = await startWorkshop({ ...options, port: 0 });
   const base = workshop.origin, port = workshop.server.address().port;
   t.after(async () => { await workshop?.close(); await rm(directory, { recursive: true, force: true }); });
@@ -30,8 +30,9 @@ test("automatic browser workspaces remain private and durable after restart and 
   assert.equal(audit.input.truncated, true); assert.ok(audit.input.bytes > 65536); assert.equal(typeof audit.input.sha256, "string");
   const bMe = await (await own(b, "/v1.0/me")).json(); assert.notEqual(aMe.mail, bMe.mail);
   assert.equal((await own(b, `/download/${file.id}`)).status, 404);
+  await new Promise((resolve) => setTimeout(resolve, 150));
   assert.equal(await (await own(a, `/download/${file.id}`)).text(), JSON.stringify("Private A document"), "Evicting an idle worker must preserve its acknowledged file bytes");
-  const full = await fetch(base + "/login", { redirect: "manual", headers: { accept: "text/html" } }); assert.equal(full.status, 503);
+  const third = await fetch(base + "/login", { redirect: "manual", headers: { accept: "text/html" } }); assert.equal(third.status, 303, "Legacy guest limits do not restrict joining");
   assert.equal((await own(a, "/v1.0/me")).status, 200, "Join capacity cannot evict a current browser session");
   assert.equal((await fetch(base + "/v1.0/me")).status, 401);
   assert.equal((await fetch(base + "/login", { method: "POST", headers: { origin: base, "content-type": "application/x-www-form-urlencoded" }, body: "token=unused" })).status, 405);
@@ -62,12 +63,17 @@ test("the standalone CLI defaults to automatic joining without any roster", { ti
   const html = await (await fetch(base + "/", { headers: { cookie } })).text(); assert.match(html, /Workshop guest 1/); assert.ok(!html.includes('type="password"'));
 });
 
-test("worker capacity refuses excess active work without discarding an in-memory participant", { timeout: 30000 }, async (t) => {
-  const workshop = await startWorkshop({ joinMode: "automatic", port: 0, maxActiveParticipants: 1 }); t.after(() => workshop.close());
+test("legacy worker capacity does not restrict independent in-memory participants", { timeout: 30000 }, async (t) => {
+  const workshop = await startWorkshop({ joinMode: "automatic", port: 0, maxActiveParticipants: 1, idleEvictionMs: 1 }); t.after(() => workshop.close());
   const base = workshop.origin;
   const enter = async () => (await fetch(base + "/login", { redirect: "manual", headers: { accept: "text/html" } })).headers.get("set-cookie").split(";")[0];
-  const a = await enter(), b = await enter();
-  assert.equal((await fetch(base + "/v1.0/me", { headers: { cookie: a } })).status, 200);
-  const busy = await fetch(base + "/v1.0/me", { headers: { cookie: b } }); assert.equal(busy.status, 503); assert.equal((await busy.json()).error, "workshop_busy");
-  assert.equal((await fetch(base + "/v1.0/me", { headers: { cookie: a } })).status, 200);
+  const cookies = [await enter(), await enter(), await enter()];
+  const people = await Promise.all(cookies.map(async (cookie) => {
+    const response = await fetch(base + "/v1.0/me", { headers: { cookie } }); assert.equal(response.status, 200); return response.json();
+  }));
+  assert.equal(new Set(people.map((person) => person.mail)).size, 3);
+  assert.equal((await fetch(base + "/v1.0/me/messages/mail-blueharbor-2", { method: "PATCH", headers: { cookie: cookies[0], origin: base, "content-type": "application/json" }, body: JSON.stringify({ categories: ["retain-memory"] }) })).status, 200);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual((await (await fetch(base + "/v1.0/me/messages/mail-blueharbor-2", { headers: { cookie: cookies[0] } })).json()).categories, ["retain-memory"]);
+  for (const cookie of cookies) assert.equal((await fetch(base + "/v1.0/me", { headers: { cookie } })).status, 200);
 });

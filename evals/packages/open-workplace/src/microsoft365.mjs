@@ -354,7 +354,6 @@ async function graph(method, path, url, input, bytes, headers = {}) {
   const session = path.match(/^\/me\/drive\/root:\/(.+?):\/createUploadSession$/);
   if (session && method === "POST") {
     for (const [token, pending] of Object.entries(state.uploads)) if (pending.expires <= Date.now()) delete state.uploads[token];
-    if (Object.keys(state.uploads).length >= 64) throw new ApiError(429, "uploadQuotaReached", "Finish or wait for pending uploads to expire.");
     const target = session[1].replace(/^\/+/, ""); if (!target || /[\\:*?"<>|\x00-\x1f]/.test(target)) throw bad("Invalid file path.");
     // Capability URL: unpredictable even when ids are deterministic.
     const token = randomUUID(); const expirationDateTime = new Date(Date.now() + 15 * 60_000).toISOString();

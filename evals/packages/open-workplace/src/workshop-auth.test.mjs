@@ -561,18 +561,14 @@ test("automatic guest registry restores across restarts; fingerprints are not be
   assert.equal(storage.data.get("workshop-auth:v1").guests.length, 1);
 });
 
-test("automatic capacity preserves existing sessions and guest creation allows a venue cohort before per-IP throttling", async (t) => {
-  for (const automaticLimit of [0, -1, 1001, 1.5, "200", null]) assert.throws(() => createWorkshopAuth({ origin: "http://localhost", automaticLimit }), /configuration/);
-  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true, automaticLimit: 2 });
-  const first = await join(f), second = await join(f);
-  assert.equal((await f.request("/login")).status, 503);
-  assert.equal((await join(f, first.cookie)).response.headers.get("set-cookie"), null);
-  assert.equal((await f.request("/who", { headers: { Cookie: second.cookie } })).status, 200);
-  const cohort = await fixture(t, memoryStorage(), { automaticJoin: true });
-  const attendees = [];
-  for (let index = 0; index < 60; index++) attendees.push(await join(cohort));
-  assert.equal((await cohort.request("/login")).status, 429);
-  for (const attendee of attendees) assert.equal((await join(cohort, attendee.cookie)).response.status, 303);
+test("obsolete automatic capacity settings are ignored; joins have no registration cap", async (t) => {
+  for (const automaticJoin of [null, 1, "true"]) assert.throws(() => createWorkshopAuth({ origin: "http://localhost", automaticJoin }), /configuration/);
+  for (const automaticLimit of [0, -1, 1001, 1.5, "200", null, 2]) {
+    const f = await fixture(t, memoryStorage(), { automaticJoin: true, automaticLimit });
+    const first = await join(f), second = await join(f), third = await join(f);
+    assert.equal((await join(f, first.cookie)).response.headers.get("set-cookie"), null);
+    for (const session of [first, second, third]) assert.equal((await f.request("/who", { headers: { Cookie: session.cookie } })).status, 200);
+  }
 });
 
 test("automatic sign-out leaves the browser without immediately creating a new workspace; grants survive and sessions last thirty days", async (t) => {
@@ -635,19 +631,61 @@ test("corrupt automatic guest registries and failed guest commits fail closed wi
   assert.equal(failed.status, 503); assert.equal(failed.headers.get("set-cookie"), null); assert.equal(failed.headers.get("location"), null);
 });
 
-test("automatic default capacity is 200 guests, with no global session eviction", async (t) => {
-  const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true }), now = Date.now();
-  let first;
-  for (let index = 0; index < 200; index++) {
-    // New minutes renew the per-IP budget, not the registry capacity.
-    t.mock.method(Date, "now", () => now + Math.floor(index / 50) * 61000);
-    const attendee = await join(f);
-    if (!first) first = attendee;
+// Exercise the auth boundary directly: thousands of guests need neither thousands
+// of HTTP servers nor repeated storage clones. Snapshots contain detached records.
+const authNavigation = async (auth, origin, cookie) => {
+  const headers = new Map();
+  const res = { setHeader(key, value) { headers.set(key.toLowerCase(), value); }, getHeader(key) { return headers.get(key.toLowerCase()); }, writeHead(status) { this.status = status; }, end() {} };
+  const req = { method: "GET", url: "/login", headers: { accept: "text/html", ...(cookie ? { cookie } : {}) }, socket: { remoteAddress: "127.0.0.1" } };
+  assert.equal(await auth.handle(req, res, new URL(req.url, origin)), true);
+  assert.equal(res.status, 303);
+  return headers.get("set-cookie")?.split(";")[0] || cookie;
+};
+
+test("1001 fresh guests from one IP join in one minute without evicting earlier sessions", async (t) => {
+  const origin = "http://localhost", now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  let saved;
+  const storage = { read() { return saved; }, write(key, value) { saved = value; }, close() {} };
+  const auth = createWorkshopAuth({ origin, automaticJoin: true, storage });
+  t.after(() => auth.close());
+  const identities = new Set(), cookies = [];
+  for (let index = 0; index < 1001; index++) {
+    const cookie = await authNavigation(auth, origin);
+    cookies.push(cookie);
+    identities.add(auth.authenticate({ headers: { cookie } }).id);
   }
-  assert.equal(storage.data.get("workshop-auth:v1").guests.length, 200);
-  assert.equal((await f.request("/login")).status, 503);
-  assert.equal((await join(f, first.cookie)).response.headers.get("set-cookie"), null);
-  assert.equal((await f.request("/who", { headers: { Cookie: first.cookie } })).status, 200);
+  assert.equal(identities.size, 1001);
+  assert.equal(saved.guests.length, 1001);
+  assert.equal(saved.tables.sessions.length, 1001);
+  for (const cookie of cookies) assert.ok(auth.authenticate({ headers: { cookie } }));
+  assert.equal(await authNavigation(auth, origin, cookies[0]), cookies[0]);
+});
+
+test("large durable guest registries and session tables restore and admit new browsers beyond 2048 and 4096", async (t) => {
+  const origin = "http://localhost", cookie = "restored-browser-secret";
+  const guests = Array.from({ length: 4200 }, (_, index) => ({
+    id: "guest-" + index.toString(16).padStart(24, "0"), name: `Workshop guest ${index + 1}`,
+    fingerprint: createHash("sha256").update(`fingerprint-${index}`).digest("base64url"), createdAt: Date.now(),
+  }));
+  const sessions = guests.map((guest, index) => [createHash("sha256").update(index === 0 ? cookie : `session-${index}`).digest("base64url"), { participantId: guest.id, credentialFingerprint: guest.fingerprint, expires: Date.now() + 60000 }]);
+  let saved = { version: 2, origin, guests, tables: { sessions, clients: [], codes: [], tokens: [], refreshes: [] } };
+  const storage = { read() { return saved; }, write(key, value) { saved = value; }, close() {} };
+  let auth = createWorkshopAuth({ origin, automaticJoin: true, storage });
+  t.after(() => auth.close());
+  assert.equal(auth.isReady(), true);
+  const restoredCookie = "workshop_session=" + cookie;
+  assert.equal(auth.authenticate({ headers: { cookie: restoredCookie } }).id, guests[0].id);
+  const joinedCookie = await authNavigation(auth, origin);
+  const joinedId = auth.authenticate({ headers: { cookie: joinedCookie } }).id;
+  assert.equal(saved.guests.length, 4201); assert.equal(saved.tables.sessions.length, 4201);
+  await auth.close();
+  auth = createWorkshopAuth({ origin, automaticJoin: true, storage });
+  assert.equal(auth.isReady(), true);
+  assert.equal(auth.authenticate({ headers: { cookie: restoredCookie } }).id, guests[0].id);
+  assert.equal(auth.authenticate({ headers: { cookie: joinedCookie } }).id, joinedId);
+  assert.ok(await authNavigation(auth, origin));
+  assert.equal(saved.guests.length, 4202);
 });
 
 test("automatic browser expiry is thirty days and HTTPS cookies are host-only secure", async (t) => {
@@ -686,7 +724,7 @@ test("automatic GET guest commits serialize durably without blocking existing AP
   assert.equal(storage.data.get("workshop-auth:v1").guests.length, 2);
 });
 
-test("guest restore rejects valid-format roster collisions, duplicate fingerprints and capacity reductions", async (t) => {
+test("guest restore rejects valid-format roster collisions and duplicate fingerprints but ignores obsolete capacity", async (t) => {
   const storage = memoryStorage(), f = await fixture(t, storage, { automaticJoin: true }), first = await join(f);
   await join(f);
   const saved = structuredClone(storage.data.get("workshop-auth:v1"));
@@ -698,6 +736,8 @@ test("guest restore rejects valid-format roster collisions, duplicate fingerprin
   await f.restart(participants, duplicate);
   assert.equal((await f.request("/login")).status, 503);
   const limited = createWorkshopAuth({ origin: f.origin, participants, storage, automaticJoin: true, automaticLimit: 1 });
-  assert.equal(limited.isReady(), false); await limited.close();
+  assert.equal(limited.isReady(), true);
+  assert.equal(limited.authenticate({ headers: { cookie: first.cookie }, url: "/who" }).id, saved.guests[0].id);
+  await limited.close();
   assert.deepEqual(storage.data.get("workshop-auth:v1"), saved);
 });

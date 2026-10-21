@@ -3,8 +3,8 @@
 // Each participant owns one private process with three loopback-only HTTP services and separate data.
 import { createServer, request as httpRequest } from "node:http";
 import { fork } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { readFile, mkdir, rm } from "node:fs/promises";
+import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { readFile, mkdir, rm, rename } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 import { createSnapshotStore } from "./workshop-store.mjs";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ const MAX_RESPONSE = 16 * 1024 * 1024;
 const key = () => randomBytes(32).toString("base64url");
 
 export function validateParticipants(value) {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 100) throw new Error("Configure between 1 and 100 workshop participants.");
+  if (!Array.isArray(value) || value.length < 1) throw new Error("Configure at least one workshop participant.");
   const ids = new Set(), tokens = new Set();
   for (const participant of value) {
     if (!participant || !/^[a-z][a-z0-9-]{0,47}$/.test(participant.id) || ids.has(participant.id)) throw new Error("Participant IDs must be unique lowercase handles.");
@@ -66,9 +66,11 @@ function backend(path) {
   return null;
 }
 
-export async function startWorkshop({ participants = [], origin, host = "127.0.0.1", port = 3990, dataDir, joinMode = "assigned", automaticLimit = 200, maxActiveParticipants = 32, idleEvictionMs = 60_000 } = {}) {
+export async function startWorkshop({ participants = [], origin, host = "127.0.0.1", port = 3990, dataDir, joinMode = "assigned", idleEvictionMs = 60_000, resetToken = process.env.OPEN_WORKPLACE_RESET_TOKEN } = {}) {
   if (!["assigned", "automatic"].includes(joinMode)) throw new Error("Workshop join mode must be automatic or assigned.");
-  if (!Number.isInteger(maxActiveParticipants) || maxActiveParticipants < 1 || maxActiveParticipants > 100 || !Number.isInteger(idleEvictionMs) || idleEvictionMs < 0) throw new Error("Invalid workshop worker capacity.");
+  if (!Number.isInteger(idleEvictionMs) || idleEvictionMs < 0) throw new Error("Invalid workshop idle timeout.");
+  if (resetToken !== undefined && (typeof resetToken !== "string" || !/^[A-Za-z0-9_-]{32,256}$/.test(resetToken) || new Set(resetToken).size < 16 || participants.some((person) => person.token === resetToken))) throw new Error("Configure a separate random operator reset secret of at least 32 characters.");
+  const resetDigest = resetToken === undefined ? null : createHash("sha256").update(resetToken).digest();
   const roster = joinMode === "automatic" && Array.isArray(participants) && participants.length === 0 ? [] : validateParticipants(participants);
   const startedAt = new Date().toISOString();
   let publicOrigin = origin ? new URL(origin).origin : null;
@@ -79,11 +81,28 @@ export async function startWorkshop({ participants = [], origin, host = "127.0.0
   if (dataDir !== undefined && (typeof dataDir !== "string" || !isAbsolute(dataDir))) throw new Error("OPEN_WORKPLACE_DATA_DIR must be an absolute private directory.");
   if (dataDir) await mkdir(join(dataDir, "participants"), { recursive: true, mode: 0o700 });
   const storage = dataDir ? createSnapshotStore({ file: join(dataDir, "auth.sqlite") }) : undefined;
-  const stacks = new Map(), uploads = new Map(), active = new Map(), resetting = new Set(), lastUse = new Map();
-  let auth, closing = false, admissions = Promise.resolve();
+  // Keep the fictional business baseline stable through reset, eviction and restart.
+  // This is workshop metadata, not participant data or OAuth state.
+  const sampleClock = storage?.read("workshop-sample-clock") ?? startedAt;
+  storage?.write("workshop-sample-clock", sampleClock);
+  const stacks = new Map(), uploads = new Map(), active = new Map(), resetting = new Set(), idleTimers = new Map(), disposals = new Map();
+  const handlers = new Set(), cleanups = new Set();
+  let auth, closing = false, resetAll = false, admissions = Promise.resolve();
+  function cancelIdle(id) { clearTimeout(idleTimers.get(id)); idleTimers.delete(id); }
+  function scheduleIdle(id) {
+    cancelIdle(id);
+    // Memory-only workspaces cannot be unloaded without losing their saved work.
+    if (!dataDir || closing || resetAll || resetting.has(id) || active.get(id) || !stacks.has(id)) return;
+    const timer = setTimeout(async () => {
+      idleTimers.delete(id);
+      if (closing || resetAll || resetting.has(id) || active.get(id)) return;
+      try { await disposeStack(id); } catch { /* A failed worker is retried on the next request. */ }
+    }, idleEvictionMs);
+    timer.unref(); idleTimers.set(id, timer);
+  }
   function invalidateUploads(id) { for (const [token, entry] of uploads) if (entry.participant.id === id) uploads.delete(token); }
   async function createStack(participant) {
-    const env = { OPEN_WORKPLACE_PERSON: `${participant.name}|${participant.id}|Workshop participant`, PUBLIC_URL: publicOrigin, UPLOAD_URL: publicOrigin, JIRA_PUBLIC_URL: `${publicOrigin}/jira`, CONFLUENCE_PUBLIC_URL: `${publicOrigin}/confluence`, OPEN_WORKPLACE_GATEWAY: "1" };
+    const env = { OPEN_WORKPLACE_NOW: sampleClock, OPEN_WORKPLACE_PERSON: `${participant.name}|${participant.id}|Workshop participant`, PUBLIC_URL: publicOrigin, UPLOAD_URL: publicOrigin, JIRA_PUBLIC_URL: `${publicOrigin}/jira`, CONFLUENCE_PUBLIC_URL: `${publicOrigin}/confluence`, OPEN_WORKPLACE_GATEWAY: "1" };
     const directory = dataDir ? join(dataDir, "participants", participant.id) : undefined;
     if (directory) await mkdir(directory, { recursive: true, mode: 0o700 });
     const service = await worker("./workshop-worker.mjs", { ...env, ...(directory ? { OPEN_WORKPLACE_PARTICIPANT_DATA_DIR: directory } : {}) });
@@ -92,40 +111,34 @@ export async function startWorkshop({ participants = [], origin, host = "127.0.0
     return stack;
   }
   function stackFor(participant) {
-    lastUse.set(participant.id, Date.now());
+    cancelIdle(participant.id);
+    if (closing || resetAll) throw new Error("Workshop is unavailable.");
     if (stacks.has(participant.id)) return stacks.get(participant.id);
-    // Reserve slots serially, but never hold the reservation queue while a child boots.
-    const admitted = admissions.then(async () => {
-      if (closing) throw new Error("Workshop is stopping.");
+    // Serialize identity reservation, not admission: there is no worker quota.
+    const admitted = admissions.then(() => {
+      if (closing || resetAll) throw new Error("Workshop is unavailable.");
       if (!stacks.has(participant.id)) {
-        if (stacks.size >= maxActiveParticipants && dataDir) {
-          const candidate = [...lastUse].filter(([id, at]) => id !== participant.id && stacks.has(id) && !(active.get(id) > 0) && Date.now() - at >= idleEvictionMs).sort((a, b) => a[1] - b[1])[0];
-          if (candidate) await disposeStack(candidate[0]);
-        }
-        if (stacks.size >= maxActiveParticipants) {
-          lastUse.delete(participant.id);
-          const error = new Error("All workshop workers are busy."); error.code = "workshop_busy"; throw error;
-        }
-        if (closing) throw new Error("Workshop is stopping.");
         const pending = createStack(participant);
         stacks.set(participant.id, pending);
-        pending.catch(() => { if (stacks.get(participant.id) === pending) { stacks.delete(participant.id); lastUse.delete(participant.id); } });
+        pending.catch(() => { if (stacks.get(participant.id) === pending) stacks.delete(participant.id); });
       }
       return { pending: stacks.get(participant.id) };
     });
     admissions = admitted.then(() => undefined, () => undefined);
     return admitted.then(({ pending }) => pending);
   }
-  async function disposeStack(id) {
+  function disposeStack(id) {
+    cancelIdle(id);
+    if (disposals.has(id)) return disposals.get(id);
     const pending = stacks.get(id);
-    if (!pending) return;
-    // Keep the entry until all children have stopped; never overlap two stacks for one identity.
-    try { const stack = await pending; stack.stopped = true; await stop(stack.microsoft.child); }
-    finally { stacks.delete(id); lastUse.delete(id); invalidateUploads(id); }
-  }
-  function uploadCount(participant) {
-    for (const [token, item] of uploads) if (item.expires < Date.now()) uploads.delete(token);
-    return [...uploads.values()].filter((item) => item.participant.id === participant.id).length;
+    if (!pending) { invalidateUploads(id); return Promise.resolve(); }
+    // Keep the entry until the owned child has flushed and stopped.
+    const disposal = (async () => {
+      try { const stack = await pending; stack.stopped = true; await stop(stack.microsoft.child); }
+      finally { stacks.delete(id); invalidateUploads(id); disposals.delete(id); }
+    })();
+    disposals.set(id, disposal);
+    return disposal;
   }
   function capabilityUrls(bytes, participant, isMcp) {
     const result = JSON.parse(bytes.toString("utf8"));
@@ -163,7 +176,7 @@ export async function startWorkshop({ participants = [], origin, host = "127.0.0
     let graphPath = "";
     try { graphPath = decodeURIComponent(requestPath); } catch { /* The fixture returns its normal malformed-path error. */ }
     const isUploadCreation = req.method === "POST" && service === "microsoft" && (isMcpUpload || /^\/(?:graph\/)?v1\.0\/me\/drive\/root:\/.+:\/createUploadSession$/.test(graphPath));
-    if (isUploadCreation && uploadCount(participant) >= 64) return send(res, 429, { error: "upload_quota_reached", message: "Finish or wait for your pending uploads to expire." });
+    for (const [token, item] of uploads) if (item.expires < Date.now()) uploads.delete(token);
     const headers = { accept: req.headers.accept || "*/*", authorization: service === "microsoft" ? "Bearer open-workplace-token" : "Bearer open-workplace-pat", host: new URL(publicOrigin).host };
     for (const name of ["content-type", "if-match", "if-none-match", "x-csrf-token", "mcp-protocol-version", "mcp-session-id"]) if (req.headers[name]) headers[name] = req.headers[name];
     // Browser origin has already been checked at the only public ingress.
@@ -197,13 +210,63 @@ export async function startWorkshop({ participants = [], origin, host = "127.0.0
       upstream.end(size ? Buffer.concat(chunks) : undefined);
     });
   }
+  async function operatorReset(req, res, url) {
+    if (!resetDigest) return send(res, 404, { error: "not_found" });
+    if (req.method !== "POST") return send(res, 405, { error: "method_not_allowed" }, { allow: "POST" });
+    const supplied = /^Bearer ([A-Za-z0-9_-]{32,256})$/.exec(req.headers.authorization || "");
+    if (!supplied || !timingSafeEqual(createHash("sha256").update(supplied[1]).digest(), resetDigest)) return send(res, 403, { error: "access_denied" });
+    if (req.headers.origin && req.headers.origin !== publicOrigin) return send(res, 403, { error: "cross_origin_denied" });
+    if (url.search || !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers["content-type"] || "")) return send(res, 400, { error: "invalid_reset_request" });
+    if (Number(req.headers["content-length"] || 0) > 1024) return send(res, 413, { error: "body_too_large" });
+    const timer = setTimeout(() => req.destroy(), 5000); timer.unref();
+    let body;
+    try {
+      const chunks = []; let size = 0;
+      for await (const chunk of req) { size += chunk.length; if (size > 1024) return send(res, 413, { error: "body_too_large" }); chunks.push(chunk); }
+      const text = Buffer.concat(chunks).toString("utf8");
+      // The one-field confirmation has no extensions or duplicate-key ambiguity.
+      if (!/^\s*\{\s*"confirm"\s*:\s*"RESET ALL SAMPLE DATA"\s*\}\s*$/.test(text)) return send(res, 400, { error: "confirmation_required" });
+      body = JSON.parse(text);
+    } finally { clearTimeout(timer); }
+    if (!body || Array.isArray(body) || Object.keys(body).length !== 1 || body.confirm !== "RESET ALL SAMPLE DATA") return send(res, 400, { error: "confirmation_required" });
+    if (closing) return send(res, 503, { error: "workshop_stopping" });
+    // Do not partially reset a busy workshop. The lock blocks every ingress, including auth,
+    // while workers flush. Retrying is explicit; there is no destructive background queue.
+    if (resetAll || handlers.size > 1 || resetting.size) return send(res, 409, { error: "workshop_busy" });
+    resetAll = true;
+    let trash;
+    try {
+      for (const id of idleTimers.keys()) cancelIdle(id);
+      await admissions;
+      const workers = stacks.size;
+      await Promise.all([...stacks.keys()].map(disposeStack));
+      uploads.clear();
+      if (dataDir) {
+        const root = join(dataDir, "participants");
+        trash = join(dataDir, `participants-reset-${Date.now()}-${randomBytes(8).toString("hex")}`);
+        await rename(root, trash);
+        try { await mkdir(root, { mode: 0o700 }); }
+        catch (error) { await rename(trash, root); trash = undefined; throw error; }
+      }
+      return send(res, 200, { ok: true, reset: "all-sample-data", workersStopped: workers });
+    } finally {
+      resetAll = false;
+      if (trash) {
+        const cleanup = rm(trash, { recursive: true, force: true }).catch(() => {}).finally(() => cleanups.delete(cleanup));
+        cleanups.add(cleanup);
+      }
+    }
+  }
   const server = createServer(async (req, res) => {
-    let participant, counted = false, claimedUpload;
+    let participant, counted = false, claimedUpload, finish;
+    const done = new Promise((resolve) => { finish = resolve; }); handlers.add(done);
     try {
       if (closing) return send(res, 503, { error: "workshop_stopping" });
+      if (resetAll) return send(res, 409, { error: "workshop_resetting" });
       // Reject absolute-form targets, encoded separators and dot-segment aliases before routing.
       if (!req.url?.startsWith("/") || req.url.startsWith("//") || /\\|%2f|%5c|%2e|[\x00-\x20]/i.test(req.url.split("?")[0])) return send(res, 400, { error: "invalid_path" });
       const url = new URL(req.url, publicOrigin);
+      if (url.pathname === "/_workshop/reset-all") return await operatorReset(req, res, url);
       if (url.pathname === "/health" && req.method === "GET") return send(res, auth?.isReady() ? 200 : 503, { ok: Boolean(auth?.isReady()), service: "open-workplace-workshop", isolated: true, storage: dataDir ? "sqlite" : "memory", joinMode, startedAt });
       if (await auth.handle(req, res, url)) return;
       participant = auth.authenticate(req);
@@ -222,9 +285,12 @@ export async function startWorkshop({ participants = [], origin, host = "127.0.0
         return send(res, 401, { error: "authentication_required" }, { "www-authenticate": `Bearer resource_metadata="${publicOrigin}/.well-known/oauth-protected-resource${url.pathname.endsWith("/mcp") ? url.pathname : ""}"` });
       }
       if (!uploadToken && !auth.requireMutationOrigin(req)) return send(res, 403, { error: "cross_origin_denied" });
-      const count = active.get(participant.id) || 0;
-      if (count >= 16) return send(res, 429, { error: "too_many_requests", message: "Wait for your current requests to finish." }, { "retry-after": "1" });
       if (resetting.has(participant.id)) return send(res, 409, { error: "sandbox_resetting" });
+      cancelIdle(participant.id);
+      if (disposals.has(participant.id)) await disposals.get(participant.id);
+      if (closing) return send(res, 503, { error: "workshop_stopping" });
+      if (resetting.has(participant.id)) return send(res, 409, { error: "sandbox_resetting" });
+      const count = active.get(participant.id) || 0;
       active.set(participant.id, count + 1); counted = true;
       if (uploadToken) {
         const entry = uploads.get(uploadToken);
@@ -250,14 +316,15 @@ export async function startWorkshop({ participants = [], origin, host = "127.0.0
       const service = backend(url.pathname);
       if (!service) return send(res, 404, { error: "not_found" });
       return await proxy(req, res, participant, service, url.pathname + url.search);
-    } catch (error) {
-      if (!res.headersSent) {
-        if (error.code === "workshop_busy") send(res, 503, { error: "workshop_busy", message: "All workshop connections are busy. Try again in a minute; your saved work is retained." }, { "retry-after": "60" });
-        else send(res, 503, { error: "sandbox_unavailable", message: "Your private sandbox could not start. Try again or ask the facilitator." });
-      }
+    } catch {
+      if (!res.headersSent) send(res, 503, { error: "sandbox_unavailable", message: "Your private sandbox could not start. Try again or ask the facilitator." });
     } finally {
       if (claimedUpload) claimedUpload.inFlight = false;
-      if (counted) active.set(participant.id, Math.max(0, active.get(participant.id) - 1));
+      if (counted) {
+        active.set(participant.id, Math.max(0, active.get(participant.id) - 1));
+        scheduleIdle(participant.id);
+      }
+      handlers.delete(done); finish();
     }
   });
   server.requestTimeout = 30000; server.headersTimeout = 15000; server.maxRequestsPerSocket = 1000;
@@ -265,15 +332,19 @@ export async function startWorkshop({ participants = [], origin, host = "127.0.0
   try { await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); }); }
   catch (error) { storage?.close(); throw error; }
   publicOrigin ||= `http://${host === "::1" ? "[::1]" : host}:${server.address().port}`;
-  try { auth = createWorkshopAuth({ origin: publicOrigin, participants: roster, storage, automaticJoin: joinMode === "automatic", automaticLimit }); }
+  try { auth = createWorkshopAuth({ origin: publicOrigin, participants: roster, storage, automaticJoin: joinMode === "automatic" }); }
   catch (error) {
     server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); storage?.close(); throw error;
   }
   const close = async () => {
     closing = true;
+    for (const id of idleTimers.keys()) cancelIdle(id);
     const stopped = new Promise((resolve) => server.close(resolve)); server.closeAllConnections();
+    await Promise.all([...handlers]);
     await admissions;
-    await Promise.all([...stacks.keys()].map(disposeStack)); await stopped; await auth.close?.();
+    await Promise.all([...stacks.keys()].map(disposeStack));
+    await Promise.all([...disposals.values(), ...cleanups]);
+    await stopped; await auth.close?.();
   };
   return { server, origin: publicOrigin, close };
 }
@@ -284,7 +355,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const raw = process.env.OPEN_WORKPLACE_PARTICIPANTS_FILE ? await readFile(process.env.OPEN_WORKPLACE_PARTICIPANTS_FILE, "utf8") : process.env.OPEN_WORKPLACE_PARTICIPANTS;
     const joinMode = process.env.OPEN_WORKPLACE_JOIN_MODE || "automatic";
     if (!raw && joinMode === "assigned") throw new Error("Assigned mode requires a private participant roster.");
-    const workshop = await startWorkshop({ participants: raw ? JSON.parse(raw) : [], joinMode, automaticLimit: Number(process.env.OPEN_WORKPLACE_GUEST_LIMIT || 200), maxActiveParticipants: Number(process.env.OPEN_WORKPLACE_WORKER_LIMIT || 32), origin: process.env.PUBLIC_URL, host: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 3990), dataDir: process.env.OPEN_WORKPLACE_DATA_DIR });
+    const workshop = await startWorkshop({ participants: raw ? JSON.parse(raw) : [], joinMode, origin: process.env.PUBLIC_URL, host: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 3990), dataDir: process.env.OPEN_WORKPLACE_DATA_DIR });
     console.log(`Private workshop ingress listening at ${workshop.origin}`);
     for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, async () => { await workshop.close(); process.exit(0); });
   } catch (error) { console.error(error instanceof SyntaxError ? "Invalid workshop roster JSON." : error.message); process.exitCode = 1; }

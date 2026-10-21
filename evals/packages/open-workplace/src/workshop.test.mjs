@@ -129,15 +129,19 @@ test("participants have separate REST, MCP, UI, uploads, downloads, calendar, Ji
     assert.equal((await request(null, "/v1.0/me/messages/mail-blueharbor-2", "PATCH", { isRead: true }, { cookie, origin: base })).status, 200);
   });
 
-  await t.test("JSON document bytes are preserved and one person's upload quota cannot block another", async () => {
+  await t.test("JSON document bytes are preserved and demo uploads have no pending-count quota", async () => {
     const document = { link: `${base}/upload/00000000-0000-4000-8000-000000000001`, note: "keep exact bytes" };
     const file = await json(alice, "/v1.0/me/drive/root:/literal-links.json:/content", "PUT", document);
     const download = await request(alice, `/download/${file.id}`);
     assert.equal(await download.text(), JSON.stringify(document));
     for (let i = 0; i < 64; i++) resetUpload = await json(alice, `/v1.0/me/drive/root:/pending-${i}.txt:/createUploadSession`, "POST", {});
-    assert.equal((await request(alice, "/v1.0/me/drive/root:/over-quota.txt:/createUploadSession", "POST", {})).status, 429);
-    assert.equal((await request(alice, "/v1.0/me/drive/root:/encoded-quota.txt:/%63reateUploadSession", "POST", {})).status, 429);
-    assert.equal((await request(alice, "/drive/mcp?alias=1", "POST", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "file_create_upload_session", arguments: { path: "alias-quota.txt" } } })).status, 429);
+    assert.equal((await request(alice, "/v1.0/me/drive/root:/over-quota.txt:/createUploadSession", "POST", {})).status, 200);
+    assert.equal((await request(alice, "/v1.0/me/drive/root:/encoded-quota.txt:/%63reateUploadSession", "POST", {})).status, 200);
+    const mcpUpload = await request(alice, "/drive/mcp?alias=1", "POST", { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "file_create_upload_session", arguments: { path: "alias-quota.txt" } } });
+    assert.equal(mcpUpload.status, 200);
+    const mcpResult = await mcpUpload.json();
+    assert.notEqual(mcpResult.result?.isError, true);
+    assert.ok(JSON.parse(mcpResult.result.content[0].text).uploadUrl.startsWith(base + "/_workshop/uploads/"));
     const b = await json(bob, "/v1.0/me/drive/root:/bob-independent.txt:/createUploadSession", "POST", {});
     assert.ok(b.uploadUrl.startsWith(base + "/_workshop/uploads/"));
     assert.equal(await (await request(alice, `/download/${file.id}`)).text(), JSON.stringify(document));

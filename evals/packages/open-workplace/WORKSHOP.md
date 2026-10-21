@@ -60,7 +60,7 @@ Access tokens last one hour; refresh grants last at most eight hours from initia
 
 - Mail, drafts, folders, calendars, files, Jira issues, Confluence pages/comments/history and audits are private to the workspace.
 - Identical seeded record IDs cannot select another workspace. A copied link opens the recipient browser's own data or returns not found; it is not a sharing link.
-- Opening the link restores an existing browser workspace without consuming a new guest slot.
+- Opening the link restores an existing browser workspace; a new browser gets a new one, without a registration quota.
 - **Forget this browser’s workspace** explains the loss of browser access and asks for confirmation before clearing the session. It lands on a signed-out page without immediately creating another workspace or revoking independent OAuth app grants. There is no account/password recovery for a forgotten browser identity.
 - **Reset my sample data** explicitly deletes only this workspace's business snapshots. It does not affect other attendees or silently erase data on a normal restart.
 - Anonymous MCP/API/download/preview requests remain unauthorized. Automatic joining happens only on valid browser navigation, not arbitrary API calls, embedded frames or fetches.
@@ -68,14 +68,33 @@ Access tokens last one hour; refresh grants last at most eight hours from initia
 
 This is not cross-device account synchronization or an OS sandbox for hostile code. Keep each attendee in their own browser profile. No real emails, invitations or password resets are delivered.
 
-## Public-join capacity
+## Reset the demo
 
-- `OPEN_WORKPLACE_GUEST_LIMIT` defaults to **200** remembered guest workspaces (maximum 1000); existing sessions are not evicted to make room for new guests.
-- New guest creation is bounded per IP to accommodate a venue cohort while limiting public allocation abuse.
-- `OPEN_WORKPLACE_WORKER_LIMIT` defaults to **32** active private processes. With durable storage, idle workers can be reclaimed after one minute and restored without deleting acknowledged work. In-memory work is never silently evicted.
-- When all active workers are busy, a new service request receives a retryable capacity response rather than starting unbounded processes.
-- Each workspace retains the fixture's 10 MiB request/file and 60 MiB file-storage limits, bounded request concurrency and pending uploads. Audit values are truncated/hash-recorded when large, not multiplied indefinitely as binary history.
-- Roster/guest ceilings are configuration limits, not a promise of maximum-load capacity. Measure the actual attendance/task mix and size memory/disk accordingly.
+**One attendee:** open `/_workshop/reset`, then confirm **Reset my sample data**. All five services return to their starting data for that browser workspace. Other attendees, the browser identity and existing OAuth connections are retained.
+
+**Whole workshop:** the facilitator can reset everyone's fictional business data without rebuilding desktops or reconnecting the five apps. Configure a private random `OPEN_WORKPLACE_RESET_TOKEN` on the gateway and in the facilitator's shell. Never give that key to attendees or put it in a URL.
+
+From this package, first preview the scope (no request or deletion occurs):
+
+```sh
+node src/workshop-reset.mjs --url https://workshop.example.com --all
+```
+
+Then deliberately confirm:
+
+```sh
+node src/workshop-reset.mjs --url https://workshop.example.com --all --confirm
+```
+
+This resets Outlook, Calendar, Drive, Jira and Confluence changes, files and their audits. It preserves guest identities, browser sessions, OAuth registrations and grants. It **does not** erase local VM files or OpenWork chat history. Normal service restart is not a reset. No reset runs automatically as part of deployment.
+
+The facilitator route is unavailable unless the private key is configured. Attendee cookies and MCP OAuth tokens cannot invoke it. A reset blocks new business requests while stopping workers and replacing business snapshots, so an old worker cannot write deleted data back. If current work cannot finish safely, the command reports busy instead of claiming success. Interrupted requests are not automatically replayed.
+
+## Demo lifecycle
+
+There is no remembered-guest quota, fixed attendee/active-worker ceiling, or registration-rate quota. Legacy `OPEN_WORKPLACE_GUEST_LIMIT` and `OPEN_WORKPLACE_WORKER_LIMIT` settings no longer restrict the demo. Durable idle workers are unloaded and restored on demand; their saved work is retained until an explicit reset. In-memory work is not silently evicted.
+
+Protocol validation, isolation, OAuth security, request parsing bounds and timeouts still apply. Removing attendance quotas is not a claim of unlimited RAM, disk or throughput: this is a fictional workshop on one host, not a production multitenant service.
 
 ## Suggested tasks
 
