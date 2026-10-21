@@ -50,6 +50,11 @@ import { connectionDiagnosticHistory, type ConnectionDiagnosticSource, type Send
 import { composerDiagnosticBlockers } from "./composer-diagnostics";
 import { ModelRecoveryNote } from "./model-recovery-note";
 import { modelRecoveryChatKey, useModelRecoveryStore } from "../model-recovery-store";
+import { useNativeDictation } from "@openwork/ui/react";
+import { useNativeDictationFeature } from "./use-native-dictation-feature";
+import { startNativeDictation } from "./start-native-dictation";
+import { isDesktopRuntime } from "@/app/lib/runtime-env";
+import { DictationReview, NativeDictationControl } from "./native-dictation-control";
 
 type MentionItem = {
   id: string;
@@ -264,6 +269,16 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
   // compositionstart/compositionend events below.
   const imeComposingRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const nativeDictationEnabled = useNativeDictationFeature();
+  const dictationInput = () => rootRef.current?.querySelector<HTMLElement>("[contenteditable='true']") ?? null;
+  const dictation = useNativeDictation({
+    enabled: nativeDictationEnabled,
+    scope: props.sessionId,
+    text: props.draft,
+    focusInput: () => dictationInput()?.focus(),
+    startNative: isDesktopRuntime() ? startNativeDictation : undefined,
+  });
+  const dictationReview = nativeDictationEnabled && dictation.reviewRequired;
   const draftRef = useRef(props.draft);
   useEffect(() => {
     draftRef.current = props.draft;
@@ -1309,7 +1324,7 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
               mentions={props.mentions}
               pastedText={pastedTextTokens}
               attachments={attachmentTokens}
-              submitDisabled={props.disabled}
+              submitDisabled={props.disabled || dictationReview}
               placeholder={t("composer.placeholder")}
               onChange={props.onDraftChange}
               onMentionQueryChange={setActiveMentionQuery}
@@ -1516,6 +1531,7 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
                   Cmd/Ctrl+Enter still steers).
               */}
               <div data-composer-actions className="col-start-2 row-start-2 ml-auto flex shrink-0 items-center gap-1.5">
+                {nativeDictationEnabled ? <NativeDictationControl dictation={dictation} disabled={props.disabled} input={dictationInput} /> : null}
                 <button
                   type="button"
                   onPointerDown={(event) => {
@@ -1584,6 +1600,7 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
                 </button>
               </div>
             </div>
+            {dictationReview ? <DictationReview onFinish={dictation.finishReview} /> : null}
           </div>
         </div>
 

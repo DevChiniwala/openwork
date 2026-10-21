@@ -14,6 +14,7 @@ export const meSchema = z.object({
   calendar: z.boolean().default(false),
   documents: z.boolean().default(false),
   documentEditing: z.boolean().default(false),
+  nativeDictation: z.boolean().default(false),
   workspaceAssistant: z.boolean().default(false),
   guidedNavigation: z.boolean().default(false),
   /** The organization runs Automations in the cloud, so the Calendar can create them. */
@@ -81,6 +82,7 @@ export function createHost(me: Me, recovery: { authorization?: WorkbotHost["docu
     calendar: me.calendar,
     documents: me.documents,
     documentEditing: me.documents && me.documentEditing,
+    nativeDictation: me.nativeDictation,
     workspaceAssistant: me.workspaceAssistant,
     guidedNavigation: me.workspaceAssistant && me.guidedNavigation,
     canSchedule: me.canSchedule,

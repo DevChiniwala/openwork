@@ -37,6 +37,8 @@ import { readWorkbotCorrectionPrompt, workbotCorrectionPrompt, workbotViewContex
 import type { DocumentOpenRequest } from "@openwork/documents";
 import { DocumentOffers, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNativeDictation } from "@openwork/ui/react";
+import { WorkbotDictation, WorkbotDictationReview } from "./native-dictation";
 
 /**
  * Workbot: one thread, instant. Layout and values follow the Paper file "WorkBot — one chat, set up once",
@@ -240,7 +242,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
     /> : null;
-    const composer = <Composer text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled}
+    const composer = <Composer text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
       onSend={text => submit(text)} onStop={() => stop.mutate()} autoFocus={false} disabled={!data} />;
     const firstName = user?.name?.trim().split(/\s+/)[0] ?? null;
@@ -344,6 +346,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const starting = empty && (start.isPending || (greetingAwaited && start.data?.started === true));
   const composer = (
     <Composer
+      nativeDictation={host.nativeDictation}
       text={draft.text}
       onText={composerState.setText}
       name={data.name}
@@ -1708,6 +1711,7 @@ function OutputFiles({ files }: { files: WorkbotAttachment[] }) {
 }
 
 function Composer(props: {
+  nativeDictation?: boolean;
   text: string;
   onText: (text: string) => void;
   name: string;
@@ -1725,7 +1729,10 @@ function Composer(props: {
 }) {
   const { text } = props;
   const input = useRef<HTMLTextAreaElement>(null);
+  const dictation = useNativeDictation({ enabled: props.nativeDictation === true, text, focusInput: () => input.current?.focus() });
+  const dictationReview = props.nativeDictation === true && dictation.reviewRequired;
   const hasFiles = props.uploads.length > 0;
+  const expanded = hasFiles || dictationReview;
   const canSend = text.trim().length > 0 || (hasFiles && props.uploads.every((upload) => upload.status !== "failed"));
 
   useLayoutEffect(() => {
@@ -1741,7 +1748,7 @@ function Composer(props: {
     input.current?.focus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229 && !dictationReview) {
       event.preventDefault();
       sendNow();
     } else if (event.key === "Escape" && props.busy) {
@@ -1761,11 +1768,11 @@ function Composer(props: {
     <div
       data-workbot-composer
       className={`flex bg-[var(--wb-surface)] shadow-[var(--wb-composer-shadow)] transition-[border-radius] duration-150 ${
-        hasFiles ? "flex-col gap-2 rounded-[24px] pb-2 pl-2.5 pr-2 pt-2.5" : `items-end gap-1 pl-[7px] pr-[7px] sm:pr-2 ${multiline ? "rounded-[24px] py-2" : "rounded-full py-[7px] sm:py-2"}`
+        expanded ? "flex-col gap-2 rounded-[24px] pb-2 pl-2.5 pr-2 pt-2.5" : `items-end gap-1 pl-[7px] pr-[7px] sm:pr-2 ${multiline ? "rounded-[24px] py-2" : "rounded-full py-[7px] sm:py-2"}`
       }`}
     >
       {hasFiles ? <UploadTray uploads={props.uploads} onRemove={props.onRemoveUpload} onRetry={props.onRetryUpload} /> : null}
-      <div className={hasFiles ? "flex min-w-0 flex-1 items-end gap-1" : "contents"}>
+      <div className={expanded ? "flex w-full min-w-0 flex-1 items-end gap-1" : "contents"}>
         <AttachButton enabled={props.filesEnabled} onFiles={props.onFiles} />
         <textarea
           ref={input}
@@ -1780,18 +1787,20 @@ function Composer(props: {
           aria-label={`Message ${props.name}`}
           className="max-h-[200px] min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[7px] text-[16px] leading-[22px] text-[var(--wb-text)] outline-none placeholder:text-[var(--wb-faint)] sm:py-[9px] sm:text-[14px] sm:leading-[18px]"
         />
+        {props.nativeDictation === true ? <WorkbotDictation dictation={dictation} disabled={props.disabled} input={() => input.current} /> : null}
         <button
           type="button"
           onClick={showStop ? props.onStop : sendNow}
           disabled={props.disabled || (showStop ? props.stopping : !canSend)}
           aria-label={showStop ? "Stop" : "Send"}
-          aria-keyshortcuts={showStop ? "Escape" : "Enter"}
-          title={showStop ? "Stop (esc)" : "Send (⏎)"}
+          aria-keyshortcuts={showStop ? "Escape" : dictationReview ? undefined : "Enter"}
+          title={showStop ? "Stop (esc)" : dictationReview ? "Send" : "Send (⏎)"}
           className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--wb-ink)] text-[var(--wb-bg)] transition-colors duration-150 disabled:bg-[var(--wb-disabled)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
         >
           {showStop ? <span aria-hidden className="h-2.75 w-2.75 rounded-[2.5px] bg-[var(--wb-bg)]" /> : <ArrowUp size={16} strokeWidth={2.25} aria-hidden />}
         </button>
       </div>
+      {dictationReview ? <WorkbotDictationReview onFinish={dictation.finishReview} /> : null}
     </div>
   );
 }

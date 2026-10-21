@@ -18,6 +18,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "nativeDictation": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Native dictation: Dictate editable prompts in OpenWork and Workbot using your operating system's dictation. Renders DEN_FEATURE_NATIVE_DICTATION."
+            },
             "organizationGrants": {
               "enum": [
                 "",

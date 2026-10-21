@@ -22,6 +22,8 @@ export type { DownloadCardInstallers, DownloadPlatformGroup, DownloadPlatformOpt
 export { OpenWorkRoadmap, roadmapSections } from "./roadmap"
 export type { RoadmapItem, RoadmapSection, RoadmapStatus } from "./roadmap"
 export { detectPlatform } from "./platform-detect"
+export { dictationPlatform, dictationInstructions, useNativeDictation } from "./native-dictation"
+export type { DictationPlatform, NativeDictationResult } from "./native-dictation"
 export type { DetectedArch, DetectedOS, DetectedPlatform } from "./platform-detect"
 export { DitheredOnboardingShell } from "./dithered-onboarding-shell"
 export type { DitheredOnboardingShellProps } from "./dithered-onboarding-shell"

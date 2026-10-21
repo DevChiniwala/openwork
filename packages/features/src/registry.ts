@@ -53,6 +53,13 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  nativeDictation: {
+    label: "Native dictation",
+    description: "Dictate editable prompts in OpenWork and Workbot using your operating system's dictation.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   organizationGrants: {
     label: "Organization control panel and grants",
     description: "Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.",
