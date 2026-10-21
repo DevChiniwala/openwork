@@ -3,11 +3,15 @@
  * attaches to the live desktop and browser, acts like the attendee, records a
  * receipt and screenshot under <output-dir>/checks/, and leaves the pair running.
  *
- *   node worlds/workshop-pair-check.ts <output-dir> prepare|status|task|steer|stop|unlock|reset|workshop
+ *   node worlds/workshop-pair-check.ts <output-dir> prepare|status|task|steer|stop|unlock|reset|workshop|guide
  *
  * `workshop` runs the four attendee exercises (deck + reply, Jira + Confluence,
  * calendar move, missing policy) as fresh tasks, verifies each from the attendee's
  * own workplace state, then resets and proves OAuth still reads.
+ *
+ * `guide` runs each hands-on presenter-guide prompt verbatim in a fresh task,
+ * judges it PASS/PARTIAL/FAIL against the guide's "Expect this:" line from the
+ * attendee's own state, keeps going after failures, then resets.
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -107,6 +111,102 @@ function instant(value: unknown): number {
   const first = wall - zoneOffset(zone, wall);
   return wall - zoneOffset(zone, first);
 }
+/** Waits for the task to finish, answering question cards with the (Recommended) option and permission cards with "Allow once", as an attendee would. */
+async function settleTask(desktop: Surface, name: string, begin: number, timeoutMs: number, approvePermissions = false): Promise<{ questions: Row[]; permissions: Row[] }> {
+  const questions: Row[] = [], permissions: Row[] = [];
+  const deadline = begin + timeoutMs;
+  for (;;) {
+    const seen = await evalIn(desktop, browserScript((pattern) => {
+      const idle = ![...document.querySelectorAll("button")]
+        .some((button) => new RegExp(pattern, "i").test((button.getAttribute("aria-label") ?? button.textContent ?? "").trim()))
+        && !document.querySelector('[data-status="pending"], [data-status="running"]')
+        && !/^Working(?:\.{3}|…)?$/m.test(document.body.innerText);
+      const allow = [...document.querySelectorAll("button")].find((button) => (button.textContent ?? "").trim() === "Allow once" && !button.disabled);
+      if (allow) {
+        allow.scrollIntoView({ block: "center" });
+        const box = allow.getBoundingClientRect();
+        const card = allow.closest("[class*=rounded]")?.parentElement ?? allow.parentElement;
+        return { idle: false, question: null, permission: { text: (card?.textContent ?? "").replace(/\s+/g, " ").slice(0, 600), x: box.x + box.width / 2, y: box.y + box.height / 2 } };
+      }
+      const counter = [...document.querySelectorAll("div")].find((element) => /^Question \d+ of \d+$/.test((element.textContent ?? "").trim()) && element.children.length === 0);
+      const panel = counter?.closest(".overflow-hidden");
+      if (!panel) return { idle, question: null };
+      const options = [...panel.querySelectorAll("button")].filter((button) => button.querySelector("span span"));
+      const recommended = options.find((button) => /\(Recommended\)\s*$/i.test(button.querySelector("span span")?.textContent ?? ""));
+      recommended?.scrollIntoView({ block: "center" });
+      const box = recommended?.getBoundingClientRect();
+      return {
+        idle: false,
+        question: (panel.textContent ?? "").replace(/\s+/g, " ").slice(0, 600),
+        options: options.map((button) => (button.querySelector("span span")?.textContent ?? "").trim()),
+        recommended: recommended && box && !recommended.disabled ? { label: (recommended.querySelector("span span")?.textContent ?? "").trim(), x: box.x + box.width / 2, y: box.y + box.height / 2 } : null,
+      };
+    }, [STOP.source]));
+    assert.ok(record(seen), "Could not read task progress");
+    if (seen.idle === true) break;
+    const click = async (x: number, y: number) => {
+      for (const type of ["mousePressed", "mouseReleased"]) await desktop.client.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+    };
+    if (record(seen.permission)) {
+      if (!approvePermissions) throw new Error(`Agent asked for permission: ${String(seen.permission.text)}`);
+      assert.ok(permissions.length < 6, "Agent kept asking for permission");
+      permissions.push({ prompt: seen.permission.text, answered: "Allow once" });
+      await click(Number(seen.permission.x), Number(seen.permission.y));
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      continue;
+    }
+    if (typeof seen.question === "string") {
+      const pick = record(seen.recommended) ? seen.recommended : null;
+      if (!pick) throw new Error(`Agent asked a question with no recommended option: ${seen.question}`);
+      assert.ok(questions.length < 3, "Agent kept asking questions");
+      questions.push({ question: seen.question, options: seen.options, answered: pick.label });
+      await click(Number(pick.x), Number(pick.y));
+      await waitFor(desktop, browserScript((question) => {
+        const counter = [...document.querySelectorAll("div")].find((element) => /^Question \d+ of \d+$/.test((element.textContent ?? "").trim()) && element.children.length === 0);
+        const panel = counter?.closest(".overflow-hidden");
+        return !panel || (panel.textContent ?? "").replace(/\s+/g, " ").slice(0, 600) !== question;
+      }, [seen.question]), { timeoutMs: 30_000, label: "question answered" });
+      continue;
+    }
+    if (Date.now() > deadline) throw new Error(`Timed out after ${timeoutMs}ms waiting for ${name} finished`);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  return { questions, permissions };
+}
+async function download(browser: Surface, id: string): Promise<Buffer> {
+  const bytes = await evalIn(browser, browserScript(async (id) => {
+    const response = await fetch(`/download/${encodeURIComponent(id)}`);
+    if (!response.ok) throw new Error(`Download HTTP ${response.status}`);
+    const buffer = new Uint8Array(await response.arrayBuffer()); let binary = "";
+    for (const byte of buffer) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }, [id]), { timeoutMs: 60_000 });
+  assert.ok(typeof bytes === "string", "Download returned nothing");
+  return Buffer.from(bytes, "base64");
+}
+function inspectPptx(path: string): { zip: boolean; slides: { name: string; text: string }[] } {
+  const value: unknown = JSON.parse(execFileSync("python3", ["-c", `import json,re,sys,zipfile,xml.etree.ElementTree as E
+out={'zip':zipfile.is_zipfile(sys.argv[1]),'slides':[]}
+if out['zip']:
+ with zipfile.ZipFile(sys.argv[1]) as z:
+  names=[n for n in z.namelist() if re.match(r'^ppt/slides/slide\\d+\\.xml$',n)]
+  names.sort(key=lambda n:int(re.findall(r'\\d+',n)[-1]))
+  out['slides']=[{'name':n,'text':' '.join(t.text or '' for t in E.fromstring(z.read(n)).iter() if t.tag.endswith('}t'))} for n in names]
+print(json.dumps(out))`, path], { encoding: "utf8" }));
+  assert.ok(record(value));
+  return { zip: value.zip === true, slides: rows(value.slides).map((slide) => ({ name: String(slide.name), text: String(slide.text) })) };
+}
+/** The ```text prompt under the guide heading that ends with "(Txx)", byte for byte. */
+function guidePrompt(guide: string, id: string): string {
+  const lines = guide.split("\n");
+  const heading = lines.findIndex((line) => line.startsWith("## ") && line.trimEnd().endsWith(`(${id})`));
+  assert.ok(heading >= 0, `Presenter guide has no ${id} section`);
+  const open = lines.findIndex((line, index) => index > heading && line.trim() === "```text");
+  const close = lines.findIndex((line, index) => index > open && line.trim() === "```");
+  assert.ok(open > heading && close > open, `Presenter guide ${id} has no text prompt`);
+  return lines.slice(open + 1, close).join("\n").trim();
+}
+function strip(html: string): string { return html.replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim(); }
 function attendeeSet(event: Row): string[] {
   return rows(event.attendees).map((attendee) => {
     const address = record(attendee.emailAddress) ? String(attendee.emailAddress.address ?? "").toLowerCase() : "";
@@ -116,8 +216,8 @@ function attendeeSet(event: Row): string[] {
 
 export async function main(argv = process.argv.slice(2)) {
   const [outputDir, command] = argv;
-  assert.ok(outputDir && command && ["prepare", "status", "task", "steer", "stop", "unlock", "reset", "workshop"].includes(command),
-    "Usage: node worlds/workshop-pair-check.ts <output-dir> prepare|status|task|steer|stop|unlock|reset|workshop");
+  assert.ok(outputDir && command && ["prepare", "status", "task", "steer", "stop", "unlock", "reset", "workshop", "guide"].includes(command),
+    "Usage: node worlds/workshop-pair-check.ts <output-dir> prepare|status|task|steer|stop|unlock|reset|workshop|guide");
   const pair: unknown = JSON.parse(await readFile(join(outputDir, "control.json"), "utf8"));
   const desktopId = text(pair, "desktopSandbox");
   const orgId = text(pair, "orgId"), memberId = text(pair, "memberId"), modelId = text(pair, "modelId");
@@ -216,50 +316,8 @@ export async function main(argv = process.argv.slice(2)) {
         const begin = Date.now();
         await sendComposerMessage(desktop, prompt);
         await waitForAssistantReply(desktop, { timeoutMs });
-        // The agent may ask the attendee a question card. Answer it like the
-        // attendee would: with a real click on the option it marks Recommended.
-        const questions: Row[] = [];
-        const deadline = begin + timeoutMs;
-        for (;;) {
-          const seen = await evalIn(desktop, browserScript((pattern) => {
-            const idle = ![...document.querySelectorAll("button")]
-              .some((button) => new RegExp(pattern, "i").test((button.getAttribute("aria-label") ?? button.textContent ?? "").trim()))
-              && !document.querySelector('[data-status="pending"], [data-status="running"]')
-              && !/^Working(?:\.{3}|…)?$/m.test(document.body.innerText);
-            const counter = [...document.querySelectorAll("div")].find((element) => /^Question \d+ of \d+$/.test((element.textContent ?? "").trim()) && element.children.length === 0);
-            const panel = counter?.closest(".overflow-hidden");
-            if (!panel) return { idle, question: null };
-            const options = [...panel.querySelectorAll("button")].filter((button) => button.querySelector("span span"));
-            const recommended = options.find((button) => /\(Recommended\)\s*$/i.test(button.querySelector("span span")?.textContent ?? ""));
-            recommended?.scrollIntoView({ block: "center" });
-            const box = recommended?.getBoundingClientRect();
-            return {
-              idle: false,
-              question: (panel.textContent ?? "").replace(/\s+/g, " ").slice(0, 600),
-              options: options.map((button) => (button.querySelector("span span")?.textContent ?? "").trim()),
-              recommended: recommended && box && !recommended.disabled ? { label: (recommended.querySelector("span span")?.textContent ?? "").trim(), x: box.x + box.width / 2, y: box.y + box.height / 2 } : null,
-            };
-          }, [STOP.source]));
-          assert.ok(record(seen), "Could not read task progress");
-          if (seen.idle === true) break;
-          if (typeof seen.question === "string") {
-            const pick = record(seen.recommended) ? seen.recommended : null;
-            if (!pick) throw new Error(`Agent asked a question with no recommended option: ${seen.question}`);
-            assert.ok(questions.length < 3, "Agent kept asking questions");
-            questions.push({ question: seen.question, options: seen.options, answered: pick.label });
-            for (const type of ["mousePressed", "mouseReleased"]) {
-              await desktop.client.send("Input.dispatchMouseEvent", { type, x: Number(pick.x), y: Number(pick.y), button: "left", clickCount: 1 });
-            }
-            await waitFor(desktop, browserScript((question) => {
-              const counter = [...document.querySelectorAll("div")].find((element) => /^Question \d+ of \d+$/.test((element.textContent ?? "").trim()) && element.children.length === 0);
-              const panel = counter?.closest(".overflow-hidden");
-              return !panel || (panel.textContent ?? "").replace(/\s+/g, " ").slice(0, 600) !== question;
-            }, [seen.question]), { timeoutMs: 30_000, label: "question answered" });
-            continue;
-          }
-          if (Date.now() > deadline) throw new Error(`Timed out after ${timeoutMs}ms waiting for ${name} finished`);
-          await new Promise((resolve) => setTimeout(resolve, 2_000));
-        }
+        // Question cards are answered like the attendee would: the (Recommended) option.
+        const { questions } = await settleTask(desktop, name, begin, timeoutMs);
         const reply = (await waitForAssistantReply(desktop, { timeoutMs: 5_000 })).text;
         const seconds = Math.round((Date.now() - begin) / 1000);
         await capture(desktop, join(checks, `workshop-${name}.png`));
@@ -413,6 +471,271 @@ print(json.dumps(out))`, pptxPath], { encoding: "utf8" }));
       await freshComposer(desktop, modelId);
       const spendEnd = Number((await verifyMember(member, orgId, memberId)).usedMicroUsd ?? 0);
       return await finish(true, { totalCostMicroUsd: spendEnd - spendStart, usedMicroUsdAfter: spendEnd });
+    }
+
+    if (command === "guide") {
+      // Every hands-on presenter-guide prompt, verbatim, as the attendee in a
+      // fresh task; each judged against its "Expect this:" line from the
+      // attendee's own workplace state. A failure never stops the run.
+      const guidePath = process.env.WORKSHOP_GUIDE ?? join(outputDir, "..", "..", "presenter-guide.md");
+      const guide = await readFile(guidePath, "utf8");
+      const capMicroUsd = 2_500_000, reserveMicroUsd = 350_000, taskTimeoutMs = 480_000;
+      const tasks: Row[] = [];
+      const notApplicable = [
+        { id: "T07", verdict: "EXCLUDED", reason: "Windows lockout beat is excluded from hands-on." },
+        { id: "T03", verdict: "NOT-APPLICABLE", reason: "Needs Nora as a second real Den member running the shared Workflow under her own identity." },
+        { id: "T08", verdict: "NOT-APPLICABLE", reason: "Feedback form went to a rehearsal stand-in store; no attendee-safe equivalent." },
+      ];
+      Object.assign(receipt, { guidePath, tasks, notApplicable });
+      const save = async () => writeFile(join(checks, "guide.json"), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+      const used = async () => Number((await verifyMember(member, orgId, memberId)).usedMicroUsd ?? 0);
+      const spendStart = await used();
+      const baseline = await workplaceState(browser);
+      receipt.baselineUsedMicroUsd = spendStart;
+      const denHeaders = { authorization: `Bearer ${member.token}`, "x-openwork-org-id": orgId };
+      const denList = async (path: string): Promise<{ status: number; items: Row[] }> => {
+        const result = await denFetch(member, path, { headers: denHeaders }).catch(() => null);
+        if (!result) return { status: 0, items: [] };
+        const body = result.body;
+        const list = record(body) ? Object.values(body).find(Array.isArray) : Array.isArray(body) ? body : [];
+        return { status: result.response.status, items: rows(list) };
+      };
+      type Ctx = { reply: string; before: { microsoft: Row; atlassian: Row }; after: { microsoft: Row; atlassian: Row }; workflowsBefore: Row[] };
+      type Verdict = { verdict: "PASS" | "PARTIAL" | "FAIL"; reason: string; criteria: Row; facts: Row };
+      const judge = (criteria: Record<string, boolean>, facts: Row, critical: string[]): Verdict => {
+        const missing = Object.entries(criteria).filter(([, ok]) => !ok).map(([label]) => label);
+        const verdict = missing.length === 0 ? "PASS" : critical.some((label) => missing.includes(label)) || missing.length === Object.keys(criteria).length ? "FAIL" : "PARTIAL";
+        return { verdict, reason: missing.length ? `missing: ${missing.join("; ")}` : `all ${Object.keys(criteria).length} checks met`, criteria, facts };
+      };
+      const changedFiles = (ctx: Ctx) => {
+        const old = new Map(rows(ctx.before.microsoft.files).map((file) => [file.id, canonical({ ...file, audit: undefined })]));
+        return rows(ctx.after.microsoft.files).filter((file) => !file.folder && old.get(file.id) !== canonical({ ...file, audit: undefined }));
+      };
+      const newDrafts = (ctx: Ctx) => {
+        const old = new Set(rows(ctx.before.microsoft.messages).map((message) => message.id));
+        return rows(ctx.after.microsoft.messages).filter((message) => message.isDraft === true && !old.has(message.id));
+      };
+      const sentCount = (state: Row) => rows(state.messages).filter((message) => message.parentFolderId === "sentitems").length;
+      const nothingSent = (ctx: Ctx) => sentCount(ctx.after.microsoft) === sentCount(ctx.before.microsoft);
+      const same = (a: Row, b: Row) => canonical(businessState(a)) === canonical(businessState(b));
+      const bodyOf = (message: Row) => record(message.body) ? String(message.body.content ?? "") : String(message.body ?? "");
+      const textFile = async (file: Row) => (await download(browser, String(file.id))).toString("utf8");
+      const links = (body: string, file: Row) => body.includes(String(file.id)) || body.includes(String(file.name)) || body.includes(encodeURIComponent(String(file.name)));
+      const pages = (state: Row) => nested(state, "confluence", "pages");
+      const version = (page: Row) => record(page.version) ? Number(page.version.number) : Number(page.version);
+      const KG1200 = /1[,.\u202f\u00a0 ]?200\s*kg/i, KG300 = /\b300\s*kg/i;
+
+      const checksById: Record<string, (ctx: Ctx) => Promise<Verdict>> = {
+        T01: async (ctx) => {
+          const files = changedFiles(ctx).filter((file) => /\.(md|txt|html?|docx)$/i.test(String(file.name)));
+          const file = files.find((entry) => /compar|atlas|blue/i.test(String(entry.name))) ?? files[0];
+          const content = file && /\.(md|txt|html?)$/i.test(String(file.name)) ? await textFile(file) : "";
+          const drafts = newDrafts(ctx).filter((draft) => draft.conversationId === "thread-blueharbor");
+          const draft = drafts[0]; const body = draft ? bodyOf(draft) : "";
+          return judge({
+            "comparison file saved in Drive": Boolean(file),
+            "file has Atlas 2 300 kg and Atlas Lift 1,200 kg": KG300.test(content) && KG1200.test(content),
+            "file keeps customer safety/site requirements open": /unconfirmed|not (?:yet )?confirmed|to be confirmed|open|pending|outstanding|not verified/i.test(content),
+            "unsent reply draft in the Blue Harbor thread": drafts.length >= 1,
+            "draft links the saved file": Boolean(draft && file && links(body, file)),
+            "draft payload row 300 vs 1,200 kg": KG300.test(strip(body)) && KG1200.test(strip(body)),
+            "nothing sent": nothingSent(ctx),
+            "Jira/Confluence unchanged": same(ctx.after.atlassian, ctx.before.atlassian),
+          }, { file: file ? { id: file.id, name: file.name, path: file.path } : null, fileExcerpt: content.slice(0, 1500), draftCount: drafts.length, draftExcerpt: strip(body).slice(0, 1200) },
+          ["comparison file saved in Drive", "unsent reply draft in the Blue Harbor thread", "nothing sent"]);
+        },
+        T04: async (ctx) => {
+          const file = changedFiles(ctx).find((entry) => entry.name === "Acme account analysis.md");
+          const content = file ? await textFile(file) : "";
+          const mixed = /(?:ARR|annual recurring revenue)[^\n|]{0,30}\$?\s?(?:1\.38|0\.41)\s*M/i.test(content);
+          return judge({
+            "'Acme account analysis.md' saved in Drive": Boolean(file),
+            "ARR $1.46M (Blue Harbor) and $1.10M (Northwind)": /1\.46\s*M/i.test(content) && /1\.10?\s*M/i.test(content),
+            "orders 4 / $1.38M and 2 / $0.41M": /1\.38\s*M/i.test(content) && /0\.41\s*M/i.test(content),
+            "ARR not mixed with order value": Boolean(content) && !mixed,
+            "relationship, growth and churn covered": /relationship/i.test(content) && /growth/i.test(content) && /churn/i.test(content),
+            "cites both account plans": /Account plan: Northwind|Northwind[^\n]{0,40}(?:plan|confluence)/i.test(content) && /Account plan: Blue Harbor|Blue Harbor[^\n]{0,40}(?:plan|confluence)/i.test(content),
+            "nothing sent / no Jira-Confluence change": nothingSent(ctx) && same(ctx.after.atlassian, ctx.before.atlassian),
+          }, { file: file ? { id: file.id, path: file.path } : null, fileExcerpt: content.slice(0, 2000) }, ["'Acme account analysis.md' saved in Drive"]);
+        },
+        T05: async (ctx) => {
+          const file = changedFiles(ctx).find((entry) => entry.name === "Acme account analysis.pptx");
+          let deck: ReturnType<typeof inspectPptx> = { zip: false, slides: [] };
+          if (file) {
+            const path = join(checks, "guide-T05-downloaded.pptx");
+            await writeFile(path, await download(browser, String(file.id)), { mode: 0o600 });
+            deck = inspectPptx(path);
+          }
+          const all = deck.slides.map((slide) => slide.text).join(" ");
+          const thin = deck.slides.filter((slide) => slide.text.replace(/\s+/g, " ").trim().length < 80).map((slide) => slide.name);
+          return judge({
+            "'Acme account analysis.pptx' saved in Drive": Boolean(file),
+            "real .pptx (zip with slides)": deck.zip && deck.slides.length > 0,
+            "exact ARR and order figures kept": /1\.46\s*M/i.test(all) && /1\.10?\s*M/i.test(all) && /1\.38\s*M/i.test(all) && /0\.41\s*M/i.test(all),
+            "every slide has substantive content (>=80 chars)": deck.slides.length > 0 && thin.length === 0,
+            "reply names slides needing a visual check": /slide\s*\d+|slides?\s+\d+/i.test(ctx.reply) && /visual|layout|check|review/i.test(ctx.reply),
+            "nothing sent": nothingSent(ctx),
+          }, { file: file ? { id: file.id, path: file.path } : null, slideCount: deck.slides.length, thinSlides: thin, slides: deck.slides.map((slide) => ({ name: slide.name, chars: slide.text.length, start: slide.text.slice(0, 160) })) },
+          ["'Acme account analysis.pptx' saved in Drive", "real .pptx (zip with slides)"]);
+        },
+        T06: async (ctx) => {
+          const old = new Set(nested(ctx.before.atlassian, "jira", "issues").map((issue) => issue.key));
+          const created = nested(ctx.after.atlassian, "jira", "issues").filter((issue) => !old.has(issue.key));
+          const issue = created.find((entry) => /Project XYZ/i.test(canonical(entry.summary))) ?? created[0];
+          return judge({
+            "exactly one new Jira issue": created.length === 1,
+            "in DOC project": Boolean(issue && /^DOC$/i.test(String(record(issue.project) ? issue.project.key : issue.project))),
+            "type Task": Boolean(issue && /Task/i.test(canonical(issue.issuetype))),
+            "summary exact": Boolean(issue && String(issue.summary) === "Update documentation for Project XYZ"),
+            "assigned to Nora Patel": Boolean(issue && /nora/i.test(canonical(issue.assignee))),
+            "reply confirms the key": Boolean(issue && ctx.reply.includes(String(issue.key))),
+            "Outlook/Drive unchanged": same(ctx.after.microsoft, ctx.before.microsoft),
+          }, { created: created.map((entry) => ({ key: entry.key, project: entry.project, issuetype: entry.issuetype, summary: entry.summary, assignee: entry.assignee })) },
+          ["exactly one new Jira issue", "in DOC project", "assigned to Nora Patel"]);
+        },
+        T09: async (ctx) => judge({
+          "says no dog policy was found": /couldn.t find|could not find|didn.t find|did not find|no (?:explicit |specific |published |written |formal |documented )?(?:dog|pet)[- ]?(?:policy|rule|guidance)|not (?:specified|covered|stated|found|mentioned|addressed)|does(?:n.t| not) (?:mention|address|specify|say|cover|include)|no policy|silent/i.test(ctx.reply),
+          "does not invent a rule": !/(?<!whether |if |that )dogs? (?:are|is) (?:allowed|permitted|welcome|prohibited|banned|not allowed|not permitted)|(?<!whether |if )you (?:can|may|cannot|can.t) bring (?:your |a )?dog/i.test(ctx.reply),
+          "cites Employee Handbook and Working at the office": /Employee Handbook/i.test(ctx.reply) && /Working at the office/i.test(ctx.reply),
+          "suggests a People Ops question": /People Ops/i.test(ctx.reply),
+          "no workplace mutation": same(ctx.after.microsoft, ctx.before.microsoft) && same(ctx.after.atlassian, ctx.before.atlassian),
+        }, {}, ["does not invent a rule", "no workplace mutation"]),
+        T11: async (ctx) => {
+          const events = rows(ctx.after.microsoft.events).filter((event) => event.subject === "Acme Atlas review");
+          const beforeCount = rows(ctx.before.microsoft.events).filter((event) => event.subject === "Acme Atlas review").length;
+          const event = events[0];
+          const start = instant({ dateTime: "2026-10-20T11:00:00", timeZone: "America/Los_Angeles" });
+          const end = instant({ dateTime: "2026-10-20T11:45:00", timeZone: "America/Los_Angeles" });
+          const people = event ? attendeeSet(event).join(" ") : "";
+          return judge({
+            "exactly one 'Acme Atlas review' (no duplicate)": events.length === 1 && beforeCount === 0,
+            "Oct 20 2026 11:00-11:45 America/Los_Angeles": Boolean(event && instant(event.start) === start && instant(event.end) === end),
+            "Nora Patel and Priya Shah attending": /nora@acme\.test/.test(people) && /priya@acme\.test/.test(people),
+            "in Acme lab B": Boolean(event && /Acme lab B/i.test(canonical(event.location))),
+            "note kept": Boolean(event && /Review Atlas 2 and Atlas Lift comparison/i.test(canonical(event.body))),
+            "no mail sent / Jira-Confluence unchanged": nothingSent(ctx) && same(ctx.after.atlassian, ctx.before.atlassian),
+          }, { beforeCount, events: events.map((entry) => ({ id: entry.id, start: entry.start, end: entry.end, location: entry.location, attendees: attendeeSet(entry) })) },
+          ["exactly one 'Acme Atlas review' (no duplicate)", "Oct 20 2026 11:00-11:45 America/Los_Angeles"]);
+        },
+        T12: async (ctx) => {
+          const original = pages(ctx.before.atlassian).find((page) => page.title === "Working at the office");
+          const page = original ? pages(ctx.after.atlassian).find((entry) => entry.id === original.id) : undefined;
+          const was = original ? strip(String(original.body)) : "", now = page ? strip(String(page.body)) : "";
+          const sentences = was.split(/(?<=[.:])\s+/).filter((sentence) => sentence.length > 12);
+          const kept = sentences.filter((sentence) => now.includes(sentence)).length;
+          const oldComments = new Set(rows(original?.comments).map((comment) => comment.id));
+          const newComments = rows(page?.comments).filter((comment) => !oldComments.has(comment.id));
+          const drafts = newDrafts(ctx).filter((draft) => draft.conversationId === "thread-blueharbor");
+          const body = drafts[0] ? bodyOf(drafts[0]) : "";
+          return judge({
+            "new page version saved": Boolean(original && page && version(page) > version(original)),
+            "existing content preserved": sentences.length > 0 && kept === sentences.length,
+            "note added": /dog-policy confirmation remains with People Ops/i.test(now),
+            "review comment added": newComments.some((comment) => /Workshop review complete/i.test(canonical(comment.body))),
+            "no replacement page created": pages(ctx.after.atlassian).length === pages(ctx.before.atlassian).length,
+            "unsent draft in Blue Harbor thread linking the page": drafts.length >= 1 && Boolean(original && body.includes(String(original.id))),
+            "nothing sent": nothingSent(ctx),
+          }, { pageVersion: [original ? version(original) : null, page ? version(page) : null], sentencesKept: `${kept}/${sentences.length}`, newComments: newComments.map((comment) => strip(canonical(comment.body)).slice(0, 200)), draftExcerpt: strip(body).slice(0, 800) },
+          ["new page version saved", "existing content preserved", "nothing sent"]);
+        },
+        T10: async (ctx) => {
+          const files = changedFiles(ctx);
+          const file = files.find((entry) => /morning news/i.test(String(entry.path ?? "")) || /morning news/i.test(canonical(entry.parentReference)));
+          const content = file && /\.(md|txt|html?)$/i.test(String(file.name)) ? await textFile(file) : "";
+          const drafts = newDrafts(ctx);
+          const countries = ["France", "United States", "Germany", "Japan"].filter((country) => content.includes(country));
+          return judge({
+            "digest saved under OneDrive › Morning news": Boolean(file),
+            "covers all four countries": countries.length === 4,
+            "items carry outlet and source link": /outlet/i.test(content) && /https?:\/\//.test(content),
+            "unsent Outlook draft created": drafts.length >= 1,
+            "schedule labeled simulated": /simulated/i.test(ctx.reply) || /simulated/i.test(content),
+            "nothing sent": nothingSent(ctx),
+          }, { file: file ? { name: file.name, path: file.path } : null, countries, fileExcerpt: content.slice(0, 1500), drafts: drafts.map((draft) => ({ subject: draft.subject, excerpt: strip(bodyOf(draft)).slice(0, 300) })), filesChanged: files.map((entry) => entry.path ?? entry.name) },
+          ["digest saved under OneDrive › Morning news", "nothing sent"]);
+        },
+        T02: async (ctx) => {
+          const after = await denList("/v1/workflows");
+          const saved = after.items.filter((item) => /Acme product comparison/i.test(canonical(item.name ?? item.title ?? item)));
+          const isNew = saved.some((item) => !ctx.workflowsBefore.some((old) => old.id === item.id));
+          const runs = await denList("/v1/workflow-runs");
+          const coldRuns = runs.items.filter((run) => /cold-storage/i.test(canonical(run)));
+          return judge({
+            "Workflow 'Acme product comparison' saved in Library": saved.length >= 1,
+            "saved during this task": isNew,
+            "saved version rerun with the cold-storage request": coldRuns.length >= 1 || /cold-storage/i.test(ctx.reply) && /rerun|re-ran|ran the saved/i.test(ctx.reply),
+            "reply assesses both products with payloads": /Atlas 2/i.test(ctx.reply) && /Atlas Lift/i.test(ctx.reply) && KG300.test(ctx.reply) && KG1200.test(ctx.reply),
+            "no workplace mutation": same(ctx.after.microsoft, ctx.before.microsoft) && same(ctx.after.atlassian, ctx.before.atlassian),
+          }, { workflowsStatus: after.status, saved: saved.map((item) => ({ id: item.id, name: item.name ?? item.title })), runsStatus: runs.status, coldStorageRuns: coldRuns.length },
+          ["Workflow 'Acme product comparison' saved in Library"]);
+        },
+      };
+
+      for (const id of ["T01", "T04", "T05", "T06", "T09", "T11", "T12", "T10", "T02"]) {
+        const spent = (await used()) - spendStart;
+        if (spent > capMicroUsd - reserveMicroUsd) { tasks.push({ id, verdict: "SKIPPED", reason: `guide spend ${spent} micro-USD near the $2.50 cap` }); await save(); continue; }
+        const prompt = guidePrompt(guide, id);
+        const entry: Row = { id, prompt, verdict: "FAIL" };
+        tasks.push(entry);
+        const begin = Date.now();
+        let reply = "";
+        let before: { microsoft: Row; atlassian: Row } | null = null;
+        let usedBefore = 0, workflowsBefore: Row[] = [];
+        try {
+          await foregroundWorkshopDesktop(browser, desktop);
+          await freshComposer(desktop, modelId);
+          before = await workplaceState(browser);
+          workflowsBefore = id === "T02" ? (await denList("/v1/workflows")).items : [];
+          usedBefore = await used();
+          await sendComposerMessage(desktop, prompt);
+          await waitFor(desktop, browserScript((pattern) => Boolean(document.querySelector('[data-message-role="assistant"]'))
+            || [...document.querySelectorAll("button")].some((button) => new RegExp(pattern, "i").test((button.getAttribute("aria-label") ?? button.textContent ?? "").trim()))
+            || /Question \d+ of \d+/.test(document.body.innerText), [STOP.source]), { timeoutMs: 120_000, label: `${id} started` });
+          const { questions, permissions } = await settleTask(desktop, id, begin, taskTimeoutMs, true);
+          Object.assign(entry, { questions, permissions });
+        } catch (error) {
+          entry.error = error instanceof Error ? error.message.slice(0, 1500) : String(error);
+          await control(desktop, "composer.stop").catch(() => {});
+          await waitIdle(desktop, 60_000, `${id} stopped`).catch(() => {});
+        }
+        entry.seconds = Math.round((Date.now() - begin) / 1000);
+        reply = await waitForAssistantReply(desktop, { timeoutMs: 15_000 }).then((result) => result.text, () => "");
+        entry.reply = reply;
+        await capture(desktop, join(checks, `guide-${id}.png`)).catch(() => {});
+        try {
+          assert.ok(before, "Task never started");
+          const after = await workplaceState(browser);
+          entry.costMicroUsd = (await used()) - usedBefore;
+          entry.workplaceCalls = [...auditSince(after.microsoft, auditCursor(before.microsoft)), ...auditSince(after.atlassian, auditCursor(before.atlassian))]
+            .map((call) => `${String(call.name)}:${String(call.status)}`);
+          const check = checksById[id]; assert.ok(check, `No check for ${id}`);
+          const result = await check({ reply, before, after, workflowsBefore });
+          Object.assign(entry, result);
+          if (entry.error && result.verdict === "PASS") Object.assign(entry, { verdict: "PARTIAL", reason: `outcome met but run errored: ${String(entry.error).slice(0, 200)}` });
+        } catch (error) {
+          Object.assign(entry, { verdict: "FAIL", reason: entry.error ? `run error: ${String(entry.error).slice(0, 300)}` : `check error: ${error instanceof Error ? error.message.slice(0, 300) : String(error)}` });
+        }
+        await save();
+        console.log(`${String(entry.verdict)} guide ${id} (${String(entry.seconds)}s, ${(Number(entry.costMicroUsd ?? 0) / 1e6).toFixed(3)} USD) ${String(entry.reason)}`);
+      }
+
+      // Personal reset back to the pre-guide state.
+      const result = await evalIn(browser, async () => {
+        const response = await fetch("/_workshop/reset", { method: "POST", redirect: "manual" });
+        return { status: response.status, type: response.type };
+      });
+      const reset = await workplaceState(browser);
+      const resetFacts = {
+        resetAccepted: record(result) && (result.status === 303 || result.type === "opaqueredirect"),
+        microsoftEqualsBaseline: same(reset.microsoft, baseline.microsoft),
+        atlassianEqualsBaseline: same(reset.atlassian, baseline.atlassian),
+      };
+      await capture(browser, join(checks, "guide-reset.png")).catch(() => {});
+      await foregroundWorkshopDesktop(browser, desktop);
+      await freshComposer(desktop, modelId).catch(() => {});
+      const spendEnd = await used();
+      return await finish(resetFacts.resetAccepted && resetFacts.microsoftEqualsBaseline && resetFacts.atlassianEqualsBaseline,
+        { reset: resetFacts, totalCostMicroUsd: spendEnd - spendStart, usedMicroUsdAfter: spendEnd, summary: tasks.map((task) => ({ id: task.id, verdict: task.verdict, seconds: task.seconds, costMicroUsd: task.costMicroUsd, reason: task.reason })) });
     }
 
     // Model-backed commands start from a fresh task on the workshop model.
