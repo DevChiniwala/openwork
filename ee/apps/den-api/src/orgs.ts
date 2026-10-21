@@ -1537,7 +1537,7 @@ export async function getOrganizationContextForUser(input: {
       .from(MemberTable)
       .where(and(eq(MemberTable.organizationId, organization.id), eq(MemberTable.userId, input.userId), isNull(MemberTable.removedAt)))
       .limit(1),
-    getOrganizationFeatures(organization.id),
+    getOrganizationFeatures(organization.id, { userId: input.userId }),
   ])
 
   const currentMember = currentMemberRows[0]
