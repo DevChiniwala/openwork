@@ -42,7 +42,8 @@ import {
   validateExternalMcpToolArguments,
   type ExternalMcpArgumentIssue,
 } from "./external-mcp-tool-arguments.js"
-import { compareCapabilityMatches, tokenize } from "./search.js"
+import { compareCapabilityMatches, scoreText, tokenize } from "./search.js"
+import { EXTERNAL_MCP_SEARCH_CONNECTION_LIMIT, scoreExternalTool, selectExternalMcpSearchConnections } from "./external-search-selection.js"
 import type { CapabilityMatch } from "./search.js"
 import { DEN_MCP_WRITE_SCOPE } from "./scopes.js"
 import {
@@ -77,7 +78,6 @@ import { fingerprintReadinessIdentity } from "../capability-sources/external-mcp
  */
 
 const EXTERNAL_CAPABILITY_PREFIX = "mcp:"
-export const EXTERNAL_MCP_SEARCH_CONNECTION_LIMIT = 16
 export const EXTERNAL_MCP_SEARCH_CONCURRENCY = 8
 export const EXTERNAL_MCP_SEARCH_MATCH_LIMIT = 20
 const EXTERNAL_MCP_SEARCH_REQUEST_TIMEOUT_MS = 5_000
@@ -142,42 +142,7 @@ function redirectUriFor(redirectUriBase: string, connectionId: string): string {
   return `${redirectUriBase}/v1/mcp-connections/${encodeURIComponent(connectionId)}/connect/callback`
 }
 
-function scoreText(nameTokens: string[], summaryTokens: string[], queryTokens: string[]): number {
-  let score = 0
-  for (const queryToken of queryTokens) {
-    if (nameTokens.includes(queryToken)) {
-      score += 5
-    } else if (nameTokens.some((token) => token.startsWith(queryToken) || queryToken.startsWith(token))) {
-      score += 3
-    }
-    if (summaryTokens.includes(queryToken)) {
-      score += 2
-    }
-  }
-  return score
-}
-
-/**
- * A capability search must never turn an unbounded org connection list into
- * unbounded remote handshakes. Prefer connections whose names match the
- * query, keep source order as the deterministic tiebreaker, and enforce one
- * hard fanout ceiling before any provider network request is started.
- */
-export function selectExternalMcpSearchConnections<T extends { name: string }>(
-  connections: readonly T[],
-  queryTokens: string[],
-  limit = EXTERNAL_MCP_SEARCH_CONNECTION_LIMIT,
-): T[] {
-  return connections
-    .map((connection, index) => ({
-      connection,
-      index,
-      score: scoreText(tokenize(connection.name), tokenize(connection.name), queryTokens),
-    }))
-    .sort((left, right) => right.score - left.score || left.index - right.index)
-    .slice(0, Math.max(0, Math.min(limit, EXTERNAL_MCP_SEARCH_CONNECTION_LIMIT)))
-    .map(({ connection }) => connection)
-}
+type ExternalMcpTool = Awaited<ReturnType<typeof listExternalMcpTools>>[number]
 
 export type ExternalCapabilityMatch = CapabilityMatch & {
   /** Exact MCP arguments schema returned by the provider's live tools/list. */
@@ -704,6 +669,30 @@ export function externalMcpSearchCoverageHint(coverage: ExternalMcpSearchCoverag
   return `External MCP search inspected ${coverage.probedConnections} of ${coverage.eligibleConnections} eligible connections. Results may be incomplete; narrow the query using a connection name and search again.`
 }
 
+/**
+ * Where a search probe of this connection caches its tool list. Personal keys
+ * can be replaced or revoked independently of connection configuration, so a
+ * credential-dependent catalog or failure is never reused.
+ */
+function externalToolsSearchCacheKey(connection: ExternalMcpConnectionRow, member: McpMemberIdentity): ExternalToolsSearchCacheKey | undefined {
+  if (usesMemberApiKey(connection)) return undefined
+  return {
+    organizationId: connection.organizationId,
+    connectionId: connection.id,
+    updatedAt: connection.updatedAt,
+    credentialMode: connection.credentialMode,
+    ...(connection.credentialMode === "per_member" ? { orgMembershipId: member.orgMembershipId } : {}),
+  }
+}
+
+/** Tools a recent probe listed for this member, without contacting the provider. */
+function cachedSearchTools(connection: ExternalMcpConnectionRow, member: McpMemberIdentity): ExternalMcpTool[] | undefined {
+  if (connection.toolPolicy?.allDisabled) return undefined
+  const key = externalToolsSearchCacheKey(connection, member)
+  const cached = key ? getExternalToolsSearchCache(key) : undefined
+  return cached?.outcome === "success" ? cached.tools.filter((tool) => !isToolDisabled(connection.toolPolicy, tool.name)) : undefined
+}
+
 const CONNECTION_CARD_HINT = "Execute this exact capability name once: it returns the live status, renders an actionable connection card for the member in compatible hosts, and includes the action to relay in text."
 
 async function probeExternalMcpConnection(input: {
@@ -791,17 +780,8 @@ async function probeExternalMcpConnection(input: {
     ? { orgMembershipId: input.member.orgMembershipId }
     : undefined
   let tools: Awaited<ReturnType<typeof listExternalMcpTools>>
-  const cacheKey: ExternalToolsSearchCacheKey = {
-    organizationId: connection.organizationId,
-    connectionId: connection.id,
-    updatedAt: connection.updatedAt,
-    credentialMode: connection.credentialMode,
-    ...(connection.credentialMode === "per_member" ? { orgMembershipId: input.member.orgMembershipId } : {}),
-  }
-  // Personal keys can be replaced or revoked independently of connection
-  // configuration. Do not reuse a credential-dependent catalog or failure.
-  const cacheable = !usesMemberApiKey(connection)
-  const cachedProbe = cacheable ? getExternalToolsSearchCache(cacheKey) : undefined
+  const cacheKey = externalToolsSearchCacheKey(connection, input.member)
+  const cachedProbe = cacheKey ? getExternalToolsSearchCache(cacheKey) : undefined
   try {
     if (cachedProbe?.outcome === "failure") throw cachedProbe.error
     if (cachedProbe?.outcome === "success") {
@@ -815,10 +795,10 @@ async function probeExternalMcpConnection(input: {
         input.deadline,
         EXTERNAL_MCP_SEARCH_REQUEST_TIMEOUT_MS,
       )
-      if (cacheable) setExternalToolsSearchCache(cacheKey, { outcome: "success", tools })
+      if (cacheKey) setExternalToolsSearchCache(cacheKey, { outcome: "success", tools })
     }
   } catch (error) {
-    if (cacheable && !cachedProbe) setExternalToolsSearchCache(cacheKey, { outcome: "failure", error })
+    if (cacheKey && !cachedProbe) setExternalToolsSearchCache(cacheKey, { outcome: "failure", error })
     const message = upstreamErrorMessage(error)
     const diagnostic = error instanceof ExternalMcpDiagnosticError ? error.diagnostic : undefined
     const nameTokens = tokenize(connection.name)
@@ -847,9 +827,7 @@ async function probeExternalMcpConnection(input: {
   for (const tool of tools) {
     if (isToolDisabled(connection.toolPolicy, tool.name)) continue
     const summary = tool.description ?? tool.title ?? tool.name
-    const nameTokens = tokenize(`${connection.name} ${tool.name}`)
-    const summaryTokens = tokenize(summary)
-    const score = scoreText(nameTokens, summaryTokens, input.queryTokens)
+    const score = scoreExternalTool(connection.name, tool, input.queryTokens)
     if (score <= 0) continue
     const resourceUri = externalMcpAppResourceUri(tool)
     add({
@@ -904,7 +882,9 @@ export async function searchExternalCapabilities(input: {
     teamIds: input.member.teamIds,
   })
   const scriptNamespaces = namespaceContext?.namespaces.externalMcp
-  const selectedConnections = selectExternalMcpSearchConnections(connections, queryTokens)
+  const member = input.member
+  const selectedConnections = selectExternalMcpSearchConnections(connections, queryTokens, EXTERNAL_MCP_SEARCH_CONNECTION_LIMIT,
+    (connection) => cachedSearchTools(connection, member))
   input.reportCoverage?.({
     eligibleConnections: connections.length,
     probedConnections: selectedConnections.length,
