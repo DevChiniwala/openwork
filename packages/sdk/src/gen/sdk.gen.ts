@@ -565,6 +565,7 @@ import type {
   GetWellKnownOauthAuthorizationServerResponses,
   GetWellKnownOauthProtectedResourceMcpAdminResponses,
   GetWellKnownOauthProtectedResourceMcpAgentResponses,
+  GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses,
   GetWellKnownOauthProtectedResourceMcpResponses,
   GetWellKnownOauthProtectedResourceResponses,
   GetWellKnownOpenidConfigurationApiAuthResponses,
@@ -1269,6 +1270,7 @@ export class DenClient extends HeyApiClient {
       capabilities: {
         nativeDictation?: boolean | null;
         organizationGrants?: boolean | null;
+        connectionMcpServers?: boolean | null;
         liveProviderSync?: boolean | null;
         managedDeployments?: boolean | null;
         workbotDocuments?: boolean | null;
@@ -17144,6 +17146,29 @@ export class DenClient extends HeyApiClient {
       unknown,
       ThrowOnError
     >({ url: "/mcp/agent/.well-known/oauth-protected-resource", ...options });
+  }
+
+  /**
+   * Get OAuth protected resource metadata for /mcp/agent
+   *
+   * Returns the RFC 9728 protected-resource metadata MCP clients use to discover the authorization server and scopes for this transport.
+   */
+  public getWellKnownOauthProtectedResourceMcpAgentServersByConnectionId<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "connectionId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/.well-known/oauth-protected-resource/mcp/agent/servers/{connectionId}",
+      ...options,
+      ...params,
+    });
   }
 
   /**

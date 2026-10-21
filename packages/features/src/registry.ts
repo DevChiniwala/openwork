@@ -67,6 +67,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  connectionMcpServers: {
+    label: "Connect: an MCP server for each connection",
+    description: "Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",

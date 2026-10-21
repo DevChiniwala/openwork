@@ -26,6 +26,8 @@ import {
 } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId, type DenTypeId } from "@openwork-ee/utils/typeid"
 import { attributeOAuthCallbackMember } from "../../audit/request-capture.js"
+import { DEN_MCP_OAUTH_RESOURCE } from "../../auth.js"
+import { connectionServerUrl } from "../../mcp/connection-server-tools.js"
 import { cache, type CachedOrgMember } from "../../cache.js"
 import { db } from "../../db.js"
 import { requestReadFor } from "../../request-reads.js"
@@ -472,6 +474,8 @@ const connectionResponseSchema = z.object({
   apiKeyAuthScheme: z.enum(["bearer", "token"]),
   /** True when granted members may use this connection as a standard MCP server with its own tool catalog. */
   exposeDirectly: z.boolean(),
+  /** scope=usable with the connectionMcpServers feature on: this connection's own MCP server, listing only its tools. */
+  mcpUrl: z.string().url().optional(),
   connected: z.boolean(),
   connectedAt: z.string().datetime().nullable(),
   /** Safe creator display label for admin/manageable rows. */
@@ -2603,7 +2607,9 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
         return c.json({ connections })
       }
 
-      return c.json({ connections: await listMemberUsableConnectionFacts({ context }) })
+      const connections = await listMemberUsableConnectionFacts({ context })
+      if (!payload.features.connectionMcpServers) return c.json({ connections })
+      return c.json({ connections: connections.map((connection) => ({ ...connection, mcpUrl: connectionServerUrl(DEN_MCP_OAUTH_RESOURCE, connection.id) })) })
     },
   )
 

@@ -715,6 +715,40 @@ function cachedSearchTools(connection: ExternalMcpConnectionRow, member: McpMemb
   return cached?.outcome === "success" ? cached.tools.filter((tool) => !isToolDisabled(connection.toolPolicy, tool.name)) : undefined
 }
 
+/**
+ * The provider's tools for a member who may use this ready connection,
+ * through the search cache: a recent listing or failure is reused, and every
+ * live listing is remembered for the next caller. Tool policy is not applied.
+ */
+export async function listExternalMcpToolsThroughSearchCache(input: {
+  connection: ExternalMcpConnectionRow
+  member: McpMemberIdentity
+  redirectUriBase: string
+  deadline: ExternalMcpLifecycleDeadline
+  requestTimeoutMs?: number
+}): Promise<ExternalMcpTool[]> {
+  const { connection } = input
+  const cacheKey = externalToolsSearchCacheKey(connection, input.member)
+  const cached = cacheKey ? getExternalToolsSearchCache(cacheKey) : undefined
+  if (cached?.outcome === "failure") throw cached.error
+  if (cached?.outcome === "success") return cached.tools
+  try {
+    const tools = await listExternalMcpTools(
+      connection,
+      redirectUriFor(input.redirectUriBase, connection.id),
+      connection.credentialMode === "per_member" ? { orgMembershipId: input.member.orgMembershipId } : undefined,
+      undefined,
+      input.deadline,
+      input.requestTimeoutMs,
+    )
+    if (cacheKey) setExternalToolsSearchCache(cacheKey, { outcome: "success", tools })
+    return tools
+  } catch (error) {
+    if (cacheKey) setExternalToolsSearchCache(cacheKey, { outcome: "failure", error })
+    throw error
+  }
+}
+
 const CONNECTION_CARD_HINT = "Execute this exact capability name once: it returns the live status, renders an actionable connection card for the member in compatible hosts, and includes the action to relay in text."
 
 async function probeExternalMcpConnection(input: {
@@ -800,29 +834,16 @@ async function probeExternalMcpConnection(input: {
     return matches
   }
 
-  const member = connection.credentialMode === "per_member"
-    ? { orgMembershipId: input.member.orgMembershipId }
-    : undefined
   let tools: Awaited<ReturnType<typeof listExternalMcpTools>>
-  const cacheKey = externalToolsSearchCacheKey(connection, input.member)
-  const cachedProbe = cacheKey ? getExternalToolsSearchCache(cacheKey) : undefined
   try {
-    if (cachedProbe?.outcome === "failure") throw cachedProbe.error
-    if (cachedProbe?.outcome === "success") {
-      tools = cachedProbe.tools
-    } else {
-      tools = await listExternalMcpTools(
-        connection,
-        redirectUriFor(input.redirectUriBase, connection.id),
-        member,
-        undefined,
-        input.deadline,
-        EXTERNAL_MCP_SEARCH_REQUEST_TIMEOUT_MS,
-      )
-      if (cacheKey) setExternalToolsSearchCache(cacheKey, { outcome: "success", tools })
-    }
+    tools = await listExternalMcpToolsThroughSearchCache({
+      connection,
+      member: input.member,
+      redirectUriBase: input.redirectUriBase,
+      deadline: input.deadline,
+      requestTimeoutMs: EXTERNAL_MCP_SEARCH_REQUEST_TIMEOUT_MS,
+    })
   } catch (error) {
-    if (cacheKey && !cachedProbe) setExternalToolsSearchCache(cacheKey, { outcome: "failure", error })
     const message = upstreamErrorMessage(error)
     const diagnostic = error instanceof ExternalMcpDiagnosticError ? error.diagnostic : undefined
     const nameTokens = tokenize(connection.name)

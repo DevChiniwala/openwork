@@ -38,6 +38,16 @@
               ],
               "description": "Organization control panel and grants: Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration. Renders DEN_FEATURE_ORGANIZATION_GRANTS."
             },
+            "connectionMcpServers": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: an MCP server for each connection: Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools. Renders DEN_FEATURE_CONNECTION_MCP_SERVERS."
+            },
             "liveProviderSync": {
               "enum": [
                 "",

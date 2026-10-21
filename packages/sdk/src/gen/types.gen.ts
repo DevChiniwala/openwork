@@ -809,6 +809,7 @@ export type AdminFeature = {
   key:
     | "nativeDictation"
     | "organizationGrants"
+    | "connectionMcpServers"
     | "liveProviderSync"
     | "managedDeployments"
     | "workbotDocuments"
@@ -861,6 +862,7 @@ export type AdminOrganizationsPageResponse = {
     capabilities?: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
@@ -894,6 +896,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1075,6 +1086,7 @@ export type AdminOverviewResponse = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
@@ -1108,6 +1120,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -4514,6 +4535,7 @@ export type ExternalMcpConnectionResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
@@ -4793,6 +4815,7 @@ export type ExternalMcpConnectionCreatedResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
@@ -4924,6 +4947,7 @@ export type ExternalMcpConnectionUpdatedResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
@@ -7222,6 +7246,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       liveProviderSync: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7342,6 +7375,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
     capabilities: {
       nativeDictation?: boolean | null;
       organizationGrants?: boolean | null;
+      connectionMcpServers?: boolean | null;
       liveProviderSync?: boolean | null;
       managedDeployments?: boolean | null;
       workbotDocuments?: boolean | null;
@@ -7402,6 +7436,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8588,6 +8631,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
@@ -8621,6 +8665,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8790,6 +8843,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
@@ -8823,6 +8877,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -35514,6 +35577,25 @@ export type GetMcpAgentWellKnownOauthProtectedResourceResponses = {
 
 export type GetMcpAgentWellKnownOauthProtectedResourceResponse =
   GetMcpAgentWellKnownOauthProtectedResourceResponses[keyof GetMcpAgentWellKnownOauthProtectedResourceResponses];
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdData = {
+  body?: never;
+  path: {
+    connectionId: string;
+  };
+  query?: never;
+  url: "/.well-known/oauth-protected-resource/mcp/agent/servers/{connectionId}";
+};
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses = {
+  /**
+   * Protected resource metadata (RFC 9728).
+   */
+  200: OAuthProtectedResourceMetadata;
+};
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponse =
+  GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses[keyof GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses];
 
 export type GetWellKnownOauthProtectedResourceMcpAdminData = {
   body?: never;

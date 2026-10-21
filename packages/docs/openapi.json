@@ -2806,6 +2806,7 @@
             "enum": [
               "nativeDictation",
               "organizationGrants",
+              "connectionMcpServers",
               "liveProviderSync",
               "managedDeployments",
               "workbotDocuments",
@@ -2998,6 +2999,9 @@
                     "organizationGrants": {
                       "type": "boolean"
                     },
+                    "connectionMcpServers": {
+                      "type": "boolean"
+                    },
                     "liveProviderSync": {
                       "type": "boolean"
                     },
@@ -3044,6 +3048,7 @@
                   "required": [
                     "nativeDictation",
                     "organizationGrants",
+                    "connectionMcpServers",
                     "liveProviderSync",
                     "managedDeployments",
                     "workbotDocuments",
@@ -3176,6 +3181,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "connectionMcpServers": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "liveProviderSync": {
                       "type": "object",
                       "properties": {
@@ -3864,6 +3926,7 @@
                   "required": [
                     "nativeDictation",
                     "organizationGrants",
+                    "connectionMcpServers",
                     "liveProviderSync",
                     "managedDeployments",
                     "workbotDocuments",
@@ -4251,6 +4314,9 @@
                     "organizationGrants": {
                       "type": "boolean"
                     },
+                    "connectionMcpServers": {
+                      "type": "boolean"
+                    },
                     "liveProviderSync": {
                       "type": "boolean"
                     },
@@ -4297,6 +4363,7 @@
                   "required": [
                     "nativeDictation",
                     "organizationGrants",
+                    "connectionMcpServers",
                     "liveProviderSync",
                     "managedDeployments",
                     "workbotDocuments",
@@ -4429,6 +4496,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "connectionMcpServers": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "liveProviderSync": {
                       "type": "object",
                       "properties": {
@@ -5117,6 +5241,7 @@
                   "required": [
                     "nativeDictation",
                     "organizationGrants",
+                    "connectionMcpServers",
                     "liveProviderSync",
                     "managedDeployments",
                     "workbotDocuments",
@@ -18671,6 +18796,10 @@
           "exposeDirectly": {
             "type": "boolean"
           },
+          "mcpUrl": {
+            "type": "string",
+            "format": "uri"
+          },
           "connected": {
             "type": "boolean"
           },
@@ -19760,6 +19889,10 @@
           "exposeDirectly": {
             "type": "boolean"
           },
+          "mcpUrl": {
+            "type": "string",
+            "format": "uri"
+          },
           "connected": {
             "type": "boolean"
           },
@@ -20452,6 +20585,10 @@
           },
           "exposeDirectly": {
             "type": "boolean"
+          },
+          "mcpUrl": {
+            "type": "string",
+            "format": "uri"
           },
           "connected": {
             "type": "boolean"
@@ -30085,6 +30222,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "connectionMcpServers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "liveProviderSync": {
                           "type": "object",
                           "properties": {
@@ -30773,6 +30967,7 @@
                       "required": [
                         "nativeDictation",
                         "organizationGrants",
+                        "connectionMcpServers",
                         "liveProviderSync",
                         "managedDeployments",
                         "workbotDocuments",
@@ -30995,6 +31190,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "connectionMcpServers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "liveProviderSync": {
                           "type": "object",
                           "properties": {
@@ -31683,6 +31935,7 @@
                       "required": [
                         "nativeDictation",
                         "organizationGrants",
+                        "connectionMcpServers",
                         "liveProviderSync",
                         "managedDeployments",
                         "workbotDocuments",
@@ -31767,6 +32020,16 @@
                         ]
                       },
                       "organizationGrants": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "connectionMcpServers": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -34571,6 +34834,9 @@
                         "organizationGrants": {
                           "type": "boolean"
                         },
+                        "connectionMcpServers": {
+                          "type": "boolean"
+                        },
                         "liveProviderSync": {
                           "type": "boolean"
                         },
@@ -34617,6 +34883,7 @@
                       "required": [
                         "nativeDictation",
                         "organizationGrants",
+                        "connectionMcpServers",
                         "liveProviderSync",
                         "managedDeployments",
                         "workbotDocuments",
@@ -34749,6 +35016,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "connectionMcpServers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "liveProviderSync": {
                           "type": "object",
                           "properties": {
@@ -35437,6 +35761,7 @@
                       "required": [
                         "nativeDictation",
                         "organizationGrants",
+                        "connectionMcpServers",
                         "liveProviderSync",
                         "managedDeployments",
                         "workbotDocuments",
@@ -35573,6 +35898,9 @@
                         "organizationGrants": {
                           "type": "boolean"
                         },
+                        "connectionMcpServers": {
+                          "type": "boolean"
+                        },
                         "liveProviderSync": {
                           "type": "boolean"
                         },
@@ -35619,6 +35947,7 @@
                       "required": [
                         "nativeDictation",
                         "organizationGrants",
+                        "connectionMcpServers",
                         "liveProviderSync",
                         "managedDeployments",
                         "workbotDocuments",
@@ -35751,6 +36080,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "connectionMcpServers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "liveProviderSync": {
                           "type": "object",
                           "properties": {
@@ -36439,6 +36825,7 @@
                       "required": [
                         "nativeDictation",
                         "organizationGrants",
+                        "connectionMcpServers",
                         "liveProviderSync",
                         "managedDeployments",
                         "workbotDocuments",
@@ -108036,6 +108423,39 @@
             }
           }
         }
+      }
+    },
+    "/.well-known/oauth-protected-resource/mcp/agent/servers/{connectionId}": {
+      "get": {
+        "operationId": "getWellKnownOauthProtectedResourceMcpAgentServersByConnectionId",
+        "tags": [
+          "OAuth"
+        ],
+        "security": [],
+        "summary": "Get OAuth protected resource metadata for /mcp/agent",
+        "description": "Returns the RFC 9728 protected-resource metadata MCP clients use to discover the authorization server and scopes for this transport.",
+        "responses": {
+          "200": {
+            "description": "Protected resource metadata (RFC 9728).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthProtectedResourceMetadata"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "connectionId",
+            "required": true
+          }
+        ]
       }
     },
     "/.well-known/oauth-protected-resource/mcp/admin": {
