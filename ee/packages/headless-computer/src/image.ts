@@ -21,6 +21,34 @@ setsid nohup bash -c 'cd /workspace; bash -c "$1"; code=$?; echo "[exit $code]";
 echo "Started $name in the background. Follow it with: tail -n 20 $log"
 `
 
+/**
+ * `sudo openwork-install <package>...`: the only administrative step the agent's shell can take.
+ * Plain package names from the image's own repositories; no apt options, sources, files or versions,
+ * so it cannot be turned into a general root shell.
+ */
+const INSTALL_HELPER = `#!/bin/sh
+set -eu
+usage() { echo "usage: sudo openwork-install <package> [package...] (up to 20 package names)" >&2; exit 2; }
+[ "$(id -u)" = 0 ] || { echo "Run it with sudo: sudo openwork-install <package>..." >&2; exit 1; }
+[ "$#" -ge 1 ] && [ "$#" -le 20 ] || usage
+for name in "$@"; do
+  case "$name" in
+    [a-z0-9]*) ;;
+    *) echo "Not a package name: $name" >&2; usage ;;
+  esac
+  case "$name" in
+    *[!a-z0-9+.-]*) echo "Not a package name: $name" >&2; usage ;;
+  esac
+  [ "\${#name}" -le 100 ] || usage
+done
+unset APT_CONFIG
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin DEBIAN_FRONTEND=noninteractive
+exec 9>/var/lock/openwork-install.lock
+flock 9
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends -- "$@"
+`
+
 function installScript(officePackages: string, lockedPython = false) { return `set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -36,6 +64,10 @@ ${lockedPython ? `python3 -m pip install --no-cache-dir --quiet --break-system-p
 cat > /usr/local/bin/background <<'HELPER'
 ${BACKGROUND_HELPER}HELPER
 chmod 755 /usr/local/bin/background
+cat > /usr/local/sbin/openwork-install <<'HELPER'
+${INSTALL_HELPER}HELPER
+chown root:root /usr/local/sbin/openwork-install
+chmod 755 /usr/local/sbin/openwork-install
 mkdir -p /workspace/files /workspace/out /workspace/.jobs
 chown -R 1000:1000 /workspace
 apt-get clean
