@@ -3,7 +3,7 @@ import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-export const WINDOWS_SHORTCUT_TIMEOUT_MS = 5000;
+export const WINDOWS_SHORTCUT_TIMEOUT_MS = 15000;
 
 export function repairWindowsShortcutTarget(shortcutPath, details, {
   execute = execFile,

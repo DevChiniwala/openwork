@@ -43,7 +43,7 @@ test("fast repair preserves target, working directory and icon script and launch
       assert.equal(file, "powershell.exe");
       assert.match(args.at(-1), /\$link.TargetPath = \$value.target/);
       assert.match(args.at(-1), /\$link.Save\(\)/);
-      assert.equal(options.timeout, 5000);
+      assert.equal(options.timeout, 15000);
       callback(null);
     },
   }), true);
