@@ -37,8 +37,10 @@ const sendSchema = z
     attachments: z.array(fileIdSchema).max(20).optional(),
     context: workbotViewContextSchema.optional(),
     teachingId: z.string().uuid().optional(),
+    teachingStepId: z.number().int().positive().optional(),
   })
   .strict()
+  .refine(value => value.teachingStepId === undefined || value.teachingId !== undefined, "Choose a demonstration before explaining a step.")
 const editSchema = z
   .object({
     newId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
@@ -409,10 +411,18 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
         const client = runnerClientFor(member)
         const sessionId = await workbotFor(member).sessionIdOf(actorOf(member))
         const state = await client.browserDemonstration(sessionId, { action: "read" })
-        if (!state.ok || state.value.demonstration?.id !== body.data.teachingId || state.value.demonstration.phase !== "recording") return c.json({ error: "teaching_paused", message: "Resume teaching before adding an explanation." }, 409)
-        const annotated = await client.browserDemonstration(sessionId, { action: "annotate", text })
+        if (!state.ok || state.value.demonstration?.id !== body.data.teachingId || !["recording", "paused", "draft"].includes(state.value.demonstration.phase)) return c.json({ error: "teaching_unavailable", message: "Reopen teaching to check the demonstration before sending this explanation." }, 409)
+        const demo = state.value.demonstration
+        if (!demo.annotationIds?.includes(body.data.id) && (demo.annotationIds?.length ?? 0) >= 256) return c.json({ error: "notes_full", message: "Finish this skill before adding more teaching notes." }, 400)
+        if (text.length > 2000) return c.json({ error: "explanation_too_long", message: "Keep each explanation under 2,000 characters, or explain several steps separately." }, 400)
+        const focused = body.data.teachingStepId ? demo.steps.find(step => step.id === body.data.teachingStepId) : demo.steps.at(-1)
+        if (body.data.teachingStepId && !focused) return c.json({ error: "step_unavailable", message: "Choose a recorded step before sending this explanation." }, 409)
+        if (!demo.annotationIds?.includes(body.data.id) && focused && focused.explanation.length + text.length + (focused.explanation ? 1 : 0) > 2000) return c.json({ error: "step_notes_full", message: "This step's notes are full. Edit its explanation before adding more." }, 400)
+        const annotated = await client.browserDemonstration(sessionId, { action: "annotate", text, messageId: body.data.id, ...(focused ? { stepId: focused.id } : {}) })
         if (!annotated.ok || !annotated.value.demonstration) return c.json({ error: "teaching_unavailable" }, 409)
-        text = browserTeachingPrompt(text, annotated.value.demonstration.steps)
+        const confirmed = await den.session(member.accessToken)
+        if (!confirmed.enabled || !confirmed.computer || !confirmed.browserDemonstrations || confirmed.user.id !== fresh.user.id || confirmed.organization.id !== fresh.organization.id || confirmed.memberId !== fresh.memberId) return c.json({ error: "feature_disabled" }, 403)
+        text = browserTeachingPrompt(text, annotated.value.demonstration.steps, { phase: annotated.value.demonstration.phase, stepId: focused?.id ?? annotated.value.demonstration.steps.at(-1)?.id })
         if (text.length > MAX_MESSAGE_CHARS) return c.json(messageTooLong, 400)
       }
       const result = await workbotFor(member).send(actorOf(member), { ...body.data, text, chat: scope.chat })

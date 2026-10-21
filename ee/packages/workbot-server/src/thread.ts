@@ -1,4 +1,4 @@
-import { readBrowserTeachingPrompt } from "@openwork/types/browser-demonstration"
+import { readBrowserTeachingPrompt, readBrowserSkillRunPrompt } from "@openwork/types/browser-demonstration"
 import type { RunnerMessage, RunnerSnapshot, RunnerTurn } from "@openwork-ee/headless-protocol"
 import { readWorkbotContextPrompt, type WorkbotViewContext } from "@openwork/types/workbot-context"
 
@@ -374,7 +374,7 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
     const outputs = outputsOf(files, turn.createdAt ?? null, working ? null : (turn.updatedAt ?? null))
     // A report is Workbot speaking first: the task's notes to it stay hidden, and it brings back what the task made.
     const task = turn.kind === "report" ? snapshot.turns.find((entry) => entry.messageId === turn.parent) : undefined
-    const visible = readWorkbotContextPrompt(readBrowserTeachingPrompt(user.text))
+    const visible = readWorkbotContextPrompt(readBrowserSkillRunPrompt(readBrowserTeachingPrompt(user.text)))
     turns.push({
       id: turn.messageId.slice(WORKBOT_MESSAGE_PREFIX.length),
       text: turn.kind === "report" || greeting ? "" : visible.text,

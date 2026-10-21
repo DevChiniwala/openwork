@@ -8,6 +8,7 @@ import { publicDestination } from "./chromium.mjs";
 
 const WORLD = "openwork-browser-demonstration";
 const BINDING = "__openworkDemonstrationEvent";
+const MISSING_LABEL_NOTICE = "The selected information has no label. Explain how to locate it before saving.";
 function privacyFilter() {
   const values = new Map();
   let bytes = 0, concealed = false;
@@ -168,11 +169,11 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
     if (step.kind === "fill" && previous?.kind === "fill" && fieldKey !== null && fieldKey === lastField) { previous.target = step.target; void persist().catch(() => {}); return; }
     lastField = step.kind === "fill" ? fieldKey : null;
     const id = (previous?.id ?? 0) + 1;
-    const entry = { ...step, id, explanation: "" };
+    const entry = { ...step, id, explanation: "", revision: 0 };
     if (["fill", "select"].includes(step.kind)) entry.parameter = `input_${id}`;
     if (step.kind === "extract") {
       entry.field = `field_${id}`;
-      if (!step.target?.name) demo.notice = "The selected information has no label. Explain how to locate it before saving.";
+      if (!step.target?.name) demo.notice = MISSING_LABEL_NOTICE;
     }
     demo.steps.push(entry); void persist().catch(() => {});
   };
@@ -277,19 +278,30 @@ export function createBrowserDemonstration({ path, endpoint = "http://127.0.0.1:
       } else if (input.action === "pick") {
         if (!active()) throw new Error("Resume teaching before selecting information."); await setMode(true);
       } else if (input.action === "annotate") {
-        let step = input.stepId ? demo.steps.find(step => step.id === input.stepId) : demo.steps.at(-1);
-        if (!step && !input.stepId && active()) { append({ kind: "note" }); step = demo.steps.at(-1); }
-        if (!step) throw new Error("Record a browser action before explaining it.");
-        step.explanation = `${step.explanation}${step.explanation ? "\n" : ""}${input.text}`.slice(0, 2000);
+        const seen = demo.annotationIds ?? [];
+        if (!input.messageId || !seen.includes(input.messageId)) {
+          if (input.messageId && seen.length >= 256) throw new Error("Finish this demonstration before adding more notes.");
+          let step = input.stepId ? demo.steps.find(step => step.id === input.stepId) : demo.steps.at(-1);
+          if (!step && !input.stepId && demo.steps.length < 120) {
+            step = { id: 1, kind: "note", explanation: "", revision: 0 }; demo.steps.push(step);
+          }
+          if (!step) throw new Error("Choose an available step before explaining it.");
+          const explanation = `${step.explanation}${step.explanation ? "\n" : ""}${input.text}`;
+          if (explanation.length > 2000) throw new Error("The step's notes are full. Edit its explanation before adding more.");
+          step.explanation = explanation; step.revision = (step.revision ?? 0) + 1;
+          if (input.messageId) demo.annotationIds = [...seen, input.messageId];
+        }
       } else if (input.action === "edit") {
         const step = demo.steps.find(step => step.id === input.stepId);
         if (!step) throw new Error("The step is unavailable.");
-        step.explanation = input.explanation;
+        if (input.expectedRevision !== undefined && input.expectedRevision !== (step.revision ?? 0)) throw new Error("This step has newer notes. Review its current explanation before saving.");
+        step.explanation = input.explanation; step.revision = (step.revision ?? 0) + 1;
         if (input.parameter && ["fill", "select"].includes(step.kind)) step.parameter = input.parameter;
         if (input.field && step.kind === "extract") step.field = input.field;
       }
       if (input.action === "read" && demo.phase === "recording") until = now() + 12_000;
     }
+    if (demo?.notice === MISSING_LABEL_NOTICE && demo.steps.every(step => step.kind !== "extract" || step.target?.name || step.explanation.trim())) demo.notice = undefined;
     if (demo) await persist();
     return { demonstration: structuredClone(demo) };
   }

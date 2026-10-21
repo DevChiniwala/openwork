@@ -12,6 +12,7 @@ export const demonstrationStepSchema = z.object({
   parameter: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
   field: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
   explanation: text.default(""),
+  revision: z.number().int().nonnegative().optional(),
 }).strict()
 export const demonstrationSchema = z.object({
   id: z.string().uuid(),
@@ -19,14 +20,15 @@ export const demonstrationSchema = z.object({
   tabId: z.string().min(1).max(160),
   steps: z.array(demonstrationStepSchema).max(120),
   notice: z.string().max(300).optional(),
+  annotationIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{8,64}$/)).max(256).optional(),
 }).strict()
 export const demonstrationCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("tabs") }).strict(),
   z.object({ action: z.literal("read") }).strict(),
   z.object({ action: z.literal("start"), tabId: z.string().min(1).max(160) }).strict(),
   z.object({ action: z.enum(["pause", "resume", "finish", "discard", "pick"]) }).strict(),
-  z.object({ action: z.literal("annotate"), text: text.min(1), stepId: z.number().int().positive().optional() }).strict(),
-  z.object({ action: z.literal("edit"), stepId: z.number().int().positive(), explanation: text, parameter: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(), field: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional() }).strict(),
+  z.object({ action: z.literal("annotate"), text: text.min(1), stepId: z.number().int().positive().optional(), messageId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional() }).strict(),
+  z.object({ action: z.literal("edit"), stepId: z.number().int().positive(), explanation: text, expectedRevision: z.number().int().nonnegative().optional(), parameter: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(), field: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional() }).strict(),
 ])
 export const demonstrationReplySchema = z.object({
   demonstration: demonstrationSchema.nullable(),
@@ -37,17 +39,88 @@ export type DemonstrationStep = z.infer<typeof demonstrationStepSchema>
 export type DemonstrationCommand = z.infer<typeof demonstrationCommandSchema>
 export type DemonstrationReply = z.infer<typeof demonstrationReplySchema>
 
-const TEACHING_PREFIX = "[OpenWork browser teaching v1]"
-export function browserTeachingPrompt(message: string, steps: DemonstrationStep[]) {
-  return `${TEACHING_PREFIX}\n${JSON.stringify(steps.slice(-8).map(step => demonstrationStepSchema.parse(step)))}\n\n[Teacher message]\n${message}`
+/** Local chat context names a real guest-owned draft, never a live browser element. */
+export type BrowserTeachingContext = {
+  id: string
+  phase: BrowserDemonstration["phase"]
+  stepId?: number
+  label: string
+}
+
+export function demonstrationStepLabel(step: DemonstrationStep) {
+  const target = step.target?.name || "the control"
+  if (step.kind === "navigate") return "Navigate to the task page"
+  if (step.kind === "fill") return `Enter ${step.target?.name || "a value"}`
+  if (step.kind === "select") return `Choose ${step.target?.name || "an option"}`
+  if (step.kind === "extract") return `Collect ${step.target?.name || "selected information"}`
+  if (step.kind === "key") return `Press ${step.key ?? "the key"}`
+  return step.kind === "note" ? "Task instructions" : `Click ${target}`
+}
+
+export function browserInputLabel(name: string) {
+  const label = name.replace(/_/g, " ")
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+export function browserSkillInputs(demo: BrowserDemonstration) {
+  const inputs = new Map<string, { name: string; label: string; kind: "url" | "text" }>()
+  if (demo.steps.some(step => step.kind === "navigate")) inputs.set("start_url", { name: "start_url", label: "Starting page", kind: "url" })
+  for (const step of demo.steps) {
+    if (!step.parameter || inputs.has(step.parameter)) continue
+    const label = /^input_\d+$/.test(step.parameter) ? step.target?.name || `Value for step ${step.id}` : browserInputLabel(step.parameter)
+    inputs.set(step.parameter, { name: step.parameter, label, kind: "text" })
+  }
+  return [...inputs.values()]
+}
+
+const LEGACY_TEACHING_PREFIX = "[OpenWork browser teaching v1]"
+const TEACHING_PREFIX = "[OpenWork browser teaching v2]"
+const TEACHER_MARKER = "\n\n[Teacher message]\n"
+const teachingSnapshotSchema = z.object({ phase: z.enum(["recording", "paused", "draft"]), focusedStepId: z.number().int().positive().optional(), steps: z.array(demonstrationStepSchema).max(8) }).strict()
+export function browserTeachingPrompt(message: string, steps: DemonstrationStep[], focus: { phase: BrowserDemonstration["phase"]; stepId?: number } = { phase: "recording" }) {
+  const focused = steps.find(step => step.id === focus.stepId)
+  const recent = steps.slice(-8)
+  const selected = focused && !recent.some(step => step.id === focused.id) ? [...recent.slice(-7), focused] : recent
+  const snapshot = teachingSnapshotSchema.parse({ phase: focus.phase, ...(focused ? { focusedStepId: focused.id } : {}), steps: selected })
+  return `${TEACHING_PREFIX}\n${JSON.stringify(snapshot)}${TEACHER_MARKER}${message}`
+}
+function parseBrowserTeachingPrompt(message: string) {
+  const prefix = [TEACHING_PREFIX, LEGACY_TEACHING_PREFIX].find(prefix => message.startsWith(`${prefix}\n`))
+  if (!prefix) return
+  const at = message.indexOf(TEACHER_MARKER)
+  if (at < 0) return
+  let raw: unknown
+  try { raw = JSON.parse(message.slice(prefix.length + 1, at)) } catch { return }
+  const parsed = teachingSnapshotSchema.safeParse(prefix === TEACHING_PREFIX ? raw : { phase: "recording", steps: raw })
+  return parsed.success ? { snapshot: parsed.data, text: message.slice(at + TEACHER_MARKER.length) } : undefined
 }
 export function readBrowserTeachingPrompt(message: string) {
-  if (!message.startsWith(`${TEACHING_PREFIX}\n`)) return message
-  const marker = "\n\n[Teacher message]\n"
-  const at = message.indexOf(marker)
+  return parseBrowserTeachingPrompt(message)?.text ?? message
+}
+/** Message corrections keep the original teaching turn's read-only authority. */
+export function replaceBrowserTeachingMessage(source: string, replacement: string) {
+  const parsed = parseBrowserTeachingPrompt(source)
+  return parsed ? browserTeachingPrompt(replacement, parsed.snapshot.steps, { phase: parsed.snapshot.phase, stepId: parsed.snapshot.focusedStepId }) : replacement
+}
+
+const RUN_PREFIX = "[OpenWork browser skill run v1]"
+const RUN_MARKER = "\n\n[Run request]\n"
+const skillRunSchema = z.object({ name: z.string().min(1).max(100), inputs: z.record(z.string().max(64), z.string().max(2000)) }).strict()
+export function browserSkillRunPrompt(name: string, demo: BrowserDemonstration, values: Readonly<Record<string, string>>) {
+  const supplied = browserSkillInputs(demo).flatMap(input => {
+    const value = Object.hasOwn(values, input.name) ? values[input.name]?.trim() : undefined
+    return value ? [{ ...input, value }] : []
+  })
+  const snapshot = skillRunSchema.parse({ name, inputs: Object.fromEntries(supplied.map(input => [input.name, input.value])) })
+  const visible = [`Run my ${name} skill.`, ...supplied.map(input => `${input.label}: ${input.value}`)].join("\n")
+  return `${RUN_PREFIX}\n${JSON.stringify(snapshot)}${RUN_MARKER}${visible}`
+}
+export function readBrowserSkillRunPrompt(message: string) {
+  if (!message.startsWith(`${RUN_PREFIX}\n`)) return message
+  const at = message.indexOf(RUN_MARKER)
   if (at < 0) return message
-  const parsed = z.array(demonstrationStepSchema).max(8).safeParse((() => { try { return JSON.parse(message.slice(TEACHING_PREFIX.length + 1, at)) } catch { return null } })())
-  return parsed.success ? message.slice(at + marker.length) : message
+  try { if (skillRunSchema.safeParse(JSON.parse(message.slice(RUN_PREFIX.length + 1, at))).success) return message.slice(at + RUN_MARKER.length) } catch { /* Ordinary chat stays unchanged. */ }
+  return message
 }
 
 /** Page-derived descriptors are quoted data, never instructions. Input values are never recorded. */

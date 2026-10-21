@@ -4,6 +4,7 @@
 import { Maximize2, Monitor, Pause, Play, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { WorkbotTeaching } from "./teaching";
 import { errorMessage, workbotHost } from "./host";
 
@@ -11,10 +12,11 @@ const viewerSchema = z.union([z.object({ state: z.literal("paused") }), z.object
 const button = "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-[var(--wb-text)] hover:bg-[var(--wb-chip)] disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]";
 
 /** Both views belong to the main conversation's computer. noVNC carries pixels and native input. */
-export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { onTeachingChange?(id: string | undefined): void; onRun?(text: string): void; canTeach?: boolean }) {
+export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean }) {
   const host = workbotHost();
-  const [teachingId, setTeachingId] = useState<string>();
-  const teachingChange = useCallback((id: string | undefined) => { setTeachingId(id); onTeachingChange?.(id); }, [onTeachingChange]);
+  const [teaching, setTeaching] = useState<BrowserTeachingContext>();
+  const teachingChange = useCallback((context: BrowserTeachingContext | undefined) => { setTeaching(context); onTeachingChange?.(context); }, [onTeachingChange]);
+  const recording = teaching !== undefined && teaching.phase !== "draft";
   const screen = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<"browser" | "computer">("browser");
@@ -105,19 +107,19 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
   return <section ref={container} className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Computer">
     <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--wb-hairline)] px-3 py-2 sm:px-6">
       <div className="flex items-center gap-1" role="group" aria-label="Computer view">
-        {(["browser", "computer"] as const).map(value => <button key={value} type="button" aria-pressed={view === value} disabled={Boolean(teachingId)} onClick={() => setView(value)} className={`${button} ${view === value ? "bg-[var(--wb-chip)]" : ""}`}>{value === "browser" ? "Browser" : "Computer"}</button>)}
+        {(["browser", "computer"] as const).map(value => <button key={value} type="button" aria-pressed={view === value} disabled={recording} onClick={() => setView(value)} className={`${button} ${view === value ? "bg-[var(--wb-chip)]" : ""}`}>{value === "browser" ? "Browser" : "Computer"}</button>)}
       </div>
       <div className="flex items-center gap-1">
         <span className="mr-2 hidden text-[12px] text-[var(--wb-muted)] sm:inline" role="status">{paused ? "Paused" : error ? "Disconnected" : connected ? control ? "You have control" : "Live" : "Connecting…"}</span>
         {paused ? <button type="button" className={button} disabled={changing} onClick={() => void action("resume")}><Play size={14} aria-hidden />Resume</button> : <>
-          <button type="button" className={button} disabled={changing || !connected || Boolean(teachingId)} onClick={() => control ? void action("continue") : setControl(true)}>{control ? "Return to Workbot" : "Take control"}</button>
+          <button type="button" className={button} disabled={changing || !connected || recording} onClick={() => control ? void action("continue") : setControl(true)}>{control ? "Return to Workbot" : "Take control"}</button>
           {agentPaused && !control ? <button type="button" className={button} disabled={changing} onClick={() => void action("continue")}>Continue Workbot</button> : null}
           <button type="button" className={button} disabled={changing} onClick={() => void action("pause")}><Pause size={14} aria-hidden />Pause</button>
         </>}
         <button type="button" className={button} aria-label="Full screen" onClick={() => void container.current?.requestFullscreen().catch(() => setError("Full screen isn't available in this browser."))}><Maximize2 size={14} aria-hidden /></button>
       </div>
     </div>
-    {view === "browser" && canTeach && <WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? text => { void action("continue").then(continued => { if (continued) onRun(text); }); } : undefined} />}
+    {canTeach && <div hidden={view !== "browser"} style={{ display: view === "browser" ? undefined : "none" }}><WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? async text => { if (!await action("continue")) throw new Error("Return browser control to Workbot before starting the run. Your inputs are still here."); await onRun(text); } : undefined} /></div>}
     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#f5f6f7]">
       <div ref={screen} className={`h-full w-full ${paused || error ? "hidden" : ""}`} aria-label={`${view === "browser" ? "Browser" : "Computer"} live view`} />
       {paused || error ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">

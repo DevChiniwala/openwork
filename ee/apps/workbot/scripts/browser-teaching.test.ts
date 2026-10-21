@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { Hono } from "hono"
-import { compileBrowserDemonstration, browserTeachingPrompt, readBrowserTeachingPrompt, demonstrationSchema, type BrowserDemonstration } from "@openwork/types/browser-demonstration"
+import { compileBrowserDemonstration, browserTeachingPrompt, readBrowserTeachingPrompt, demonstrationSchema, browserSkillInputs, browserSkillRunPrompt, readBrowserSkillRunPrompt, replaceBrowserTeachingMessage, type BrowserDemonstration } from "@openwork/types/browser-demonstration"
 import { workbotOwner, workbotSessionId } from "@openwork-ee/workbot-server"
 import { createDen, denSessionSchema } from "../src/server/den.js"
 import { loadConfig } from "../src/server/config.js"
@@ -103,11 +103,40 @@ test("the teaching route requires both same-origin and member middleware before 
 test("a failed teaching send retains its original demonstration identity when retried", async () => {
   const { createComposerState } = await import("../../../packages/workbot-ui/src/composer-state.js")
   const composer = createComposerState(async () => { throw new Error("No uploads in this journey") })
-  const id = composer.enqueue({ id: "teaching_pending", text: "Use this field", teachingId: demonstration.id })
+  const id = composer.enqueue({ id: "teaching_pending", text: "Use this field", teachingId: demonstration.id, teachingStepId: 2 })
   await composer.send(id, async () => { throw new Error("Connection interrupted") })
   assert.equal(composer.getSnapshot().pending[0]?.teachingId, demonstration.id)
+  assert.equal(composer.getSnapshot().pending[0]?.teachingStepId, 2)
   let retriedIdentity: string | undefined
-  await composer.send(id, async entry => { retriedIdentity = entry.teachingId }, true)
+  await composer.send(id, async entry => { retriedIdentity = entry.teachingId; assert.equal(entry.teachingStepId, 2) }, true)
   assert.equal(retriedIdentity, demonstration.id)
   composer.dispose()
+})
+
+
+test("a selected older step remains in paused and draft teaching context without exposing the envelope in chat", () => {
+  const steps = [...demonstration.steps, ...Array.from({ length: 12 }, (_, index) => ({ id: index + 6, kind: "note", explanation: `Clarification ${index + 1}` }))]
+  const valid = demonstrationSchema.parse({ ...demonstration, steps }).steps
+  for (const phase of ["paused", "draft"]) {
+    const prompt = browserTeachingPrompt("Use the complete name", valid, { phase: phase === "paused" ? "paused" : "draft", stepId: 2 })
+    const data = JSON.parse(prompt.split("\n")[1]!)
+    assert.equal(data.phase, phase)
+    assert.equal(data.focusedStepId, 2)
+    assert.equal(data.steps.length, 8)
+    assert.ok(data.steps.some((step: { id: number }) => step.id === 2))
+    assert.equal(readBrowserTeachingPrompt(prompt), "Use the complete name")
+    assert.equal(readBrowserTeachingPrompt(replaceBrowserTeachingMessage(prompt, "Correct that explanation")), "Correct that explanation")
+  }
+  const legacy = `[OpenWork browser teaching v1]\n${JSON.stringify(demonstration.steps)}\n\n[Teacher message]\nAn earlier explanation`
+  assert.equal(readBrowserTeachingPrompt(legacy), "An earlier explanation")
+  assert.match(replaceBrowserTeachingMessage(legacy, "A correction"), /browser teaching v2/)
+})
+
+test("rerun fields carry named inputs while the conversation shows the person's ordinary request", () => {
+  assert.deepEqual(browserSkillInputs(demonstration).map(input => [input.name, input.label]), [["start_url", "Starting page"], ["person_name", "Person name"]])
+  const prompt = browserSkillRunPrompt("registry-lookup", demonstration, { start_url: "https://registry.example.test/", person_name: "Example Two", extra: "not a taught input" })
+  const visible = readBrowserSkillRunPrompt(prompt)
+  assert.equal(visible, "Run my registry-lookup skill.\nStarting page: https://registry.example.test/\nPerson name: Example Two")
+  assert.doesNotMatch(prompt, /not a taught input/)
+  assert.equal(readBrowserTeachingPrompt(prompt), prompt, "a deliberate rerun is outside read-only teaching")
 })

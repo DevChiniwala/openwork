@@ -34,6 +34,7 @@ import { Welcome } from "./welcome";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
 import { WorkbotComputer } from "./computer";
+import { readBrowserSkillRunPrompt, type BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { readWorkbotCorrectionPrompt, workbotCorrectionPrompt, workbotViewContextSchema, type WorkbotViewContext } from "@openwork/types/workbot-context";
 import type { DocumentOpenRequest } from "@openwork/documents";
 import { ComputerNavigationContext, ComputerOffer, DocumentOffers, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
@@ -114,7 +115,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const [turnWindow, setTurnWindow] = useState(PAGE_TURNS);
   const [filesOpen, setFilesOpen] = useState(false);
   // Once activated, keep this shell mounted even when the flag is revoked: draft editors must survive.
-  const [teachingId, setTeachingId] = useState<string>();
+  const [teaching, setTeaching] = useState<BrowserTeachingContext>();
   const [workspaceShell, setWorkspaceShell] = useState(host.workspaceAssistant === true || host.browserDemonstrations === true);
   useEffect(() => { if (host.workspaceAssistant || host.browserDemonstrations) setWorkspaceShell(true); }, [host.workspaceAssistant, host.browserDemonstrations]);
   const [documentContext, setDocumentContext] = useState<WorkbotViewContext | null>(null);
@@ -129,6 +130,8 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     if (!workspaceShell && documentsDirty && next !== "documents") { setLeavingDocuments(next); return false; }
     return true;
   }, workspaceShell);
+  const [computerVisited, setComputerVisited] = useState(tab === "computer");
+  useEffect(() => { if (tab === "computer") setComputerVisited(true); }, [tab]);
   const [documentsVisited, setDocumentsVisited] = useState(tab === "documents");
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
   useEffect(() => { if (tab === "documents") setDocumentsVisited(true); if (tab === "calendar") setCalendarVisited(true); }, [tab]);
@@ -200,21 +203,25 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   }, [data, composerState]);
 
   const sendPending = (id: string, again = false) => {
-    void composerState.send(id, async (entry, attachments) => {
+    return composerState.send(id, async (entry, attachments) => {
       const input = { text: entry.text, context: entry.context, attachments };
       if (entry.correctionOf) await editMessage.mutateAsync({ ...input, id: entry.correctionOf, newId: entry.id });
-      else await send.mutateAsync({ ...input, id: entry.id, ...(entry.teachingId ? { teachingId: entry.teachingId } : {}) });
+      else await send.mutateAsync({ ...input, id: entry.id, ...(entry.teachingId ? { teachingId: entry.teachingId, teachingStepId: entry.teachingStepId } : {}) });
       void queryClient.invalidateQueries({ queryKey: workbotFilesKey });
     }, again);
   };
-  const submit = (text: string, retry?: Pending) => {
+  const submit = (text: string, retry?: Pending, runSkill = false) => {
     if (retry) { sendPending(retry.id, true); return; }
     const trimmed = text.trim();
     if (!trimmed && draft.uploads.length === 0) return;
     const parsed = workbotViewContextSchema.safeParse(includeContext ? currentContext : undefined);
     const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || host.documents) ? parsed.data : undefined;
-    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, ...(teachingId ? { teachingId } : {}) });
-    sendPending(id);
+    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, ...(!runSkill && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
+    const delivery = sendPending(id);
+    if (runSkill) return delivery.then(() => {
+      const failure = composerState.getSnapshot().pending.find(entry => entry.id === id)?.failed;
+      if (failure) throw new Error(failure);
+    });
   };
 
   /** Failed answer retries are reported on their original message. Unaccepted sends stay with their pending owner. */
@@ -247,7 +254,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
     /> : null;
-    const composer = <Composer text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled}
+    const composer = <WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
       onSend={text => submit(text)} onStop={() => stop.mutate()} autoFocus={false} disabled={!data} />;
     const firstName = user?.name?.trim().split(/\s+/)[0] ?? null;
@@ -278,7 +285,9 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           <div className="flex min-h-0 min-w-0 flex-1 border-t border-[var(--wb-hairline)]" style={{ display: tab === "calendar" ? undefined : "none" }} hidden={tab !== "calendar"}>
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
-          {tab === "computer" && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeachingId} onRun={text => submit(text)} canTeach={!side} />}
+          <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
+            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} />}
+          </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
           </div>
@@ -304,7 +313,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeachingId} onRun={text => submit(text)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );
@@ -353,7 +362,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   // Right after the welcome: the conversation, with Workbot typing its hello. If that can't start, the drawn greeting.
   const starting = empty && (start.isPending || (greetingAwaited && start.data?.started === true));
   const composer = (
-    <Composer
+    <WorkbotComposer
       text={draft.text}
       onText={composerState.setText}
       name={data.name}
@@ -1178,7 +1187,7 @@ function PendingView({ entry, onRetry, waiting }: { entry: Pending; onRetry: () 
       <SentAttachments attachments={attachments} localUrls={urls} />
       {/* Holds Edit's place while sending, so the bubble doesn't move when its turn arrives. */}
       <SentContext context={entry.context} />
-      <UserBubble text={entry.correctionReference ? workbotCorrectionPrompt(entry.text, entry.correctionReference) : entry.text} muted={Boolean(entry.failed)} action={entry.failed ? undefined : <EditButton disabled />} />
+      <UserBubble text={entry.correctionReference ? workbotCorrectionPrompt(readBrowserSkillRunPrompt(entry.text), entry.correctionReference) : readBrowserSkillRunPrompt(entry.text)} muted={Boolean(entry.failed)} action={entry.failed ? undefined : <EditButton disabled />} />
       {entry.failed ? (
         <ErrorLine align="end" action={{ label: "Send again", onClick: onRetry }}>{entry.failed}</ErrorLine>
       ) : uploading || waiting ? (
@@ -1724,7 +1733,8 @@ function OutputFiles({ files }: { files: WorkbotAttachment[] }) {
   );
 }
 
-function Composer(props: {
+export function WorkbotComposer(props: {
+  teaching?: BrowserTeachingContext;
   text: string;
   onText: (text: string) => void;
   name: string;
@@ -1774,7 +1784,11 @@ function Composer(props: {
   const showStop = props.busy && !canSend;
   const multiline = hasFiles || text.includes("\n") || text.length > 70;
 
-  return (
+  return <>
+    {props.teaching && <div role="status" className="mb-2 flex flex-col gap-0.5 px-3 text-[12px] text-[var(--wb-muted)]" data-workbot-teaching-context>
+      <span>{props.teaching.phase === "recording" ? `Teaching ${props.name}` : props.teaching.phase === "paused" ? "Recording paused · Still teaching" : "Reviewing the skill"}</span>
+      <span className="truncate">{props.teaching.label}</span>
+    </div>}
     <div
       data-workbot-composer
       className={`flex bg-[var(--wb-surface)] shadow-[var(--wb-composer-shadow)] transition-[border-radius] duration-150 ${
@@ -1793,7 +1807,7 @@ function Composer(props: {
           onChange={(event) => props.onText(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          placeholder={`Message ${props.name}`}
+          placeholder={props.teaching ? "Explain this step or ask a question" : `Message ${props.name}`}
           aria-label={`Message ${props.name}`}
           className="max-h-[200px] min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[7px] text-[16px] leading-[22px] text-[var(--wb-text)] outline-none placeholder:text-[var(--wb-faint)] sm:py-[9px] sm:text-[14px] sm:leading-[18px]"
         />
@@ -1810,5 +1824,5 @@ function Composer(props: {
         </button>
       </div>
     </div>
-  );
+  </>;
 }

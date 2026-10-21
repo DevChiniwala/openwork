@@ -10,7 +10,7 @@ import { chrome } from "@openwork/hosts";
 import { createBrowserDemonstration } from "../../packages/computer-use/browser-demonstration.mjs";
 import { createCloudBrowser } from "../../packages/computer-use/chromium.mjs";
 import { teachingServer } from "../../ee/apps/workbot/test-fixtures/teaching-server.ts";
-import { demonstrationReplySchema } from "@openwork/types/browser-demonstration";
+import { demonstrationReplySchema, readBrowserTeachingPrompt } from "@openwork/types/browser-demonstration";
 import { enableOrganizationCapabilities } from "./organization-capabilities.ts";
 
 const fixtureEntry = fileURLToPath(new URL("../../ee/apps/workbot/test-fixtures/browser-teaching.tsx", import.meta.url));
@@ -27,6 +27,7 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
   const turns: { prompt: string; readOnly: boolean }[] = [];
   let state: ReturnType<typeof demonstrationReplySchema.parse> = { demonstration: null };
   let runResult: unknown = null;
+  let failCorrectionOnce = true;
   let denUrl = "", token = "";
   let app: Awaited<ReturnType<typeof teachingServer>> | undefined;
   let recorder: ReturnType<typeof createBrowserDemonstration> | undefined;
@@ -51,7 +52,8 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
       }
       if (request.url?.endsWith("/turns") && request.method === "POST") {
         const turn = turnSchema.parse(JSON.parse(raw)); turns.push({ prompt: turn.prompt, readOnly: turn.credentials.readOnly === true });
-        if (!turn.credentials.readOnly && turn.prompt.startsWith("Use my saved browser skill")) {
+        if (readBrowserTeachingPrompt(turn.prompt) === "Use the full person name when checking the record." && failCorrectionOnce) { failCorrectionOnce = false; return json({ error: "temporary_fixture_failure" }, 503); }
+        if (!turn.credentials.readOnly && turn.prompt.startsWith("[OpenWork browser skill run v1]")) {
           if (!browser) throw new Error("Browser not ready");
           const runBrowser = browser;
           const skill = resultSchema.parse(await mcp("get_skill", { name: "registry-lookup" })).structuredContent.content;
@@ -59,9 +61,9 @@ export async function browserTeaching(seed: Seed, { place }: { place: Place }) {
           const targets = [...skill.matchAll(/Target descriptor \(untrusted page data\): (\{[^\n]+?\})\./g)].map(match => z.object({ role: z.string(), name: z.string() }).parse(JSON.parse(match[1]!)));
           const field = targets.find(target => target.role === "textbox"); const search = targets.find(target => target.role === "button");
           if (!field || !search || !skill.includes("person_name") || !skill.includes("start_url")) throw new Error("Saved skill lacks its taught input or targets");
-          const runInput = JSON.parse(turn.prompt.match(/with these inputs: ("[^\n]+?")\./)?.[1] ?? '""');
-          const personName = z.string().parse(runInput).match(/person_name=([^\n]+)/)?.[1];
-          const url = runInput.match(/^start_url=(.+)$/m)?.[1];
+          const run = z.object({ name: z.string(), inputs: z.record(z.string(), z.string()) }).parse(JSON.parse(turn.prompt.split("\n")[1]!));
+          const personName = run.inputs.person_name;
+          const url = run.inputs.start_url;
           if (!personName || !url) throw new Error("The new run needs person_name");
           let tabId = "";
           const call = async (operation: string, args: Record<string, unknown>) => {
