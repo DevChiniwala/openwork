@@ -845,7 +845,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
   }
   // Passkeys from a phone (browserPhonePasskeys, off by default). Only the
   // person sees the QR code, in a sheet over the tab that asked, and only while
-  // that tab is on screen; agents and the app get status, never the code.
+  // that tab is on screen. Nothing is sent to the app or to agents.
   const phonePasskeys = createBrowserPhonePasskeys({
     getSession: () => ensureBrowserSession(),
     tabForFrame: (frame) => {
@@ -864,7 +864,6 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       if (!parent || parent.isDestroyed()) return { update() {}, close() {} };
       return openPhonePasskeySheet(BrowserWindow, parent, view, actions);
     },
-    onStateChange: (state) => sendToRenderer("openwork:browser:phone-passkey", state),
   });
   const webMcpBroker = createWebMcpBroker({
     getTab: (tabId) => getBrowserTab(tabId),

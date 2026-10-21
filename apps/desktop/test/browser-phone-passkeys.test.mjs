@@ -20,7 +20,6 @@ function harness({ onScreen = new Set(["tab-1"]), owners = new Map([["tab-1", "s
   const session = new EventEmitter();
   const frames = new Map();
   const sheets = [];
-  const states = [];
   const passkeys = createBrowserPhonePasskeys({
     getSession: () => session,
     tabForFrame: (frame) => frames.get(frame) ?? null,
@@ -31,7 +30,6 @@ function harness({ onScreen = new Set(["tab-1"]), owners = new Map([["tab-1", "s
       sheets.push(sheet);
       return sheet;
     },
-    onStateChange: (state) => states.push(state),
   });
   function frame(tabId, { origin = "https://accounts.example.com", processId = 7, routingId = 1 } = {}) {
     const value = { origin, processId, routingId, detached: false };
@@ -43,7 +41,7 @@ function harness({ onScreen = new Set(["tab-1"]), owners = new Map([["tab-1", "s
     session.emit(PHONE_PASSKEY_REQUEST_EVENT, event, details);
     return event;
   }
-  return { session, passkeys, sheets, states, frame, request, onScreen, owners };
+  return { session, passkeys, sheets, frame, request, onScreen, owners };
 }
 
 test("off by default: no listeners, so Electron never configures hybrid", () => {
@@ -60,7 +58,7 @@ test("off by default: no listeners, so Electron never configures hybrid", () => 
 });
 
 test("shows Chromium's own QR payload over the on-screen tab that asked, and completes", () => {
-  const { passkeys, sheets, states, frame, request, session } = harness();
+  const { passkeys, sheets, frame, request, session } = harness();
   passkeys.setEnabled(true);
   const f = frame("tab-1");
   const event = request({ relyingPartyId: "example.com", requestType: "get", qrCode: QR, frame: f });
@@ -69,12 +67,17 @@ test("shows Chromium's own QR payload over the on-screen tab that asked, and com
   assert.equal(sheets[0].views[0].qrCode, QR);
   assert.equal(sheets[0].views[0].origin, "https://accounts.example.com");
   assert.equal(sheets[0].views[0].canCancel, false);
-  // Status for the app never carries the QR payload.
-  assert.ok(states.every((state) => !JSON.stringify(state).includes("FIDO:")));
+  // What the host can list never carries the QR payload.
+  assert.doesNotMatch(JSON.stringify(passkeys.pending()), /FIDO:/);
   assert.deepEqual(passkeys.pending(), [{ tabId: "tab-1", relyingPartyId: "example.com", requestType: "get", state: "waiting" }]);
 
+  // Browser state broadcasts call refresh() often; the sheet is not redrawn.
+  passkeys.refresh();
+  passkeys.refresh();
+  assert.equal(sheets[0].views.length, 1);
   session.emit(PHONE_PASSKEY_UPDATE_EVENT, {}, { frame: f, state: "phone-connected" });
   assert.equal(sheets[0].views.at(-1).state, "phone-connected");
+  passkeys.refresh();
   session.emit(PHONE_PASSKEY_UPDATE_EVENT, {}, { frame: f, state: "made-up" });
   assert.equal(sheets[0].views.length, 2);
 
@@ -82,7 +85,6 @@ test("shows Chromium's own QR payload over the on-screen tab that asked, and com
   session.emit(PHONE_PASSKEY_COMPLETED_EVENT, {}, { relyingPartyId: "example.com", frame: null });
   assert.equal(sheets[0].closed, true);
   assert.deepEqual(passkeys.pending(), []);
-  assert.deepEqual(states.at(-1), { tabId: "tab-1", state: "ended" });
 });
 
 test("ignores anything that is not a real request from a browser tab", () => {
@@ -143,12 +145,14 @@ test("cancel ends the WebAuthn request when Electron offers cancel(), and closin
   assert.equal(cancelled, 3);
 });
 
-test("one code per tab: a new request replaces the old one", () => {
+test("one code per tab: a new request cancels and replaces the old one", () => {
   const { passkeys, sheets, frame, request } = harness();
   passkeys.setEnabled(true);
-  request({ relyingPartyId: "example.com", requestType: "get", qrCode: QR, frame: frame("tab-1"), requestId: "a" });
+  let cancelledA = 0;
+  request({ relyingPartyId: "example.com", requestType: "get", qrCode: QR, frame: frame("tab-1"), requestId: "a", cancel: () => { cancelledA += 1; } });
   request({ relyingPartyId: "example.com", requestType: "get", qrCode: `${QR}1`, frame: frame("tab-1", { routingId: 9 }), requestId: "b" });
   assert.equal(sheets[0].closed, true);
+  assert.equal(cancelledA, 1);
   assert.equal(sheets[1].views[0].qrCode, `${QR}1`);
   assert.equal(passkeys.pending().length, 1);
 });

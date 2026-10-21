@@ -20,7 +20,7 @@ import { renderPhonePasskeySheetHtml } from "../electron/phone-passkey-sheet.mjs
 const arg = (name) => process.argv.find((value) => value.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
 const timeoutMs = Number(arg("timeout-ms") ?? 200_000);
 const sheetPath = arg("sheet");
-const result = { electron: process.versions.electron, chrome: process.versions.chrome, platform: process.platform, sheetsOpened: [], states: [] };
+const result = { electron: process.versions.electron, chrome: process.versions.chrome, platform: process.platform, sheetsOpened: [] };
 
 async function captureSheetLayout(path) {
   const win = new BrowserWindow({ show: false, width: 360, height: 432, webPreferences: { javascript: false, sandbox: true, partition: "probe-sheet", offscreen: true } });
@@ -47,7 +47,6 @@ app.whenReady().then(async () => {
       result.sheetsOpened.push({ relyingPartyId: view.relyingPartyId, requestType: view.requestType, origin: view.origin, payloadIsFido: /^FIDO:\/\d+$/.test(view.qrCode), payloadLength: view.qrCode.length });
       return { update() {}, close() {} };
     },
-    onStateChange: (state) => result.states.push(state),
   });
   result.enabled = passkeys.setEnabled(true);
   result.listeners = probeSession.listenerCount(PHONE_PASSKEY_REQUEST_EVENT);

@@ -86,6 +86,7 @@ export function openPhonePasskeySheet(BrowserWindow, parent, view, actions) {
     show: false,
     width: 360,
     height: 432,
+    useContentSize: true,
     resizable: false,
     minimizable: false,
     maximizable: false,

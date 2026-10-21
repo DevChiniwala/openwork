@@ -51,9 +51,8 @@ function frameKey(frame) {
  * @param {(tabId: string) => string | null | undefined} options.ownerOf The conversation that owns a tab now.
  * @param {(tabId: string) => boolean} options.isTabOnScreen Whether the person is looking at that tab now.
  * @param {(view: PhonePasskeyView, actions: { cancel: () => void }) => { update: (view: PhonePasskeyView) => void, close: () => void }} options.openSheet
- * @param {(state: { tabId: string, relyingPartyId: string, state: string } | { tabId: string, state: "ended" }) => void} [options.onStateChange] Status only: never carries the QR payload.
  */
-export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, isTabOnScreen, openSheet, onStateChange = () => {} }) {
+export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, isTabOnScreen, openSheet }) {
   /** @type {Map<string, PhonePasskeyRequest>} */
   const requests = new Map();
   let attachedSession = null;
@@ -71,8 +70,10 @@ export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, i
 
   function showOrHide(request) {
     if (isTabOnScreen(request.tabId)) {
-      if (request.sheet) request.sheet.update(viewOf(request));
-      else request.sheet = openSheet(viewOf(request), { cancel: () => cancelRequest(request.key) });
+      // refresh() runs on every browser state change; redraw only on a new state.
+      if (!request.sheet) request.sheet = openSheet(viewOf(request), { cancel: () => cancelRequest(request.key) });
+      else if (request.sheetState !== request.state) request.sheet.update(viewOf(request));
+      request.sheetState = request.state;
     } else if (request.sheet) {
       // The request keeps running; its code comes back with its tab.
       request.sheet.close();
@@ -86,7 +87,6 @@ export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, i
     requests.delete(key);
     request.sheet?.close();
     request.sheet = null;
-    onStateChange({ tabId: request.tabId, state: "ended" });
   }
 
   function cancelRequest(key) {
@@ -115,8 +115,12 @@ export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, i
     // Accept the request: builds that ask apps to opt in configure hybrid
     // only when the listener prevents the default.
     event?.preventDefault?.();
-    // A frame has one WebAuthn request at a time; a tab shows one code.
-    for (const other of [...requests.values()]) if (other.tabId === tab.tabId || other.key === key) end(other.key);
+    // A tab shows one code. Another frame's request in the same tab is
+    // cancelled rather than left running without a code.
+    for (const other of [...requests.values()]) {
+      if (other.key === key) end(other.key);
+      else if (other.tabId === tab.tabId) cancelRequest(other.key);
+    }
     /** @type {PhonePasskeyRequest} */
     const request = {
       key,
@@ -130,9 +134,9 @@ export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, i
       state: "waiting",
       cancel: typeof details.cancel === "function" ? details.cancel : null,
       sheet: null,
+      sheetState: null,
     };
     requests.set(key, request);
-    onStateChange({ tabId: request.tabId, relyingPartyId: request.relyingPartyId, state: request.state });
     showOrHide(request);
   }
 
@@ -151,7 +155,6 @@ export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, i
     const request = find(details);
     if (!request || !UPDATE_STATES.has(details.state)) return;
     request.state = details.state;
-    onStateChange({ tabId: request.tabId, relyingPartyId: request.relyingPartyId, state: request.state });
     showOrHide(request);
   }
 
@@ -194,12 +197,12 @@ export function createBrowserPhonePasskeys({ getSession, tabForFrame, ownerOf, i
     },
     /** Call when a tab closes or changes owner: its request ends with it. */
     tabClosed(tabId) { for (const request of [...requests.values()]) if (request.tabId === tabId) cancelRequest(request.key); },
-    /** Status for the app and agents: no QR payloads. */
+    /** In-flight requests, without their QR payloads. */
     pending() { return [...requests.values()].map((request) => ({ tabId: request.tabId, relyingPartyId: request.relyingPartyId, requestType: request.requestType, state: request.state })); },
   };
 }
 
 /**
  * @typedef {{ relyingPartyId: string, requestType: "get" | "create", origin: string, qrCode: string, state: string, canCancel: boolean }} PhonePasskeyView
- * @typedef {{ key: string, frameKey: string | null, tabId: string, ownerSessionId: string | null, relyingPartyId: string, requestType: "get" | "create", origin: string, qrCode: string, state: string, cancel: (() => void) | null, sheet: { update: (view: PhonePasskeyView) => void, close: () => void } | null }} PhonePasskeyRequest
+ * @typedef {{ key: string, frameKey: string | null, tabId: string, ownerSessionId: string | null, relyingPartyId: string, requestType: "get" | "create", origin: string, qrCode: string, state: string, cancel: (() => void) | null, sheet: { update: (view: PhonePasskeyView) => void, close: () => void } | null, sheetState: string | null }} PhonePasskeyRequest
  */

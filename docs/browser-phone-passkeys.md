@@ -76,9 +76,10 @@ Other paths, rejected:
     owns it. In a background tab it waits, and the code appears when the
     person opens that tab. Handing the tab to another conversation, closing
     the tab, or turning the feature off cancels the request.
-  - one code per tab. A new request replaces the old one.
-  - status for the app and agents (`openwork:browser:phone-passkey`,
-    `pending()`) carries tab, relying party and state, never the QR payload.
+  - one code per tab. A new request in the same tab cancels and replaces the
+    old one.
+  - the QR payload goes only to the sheet. Nothing is sent to the app's
+    renderer, browser tools or agents.
 - `apps/desktop/electron/phone-passkey-sheet.mjs`: a modal sheet over the
   window. The window is sandboxed, has JavaScript disabled, uses an in-memory
   partition, has no preload, and has a `default-src 'none'` CSP. It shows the
@@ -142,8 +143,11 @@ and `ELECTRON_OVERRIDE_DIST_PATH` in development), which we don't do today.
 Automated, no phone: `node --test apps/desktop/test/browser-phone-passkeys.test.mjs`
 covers gating, payload and origin checks, tab and owner binding, cancel,
 replacement and the sheet markup, using a fake session shaped like the
-upstream events. These tests don't prove the phone or Bluetooth transport.
-Virtual authenticators can't prove it either.
+upstream events. `pnpm --filter @openwork/desktop exec electron ./test/phone-passkey-sheet.electron.mjs`
+opens the real sheet window, hidden, with a placeholder payload, and checks
+that script, Node and preload are off, and that Cancel, esc and closing the
+window cancel. None of these prove the phone or Bluetooth transport. Virtual
+authenticators can't prove it either.
 
 Real phone, once an Electron build with the patch exists:
 
