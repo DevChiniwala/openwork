@@ -84,7 +84,7 @@ as_app() {
 # Agent-driven pages cannot reach private networks. Native apps cannot open
 # network connections at all; the browser's CDP and VNC replies still work.
 # Native nftables UID matches also work on microVM kernels that omit xt_owner.
-# Use one atomic transaction and keep every user/network boundary identical.
+# Use one atomic transaction and reserve control ports for trusted transports.
 guard_desktop_nft() {
   browser_uid=$(id -u openwork-browser)
   command_uid=""
@@ -98,7 +98,7 @@ guard_desktop_nft() {
     printf '%s\n' 'add table inet openwork_desktop'
     printf '%s\n' 'add chain inet openwork_desktop output { type filter hook output priority 0; policy accept; }'
     if [ -n "$command_uid" ]; then
-      printf 'add rule inet openwork_desktop output meta skuid %s fib daddr type local tcp dport { 5900-5903, 6080, 9222 } reject\n' "$command_uid"
+      printf 'add rule inet openwork_desktop output meta skuid %s tcp dport { 5900-5903, 6080, 9222 } reject\n' "$command_uid"
     fi
     if [ -n "$app_uid" ]; then
       printf 'add rule inet openwork_desktop output meta skuid %s reject\n' "$app_uid"

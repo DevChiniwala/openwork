@@ -22,7 +22,7 @@ test("native desktop filtering covers both address families and every isolated a
     assert.equal(result.status, 0, result.stderr)
     const configured = await readFile(rules, "utf8")
     assert.match(configured, /meta skuid 1002 reject/)
-    assert.match(configured, /meta skuid 1003 fib daddr type local tcp dport \{ 5900-5903, 6080, 9222 \} reject/)
+    assert.match(configured, /meta skuid 1003 tcp dport \{ 5900-5903, 6080, 9222 \} reject/)
     assert.match(configured, /meta skuid 1001 ip daddr .*127\.0\.0\.0\/8.*169\.254\.0\.0\/16.*reject/)
     assert.match(configured, /meta skuid 1001 ip6 daddr .*::ffff:0:0\/96.*fc00::\/7.*reject/)
     assert.match(configured, /ip daddr 10\.0\.0\.53 meta l4proto \{ tcp, udp \} th dport 53 accept/)
