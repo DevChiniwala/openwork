@@ -56,7 +56,7 @@ if ($Mode -eq 'Sign') {
             -CodeSigningAccountName $env:AZURE_ARTIFACT_SIGNING_ACCOUNT `
             -CertificateProfileName $env:AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE `
             -Files $Path -FileDigest SHA256 -TimestampRfc3161 'http://timestamp.acs.microsoft.com' `
-            -TimestampDigest SHA256 -ExcludeAzureCliCredential $false
+            -TimestampDigest SHA256 -ExcludeAzureCliCredential:$false
     }
     $signed = Get-AuthenticodeSignature -LiteralPath $Path
     if ($signed.Status -ne 'Valid') { throw "Signing did not produce a valid signature: $($signed.Status)" }
