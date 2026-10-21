@@ -10,7 +10,7 @@ import { chmod, lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Surface } from "../evals/packages/cdp/src/index.ts";
-import { waitUntilInteractive } from "../evals/packages/behaviors/src/desktop.ts";
+import { control as runControl, waitUntilInteractive } from "../evals/packages/behaviors/src/desktop.ts";
 import type { Den } from "../evals/packages/env/src/den.ts";
 import { resolvePlace } from "../evals/packages/env/src/place.ts";
 import { chrome } from "../evals/packages/hosts/src/browser.ts";
@@ -201,6 +201,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       // Record whether the plain signed-in desktop already sees the managed
       // model, before the test's runtime link + reload. If it needs them,
       // attendees signing in themselves would hit the same gap.
+      // A fresh desktop opens a draft with no session id; binding needs a task.
+      await runControl(desktop, "session.create_task");
       control.modelVisibleWithoutRuntimeLink = await selectWorkshopModel(desktop, seat.modelId).then(() => true, () => false);
       if (!control.modelVisibleWithoutRuntimeLink) {
         await linkWorkshopRuntime(desktop, member, setup.orgId, desktop.workspaceId);

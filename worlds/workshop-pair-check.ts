@@ -19,7 +19,7 @@ import { parsePrivatePreview } from "../evals/packages/hosts/src/private-web-pre
 import { foregroundWorkshopDesktop, WORKPLACE_ORIGIN } from "./lib/workshop-browser.ts";
 import { unlockWorkshopDesktop } from "./lib/workshop-unlock.ts";
 import { typeThroughWorkshopViewer } from "./lib/workshop-viewer.ts";
-import { freshComposer, verifyMember } from "./workshop-fleet.ts";
+import { freshComposer, verifyMember, verifyViewer } from "./workshop-fleet.ts";
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function text(value: unknown, field: string): string {
@@ -62,8 +62,8 @@ async function userMessages(desktop: Surface): Promise<number> {
 
 export async function main(argv = process.argv.slice(2)) {
   const [outputDir, command] = argv;
-  assert.ok(outputDir && command && ["status", "task", "steer", "stop", "unlock", "reset"].includes(command),
-    "Usage: node worlds/workshop-pair-check.ts <output-dir> status|task|steer|stop|unlock|reset");
+  assert.ok(outputDir && command && ["prepare", "status", "task", "steer", "stop", "unlock", "reset"].includes(command),
+    "Usage: node worlds/workshop-pair-check.ts <output-dir> prepare|status|task|steer|stop|unlock|reset");
   const pair: unknown = JSON.parse(await readFile(join(outputDir, "control.json"), "utf8"));
   const desktopId = text(pair, "desktopSandbox");
   const orgId = text(pair, "orgId"), memberId = text(pair, "memberId"), modelId = text(pair, "modelId");
@@ -83,6 +83,21 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(`${passed ? "PASS" : "FAIL"} ${command} (${receipt.seconds}s) — receipt ${join(checks, `${command}.json`)}`);
   };
   try {
+    if (command === "prepare") {
+      // Finish a pair whose last setup stages failed: fresh task on the workshop
+      // model, then a private interactive viewer link recorded in control.json.
+      await foregroundWorkshopDesktop(browser, desktop);
+      await freshComposer(desktop, modelId);
+      const expires = Math.max(60, Math.min(86400, Math.floor((Date.parse(text(pair, "expiresAt")) - Date.now()) / 1000)));
+      const signed = await defaultDaytonaExec(["preview-url", desktopId, "-p", "6080", "--expires", String(expires)], { timeoutMs: 30_000 });
+      assert.equal(signed.code, 0, "Could not mint the private viewer link.");
+      const origin = parsePrivatePreview(signed.stdout, desktopId, 6080).browserOrigin;
+      const viewer = `${origin}/vnc.html?autoconnect=1&resize=scale&view_only=0&reconnect=1&reconnect_delay=2000`;
+      await verifyViewer(viewer, desktopId);
+      Object.assign(pair, { viewer, preparedAt: new Date().toISOString() });
+      await writeFile(join(outputDir, "control.json"), `${JSON.stringify(pair, null, 2)}\n`, { mode: 0o600 });
+      return await finish(true, { viewerVerified: true, freshComposerOnWorkshopModel: true });
+    }
     if (command === "status") {
       const auth = await control(desktop, "auth.status");
       const app = await probeAppStateOnSurface(desktop);
