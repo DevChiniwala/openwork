@@ -20,6 +20,12 @@ export function workshopBrowserInstaller(): string {
   return `set -eu
 export DISPLAY=:99
 mkdir -p /home/daytona/workshop/workspace ${WORKSHOP_BROWSER_PROFILE} "$HOME/.local/share/applications"
+# Operator-approved run mode is scoped to this new fictional workspace only.
+# Credentials stay in Den's broker; this file contains no provider configuration.
+test ! -e /home/daytona/workshop/workspace/opencode.json
+cat > /home/daytona/workshop/workspace/opencode.json <<'JSON'
+{"permission":{"*":"allow"}}
+JSON
 chrome=$(command -v chromium || command -v google-chrome || command -v google-chrome-stable)
 printf '#!/bin/sh\\nexport DISPLAY=:99\\nexec %s --no-sandbox --disable-dev-shm-usage --user-data-dir=${WORKSHOP_BROWSER_PROFILE} "$@"\\n' "$chrome" > ${WORKSHOP_BROWSER_LAUNCHER}
 chmod 700 ${WORKSHOP_BROWSER_LAUNCHER}

@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Surface } from "../evals/packages/cdp/src/index.ts";
 import { control, parseSessionToolCalls, waitFor } from "../evals/packages/behaviors/src/desktop.ts";
-import { readAvailableModels, selectModel } from "../evals/packages/behaviors/src/models.ts";
+import { linkWorkshopRuntime, selectWorkshopModel } from "./lib/workshop-models.ts";
 import { engineSessionProbe } from "../evals/packages/behaviors/src/engine-session-probe.ts";
 import type { EngineSessionProbePart } from "../evals/packages/behaviors/src/engine-session-probe.ts";
 import { readComposerState, sendComposerMessage, waitForAssistantReply } from "../evals/packages/behaviors/src/composer.ts";
@@ -167,7 +167,7 @@ async function screenshot(surface: Surface, path: string) {
 }
 export async function freshComposer(surface: Surface, modelId?: string): Promise<void> {
   await control(surface, "session.create_task");
-  if (modelId) await selectModel(surface, modelId);
+  if (modelId) await selectWorkshopModel(surface, modelId);
   await waitFor(surface, () => {
     const editor = document.querySelector<HTMLElement>('[contenteditable="true"][data-lexical-editor="true"]') ?? document.querySelector<HTMLElement>('[contenteditable="true"]');
     if (!editor || (editor.innerText ?? "").trim()) return false;
@@ -403,13 +403,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       const desktop = stack.use(await app({ den, place, host, as: key, enterpriseActivated: true,
         workspacePath: "/home/daytona/workshop/workspace", env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER } }));
       diagnosticSurface = desktop;
-      console.log(`Workshop: ${key} desktop booted as its ordinary member.`);
+      await linkWorkshopRuntime(desktop, member, setup.orgId, desktop.workspaceId);
+      console.log(`Workshop: ${key} desktop booted and broker linked as its ordinary member.`);
       seatPhase = `${key} real model picker and pilot proof`; phase = seatPhase;
       await foregroundWorkshopDesktop(browser, desktop);
       await freshComposer(desktop);
-      const models = await readAvailableModels(desktop);
-      if (!models.some((available) => available.id === model.modelId && available.selectable)) throw new Error("Workshop Gateway model alias is absent from desktop picker.");
-      await selectModel(desktop, model.modelId);
+      await selectWorkshopModel(desktop, model.modelId);
       console.log(`Workshop: ${key} managed model selected${index === 1 ? "; real pilot running" : ""}.`);
       const pilot = index === 1 ? await provePilot(desktop, desktop.workspaceId, member, setup.orgId, model.memberId, setup.connections.map((connection) => connection.id), options.outputDir) : undefined;
       await verifyMember(member, setup.orgId, model.memberId);

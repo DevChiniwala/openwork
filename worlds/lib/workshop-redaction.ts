@@ -4,5 +4,6 @@ export function redactWorkshopDiagnostic(text: string, secrets: readonly string[
     .replace(/("(?:token|access_token|password|authorization|cookie)"\s*:\s*)("(?:\\.|[^"\\])*"?|[^,}\]\s]+)/gi, '$1"[secret]"')
     .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [secret]")
     .replace(/https?:\/\/[^\s"'<>]+/g, "[private URL]")
+    .replace(/\b[a-z0-9-]+\.daytonaproxy[a-z0-9.-]+\b/gi, "[private host]")
     .replace(/\b[a-f0-9]{64}\b/gi, "[secret]");
 }

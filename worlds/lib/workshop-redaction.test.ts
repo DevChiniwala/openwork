@@ -27,6 +27,10 @@ test("registered secrets, bearer credentials and private URLs remain protected",
   assert.equal(output, "[secret] Bearer [secret] [private URL]");
 });
 
+test("bare signed preview hostnames in UI dumps are also capabilities, not public diagnostics", () => {
+  assert.equal(redactWorkshopDiagnostic("Account 3005-example-cap.daytonaproxy01.net", []), "Account [private host]");
+});
+
 test("account provisioning and sign-in errors do not interpolate authentication response bodies", async () => {
   const env = await readFile(new URL("../../evals/packages/env/src/den.ts", import.meta.url), "utf8");
   const behavior = await readFile(new URL("../../evals/packages/behaviors/src/den.ts", import.meta.url), "utf8");
