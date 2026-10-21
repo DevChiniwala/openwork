@@ -460,6 +460,12 @@ export async function organizationHasActiveInferenceSubscription(organizationId:
   return Boolean(row && ACTIVE_STATUSES.has(row.status))
 }
 
+/** A payment problem with an existing subscription should lead to billing, not an upgrade offer. */
+export async function organizationHasOngoingInferenceSubscription(organizationId: OrgId) {
+  const row = await findInferenceSubscriptionByOrg(organizationId)
+  return Boolean(row && ONGOING_STATUSES.has(row.status))
+}
+
 export async function organizationHasActiveSeatSubscription(organizationId: OrgId) {
   const row = await findSeatSubscriptionByOrg(organizationId)
   return Boolean(row && ACTIVE_STATUSES.has(row.status))

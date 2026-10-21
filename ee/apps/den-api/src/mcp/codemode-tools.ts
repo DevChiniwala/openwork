@@ -75,7 +75,7 @@ function isCodemodeJsonSchema(value: unknown): value is Tool.JsonSchema {
   return isRecord(value)
 }
 
-function denInputJsonSchema(operation: McpToolOperation): Tool.JsonSchema {
+export function denInputJsonSchema(operation: McpToolOperation): Tool.JsonSchema {
   const serialized = JSON.stringify(z.toJSONSchema(operation.inputSchema), (key, value: unknown) => key === "~standard" ? undefined : value)
   const schema: unknown = JSON.parse(serialized)
   return isCodemodeJsonSchema(schema) ? schema : {}

@@ -24,7 +24,7 @@ test("withheld field values cannot escape through accessible labels", async () =
   const submit = new Input("Continue", {}); submit.type = "submit";
   const checkbox = new Input("on", { "aria-label": "Consent" }); checkbox.type = "checkbox";
   const fields = [...privateFields, submit, checkbox];
-  const document = { title: `Profile ${account.value}`, body: { innerText: privateFields.map(field => field.value).join(" ") }, activeElement: email,
+  const document = { title: `Profile ${account.value}`, body: { innerText: `Signed in as ${email.value}\nAccount ${account.value}\nPassword ${password.value}\nVault ${long.value}` }, activeElement: email,
     getElementById: id => id === "account-caption" ? { textContent: `Account ${account.value}` } : null,
     querySelectorAll: query => query.startsWith('input[type="password"]') ? fields.filter(field => field.type === "password" || field.attributes.autocomplete === "one-time-code") : fields };
   const context = vm.createContext({ document, HTMLElement: Input, HTMLInputElement: Input,
@@ -40,6 +40,10 @@ test("withheld field values cannot escape through accessible labels", async () =
   assert.equal(seen.ok, true, JSON.stringify(seen));
   assert.deepEqual(Array.from(seen.elements, element => element.name), ["Email [withheld]", "Account [withheld]", "Password [withheld]", "Vault [withheld]", "Continue", "Consent"]);
   for (const field of privateFields) assert.ok(!JSON.stringify(seen).includes(field.value), "The observation exposed a withheld value");
+  const extracted = await host.request({ sessionId: "chat", operation: "extract", args: { tabId: "tab", question: "Which account, password and vault is signed in?" } });
+  assert.equal(extracted.ok, true, JSON.stringify(extracted));
+  assert.ok(extracted.passages.length > 0 && JSON.stringify(extracted).includes("[withheld]"), JSON.stringify(extracted));
+  for (const field of privateFields) assert.ok(!JSON.stringify(extracted).includes(field.value), "Extraction exposed a withheld value");
   checkbox.value = "changed-private-reference";
   const staleCheckbox = await host.request({ sessionId: "chat", operation: "act", args: { tabId: "tab", observationId: seen.observationId,
     action: { type: "set_checked", ref: seen.elements[5].ref, checked: true } } });
@@ -119,7 +123,9 @@ test("select options keep backing identities private and revalidate before choos
   }, new AbortController().signal);
   assert.equal(program.ok, true, JSON.stringify(program));
   assert.equal(select.value, "different-private-identity");
-  assert.equal(inputChecks, 2);
+  // Refs survive a layout change: the control is located again and the
+  // select goes through on the first input check, without a re-observation.
+  assert.equal(inputChecks, 1);
   assert.ok(!JSON.stringify(program).includes("private-identity"));
   options[0].value = "1"; options[0].label = "Plan 1";
   const publicLabel = await observe();

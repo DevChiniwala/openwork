@@ -138,6 +138,7 @@ import type {
   DownloadHostGoogleDriveFileResponses,
   ExternalMcpConnectionAccessInput,
   ExternalMcpConnectionByKeyUpsertInput,
+  ExternalMcpConnectionRemovalRequestBody,
   ExternalMcpConnectionToolPolicyInput,
   ExternalMcpConnectionToolRunInput,
   ExternalMcpIssuerReviewInput,
@@ -565,10 +566,13 @@ import type {
   GetWellKnownOauthAuthorizationServerResponses,
   GetWellKnownOauthProtectedResourceMcpAdminResponses,
   GetWellKnownOauthProtectedResourceMcpAgentResponses,
+  GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses,
   GetWellKnownOauthProtectedResourceMcpResponses,
   GetWellKnownOauthProtectedResourceResponses,
   GetWellKnownOpenidConfigurationApiAuthResponses,
   GetWellKnownOpenidConfigurationResponses,
+  GetWorkbotModelRecoveryErrors,
+  GetWorkbotModelRecoveryResponses,
   GetWorkbotSessionErrors,
   GetWorkbotSessionResponses,
   GoogleWorkspaceCreateCalendarEventBody,
@@ -863,6 +867,8 @@ import type {
   PostV1MarketplacesResponses,
   PostV1McpConnectionsByConnectionIdCheckErrors,
   PostV1McpConnectionsByConnectionIdCheckResponses,
+  PostV1McpConnectionsByConnectionIdCredentialPromptErrors,
+  PostV1McpConnectionsByConnectionIdCredentialPromptResponses,
   PostV1McpConnectionsByConnectionIdDisconnectErrors,
   PostV1McpConnectionsByConnectionIdDisconnectMyAccountErrors,
   PostV1McpConnectionsByConnectionIdDisconnectMyAccountResponses,
@@ -1039,6 +1045,8 @@ import type {
   RenamePermissionSetBody,
   ReplaceGoogleDocumentTextErrors,
   ReplaceGoogleDocumentTextResponses,
+  RequestMcpConnectionRemovalErrors,
+  RequestMcpConnectionRemovalResponses,
   RunAutomationNowErrors,
   RunAutomationNowResponses,
   SaveGoogleDriveDocumentEditsErrors,
@@ -1267,11 +1275,14 @@ export class DenClient extends HeyApiClient {
       capabilities: {
         nativeDictation?: boolean | null;
         organizationGrants?: boolean | null;
+        connectionMcpServers?: boolean | null;
         liveProviderSync?: boolean | null;
+        agentConnectionRemoval?: boolean | null;
         managedDeployments?: boolean | null;
         workbotDocuments?: boolean | null;
         workbotDocumentEditing?: boolean | null;
         workbotWorkspaceAssistant?: boolean | null;
+        workbotUsageRecovery?: boolean | null;
         automationCalendar?: boolean | null;
         engineV2ForceUpgrade?: boolean | null;
         computerUse?: boolean | null;
@@ -12783,6 +12794,45 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Prepare removing an organization connection
+   *
+   * Prepares removing one organization connection (connector) from OpenWork and returns a link where the person confirms it. Nothing is removed by this call: the connection, who can use it, its stored accounts and OAuth app are deleted only when the person opens the link and confirms in OpenWork. It never deletes anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName. A connection that plugins need is refused unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Needs the Remove any connection permission, or having added the connection. Give the person handoff.url and handoff.instructions; afterwards, list connections with getMcpConnections to confirm it is gone.
+   */
+  public requestMcpConnectionRemoval<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+      externalMcpConnectionRemovalRequestBody: ExternalMcpConnectionRemovalRequestBody;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "connectionId" },
+            { key: "externalMcpConnectionRemovalRequestBody", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      RequestMcpConnectionRemovalResponses,
+      RequestMcpConnectionRemovalErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/{connectionId}/removal-request",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
    * Disconnect (clear credentials for) an External MCP Connection without removing it
    *
    * Needs the Disconnect any connection permission (owners and admins by default) and a recent sign-in. Signs out every shared or per-member account stored for this connection, while preserving the connection row, access grants, OAuth client configuration, and plugin bindings.
@@ -12802,6 +12852,45 @@ export class DenClient extends HeyApiClient {
       url: "/v1/mcp-connections/{connectionId}/disconnect",
       ...options,
       ...params,
+    });
+  }
+
+  /**
+   * Ask a person to enter the API key of an existing MCP connection
+   *
+   * Shows the person a private field in OpenWork for an existing API-key connection, so the key never passes through you. Use it to finish a connection still waiting for its shared key, to let the caller add or replace their own key (scope personal), or to let an owner or admin replace each person's own key with one shared key (scope shared on a personal-key connection; its ID and access stay, and nothing changes until they save a key that works). Changes nothing by itself.
+   */
+  public postV1McpConnectionsByConnectionIdCredentialPrompt<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+      scope?: "shared" | "personal";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "connectionId" },
+            { in: "body", key: "scope" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1McpConnectionsByConnectionIdCredentialPromptResponses,
+      PostV1McpConnectionsByConnectionIdCredentialPromptErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/{connectionId}/credential-prompt",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 
@@ -16385,7 +16474,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get Workbot settings
    *
-   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the models that can be chosen: the caller's credential-ready, supported AI Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. Requires View OpenWork Models settings or Manage OpenWork Models.
+   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.
    */
   public getV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -16398,7 +16487,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Set Workbot's default model
    *
-   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. Requires the Manage OpenWork Models permission and a recent sign-in.
+   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.
    */
   public putV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(
     parameters: {
@@ -16426,7 +16515,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Check whether Workbot has an AI provider
    *
-   * Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, always true) and whether the organization has at least one active AI Gateway provider (hasGatewayProvider). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.
+   * Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. The managed Luna default with workbotUsageRecovery uses the member's Models access and needs no custom Gateway provider. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.
    */
   public getV1OrgWorkbotReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -16710,6 +16799,19 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Get my Workbot model recovery options
+   *
+   * Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.
+   */
+  public getWorkbotModelRecovery<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetWorkbotModelRecoveryResponses,
+      GetWorkbotModelRecoveryErrors,
+      ThrowOnError
+    >({ url: "/v1/workbot/model-recovery", ...options });
+  }
+
+  /**
    * Record content-free Workbot service facts
    *
    * Server-to-server only: requires the runner service credential and a live member MCP token. Org and member are resolved from the token. No text or caller-supplied identity is accepted. Telemetry storage failure never fails a user flow.
@@ -16830,7 +16932,7 @@ export class DenClient extends HeyApiClient {
   /**
    * A short-lived token for one Workbot turn
    *
-   * For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. Also returns the member's Gateway route and bearer credential for the selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.
+   * For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. With scoped model access, also returns the member’s Gateway or managed Models route and bearer credential for the exact selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.
    */
   public createWorkbotRunToken<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -17103,6 +17205,29 @@ export class DenClient extends HeyApiClient {
       unknown,
       ThrowOnError
     >({ url: "/mcp/agent/.well-known/oauth-protected-resource", ...options });
+  }
+
+  /**
+   * Get OAuth protected resource metadata for /mcp/agent
+   *
+   * Returns the RFC 9728 protected-resource metadata MCP clients use to discover the authorization server and scopes for this transport.
+   */
+  public getWellKnownOauthProtectedResourceMcpAgentServersByConnectionId<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "connectionId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/.well-known/oauth-protected-resource/mcp/agent/servers/{connectionId}",
+      ...options,
+      ...params,
+    });
   }
 
   /**

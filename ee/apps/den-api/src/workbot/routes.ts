@@ -14,17 +14,24 @@ import { DEN_MCP_HEADLESS_RUN_TOKEN_MAX_TTL_MS } from "../mcp/headless-run-token
 import { mintHeadlessTurnCredentials } from "../headless-runner/resume-grants.js"
 import { DEN_MCP_READ_SCOPE, DEN_MCP_WRITE_SCOPE } from "../mcp/scopes.js"
 import { jsonResponse, unauthorizedSchema } from "../openapi.js"
-import { getOrganizationFeatures } from "../features.js"
+import { getOrganizationFeatures, organizationFeatureEnabled } from "../features.js"
 import { jsonValidator, tokenRoute } from "../middleware/index.js"
 import { checkRateLimit } from "../utils/rate-limit.js"
 import { openworkYourConnectionsUrl } from "../mcp/connection-navigation.js"
 import { createInternalMcpPrincipalHeader } from "../session.js"
 import { getOrganizationContextForUser, listTeamsForMember } from "../orgs.js"
 import { listMemberUsableConnectionFacts } from "../routes/org/mcp-connections.js"
-import { readWorkbotModel, WORKBOT_DEFAULT_MODEL_ID } from "@openwork/types/den/workbot-settings"
+import { readWorkbotModel, WORKBOT_DEFAULT_MODEL_ID, WORKBOT_FREE_LUNA_ID, WORKBOT_PAID_LUNA_ID, isWorkbotManagedLuna, workbotModelRecoverySchema, workbotAccessFailureSchema } from "@openwork/types/den/workbot-settings"
+import { getMemberInferenceAccess, organizationAllowsManagedModels } from "../inference.js"
+import { organizationHasOngoingInferenceSubscription } from "../stripe-billing.js"
 import { cloudAgentModelCatalog } from "./model.js"
-import { headlessModelAccessSchema } from "@openwork-ee/headless-protocol"
+import { headlessModelAccessSchema, createHeadlessRunnerClient } from "@openwork-ee/headless-protocol"
+import { workbotOwner } from "@openwork-ee/headless-protocol/workbot-routing"
+import { defaultHeadlessRunnerDeps } from "../headless-runner/client.js"
+import { CloudAgentGatewayAccessError } from "./gateway-model.js"
+import { workbotManagedLunaState } from "./managed-luna.js"
 import { recordWorkbotTelemetry, workbotTelemetrySchema, workbotTelemetryServiceAuthorized } from "./telemetry.js"
+import { resolvePermissionsForMember } from "../permissions/resolve.js"
 import { workbotOrigin } from "./config.js"
 import { workbotConnectRequestSchema } from "./connect-return-schema.js"
 import { resolvePublicApiBaseUrl } from "../capability-sources/generic-oauth.js"
@@ -59,6 +66,7 @@ const sessionSchema = z.object({
   workspaceAssistant: z.boolean().optional(),
   /** Offers to open mentioned documents and keeps the chat beside them: on with the workspace assistant. */
   guidedNavigation: z.boolean().optional(),
+  usageRecovery: z.boolean().optional(),
   /** The person can start side chats next to their main chat (while Workbot is on). */
   sideChats: z.boolean(),
   /**
@@ -68,7 +76,7 @@ const sessionSchema = z.object({
   model: z.string().nullable().optional(),
   /** Require an authenticated runner catalog before new turns; older Dens omit this. Reads remain available. */
   verifyModel: z.boolean().optional(),
-  /** Den authorizes the member's AI Gateway model for every turn; no deployment catalog precheck. */
+  /** Den authorizes the member’s scoped model access for every turn; no deployment catalog precheck. */
   gatewayModels: z.boolean().optional(),
   /**
    * Saved step turns (the wire field keeps its older name): Workbot sends turns to run one step at a time
@@ -108,7 +116,7 @@ const runTokenRequestSchema = z.object({
   messageId: z.string().min(1).max(128).optional(),
   /** A retry may name its original model. Den rechecks this member's current access to that exact alias. */
   model: z.string().min(1).max(512).optional(),
-  /** Sent by Workbot clients for recovered turns; every turn now gets Gateway access, so it changes nothing. */
+  /** Recover an existing managed turn across rollout rollback; Den verifies its persisted owner and model. */
   modelAccessRequired: z.boolean().optional(),
 })
 const signedOutSchema = z.object({ error: z.string(), message: z.string().optional() })
@@ -257,6 +265,50 @@ const providerNamesSchema = z.object({
 })
 
 export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono<T>) {
+  app.get("/v1/workbot/model-recovery", describeWorkbotRoute({
+    tags: ["Workbot"], operationId: "getWorkbotModelRecovery", "x-mcp": false,
+    summary: "Get my Workbot model recovery options",
+    description: "Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.",
+    responses: {
+      200: jsonResponse("The member's recovery options.", workbotModelRecoverySchema),
+      401: jsonResponse("The token or membership is invalid.", unauthorizedSchema),
+      403: jsonResponse("Read scope is required.", z.object({ error: z.literal("insufficient_scope") })),
+      404: jsonResponse("Usage recovery is off.", z.object({ error: z.literal("feature_disabled") })),
+    },
+  }), tokenRoute, async (c) => {
+    c.header("Cache-Control", "no-store")
+    const resolved = await resolve(c.req.raw.headers)
+    if (resolved instanceof Response) return resolved
+    const auditBlocked = await attributeWorkbot(c, resolved)
+    if (auditBlocked) return auditBlocked
+    if (!resolved.scopes.has(DEN_MCP_READ_SCOPE)) return c.json({ error: "insufficient_scope" }, 403)
+    const { organization, memberId, user } = resolved
+    if (!await organizationFeatureEnabled(organization.id, "workbotUsageRecovery", { userId: user.id })) return c.json({ error: "feature_disabled" }, 404)
+    const [permissions, access, allowed, subscribed] = await Promise.all([
+      resolvePermissionsForMember({ organizationId: organization.id, memberId: normalizeDenTypeId("member", memberId) }),
+      getMemberInferenceAccess({ organizationId: organization.id, memberId: normalizeDenTypeId("member", memberId), userId: normalizeDenTypeId("user", user.id) }),
+      organizationAllowsManagedModels(organization.id),
+      organizationHasOngoingInferenceSubscription(organization.id),
+    ])
+    const chosen = readWorkbotModel(organization.metadata)
+    const managedLuna = chosen === null || isWorkbotManagedLuna(chosen)
+    const managed = managedLuna ? await workbotManagedLunaState({ organizationId: organization.id, userId: user.id }).catch(() => null) : null
+    const purchaseEligible = allowed && !subscribed && !managed?.paid && Boolean(env.stripe.secretKey && env.stripe.inferencePriceId && env.openRouterManagementApiKey) && permissions.has("billing.manage") && permissions.has("inference.view")
+    const afterUpgrade = managedLuna && managed?.allowed === true && ["free", "exhausted"].includes(managed.free.kind) && purchaseEligible
+    const paidContinuation = managed?.paidReady ? "authorized" : afterUpgrade ? "after_upgrade" : "unavailable"
+    return c.json({
+      canUpgrade: access.kind === "exhausted" && paidContinuation === "after_upgrade",
+      purchaseEligible,
+      managedLuna,
+      hasModelsSubscription: subscribed || managed?.paid === true,
+      paidContinuation,
+      upgradeBlockedReason: paidContinuation === "unavailable" ? "paid_workbot_route_unavailable" : null,
+      canManageModels: permissions.has("inference.manage") && permissions.has("inference.view"),
+      canManageBilling: permissions.has("billing.view") && permissions.has("billing_portal.use"),
+      freeExhausted: access.kind === "exhausted",
+      freeResetsAt: access.kind === "exhausted" ? access.resetsAt : null,
+    })
+  })
   app.post(
     "/v1/workbot/telemetry",
     describeWorkbotRoute({
@@ -313,8 +365,12 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       const { organization, user, memberId } = resolved
       const canSchedule = (await cloudAutomationRuntime(organization.id).catch(() => "web")) === "headless"
       const features = await getOrganizationFeatures(organization.id, { userId: user.id })
-      // Keep history readable during access failures. Starting a turn reauthorizes the exact alias in Den.
-      const model = readWorkbotModel(organization.metadata) ?? (await cloudAgentModelCatalog({ organizationId: organization.id, userId: user.id }).catch(() => null))?.defaultModel ?? WORKBOT_DEFAULT_MODEL_ID
+      const chosen = readWorkbotModel(organization.metadata)
+      const managedLuna = features.workbotUsageRecovery && (chosen === null || isWorkbotManagedLuna(chosen))
+      const managed = managedLuna ? await workbotManagedLunaState({ organizationId: organization.id, userId: user.id }).catch(() => null) : null
+      // Keep history readable during access failures. Starting a turn reauthorizes the exact model in Den.
+      const model = managedLuna ? chosen === WORKBOT_PAID_LUNA_ID ? chosen : managed?.model ?? WORKBOT_FREE_LUNA_ID
+        : chosen ?? (await cloudAgentModelCatalog({ organizationId: organization.id, userId: user.id }).catch(() => null))?.defaultModel ?? WORKBOT_DEFAULT_MODEL_ID
       return c.json({
         user,
         organization: { id: organization.id, name: organization.name, brandAppName: readBrandAppName(organization.metadata) },
@@ -329,6 +385,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         nativeDictation: features.nativeDictation,
         workspaceAssistant: features.workbotWorkspaceAssistant,
         guidedNavigation: features.workbotWorkspaceAssistant,
+        usageRecovery: features.workbotUsageRecovery,
         sideChats: true,
         model,
         gatewayModels: true,
@@ -514,7 +571,11 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         headers.set("content-type", "application/json")
       }
       const response = await app.fetch(new Request(new URL(`${inner}${url.search}`, "http://den-api.local"), { method: c.req.method, headers, body }))
-      return new Response(response.body, { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff", ...(editor?.[1] === "content" ? { "content-security-policy": "default-src 'none'; sandbox" } : {}) } })
+      // Den reports a Google refusal (for example a Google API turned off for the
+      // connector) as 502. The tunnel in front of Den replaces 502 bodies with its
+      // own page, so Workbot lost the reason. 424 carries the same body intact.
+      const status = response.status === 502 ? 424 : response.status
+      return new Response(response.body, { status, headers: { "content-type": response.headers.get("content-type") ?? "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff", ...(editor?.[1] === "content" ? { "content-security-policy": "default-src 'none'; sandbox" } : {}) } })
     },
   )
 
@@ -526,11 +587,11 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       "x-mcp": false,
       summary: "A short-lived token for one Workbot turn",
       description:
-        "For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. Also returns the member's Gateway route and bearer credential for the selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.",
+        "For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. With scoped model access, also returns the member’s Gateway or managed Models route and bearer credential for the exact selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.",
       responses: {
         200: jsonResponse("The token.", runTokenSchema),
         401: jsonResponse("The token is missing, expired or revoked, or the membership ended.", unauthorizedSchema),
-        403: jsonResponse("Workbot is off or the sign-in grant cannot start a turn.", signedOutSchema),
+        403: jsonResponse("Workbot or model access cannot start a turn.", z.union([signedOutSchema, workbotAccessFailureSchema])),
         429: jsonResponse("Too many tokens requested.", z.object({ error: z.literal("rate_limited"), retryAfter: z.number() })),
       },
     }),
@@ -541,16 +602,34 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       if (resolved instanceof Response) return resolved
       const auditBlocked = await attributeWorkbot(c, resolved)
       if (auditBlocked) return auditBlocked
-      const { principal } = resolved
+      const { principal, organization } = resolved
       const readOnly = c.req.valid("json").readOnly === true
       const requiredScopes = readOnly ? [DEN_MCP_READ_SCOPE] : [DEN_MCP_READ_SCOPE, DEN_MCP_WRITE_SCOPE]
       if (requiredScopes.some((scope) => !resolved.scopes.has(scope))) {
-        return c.json({ error: "insufficient_scope", message: "The sign-in grant does not allow this Workbot turn." }, 403)
+        return c.json({ error: "workbot_turn_access_denied", reason: "oauth_scope_missing" }, 403)
       }
       const retryAfter = await checkRateLimit(`workbot-run-token:${principal.organizationId}:${principal.userId}`, RUN_TOKENS_PER_WINDOW, RUN_TOKEN_WINDOW_MS, Date.now())
       if (retryAfter !== null) return c.json({ error: "rate_limited" as const, retryAfter }, 429)
-      const { ttlMs = DEN_MCP_HEADLESS_RUN_TOKEN_MAX_TTL_MS, sessionId, messageId, model } = c.req.valid("json")
+      const { ttlMs = DEN_MCP_HEADLESS_RUN_TOKEN_MAX_TTL_MS, sessionId, messageId, model: requestedModel, modelAccessRequired } = c.req.valid("json")
+      let model = requestedModel
       try {
+        const chosen = readWorkbotModel(organization.metadata)
+        if (!model && await organizationFeatureEnabled(organization.id, "workbotUsageRecovery", { userId: principal.userId }) && (chosen === null || isWorkbotManagedLuna(chosen))) {
+          model = chosen === WORKBOT_PAID_LUNA_ID ? chosen : (await workbotManagedLunaState(principal)).model
+        }
+        const managed = isWorkbotManagedLuna(model)
+        const enabled = !managed || await organizationFeatureEnabled(organization.id, "workbotUsageRecovery", { userId: principal.userId })
+        if (managed && !enabled && !modelAccessRequired) return c.json({ error: "workbot_turn_access_denied", reason: "model_access_unavailable" }, 403)
+        if (modelAccessRequired && !enabled) {
+          // OAuth callers cannot label new work as recovery to bypass a disabled rollout. Verify the actual
+          // persisted scoped turn, fenced to this member's owner on both cell and Node runners.
+          const runner = defaultHeadlessRunnerDeps()
+          if (!runner || !sessionId || !messageId || !model) return c.json({ error: "cloud_model_unavailable" }, 403)
+          const owner = workbotOwner(organization.id, resolved.memberId)
+          const snapshot = await createHeadlessRunnerClient({ ...runner, config: { ...runner.config, owner } }).readSession(sessionId, { messageId, expectedOwner: owner, limit: 1, outputs: "none" })
+          const turn = snapshot.ok ? snapshot.value.turns.find((entry) => entry.messageId === messageId) : undefined
+          if (!turn?.modelAccessRequired || turn.model !== model) return c.json({ error: "cloud_model_unavailable" }, 403)
+        }
         const { token, resumeGrant, modelAccess, indexCapability } = await mintHeadlessTurnCredentials({
           ...principal, ttlMs, readOnly, sessionId, messageId, model, indexKind: "workbot", memberId: resolved.memberId,
         })
@@ -561,8 +640,8 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
           ...(modelAccess ? { modelAccess } : {}),
           ...(indexCapability ? { indexCapability } : {}),
         })
-      } catch {
-        return c.json({ error: "cloud_model_unavailable", message: "Your workspace model isn't available to you. Ask your model administrator to check your AI Gateway access." }, 403)
+      } catch (error) {
+        return c.json({ error: "workbot_turn_access_denied", reason: error instanceof CloudAgentGatewayAccessError ? error.reason : "model_access_unavailable" }, 403)
       }
     },
   )

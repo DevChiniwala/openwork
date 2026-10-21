@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { runComputerProgram } from "@openwork/computer-use/runtime";
 import { createComputerControl, COMPUTER_PROTOCOL } from "@openwork/computer-use/computer-control";
+import { resolvePermissionEntry } from "./computer-permission-entry.mjs";
+import { createComputerScripting } from "./computer-scripting.mjs";
+import { EventEmitter } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PassThrough } from "node:stream";
 
 const deferred = () => {
   let resolve = () => {};
@@ -30,7 +38,10 @@ function fixture(options = {}) {
       return {
         callTool: async (name, args) => {
           calls.push(name);
+          options.seen?.push({ name, args });
           await options.beforeTool?.(name);
+          const replaced = options.toolResult?.(name);
+          if (replaced) return replaced;
           if (name === "computer_open_session") {
             onUi({ kind: "state", id: "view", phase: "working", appID: args.app_id, appName: "Editor", windowTitle: "Draft", mode: args.mode, task: args.purpose });
             return text({ ok: true, session_id: "native", window_id: 17, state: "active" });
@@ -51,7 +62,7 @@ function fixture(options = {}) {
   };
   /** @type {import("@openwork/computer-use/computer-control").ComputerAdapter} */
   const remote = { ...adapter, id: "vm", label: "VM", placement: "remote" };
-  const control = createComputerControl({ adapters: options.remote ? [adapter, remote] : [adapter], readRemoteFeatureEnabled: options.authority, runProgram: options.runProgram, browserTask: options.browserTask, onRequest: (_sessionId, value) => { requests.push(value); }, idleMs: options.idleMs ?? 90_000 });
+  const control = createComputerControl({ adapters: options.remote ? [adapter, remote] : [adapter], readRemoteFeatureEnabled: options.authority, runProgram: options.runProgram, runScript: options.runScript, onTiming: options.onTiming, browserTask: options.browserTask, onRequest: (_sessionId, value) => { requests.push(value); }, idleMs: options.idleMs ?? 90_000 });
   return { control, calls, requests, selected, emit: value => emit(value), disconnect: () => disconnect() };
 }
 
@@ -159,6 +170,31 @@ test("disable then re-enable during readiness cannot revive an old request", asy
   assert.deepEqual(f.calls, []);
 });
 
+test("a macOS permission lost mid-chat asks in the chat again and resumes from a fresh session", async (t) => {
+  let readiness = "ready";
+  let revoked = false;
+  const f = fixture({
+    readiness: async () => ({ readiness, detail: readiness === "ready" ? "Ready" : "Computer Use needs Accessibility permission." }),
+    toolResult: (name) => revoked && name === "computer_observe"
+      ? { ...text({ ok: false, code: "permissions_required", message: "Grant Accessibility.", next: "human_takeover" }), isError: true } : undefined,
+  });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit the draft" } })).ok, true);
+  revoked = true; readiness = "setup-required";
+  const pending = f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} });
+  for (let waited = 0; !f.requests.some(Boolean) && waited < 3_000; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(f.requests.find(Boolean)?.appId, "editor", "the chat shows the setup card again");
+  assert.ok(f.calls.includes("close"), "the helper is released so a fresh one rereads the permissions");
+  revoked = false; readiness = "ready";
+  const restored = payload(await pending);
+  assert.equal(restored.code, "permissions_restored");
+  assert.equal(restored.next, "observe");
+  assert.equal(f.requests.at(-1), null);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} })).ok, true);
+  assert.equal(f.calls.filter((call) => call === "computer_open_session").length, 2);
+});
+
 test("a turn ending during an admitted tool releases the computer as soon as that tool settles", async (t) => {
   const started = deferred(); const finish = deferred();
   const f = fixture({ beforeTool: async (name) => { if (name === "computer_discover") { started.resolve(); await finish.promise; } } });
@@ -261,4 +297,209 @@ test("native takeover cancels browser programs and neither chat can bypass it wi
   hold = false;
   assert.equal((await f.control.program(input)).ok, true);
   assert.equal(calls, 2);
+});
+
+/** Fake ps and plutil: `processes` maps pid to [parent, command]; `plists` maps an app bundle to its Info.plist values. */
+function fakeExec(processes, plists) {
+  return async (command, args) => {
+    if (command === "/bin/ps") {
+      const entry = processes[args.at(-1)];
+      return { stdout: entry ? `${entry[0]} ${entry[1]}\n` : "" };
+    }
+    const [, key, , , , file] = args;
+    const value = plists[file.slice(0, file.indexOf("/Contents/Info.plist"))]?.[key];
+    if (value === undefined) throw new Error("No such key.");
+    return { stdout: `${value}\n` };
+  };
+}
+
+test("a packaged app that ps lists without its path still names its own bundle", async () => {
+  const entry = await resolvePermissionEntry({
+    pid: 4100,
+    execPath: "/Applications/OpenWork.app/Contents/MacOS/OpenWork",
+    exec: fakeExec({ 4100: [1, "OpenWork"] }, {
+      "/Applications/OpenWork.app": { CFBundleName: "OpenWork", CFBundleIdentifier: "com.differentai.openwork" },
+    }),
+  });
+  assert.deepEqual(entry, { name: "OpenWork", bundleId: "com.differentai.openwork", ours: true });
+});
+
+test("a development build names the terminal that started it, which is not ours to reset", async () => {
+  const electron = "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron";
+  const entry = await resolvePermissionEntry({
+    pid: 4200,
+    execPath: electron,
+    exec: fakeExec({
+      4200: [4199, electron],
+      4199: [4198, "node"],
+      4198: [4100, "-zsh"],
+      4100: [1, "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"],
+    }, {
+      "/repo/node_modules/electron/dist/Electron.app": { CFBundleName: "Electron", CFBundleIdentifier: "com.github.Electron" },
+      "/System/Applications/Utilities/Terminal.app": { CFBundleDisplayName: "Terminal", CFBundleIdentifier: "com.apple.Terminal" },
+    }),
+  });
+  assert.deepEqual(entry, { name: "Terminal", bundleId: "com.apple.Terminal", ours: false });
+});
+
+test("screenshot false settles the act with elements only and never reaches the native call", async (t) => {
+  const seen = [];
+  const f = fixture({ seen, toolResult: (name) => name === "computer_act" ? text({ ok: true, status: "dispatched", next: "observe" }) : undefined });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  const opened = payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit the draft" } }));
+  assert.equal(opened.ok, true);
+  seen.length = 0;
+  const acted = await f.control.execute({ sessionId: "chat", name: "computer_act", args: { observation_id: "observation", action: { type: "key", key: "return" }, screenshot: false } });
+  assert.equal(payload(acted).ok, true);
+  const act = seen.find((call) => call.name === "computer_act");
+  assert.equal(Object.hasOwn(act.args, "screenshot"), false);
+  assert.equal(seen.find((call) => call.name === "computer_observe")?.args.include_image, false);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_act", args: { observation_id: "observation", action: { type: "key", key: "return" }, screenshot: "no" } })).code, "invalid_arguments");
+});
+
+test("each step records computer time and the model's time since the previous step", async (t) => {
+  const steps = [];
+  const f = fixture({ onTiming: (_sessionId, step) => steps.push(step) }); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} });
+  assert.equal(steps.length, 2);
+  assert.equal(steps[0].modelMs, undefined);
+  assert.ok(steps[1].modelMs >= 15);
+  const snapshot = await f.control.snapshot({ sessionId: "chat" });
+  assert.equal(snapshot.timing.steps, 2);
+  await f.control.endTurn({ sessionId: "chat" });
+  await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} });
+  assert.equal(steps[2].modelMs, undefined, "a new turn's first step is not timed against the last turn");
+});
+
+/** Waits for the script request showing `code` and returns it. */
+async function scriptRequest(f, code) {
+  for (let waited = 0; waited < 2_000; waited += 5) {
+    const request = f.requests.findLast((value) => value?.reason === "script" && value.script.code === code);
+    if (request) return request;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("No script request was shown.");
+}
+
+test("scripts run under the computer use flag, the chat's access, the person's approval and this Mac only", async (t) => {
+  const ran = [];
+  const f = fixture({ remote: true, authority: async () => true, runScript: async (request) => { ran.push(request); return { ok: true, stdout: "done" }; } });
+  t.after(() => f.control.reset(true));
+  assert.equal((await f.control.script({ sessionId: "chat", app: "applescript", code: "return 1" })).error.code, "computer_unavailable");
+  await f.control.setFeatureEnabled(true);
+  assert.equal((await f.control.script({ sessionId: "chat", app: "terminal", code: "ls" })).error.code, "invalid_arguments");
+  const pending = f.control.script({ sessionId: "chat", app: "applescript", code: "return 1" });
+  const request = await scriptRequest(f, "return 1");
+  assert.deepEqual(request.script, { app: "applescript", code: "return 1" }, "the person sees the exact full script");
+  assert.deepEqual(ran, [], "nothing runs before the answer");
+  await assert.rejects(f.control.answerRequest({ sessionId: "chat", answer: "allow", id: "another-request" }), /changed/);
+  await f.control.answerRequest({ sessionId: "chat", answer: "allow", id: request.id });
+  assert.deepEqual(await pending, { ok: true, stdout: "done" });
+  assert.deepEqual(ran, [{ app: "applescript", code: "return 1", timeoutMs: 30_000 }]);
+  assert.equal(f.requests.at(-1), null);
+  await f.control.setRemoteEnabled(true);
+  await f.control.choose({ sessionId: "chat", targetId: "vm" });
+  assert.equal((await f.control.script({ sessionId: "chat", app: "jxa", code: "1" })).error.code, "script_unavailable");
+  assert.equal(ran.length, 1);
+});
+
+test("declined scripts never run, always-run skips the question for that app, and turning computer use off stops scripts", async (t) => {
+  const ran = [];
+  let release = () => {};
+  const f = fixture({ runScript: async (request, signal) => {
+    ran.push(request.code);
+    if (request.code !== "slow") return { ok: true };
+    await new Promise((resolve, reject) => { release = () => resolve(undefined); signal.addEventListener("abort", () => reject(signal.reason), { once: true }); });
+    return { ok: true };
+  } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  const declined = f.control.script({ sessionId: "chat", app: "jxa", code: "first" });
+  await f.control.answerRequest({ sessionId: "chat", answer: "dismiss", id: (await scriptRequest(f, "first")).id });
+  assert.equal((await declined).error.code, "script_declined");
+  assert.deepEqual(ran, []);
+  const always = f.control.script({ sessionId: "chat", app: "jxa", code: "second" });
+  await f.control.answerRequest({ sessionId: "chat", answer: "always", id: (await scriptRequest(f, "second")).id });
+  assert.equal((await always).ok, true);
+  const shown = f.requests.length;
+  assert.equal((await f.control.script({ sessionId: "chat", app: "jxa", code: "third" })).ok, true);
+  assert.equal(f.requests.length, shown, "no new question for an always-run app");
+  const waiting = f.control.script({ sessionId: "chat", app: "blender", code: "result = 1" });
+  await scriptRequest(f, "result = 1");
+  const running = f.control.script({ sessionId: "other", app: "jxa", code: "slow" });
+  const other = await scriptRequest(f, "slow");
+  await f.control.answerRequest({ sessionId: "other", answer: "allow", id: other.id });
+  for (let waited = 0; !ran.includes("slow") && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  await f.control.setFeatureEnabled(false);
+  assert.equal((await waiting).error.code, "script_declined", "a pending approval ends when computer use is turned off");
+  assert.equal((await running).error.code, "script_failed", "a running script is stopped");
+  release();
+  assert.deepEqual(ran, ["second", "third", "slow"]);
+});
+
+/** A fake osascript: records its arguments and stdin, then exits as told. */
+function fakeOsascript(result) {
+  const runs = [];
+  const spawn = (command, args) => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), kill: () => true });
+    let input = "";
+    child.stdin.on("data", (chunk) => { input += chunk; });
+    child.stdin.on("finish", () => {
+      runs.push({ command, args, input });
+      if (result.stdout) child.stdout.end(result.stdout); else child.stdout.end();
+      if (result.stderr) child.stderr.end(result.stderr); else child.stderr.end();
+      setImmediate(() => child.emit("close", result.status));
+    });
+    return child;
+  };
+  return { spawn, runs };
+}
+
+test("AppleScript and JXA run through osascript, and a missing Automation grant says where to allow it", async () => {
+  const signal = new AbortController().signal;
+  const ok = fakeOsascript({ status: 0, stdout: "Inbox\n" });
+  const script = createComputerScripting({ platform: "darwin", stateDir: "/tmp/unused", bridgeScript: "/bridge.py", spawn: ok.spawn });
+  assert.deepEqual(await script({ app: "jxa", code: "Application('Mail').name()", timeoutMs: 5_000 }, signal), { ok: true, stdout: "Inbox" });
+  assert.deepEqual(ok.runs, [{ command: "/usr/bin/osascript", args: ["-l", "JavaScript", "-"], input: "Application('Mail').name()" }]);
+  const denied = fakeOsascript({ status: 1, stderr: "execution error: Not authorized to send Apple events to Mail. (-1743)" });
+  const blocked = await createComputerScripting({ platform: "darwin", stateDir: "/tmp/unused", bridgeScript: "/bridge.py", spawn: denied.spawn })({ app: "applescript", code: "tell application \"Mail\" to count messages of inbox", timeoutMs: 5_000 }, signal);
+  assert.equal(blocked.error.code, "automation_denied");
+  assert.match(blocked.error.message, /Privacy & Security › Automation/);
+  assert.equal((await createComputerScripting({ platform: "linux", stateDir: "/tmp/unused", bridgeScript: "/bridge.py" })({ app: "applescript", code: "1", timeoutMs: 5_000 }, signal)).error.code, "script_unavailable");
+});
+
+test("Blender scripts reach the bridge with its token, and an open Blender without the bridge is not relaunched", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "ow-script-"));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  const signal = new AbortController().signal;
+  const unbridged = createComputerScripting({ platform: "darwin", stateDir, bridgeScript: "/bridge.py", blenderRunning: async () => true, locateBlender: async () => { throw new Error("must not launch"); } });
+  await assert.rejects(unbridged({ app: "blender", code: "result = 1", timeoutMs: 5_000 }, signal), /already open without OpenWork's script bridge/);
+  await writeFile(join(stateDir, "blender.token"), "secret-token");
+  const received = [];
+  const bridge = createServer((socket) => {
+    let data = "";
+    socket.on("data", (chunk) => {
+      data += chunk;
+      if (!data.endsWith("\n")) return;
+      const request = JSON.parse(data);
+      received.push(request);
+      if (request.code !== "hang") socket.end(`${JSON.stringify({ ok: true, result: 3, stdout: "" })}\n`);
+    });
+  });
+  await new Promise((resolve) => { bridge.listen(join(stateDir, "blender.sock"), () => resolve(undefined)); });
+  t.after(() => new Promise((resolve) => bridge.close(resolve)));
+  const script = createComputerScripting({ platform: "darwin", stateDir, bridgeScript: "/bridge.py", blenderRunning: async () => true });
+  assert.deepEqual(await script({ app: "blender", code: "result = len(bpy.data.objects)", timeoutMs: 5_000 }, signal), { ok: true, result: 3, stdout: "" });
+  assert.deepEqual(received, [{ token: "secret-token", code: "result = len(bpy.data.objects)", timeoutMs: 5_000 }]);
+  const stop = new AbortController();
+  const hanging = script({ app: "blender", code: "hang", timeoutMs: 5_000 }, stop.signal);
+  for (let waited = 0; received.length < 2 && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  stop.abort();
+  await assert.rejects(hanging, /stopped/);
+  for (let waited = 0; received.length < 3 && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(received.at(-1), { token: "secret-token", cancel: true }, "stopping asks Blender to stop the script");
 });
