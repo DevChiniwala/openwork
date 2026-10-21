@@ -27,6 +27,56 @@ are a separate queue and can expose missing fixtures/capabilities. Never clone a
 authenticated pilot; use a separately audited software-only base and fresh profiles.
 See `research/workshop-pilot-validation.md` and the template/fanout gates.
 
+## Windows rehearsal (separate verdict)
+
+The `workshop` world's existing desktop fleet is Linux. For a Windows attendee,
+use the maintained `preview-desktop` **published release** path, not an unsupported
+Windows source preview or a copied authenticated Linux profile:
+
+```sh
+pnpm world help preview-desktop --json
+pnpm world plan preview-desktop --place daytona --os windows --stage <windows-stage>
+pnpm world up preview-desktop --place daytona --os windows --stage <windows-stage> \
+  --source desktop=release:<exact-version>/enterprise --seed blank \
+  --detach --timeout 600000 -- --lifetime 45
+```
+
+Discover an actual stable release with its Windows x64 asset first. The driver
+checks release byte count and SHA-256 in the VM. `plan` does not accept `--source`
+or `--seed`; those belong on `up`. Install the separate `evals` workspace when
+its dependencies are absent; a root install alone can leave `mysql2` unavailable.
+
+Before allocation, GET `/organizations/<actual-org>/usage` and check the
+`us` / `windows` pool. A `windows-medium` costs 2 vCPU, 8 GiB RAM and 50 GiB disk;
+container capacity is not Windows capacity. Use one uniquely owned stage. Apply
+a fixed provider TTL immediately: the launcher adds a 30-minute startup reserve
+to its world lifetime, which must not accidentally outlive the event backend.
+Keep keys controller-only and viewer/CDP URLs private.
+
+Windows exec is SYSTEM/session 0. GUI installation, app launch, browser sign-in
+and OAuth must run in the interactive VNC user's session, with explicit user
+profile paths. The maintained launcher uses interactive scheduled tasks; use its
+private viewer and CDP witnesses. Normal workshops must **not** install the fake
+CA or disable TLS from the certificate-reproduction skill.
+
+Bind only the existing authorized private Den origins, create a distinct ordinary
+member and own workspace, and complete real GUI first-launch sign-in. Do not
+reuse the Linux attendee/admin desktop session, regenerate OAuth issuer hosts,
+change model flags, or reset the shared world. Verify all five consents in the
+same Windows browser, actual model aliases, paid local/Drive writes, Ctrl+Enter
+while busy, own-attendee reset and rerun. Only then queue the presenter's eleven
+canonical prompts, excluding T07 lockout. Track per-task outcomes honestly.
+**Windows attempt on 2026-10-20 was blocked before GUI sign-in.** The official
+0.18.59 enterprise installer is signed and digest-verified, but installs
+`OpenWork Enterprise.exe`; this driver's `windows-release.ts` hardcodes
+`OpenWork.exe`. A same-byte executable alias got as far as a session-1 process,
+not acceptance. Private CDP/RFB readiness then failed; the wrapper deleted the VM
+before ready outputs despite the inner CDP stage's retained-viewer wording.
+Do not promise a retained viewer, start a fleet, or claim Windows support from
+this run. Repair executable selection and transport/retention, then obtain a
+fresh authorized rehearsal. All eleven canonical exercises were **not submitted**.
+See `research/workshop-windows-validation.md` for exact findings and cleanup.
+
 ## Before the event (do this first, 5 minutes)
 
 Run every check before allocating any desktop. A failed check is a fix, not
