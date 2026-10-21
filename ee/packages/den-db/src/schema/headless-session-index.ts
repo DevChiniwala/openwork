@@ -2,7 +2,7 @@ import { bigint, boolean, index, int, mysqlEnum, mysqlTable, timestamp, varchar 
 import { denTypeIdColumn } from "../columns"
 
 /**
- * Den's content-free index of headless runner conversations (feature `headlessSessionIndex`): one row per Workbot,
+ * Den's content-free index of headless runner conversations: one row per Workbot,
  * Slack or Automation session with its sizes, activity and state, never its content. The runner reports each change
  * through `POST /v1/internal/headless/index` with a capability Den minted for that session; the organization, member
  * and kind come only from that capability. Only den-api's session index module reads or writes this table.

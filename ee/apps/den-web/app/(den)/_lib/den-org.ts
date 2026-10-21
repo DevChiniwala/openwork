@@ -688,10 +688,6 @@ export function getAnalyticsRoute(orgSlug?: string | null): string {
   return `${getOrgDashboardRoute(orgSlug)}/analytics`;
 }
 
-export function getModelsAnalyticsRoute(orgSlug?: string | null): string {
-  return `${getAnalyticsRoute(orgSlug)}/models`;
-}
-
 export function getLibraryUsageRoute(orgSlug?: string | null): string {
   return `${getAnalyticsRoute(orgSlug)}/library`;
 }
@@ -861,10 +857,6 @@ export function getOrgSettingsRoute(orgSlug?: string | null): string {
 
 export function getDeploymentsRoute(orgSlug?: string | null): string {
   return `${getOrgDashboardRoute(orgSlug)}/deployments`;
-}
-
-export function getServicesRoute(orgSlug?: string | null): string {
-  return `${getOrgDashboardRoute(orgSlug)}/services`;
 }
 
 export function getDiagnosticsRoute(orgSlug?: string | null): string {

@@ -105,9 +105,8 @@ export const turnCredentialsSchema = z
      */
     resumeGrant: z.string().regex(RESUME_GRANT).optional(),
     /**
-     * Den's index capability for this session (feature `headlessSessionIndex`): kept with the session
-     * (`store.setIndexCapability`) for the Den index flusher (den-index.ts), never held with the turn, logged or
-     * exported. Opaque to the runner: only its size and characters are checked.
+     * Den's index capability for this session: kept with the session (`store.setIndexCapability`) for the Den index
+     * flusher (den-index.ts), never held with the turn, logged or exported. Opaque to the runner: only its size and characters are checked.
      */
     indexCapability: z.string().regex(INDEX_CAPABILITY).optional(),
   })
@@ -124,6 +123,10 @@ export type SessionComputer = {
   toolNames: ReadonlySet<string>
   /** The snapshot new computers boot from, for logs. */
   image: string
+  desktopTools?: ToolSpec[]
+  desktopRun?(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>
+  desktopViewer?(sessionId: string, input: { view: "browser" | "computer"; control: boolean; origin: string }): Promise<{ state: "paused" } | { state: "connected"; url: string; expiresAt: number; paused: boolean }>
+  desktopAction?(sessionId: string, action: "continue" | "pause" | "resume"): Promise<{ ok: boolean }>
   run(sessionId: string, name: string, input: Record<string, unknown>): Promise<ToolResult>
   known(sessionId: string): boolean
   prewarm(sessionId: string): void

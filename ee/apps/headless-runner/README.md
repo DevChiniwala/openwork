@@ -37,7 +37,7 @@ cells. It reports only whether model and resume settings are present, and can
 compare an `X-OpenWork-Den-Origin` header with the configured callback origin.
 It does not run inference, exchange grants, allocate a conversation cell, or
 return credentials or URLs. Public `/health` remains a liveness check. See
-[deployment service readiness](../../../docs/deployment-service-readiness.md).
+[diagnostics](../../../docs/diagnostics.md).
 
 | Method | Path | Body / query | Result |
 |---|---|---|---|
@@ -166,8 +166,7 @@ A caller with more than one conversation per person (Workbot's side chats) sets 
 Without it, a turn cut off by a restart, a deploy or a failover, or paused every 50 minutes for a fresh MCP token
 (`credentials_refresh`), waits `interrupted` until its caller re-sends it. With `HEADLESS_DEN_API_URL`,
 `HEADLESS_DEN_CALLBACK_TOKEN` and `HEADLESS_GRANT_KEY` set (all three, or the runner refuses to start), turns that
-Den sends with a **resume grant** (`credentials.resumeGrant`, minted per turn when `headlessDurableTurns` is on for
-the organization) keep going on their own:
+Den sends with a **resume grant** (`credentials.resumeGrant`, minted for every named turn) keep going on their own:
 
 - **The grant is kept encrypted** on the turn (AES-256-GCM, keyed by `HEADLESS_GRANT_KEY`). It is never returned by
   the API, logged, reported, or included in an [export](#move-conversations-to-node). A value that doesn't decrypt
@@ -183,14 +182,14 @@ the organization) keep going on their own:
   another node, recovers its turns and resumes them with no request.
 - **Failures.** A busy or unreachable Den (429, 5xx, timeout) is retried per turn after 30 s, doubling up to 15
   minutes, with jitter (and never before Den's `retryAfterMs`). A grant Den refuses for good (403: expired, revoked,
-  member left, feature off, or not this turn's) is forgotten, so the turn stays `interrupted` for its caller. A 401 or
+  member left, or not this turn's) is forgotten, so the turn stays `interrupted` for its caller. A 401 or
   404 means the runner's settings are wrong: self-resume stops until a restart and `resume_config_invalid` is
   reported once. Reports carry codes and ids only (`resume_exchange_failed`, `resume_config_invalid`,
   `resume_sweep_failed`, `resume_grant_unreadable`, `resume_grant_store_failed`).
 - A resumed turn uses the runner's `HEADLESS_MODEL_API_KEY`: a caller's own per-turn model key is never stored.
 
-Callers keep their re-send logic as a fallback; sends are idempotent. Deploy a runner that accepts `resumeGrant`
-before turning `headlessDurableTurns` on: older runners refuse the unknown field.
+Callers keep their re-send logic as a fallback; sends are idempotent. Deploy a runner that accepts `resumeGrant` and
+`execution` before deploying a GA Den: older runners refuse the unknown fields.
 
 ## Den's session index
 
@@ -198,9 +197,10 @@ With `HEADLESS_DEN_API_URL` and `HEADLESS_DEN_CALLBACK_TOKEN` set, the backgroun
 reports each session's content-free totals and state (title, dates, hot and total bytes, segment count, when its
 running turn started, deleted) from the index outbox to Den (`POST $HEADLESS_DEN_API_URL/v1/internal/headless/index`,
 `Authorization: Bearer $HEADLESS_DEN_CALLBACK_TOKEN`), at most 50 per request. Each update carries the session's
-**index capability**: Den sends one with every turn (`credentials.indexCapability`) where `headlessSessionIndex` is on;
+**index capability**: Den sends one with every turn whose caller names the session (`credentials.indexCapability`);
 the runner keeps the latest with the session, never with the turn, in logs or in exports. Den answers per update:
-`ok`/`stale` are acknowledged; `index_disabled` and `rate_limited` are kept and retried; other rejections are dropped.
+`ok`/`stale` are acknowledged; `rate_limited` is kept and retried (so is `index_disabled`, which only Dens from before
+the index was always on send); other rejections are dropped.
 Failures back off (immediately, 30 s, 2 min, 10 min, then hourly); rows older than 7 days, or that never got a
 capability, are dropped. Once a day the cell queues a fresh snapshot of every session. A Den outage delays the
 index, never a turn.
@@ -208,8 +208,9 @@ index, never a turn.
 ## Step mode
 
 A turn sent with `execution: "steps"` runs one step at a time from what is stored, instead of in one go. Callers send
-it only when `headlessStepTurns` is on for the organization (Den's Slack runner and Automations, and Workbot); a turn
-sent without it runs exactly as before, and a resent turn keeps the mode it was admitted with. Its background tasks
+it for all new turns (Den's Slack runner and Automations, and Workbot). [Resume grants](#self-resume)
+are minted for all named turns. Older Dens may send turns without it, which run as before; a resent turn keeps
+the mode it was admitted with. Its background tasks
 and their reports run in step mode too. Lanes, the queue, `HEADLESS_MAX_CONCURRENT_TURNS`, Stop, follow-ups that
 interrupt, the repeat check and `credentials_refresh` work the same way.
 
@@ -243,8 +244,8 @@ interrupt, the repeat check and `credentials_refresh` work the same way.
 - **Moving conversations.** Exports carry each turn's `execution`. A session with a running turn can't be exported,
   so the next-step schedule and checkpoints are never needed after an import, and never included.
 
-Turn `headlessStepTurns` on only after the runner deploy that accepts `execution` is live: older runners refuse the
-unknown field.
+Saved steps are generally available; there is no organization rollout switch. Deploy a runner that accepts
+`execution` and resume grants before GA Den. Existing turns keep their stored execution mode.
 
 ## Isolation
 
@@ -406,6 +407,13 @@ computer image or sandbox. Daytona uses stop/start when memory-preserving pause
 is unavailable. Disk survives; do not depend on in-memory background processes
 surviving a stop. The job checks for background work before stopping an idle
 computer. An unknown command timeout is reported honestly and never retried.
+
+For the visible Workbot desktop, use `HEADLESS_COMPUTER_CLASS=linux-vm` and
+`HEADLESS_COMPUTER_DESKTOP=true` with a prepared desktop snapshot. That class
+preserves memory, receives provider auto-pause, and renews a retention deadline
+from `HEADLESS_COMPUTER_KEEP_DAYS` so paused disks can expire too. Desktop mode
+rejects container snapshots. See [Workbot's Computer tab](../../../docs/computer-use/workbot.md)
+for image preparation, shared applications and the live microVM lifecycle check.
 
 Opt-in verification, creating and cleaning one real computer:
 

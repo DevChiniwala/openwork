@@ -1,4 +1,4 @@
-# Secure keys in chat (`secureSecretFields`, off by default)
+# Secure keys in chat
 
 An agent sets something up, a tool needs a key to continue, the person types
 the key into a private field in the same chat, and the agent carries on. The
@@ -16,8 +16,8 @@ private field is used for every key typed in OpenWork and OpenWork Cloud.
    `••••••••` saved state, and key validation. The desktop `SecretField` and
    den-web `DenSecretInput` both build on it.
 3. **Human-only writes in Den**: agents (`mcp_internal`) are always refused
-   when they send a key, and API keys are refused while the flag is on
-   (`secure_entry_required`, `middleware/refuse-machine-secrets.ts`).
+   when they send a key, and so are API keys (`secure_entry_required`,
+   `middleware/refuse-machine-secrets.ts`).
 
 ## Keys the agent can ask for in chat
 
@@ -36,8 +36,7 @@ can repeat the key.
 
 ## Forms
 
-The forms below use the shared field. With the flag on, they offer "Show while
-typing", and keys that are already saved appear as a `••••••••` row with a
+The forms below use the shared field. They offer "Show while typing", and keys that are already saved appear as a `••••••••` row with a
 Replace action:
 - den-web: connectors (API keys and OAuth app secrets), native Google and
   Microsoft clients, personal keys, marketplace plugin setup, the Slack
@@ -61,5 +60,5 @@ control.
 `evals/specs/secure-keys-in-chat.e2e.test.ts` runs on engines v1 and v2. It
 covers the MCP key, a rejected key, the AI Gateway provider key, a Vertex
 service-account key file, the refused legacy LLM provider key, the den-web
-saved and Replace row, and the rollout turned off. It also checks that no key
+saved and Replace row. It also checks that no key
 appears in the page, any model request or Den's log.

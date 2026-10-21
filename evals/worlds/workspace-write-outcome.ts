@@ -19,7 +19,7 @@ export async function workspaceWriteOutcome(seed: Seed) {
     { promptMarker: failedPrompt, latestUserTurn: true, finalReply: failedReply,
       steps: [{ tool: "write", arguments: { filePath: join(parse(workspace).root, "exp-wspath-proof-report.html"), content } }] },
     { promptMarker: successPrompt, latestUserTurn: true, finalReply: successReply,
-      steps: [{ tool: "write", arguments: { filePath: join(workspace, filename), content } }] },
+      steps: [{ tool: "write", arguments: { filePath: filename, content } }] },
   ] });
   const token = randomUUID();
   const app = await seed.appWeb({ workspacePath: workspace, engine: "v1", name: "exp-wspath-write-outcome", headless: true,
@@ -48,7 +48,7 @@ export async function workspaceWriteOutcome(seed: Seed) {
     sessionIds.push(session.id);
     sessionUrls.push(`${app.webUrl}${mount}/session/${session.id}`);
   }
-  return { app, sessionIds, sessionUrls, filename, content, failedPrompt, successPrompt, failedReply, successReply,
+  return { app, sessionIds, sessionUrls, filename, destination: join(workspace, filename), content, failedPrompt, successPrompt, failedReply, successReply,
     async fileContent() { return readFile(join(workspace, filename), "utf8").catch(() => null); },
     async writes(sessionId: string) {
       const response = await fetch(`${app.openworkUrl}${mount}/opencode/session/${sessionId}/message`, { headers });

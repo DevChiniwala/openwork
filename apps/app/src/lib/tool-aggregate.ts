@@ -78,7 +78,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+export function getWorkspacePathResolutions(part: AnyToolPart): { requested: string; resolved: string }[] {
+  const paths = part.callProviderMetadata?.openwork?.workspacePaths
+  if (Array.isArray(paths)) return paths.flatMap(path => isRecord(path) && typeof path.requested === "string" && typeof path.resolved === "string"
+    ? [{ requested: path.requested, resolved: path.resolved }] : [])
+  const destination = part.callProviderMetadata?.openwork?.fileDestination
+  const requested = isRecord(part.input) ? part.input.filePath : undefined
+  return typeof destination === "string" && typeof requested === "string" && requested !== destination && !/^(?:[\\/]|[a-z]:)/i.test(requested)
+    ? [{ requested, resolved: destination }] : []
+}
+
 function filePathOf(part: AnyToolPart): string | null {
+  const destination = part.callProviderMetadata?.openwork?.fileDestination
+  if (typeof destination === "string" && destination) return destination
   if (!isRecord(part.input)) return null
   const value = part.input.filePath
   return typeof value === "string" && value ? value : null

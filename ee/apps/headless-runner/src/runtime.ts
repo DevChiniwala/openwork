@@ -60,7 +60,7 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
   const events = new SessionEvents()
   // Storage upkeep with no request (sealing, the Den index outbox, owner-cell splits); see background.ts.
   const background = new BackgroundJobs((job, error) => errors.report({ code: "background_job_failed", tags: { job }, error }))
-  // Den's content-free session index (feature `headlessSessionIndex`): needs Den's address and the callback token.
+  // Den's content-free session index: needs Den's address and the callback token.
   if (config.selfResume) {
     const held = cellsHost.indexHeld
     const outbox: IndexOutbox = held
@@ -115,7 +115,7 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
       ? remoteMcpConnector({
           url: config.mcp.url,
           allowlist: config.mcp.toolAllowlist,
-          reservedNames: new Set([...FILE_TOOL_NAMES, ...SAVED_FILE_TOOL_NAMES, ...REACTION_TOOL_NAMES, ...TASK_TOOL_NAMES, ...(computer?.toolNames ?? [])]),
+          reservedNames: new Set([...FILE_TOOL_NAMES, ...SAVED_FILE_TOOL_NAMES, ...REACTION_TOOL_NAMES, ...TASK_TOOL_NAMES, ...(computer?.toolNames ?? []), ...(computer?.desktopTools?.map(tool => tool.name) ?? [])]),
         })
       : undefined,
     limits: config.limits,

@@ -2,15 +2,11 @@ import { and, eq, lt, or, sql } from "@openwork-ee/den-db/drizzle"
 import { RateLimitTable } from "@openwork-ee/den-db/schema"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
 import { db } from "../db.js"
+import { requestClientIpKey } from "../request-client-ip.js"
 
 type RateLimitRow = {
   count: number
   lastRequest: number
-}
-
-function requestAddress(headers: Headers) {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-  return forwarded || headers.get("x-real-ip")?.trim() || "unknown"
 }
 
 function retryAfterSeconds(row: RateLimitRow, maxRequests: number, windowMs: number, now: number) {
@@ -152,5 +148,5 @@ export async function checkRateLimit(key: string, maxRequests: number, windowMs:
 }
 
 export function enforceRateLimit(headers: Headers, scope: string, maxRequests: number, windowMs: number, now = Date.now()) {
-  return checkRateLimit(`${scope}:${requestAddress(headers)}`, maxRequests, windowMs, now)
+  return checkRateLimit(`${scope}:${requestClientIpKey(headers)}`, maxRequests, windowMs, now)
 }

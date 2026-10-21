@@ -27,6 +27,12 @@ import {
 import { exchangeHandoffAndSignIn } from "../../../app/lib/den-handoff";
 import { connectionDiagnosticHistory, type ConnectionDiagnosticReason, type ConnectionDiagnosticSource } from "../../../app/lib/connection-diagnostic-history";
 import { readOrgSelectionPending } from "../../../app/lib/den-sign-in-intent";
+import {
+  classifyStartupError,
+  failStartup,
+  markStartupStep,
+  noteStartupDenSession,
+} from "../../../app/lib/startup-diagnostics";
 import { desktopBridge, readDesktopDistributionInfo } from "../../../app/lib/desktop";
 import {
   denSessionUpdatedEvent,
@@ -262,6 +268,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
     }
 
     if (!token) {
+      noteStartupDenSession(null);
       setUser(null);
       setVerifiedIdentity(null);
       setError(null);
@@ -278,6 +285,7 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
       updateStatus("checking");
     }
 
+    noteStartupDenSession({ baseUrl: settings.baseUrl, organizationId: organizationId || null });
     const diagnostics = diagnosticsRef.current;
     diagnostics?.attempt("den_session_retry");
     try {
@@ -319,11 +327,13 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
       lastSignalRetryAtRef.current = null;
       diagnostics?.recovered("den_session_recovered");
       updateStatus("signed_in");
+      markStartupStep("signed_in", { organizationId: confirmedOrganizationId || null });
       syncDesktopSentrySession(nextUser);
     } catch (nextError) {
       if (currentRun !== refreshTokenRef.current) return;
 
       diagnostics?.failed();
+      failStartup("signed_in", classifyStartupError(nextError));
       const failureStatus = resolveDenAuthFailureStatus(nextError);
       if (failureStatus === "signed_out") {
         clearDenSession();

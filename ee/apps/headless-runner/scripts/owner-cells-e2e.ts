@@ -442,7 +442,7 @@ try {
   await socketDone
 
   assert.equal((await send(main, "msg_slow", "[slow] [write] Resume after restart")).status, 202)
-  // Another person's turn, sent with a resume grant (as Den sends them with headlessDurableTurns on).
+  // Another person's turn, sent with a resume grant (as current Den sends them).
   const durable = await call(`/v1/sessions/${other}/turns`, ownerB, { method: "POST", body: JSON.stringify({
     messageId: "msg_durable", prompt: "[durable] [write] Keep going on your own", credentials: { modelApiKey: "test-turn-key", resumeGrant: grant },
   }) })

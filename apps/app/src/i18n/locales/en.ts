@@ -693,8 +693,6 @@ export default {
   "engine_migration.trimmed_other": "{trimmed} chats were copied without their largest attachments or outputs; the full versions stay in OpenCode v1.",
   "engine_migration.try_again": "Try again",
   "engine_migration.upgrade": "Upgrade",
-  "engine_migration.upgrade_later": "Later",
-  "engine_migration.upgrade_notice": "A chat upgrade is available in OpenWork.",
   "engine_migration.upgrade_consent_title": "Upgrade chats?",
   "engine_migration.upgrade_consent_body": "Copies your full chat history to OpenCode v2 on this computer, backing up its existing chats first, then switches OpenWork to v2. Your v1 chats and newer v2 messages are kept. Large chats are copied without removing content.",
   "engine_migration.upgraded_title": "Upgraded to OpenCode v2",

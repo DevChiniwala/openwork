@@ -13,6 +13,7 @@ import { startGithubSyncWorker } from "./workers/github-sync.js"
 import { externalMcpClientRuntimeName } from "./capability-sources/external-mcp-client-runtime.js"
 import { startAutomationSchedulerLoop } from "./automations/scheduler-loop.js"
 import { startModelsAnalyticsExportLoop } from "./models-analytics-export.js"
+import { markServerListening } from "./server-start.js"
 
 const stopSlackAssistantWorker = startSlackAssistantWorker()
 const stopSlackDesktopHandoffWorker = startSlackDesktopHandoffWorker()
@@ -31,6 +32,7 @@ appLogger.info("external mcp implementation selected", { component: "server", ru
 // behavior (all interfaces) is unchanged when DEN_BIND_HOST is unset.
 const bindHost = process.env.DEN_BIND_HOST?.trim()
 const server = serveDenHttp({ fetch: app.fetch, port: env.port, ...(bindHost ? { hostname: bindHost } : {}) }, (info) => {
+  markServerListening()
   appLogger.info("server listening", { component: "server", port: info.port, keep_alive_timeout_ms: DEN_HTTP_KEEP_ALIVE_TIMEOUT_MS })
 })
 

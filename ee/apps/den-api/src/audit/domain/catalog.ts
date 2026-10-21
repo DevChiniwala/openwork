@@ -10,6 +10,9 @@
  * membership changes (revokeOrganizationApiKeysForMember; enabled → false).
  */
 export const domainChangeEmitters: Readonly<Record<string, string>> = {
+  "organization.benefit_setting.updated": "routes/admin/organization-control-panel.ts",
+  "organization.benefit_grant.created": "routes/admin/organization-control-panel.ts",
+  "organization.benefit_grant.revoked": "routes/admin/organization-control-panel.ts",
   "api_key.created": "audit/domain/api-keys.ts", "api_key.deleted": "audit/domain/api-keys.ts", "api_key.revoked": "audit/domain/api-keys.ts",
   "invitation.created": "audit/domain/invitations.ts", "invitation.refreshed": "audit/domain/invitations.ts", "invitation.canceled": "audit/domain/invitations.ts",
   "invitation.rejected": "audit/domain/invitations.ts",

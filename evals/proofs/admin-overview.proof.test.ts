@@ -71,11 +71,11 @@ test("an admin navigates organizations and member usage without loading every de
     await admin.see({ role: "heading", label: "Overview workspace" });
     await admin.see({ role: "heading", label: "Features" });
     await admin.see({ testId: "admin-breadcrumb-current" }, { text: "Features" });
-    await admin.see({ testId: "admin-capability-slackAssistant" });
+    await admin.see({ testId: "admin-capability-liveProviderSync" });
     const tabs = await adminProbe.dom('nav[aria-label="Organization sections"] [aria-current="page"]');
     const traffic = await world.traffic("admin");
     const location = await world.location();
-    const blocked = await adminProbe.dom('[data-testid="admin-capability-offlineRecovery"][disabled]');
+    const blocked = await adminProbe.dom('[data-testid="admin-capability-automationCalendar"][disabled]');
     const ok = location.pathname === `${world.detailPath}/features` && tabs.elements[0]?.text === "Features"
       && traffic.features === 1 && traffic.organizationUsage === 0 && traffic.organizationInsights === 0 && blocked.elements.length === 1;
     evidence.recordAssertionEvidence("The Features tab loads only this organization's flags and keeps the global kill switch locked", `${JSON.stringify(location)}; feature reads=${traffic.features}; locked controls=${blocked.elements.length}`, ok);
@@ -84,13 +84,13 @@ test("an admin navigates organizations and member usage without loading every de
   });
 
   await step("the admin's override survives refresh and leaves other organizations unchanged", async () => {
-    const otherBefore = await world.featureState("slackAssistant", true);
-    await admin.click({ testId: "admin-capability-slackAssistant" });
-    const saved = await adminProbe.eventually(() => world.featureState("slackAssistant"), { within: 10_000, until: (value) => value.override === true, label: "saved organization override" });
+    const otherBefore = await world.featureState("liveProviderSync", true);
+    await admin.click({ testId: "admin-capability-liveProviderSync" });
+    const saved = await adminProbe.eventually(() => world.featureState("liveProviderSync"), { within: 10_000, until: (value) => value.override === true, label: "saved organization override" });
     await admin.reload();
-    await admin.see({ testId: "admin-capability-source-slackAssistant" }, { text: "Set for this organization" });
-    const enabled = await adminProbe.dom('[data-testid="admin-capability-slackAssistant"][aria-checked="true"]');
-    const otherAfter = await world.featureState("slackAssistant", true);
+    await admin.see({ testId: "admin-capability-source-liveProviderSync" }, { text: "Set for this organization" });
+    const enabled = await adminProbe.dom('[data-testid="admin-capability-liveProviderSync"][aria-checked="true"]');
+    const otherAfter = await world.featureState("liveProviderSync", true);
     const ok = saved.enabled === true && enabled.elements.length === 1 && JSON.stringify(otherAfter) === JSON.stringify(otherBefore);
     evidence.recordAssertionEvidence("A feature override persists for the selected organization only", `own=${JSON.stringify(saved)}; other=${JSON.stringify(otherAfter)}; checked controls=${enabled.elements.length}`, ok);
     expect(ok).toBe(true);
@@ -114,14 +114,14 @@ test("an admin navigates organizations and member usage without loading every de
   });
 
   await step("the admin can turn a feature off and then return to everyone's setting", async () => {
-    await admin.click({ testId: "admin-capability-slackAssistant" });
-    const off = await adminProbe.eventually(() => world.featureState("slackAssistant"), { within: 10_000, until: (value) => value.override === false, label: "disabled organization override" });
+    await admin.click({ testId: "admin-capability-liveProviderSync" });
+    const off = await adminProbe.eventually(() => world.featureState("liveProviderSync"), { within: 10_000, until: (value) => value.override === false, label: "disabled organization override" });
     expect(off.enabled).toBe(false);
-    await admin.click({ testId: "admin-capability-reset-slackAssistant" });
-    const reset = await adminProbe.eventually(() => world.featureState("slackAssistant"), { within: 10_000, until: (value) => value.override === null, label: "reset organization override" });
+    await admin.click({ testId: "admin-capability-reset-liveProviderSync" });
+    const reset = await adminProbe.eventually(() => world.featureState("liveProviderSync"), { within: 10_000, until: (value) => value.override === null, label: "reset organization override" });
     await admin.reload();
-    await admin.see({ testId: "admin-capability-source-slackAssistant" }, { text: "Off for everyone" });
-    const resetButtons = await adminProbe.dom('[data-testid="admin-capability-reset-slackAssistant"]');
+    await admin.see({ testId: "admin-capability-source-liveProviderSync" }, { text: "Off for everyone" });
+    const resetButtons = await adminProbe.dom('[data-testid="admin-capability-reset-liveProviderSync"]');
     const ok = reset.override === null && reset.source === "everyone" && reset.enabled === false && resetButtons.elements.length === 0;
     evidence.recordAssertionEvidence("Both an explicit off override and reset to the deployment default survive saving", `off=${JSON.stringify(off)}; reset=${JSON.stringify(reset)}; reset buttons=${resetButtons.elements.length}`, ok);
     expect(ok).toBe(true);
@@ -133,7 +133,7 @@ test("an admin navigates organizations and member usage without loading every de
     await admin.resizeViewport({ width: 320, height: 740, deviceScaleFactor: 1 });
     await admin.navigate(world.url("/admin/features"));
     await admin.see({ role: "heading", label: "Features" });
-    await admin.see({ testId: "admin-feature-slackAssistant" });
+    await admin.see({ testId: "admin-feature-liveProviderSync" });
     const layout = await adminProbe.dom('li[data-testid^="admin-feature-"], li[data-testid^="admin-feature-"] button');
     const ok = layout.documentWidth <= layout.viewportWidth && layout.elements.length > 0 && layout.elements.every((entry) => entry.rect.left >= 0 && entry.rect.left + entry.rect.width <= layout.viewportWidth);
     evidence.recordAssertionEvidence("The global rollout and kill-switch actions wrap without horizontal overflow at 320px", `document=${layout.documentWidth}; viewport=${layout.viewportWidth}; controls=${layout.elements.length}`, ok);
@@ -247,7 +247,10 @@ test("an admin navigates organizations and member usage without loading every de
     const location = await world.location();
     const layout = await adminProbe.dom("body");
     const navigation = await adminProbe.dom('[data-testid="admin-navigation"] a');
-    const visibleSections = navigation.elements.length === 5 && navigation.elements.every((link) => link.rect.left >= 0 && link.rect.left + link.rect.width <= navigation.viewportWidth);
+    expect(navigation.elements.map((link) => link.text)).toEqual([
+      "Overview", "Users", "Organizations", "Opportunities", "Feature rollouts", "Free Auto usage", "Services",
+    ]);
+    const visibleSections = navigation.elements.every((link) => link.rect.left >= 0 && link.rect.left + link.rect.width <= navigation.viewportWidth);
     const ok = location.page === 1 && location.search === "Routing organization 00" && layout.documentWidth <= layout.viewportWidth && visibleSections;
     evidence.recordAssertionEvidence("Every admin destination fits the compact navigation without sideways scrolling", `${JSON.stringify(location)}; sections=${navigation.elements.length}; document=${layout.documentWidth}px; viewport=${layout.viewportWidth}px`, ok);
     expect(ok).toBe(true);
@@ -328,7 +331,9 @@ test("an admin navigates organizations and member usage without loading every de
     // A fresh deep link starts at the top, independent of the preceding Usage
     // page's pagination/viewport scroll restoration during client navigation.
     await admin.navigate(world.url(`${world.detailPath}/insights`));
-    await admin.see({ testId: "admin-organization-insights" }, { text: /Active member adoption/ });
+    // Target the top statistic: locating the entire tall panel scrolls down
+    // and loads charts before the deferred-loading assertion can observe them.
+    await admin.see({ text: "Active member adoption" });
     await admin.see({ testId: "admin-breadcrumb-current" }, { text: "Insights" });
     const deferredModels = await adminProbe.eventually(
       () => adminProbe.dom('[aria-label="Most used models"] [data-admin-deferred="pending"]'),

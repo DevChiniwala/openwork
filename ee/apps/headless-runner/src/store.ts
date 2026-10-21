@@ -48,6 +48,7 @@ const sessionOptions = z.object({
   repeats: repeatLimitsSchema.optional(),
   files: z.boolean().optional(),
   computer: z.boolean().optional(),
+  desktop: z.boolean().optional(),
   reactions: z.boolean().optional(),
   tasks: z.boolean().optional(),
   timeZone: z.string().optional(),
@@ -93,6 +94,7 @@ export type Session = {
    */
   files: boolean
   computer: boolean
+  desktop: boolean
   /** Whether the model may react to the person's message with an emoji (the caller shows it). */
   reactions: boolean
   /** Whether the conversation may hand work to background tasks (start_task) and keep talking meanwhile. */
@@ -121,6 +123,7 @@ export type SessionInput = {
   repeats?: RepeatLimits
   files?: boolean
   computer?: boolean
+  desktop?: boolean
   reactions?: boolean
   tasks?: boolean
   owner?: string
@@ -136,6 +139,7 @@ function optionsOf(input: {
   repeats?: RepeatLimits | null
   files?: boolean
   computer?: boolean
+  desktop?: boolean
   reactions?: boolean
   tasks?: boolean
   timeZone?: string | null
@@ -147,6 +151,7 @@ function optionsOf(input: {
     ...(input.repeats ? { repeats: input.repeats } : {}),
     ...(input.files !== undefined ? { files: input.files } : {}),
     ...(input.computer !== undefined ? { computer: input.computer } : {}),
+    ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
     ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
     ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
     ...(input.timeZone ? { timeZone: input.timeZone } : {}),
@@ -165,6 +170,7 @@ function serializeOptions(options: SessionOptions) {
     ...(options.repeats ? { repeats: options.repeats } : {}),
     ...(options.files ? { files: true } : {}),
     ...(options.computer ? { computer: true } : {}),
+    ...(options.desktop ? { desktop: true } : {}),
     ...(options.reactions ? { reactions: true } : {}),
     ...(options.tasks ? { tasks: true } : {}),
     ...(options.timeZone ? { timeZone: options.timeZone } : {}),
@@ -526,6 +532,7 @@ export class Store {
       repeats: options.repeats ?? null,
       files: options.files ?? false,
       computer: options.computer ?? false,
+      desktop: options.desktop ?? false,
       reactions: options.reactions ?? false,
       tasks: options.tasks ?? false,
       owner: value.owner ?? null,

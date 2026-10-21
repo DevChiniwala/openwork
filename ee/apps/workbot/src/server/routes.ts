@@ -57,7 +57,7 @@ const EVENTS_MAX_MS = 170_000
 /** A comment this often keeps idle proxies from closing the page's stream (as the runner's SSE does). */
 const KEEP_ALIVE_MS = 15_000
 /**
- * A live socket from the runner (`headlessStepTurns`) that couldn't open, or ended within `SOCKET_MIN_MS`, rests the
+ * A live socket from the runner (saved step turns) that couldn't open, or ended within `SOCKET_MIN_MS`, rests the
  * person's sockets for `SOCKET_REST_MS`: their streams use SSE meanwhile. Remembered for at most this many people.
  */
 const SOCKET_MIN_MS = 10_000
@@ -111,14 +111,15 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   const workbotFor = (member: Member) =>
     createWorkbot({
       client: runnerClientFor(member),
+      desktop: member.den.computer,
       canSchedule: async () => member.den.canSchedule,
       model: async () => member.den.model,
       // Gateway access is validated for this actor and model by Den when minting each turn, not by the runner catalog.
       verifyModel: !member.den.gatewayModels && member.den.verifyModel,
       workspaceAssistant: async () => member.den.workspaceAssistant,
-      // `headlessStepTurns`: turns run one step at a time; off (or an older Den) sends them as before.
+      // Saved steps are GA; older Dens may omit stepTurns, so preserve their continuous-turn protocol.
       stepTurns: member.den.stepTurns,
-      // `headlessSessionCells`: new chats in their own session cells; off (or an older Den) creates them as before.
+      // Per-chat cells are GA; older Dens may omit sessionCells, so preserve their legacy placement.
       sessionCells: member.den.sessionCells,
     })
 
@@ -157,18 +158,63 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       email: who.user.email,
       organizationName: who.organization.name,
       enabled: who.enabled,
-      firstRun: who.firstRun === true,
-      canEnableWorkbot: who.canEnableWorkbot === true,
       calendar: who.enabled && who.calendar === true,
       documents: who.enabled && who.documents === true,
+      computer: who.enabled && who.computer,
       documentEditing: who.enabled && who.documents === true && who.documentEditing,
+      nativeDictation: who.enabled && who.nativeDictation,
       workspaceAssistant: who.enabled && who.workspaceAssistant,
       guidedNavigation: who.enabled && who.workspaceAssistant && who.guidedNavigation,
-      teamLinks: who.enabled ? who.teamLinks : undefined,
       canSchedule: who.enabled && who.canSchedule,
       sideChats: who.enabled && who.sideChats,
       denUrl: config.denWebUrl ?? (await den.webUrl().catch(() => null)),
     })
+  })
+
+  // No sandbox ids or preview credentials are accepted from the page: the member determines the computer.
+  app.post("/v1/workbot/computer/:operation", async (c) => {
+    const member = c.get("member")
+    c.header("Cache-Control", "no-store")
+    if (!member.den.enabled || !member.den.computer) return c.json({ error: "feature_disabled" }, 403)
+    const operation = c.req.param("operation")
+    if (operation !== "viewer" && operation !== "action") return c.json({ error: "not_found" }, 404)
+    const raw: unknown = await c.req.json().catch(() => null)
+    const viewer = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean().default(false) }).strict().safeParse(raw)
+    const action = z.object({ action: z.enum(["continue", "pause", "resume"]) }).strict().safeParse(raw)
+    if (operation === "viewer" ? !viewer.success : !action.success) return c.json({ error: "invalid_request" }, 400)
+    const workbot = workbotFor(member)
+    const client = runnerClientFor(member)
+    const stillAllowed = async () => {
+      const fresh = await den.session(member.accessToken)
+      return fresh.enabled && fresh.computer && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
+    }
+    try {
+      if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
+      let sessionId = await workbot.sessionIdOf(actorOf(member))
+      const existing = await client.readSession(sessionId, { turns: 1, limit: 1, outputs: "none" })
+      if (!existing.ok && existing.status === 404) sessionId = await workbot.ensureComputer(actorOf(member))
+      else {
+        if (!existing.ok) return c.json({ error: "desktop_unavailable" }, 409)
+        const updated = await client.putSession(sessionId, { computer: true, desktop: true })
+        if (!updated.ok) return c.json({ error: "desktop_unavailable" }, 409)
+      }
+      if (operation === "viewer") {
+        const body = viewer
+        if (!body.success) return c.json({ error: "invalid_request" }, 400)
+        if (body.data.control) await workbot.stop(actorOf(member))
+        const result = await client.desktopViewer(sessionId, { ...body.data, origin: new URL(config.publicUrl).origin })
+        if (!result.ok) return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
+        // A cold VM may take longer than the membership cache: verify again before sharing its stream.
+        if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
+        return c.json(result.value)
+      }
+      const body = action
+      if (!body.success) return c.json({ error: "invalid_request" }, 400)
+      if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
+      if (body.data.action === "pause") await workbot.stop(actorOf(member))
+      const result = await client.desktopAction(sessionId, body.data.action)
+      return result.ok ? c.json({ ok: true }) : c.json({ error: "desktop_unavailable" }, 409)
+    } catch { return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409) }
   })
 
   /**
@@ -417,7 +463,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   }
 
   /**
-   * `headlessStepTurns`: the runner's live events over a WebSocket, which on celld keeps going while the runner's
+   * The runner's live events over a WebSocket, which on celld keeps going while the runner's
    * code is switched under it. Null (use SSE) when the runner doesn't upgrade, or while this person's socket is resting
    * after one that couldn't open or ended early, so a runner that can't keep one isn't tried on every stream.
    */

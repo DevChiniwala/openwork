@@ -26,7 +26,6 @@ import {
   getBillingRoute,
   getDesktopPoliciesRoute,
   getDiagnosticsRoute,
-  getServicesRoute,
   getDeploymentsRoute,
   getLibraryRoute,
   getMarketplacesRoute,
@@ -43,6 +42,7 @@ import {
 } from "../../_lib/den-org";
 import type { DenOrgMode } from "../../_lib/runtime-config";
 import { canOpenAdminRoute } from "./admin-route-access";
+import { WORKBOT_ENTRY_HREF, type WorkbotEntry, workbotNavMarker } from "./workbot-entry";
 
 export type DashboardNavChild = {
   href: string;
@@ -57,6 +57,8 @@ export type DashboardNavItem = {
   badge?: string;
   /** Quiet dot beside the label when something here is waiting on the viewer. */
   attention?: string;
+  /** Quiet lock beside the label when someone else has to unblock this entry (DESIGN.md P4, C5). */
+  locked?: string;
   testId?: string;
   /** Extra pathname prefixes that select this entry. */
   matchHrefs?: string[];
@@ -91,6 +93,8 @@ export type BuildDashboardNavSectionsInput = {
   desktopPolicyScreenRemoved?: boolean;
   /** Explicit server capability, independent of organization role permissions. */
   canManageDeploymentServices?: boolean;
+  /** What clicking Workbot does; a blocked entry stays visible with a marker. */
+  workbotEntry?: WorkbotEntry;
 };
 
 export function buildDashboardNavSections({
@@ -102,12 +106,13 @@ export function buildDashboardNavSections({
   managedDeployments = false,
   desktopPolicyScreenRemoved = false,
   canManageDeploymentServices = false,
+  workbotEntry = { kind: "open" },
 }: BuildDashboardNavSectionsInput): DashboardNavSection[] {
   const workflowsEnabled = capabilities.workflows;
   const showWeb = runtimeConfigLoaded && capabilities.openworkWeb;
   const workItems: DashboardNavItem[] = [
     ...(capabilities.workbot
-      ? [{ href: "/workbot", label: "Workbot", icon: MessageCircle, testId: "dashboard-nav-workbot" }]
+      ? [{ href: WORKBOT_ENTRY_HREF, label: "Workbot", icon: MessageCircle, testId: "dashboard-nav-workbot", ...workbotNavMarker(workbotEntry) }]
       : []),
     {
       href: orgSlug ? getLibraryRoute(orgSlug) : "#",
@@ -155,7 +160,6 @@ export function buildDashboardNavSections({
         ...[
           { href: getOrgSettingsRoute(orgSlug), label: "General" },
           { href: getDiagnosticsRoute(orgSlug), label: "Diagnostics" },
-          { href: getServicesRoute(orgSlug), label: "Services" },
           { href: getBillingRoute(orgSlug), label: "Billing" },
           { href: getApiKeysRoute(orgSlug), label: "API Keys" },
         ].filter((item) => canOpen(item.href)),
@@ -211,7 +215,7 @@ const PAGE_KEYWORDS: Record<string, string[]> = {
   "Desktop policies": ["policy", "mdm", "lock", "desktop"],
   Deployments: ["aws", "self-hosted", "byoc", "install", "health", "status"],
   Dashboards: ["boards", "apps"],
-  Diagnostics: ["health", "debug", "troubleshooting"],
+  Diagnostics: ["health", "status", "services", "readiness", "debug", "troubleshooting", "desktop startup"],
   General: ["organization", "workspace"],
   // Agent permissions live on Members › Teams (Everyone and each team's Agents tab).
   Members: ["people", "users", "invite", "teams", "roles", "agent permissions", "commands", "websites", "allow list", "block list", "desktop", "prompt suggestions"],
@@ -224,7 +228,6 @@ const PAGE_KEYWORDS: Record<string, string[]> = {
   Plugins: ["skills", "commands", "plugin directory"],
   SCIM: ["provisioning", "directory", "users"],
   Settings: ["organization", "workspace"],
-  Services: ["deployment", "readiness", "health", "check"],
   SSO: ["single sign on", "saml", "oidc"],
   "Tool Tester": ["tools", "test", "mcp"],
   Workbot: ["model", "default model", "assistant", "slack", "automations"],

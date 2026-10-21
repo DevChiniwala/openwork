@@ -10,16 +10,16 @@ export * from "@openwork-ee/headless-protocol"
 
 /**
  * `indexKind`: which surface the turns belong to (Automations pass `automation`, Slack wraps these deps with `slack`),
- * so each turn also carries an index capability where `headlessSessionIndex` is on. Without it none is minted.
+ * so each turn also carries an index capability. Without it none is minted.
  */
 export function defaultHeadlessRunnerDeps(
   env: Record<string, string | undefined> = process.env,
   options: { indexKind?: HeadlessIndexKind } = {},
 ): HeadlessRunnerDeps | null {
   const config = headlessRunnerConfig(env)
-  // Loaded lazily: the minter pulls in the auth and database modules. A resume grant comes back only where
-  // `headlessDurableTurns` is on and the turn's session and message are known; an index capability only where
-  // `headlessSessionIndex` is on and the kind and session are known.
+  // Loaded lazily: the minter pulls in the auth and database modules. A resume grant comes back when
+  // the turn's session and message are known; an index capability only where the kind
+  // and session are known.
   const mintToken: HeadlessRunnerDeps["mintToken"] = async (input) => {
     const { token, resumeGrant, modelAccess, indexCapability } = await (await import("./resume-grants.js")).mintHeadlessTurnCredentials({
       ...input,
@@ -27,22 +27,7 @@ export function defaultHeadlessRunnerDeps(
     })
     return { token, ...(resumeGrant ? { resumeGrant } : {}), ...(modelAccess ? { modelAccess } : {}), ...(indexCapability ? { indexCapability } : {}) }
   }
-  const modelAccessRequired: HeadlessRunnerDeps["modelAccessRequired"] = async (actor) =>
-    (await import("../workbot/model.js")).cloudAgentGatewayEnabled(actor.organizationId)
+  // Every cloud-agent turn gets its model through the organization's AI Gateway.
+  const modelAccessRequired: HeadlessRunnerDeps["modelAccessRequired"] = () => true
   return config ? { config, fetch, mintToken, modelAccessRequired, maxTokenTtlMs: DEN_MCP_HEADLESS_RUN_TOKEN_MAX_TTL_MS } : null
-}
-
-/**
- * Feature `headlessStepTurns`: whether Den sends the organization's headless turns with `execution: "steps"`, so the
- * runner runs them one step at a time and a runner deploy switches between steps. A failed read sends the turn exactly
- * as without the feature.
- */
-export async function headlessStepTurnsEnabled(organizationId: string): Promise<boolean> {
-  try {
-    // Loaded lazily: the feature reader pulls in the database modules.
-    const { organizationFeatureEnabled } = await import("../features.js")
-    return await organizationFeatureEnabled(organizationId, "headlessStepTurns")
-  } catch {
-    return false
-  }
 }

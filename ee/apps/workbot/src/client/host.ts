@@ -10,15 +10,14 @@ export const meSchema = z.object({
   email: z.string(),
   organizationName: z.string(),
   enabled: z.boolean(),
-  firstRun: z.boolean().default(false),
-  canEnableWorkbot: z.boolean().default(false),
+  computer: z.boolean().default(false),
   /** Workbot's Calendar tab (on while Workbot is on); older servers omit it. */
   calendar: z.boolean().default(false),
   documents: z.boolean().default(false),
   documentEditing: z.boolean().default(false),
+  nativeDictation: z.boolean().default(false),
   workspaceAssistant: z.boolean().default(false),
   guidedNavigation: z.boolean().default(false),
-  teamLinks: z.object({ enabled: z.boolean(), settings: z.boolean(), apps: z.boolean() }).optional(),
   /** The organization runs Automations in the cloud, so the Calendar can create them. */
   canSchedule: z.boolean().default(false),
   /** Side chats are on for this person (while Workbot is on). */
@@ -83,12 +82,11 @@ export function createHost(me: Me, recovery: { authorization?: WorkbotHost["docu
     homeHref: me.denUrl ? `${me.denUrl}/dashboard` : "/",
     calendar: me.calendar,
     documents: me.documents,
+    computer: me.computer,
     documentEditing: me.documents && me.documentEditing,
+    nativeDictation: me.nativeDictation,
     workspaceAssistant: me.workspaceAssistant,
     guidedNavigation: me.workspaceAssistant && me.guidedNavigation,
-    teamLinks: me.enabled && me.teamLinks && me.denUrl && me.organizationId
-      ? { ...me.teamLinks, denUrl: me.denUrl, organizationId: me.organizationId }
-      : undefined,
     canSchedule: me.canSchedule,
     connectionsHref: me.denUrl ? `${me.denUrl}/dashboard/your-connections` : null,
     get signInHref() { return `/auth/login?return=${encodeURIComponent(window.location.pathname + window.location.search)}` },

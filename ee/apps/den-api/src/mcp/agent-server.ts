@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/server"
 import { workflowArtifactAppServerCapabilities } from "./workflow-artifact-app.js"
-import { REMOTE_SESSION_RECEIPT_INSTRUCTIONS } from "./remote-session-resources.js"
 import { SKILLS_EXTENSION_ID } from "./skills-extension.js"
 
 /**
@@ -59,7 +58,6 @@ const REMOTE_SESSION_STATUS_INSTRUCTIONS = "To follow remote sessions, call remo
 
 export function createAgentMcpServer(options: {
   appServers?: boolean
-  remoteSessionEvents?: boolean
   remoteSessionStatus?: boolean
   /** Advertise the MCP Skills Extension (SEP-2640); its handlers are registered by the caller. */
   skillsExtension?: boolean
@@ -80,10 +78,9 @@ export function createAgentMcpServer(options: {
         extensions: { ...workflowArtifactAppServerCapabilities.extensions, [SKILLS_EXTENSION_ID]: {} },
       } : {}),
       tools: { listChanged: true },
-      resources: { listChanged: true, ...(options.remoteSessionEvents ? { subscribe: true } : {}) },
+      resources: { listChanged: true },
     },
     instructions: [options.appServers === false ? LEGACY_AGENT_MCP_INSTRUCTIONS : AGENT_MCP_INSTRUCTIONS,
-      ...(options.remoteSessionEvents ? [REMOTE_SESSION_RECEIPT_INSTRUCTIONS] : []),
       ...(options.remoteSessionStatus ? [REMOTE_SESSION_STATUS_INSTRUCTIONS] : []),
       ...(options.skillIndex ? [options.skillIndex] : [])].join("\n"),
   })

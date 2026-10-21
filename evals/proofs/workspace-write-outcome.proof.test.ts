@@ -62,6 +62,10 @@ test("a person sees a failed report write as failed, and a saved report as saved
     evidence.recordAssertionEvidence("The successful write and workspace file agree", `write=${writes.join(",")}; content matches=${content === world.content}`, writes.includes("completed") && content === world.content);
     expect(writes).toContain("completed");
     expect(content).toBe(world.content);
+    await user.see({ text: "Workspace destination:" });
+    const destinations = await probe.dom("[data-workspace-file-resolution]");
+    expect(destinations.elements.some(row => row.text.includes(world.destination))).toBe(true);
+    evidence.recordAssertionEvidence("The relative write shows its actual workspace destination", destinations.elements.map(row => row.text).join("; "), destinations.elements.some(row => row.text.includes(world.destination)));
     await capture();
   });
 });
