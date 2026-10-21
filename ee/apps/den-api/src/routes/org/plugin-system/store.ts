@@ -6716,13 +6716,10 @@ async function buildConnectorAutomationContext(input: { connectorInstance: Conne
     throw new PluginArchRouteFailure(404, "organization_not_found", "Organization not found for connector instance.")
   }
 
-  const [member, features] = await Promise.all([
-    resolveOrganizationMemberAuthority({
-      organizationId: input.connectorInstance.organizationId,
-      memberId: input.connectorInstance.createdByOrgMembershipId,
-    }),
-    getOrganizationFeatures(organization.id),
-  ])
+  const member = await resolveOrganizationMemberAuthority({
+    organizationId: input.connectorInstance.organizationId,
+    memberId: input.connectorInstance.createdByOrgMembershipId,
+  })
   if (!member) {
     throw new PluginArchRouteFailure(404, "member_not_found", "Connector creator member not found.")
   }
@@ -6730,6 +6727,7 @@ async function buildConnectorAutomationContext(input: { connectorInstance: Conne
   if (!member.userId) {
     throw new PluginArchRouteFailure(404, "member_not_joined", "Connector creator member has not joined the organization.")
   }
+  const features = await getOrganizationFeatures(organization.id, { userId: member.userId })
 
   // The automation acts with the connector creator's own permissions.
   const memberPermissions = await resolvePermissionsForMember({

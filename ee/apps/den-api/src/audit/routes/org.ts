@@ -193,6 +193,8 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   admin("GET", "/v1/admin/organizations/:organizationId", "tenant_read", "organization.admin_detail.read"),
   admin("GET", "/v1/admin/organizations/:organizationId/insights", "tenant_read", "organization.admin_insights.read"),
   admin("GET", "/v1/admin/organizations/:organizationId/usage", "tenant_read", "organization.admin_usage.read"),
+  admin("GET", "/v1/admin/organizations/:organizationId/members/:memberId/capabilities", "tenant_read", "member.capabilities.read"),
+  admin("PUT", "/v1/admin/organizations/:organizationId/members/:memberId/capabilities", "tenant_change", "member.capabilities.update", { notes: "Sets or clears registry feature overrides for one active organization membership (member_feature); platform admins only." }),
   admin("GET", "/v1/admin/organizations/:organizationId/capabilities", "tenant_read", "organization.capabilities.read"),
   admin("PUT", "/v1/admin/organizations/:organizationId/capabilities", "tenant_change", "organization.capabilities.update", { notes: "Sets or clears this organization's feature overrides (organization_feature, features registry). The admin MCP tool den_set_org_capability makes the same change (service action organization.capability.set)." }),
   admin("PATCH", "/v1/admin/organizations/:organizationId/plan", "tenant_change", "organization.plan.update"),

@@ -46,17 +46,17 @@ export function registerGoogleOfficeEditorRoutes<T extends { Variables: OrgRoute
   // Each session keeps the editor it opened on: the operator's service or the member's Cloud worker.
   const serviceFor = (serverUrl: string) => createCollaboraService({ serverUrl: validOrigin(serverUrl), ...origins! })
   const draftEditor = (draft: OfficeDraft) => draft.editorUrl ?? env.documentsOffice.serverUrl
-  const enabled = async (id: string) => await organizationFeatureEnabled(id, "workbotDocuments")
+  const enabled = async (id: string, userId: string) => await organizationFeatureEnabled(id, "workbotDocuments", { userId })
   const guard: MiddlewareHandler<{ Variables: OrgRouteVariables }> = async (c, next) => {
     const context = c.get("organizationContext")
-    if (!context || !await enabled(context.organization.id)) return c.json({ error: "feature_disabled", message: "Documents is off for this workspace." }, 403)
+    if (!context || !await enabled(context.organization.id, context.currentMember.userId)) return c.json({ error: "feature_disabled", message: "Documents is off for this workspace." }, 403)
     if (!store || !origins) return c.json({ error: "office_not_configured", message: "Full document editing is not set up for this workspace. An administrator can enable the document editor. You can open this file in Drive." }, 503)
     c.header("cache-control", "no-store")
     await next()
   }
   const editingGuard: MiddlewareHandler<{ Variables: OrgRouteVariables }> = async (c, next) => {
     const context = c.get("organizationContext")
-    if (!context || !await organizationFeatureEnabled(context.organization.id, "workbotDocumentEditing")) return c.json({ error: "feature_disabled", message: "Document editing is off for this workspace." }, 403)
+    if (!context || !await organizationFeatureEnabled(context.organization.id, "workbotDocumentEditing", { userId: context.currentMember.userId })) return c.json({ error: "feature_disabled", message: "Document editing is off for this workspace." }, 403)
     await next()
   }
   const description = (operationId: string, summary: string, schema: z.ZodType, security?: []) => {
@@ -88,7 +88,7 @@ export function registerGoogleOfficeEditorRoutes<T extends { Variables: OrgRoute
   }
   const serviceAuthorized = async (c: Parameters<MiddlewareHandler<{ Variables: OrgRouteVariables }>>[0], draft: OfficeDraft) => {
     const context = await getOrganizationContextForUser({ organizationId: normalizeDenTypeId("organization", draft.organizationId), userId: normalizeDenTypeId("user", draft.userId) })
-    if (!context || context.currentMember.id !== draft.memberId || !await enabled(draft.organizationId)) return false
+    if (!context || context.currentMember.id !== draft.memberId || !await enabled(draft.organizationId, draft.userId)) return false
     c.set("organizationContext", context)
     const auth = await selected(c, draft.connectionId)
     if (!auth.ok) return false
@@ -194,7 +194,7 @@ export function registerGoogleOfficeEditorRoutes<T extends { Variables: OrgRoute
     if (write) {
       // A rollout pause must not tell the engine that file access was revoked:
       // its 403 handling can invalidate unsaved content. No staging/write succeeds.
-      if (!await organizationFeatureEnabled(draft.organizationId, "workbotDocumentEditing")) throw new Response(JSON.stringify({ error: "document_editing_disabled" }), { status: 503, headers: { "content-type": "application/json", "retry-after": "5" } })
+      if (!await organizationFeatureEnabled(draft.organizationId, "workbotDocumentEditing", { userId: draft.userId })) throw new Response(JSON.stringify({ error: "document_editing_disabled" }), { status: 503, headers: { "content-type": "application/json", "retry-after": "5" } })
       const auth = await selected(c, draft.connectionId)
       if (!draft.canEdit || !auth.ok || !canWriteDriveDocument(auth.token.account.scopes, auth.token.enabledScopes)) return null
       const meta = await metadata(c, auth.deps, draft.savedFileId ?? draft.fileId)

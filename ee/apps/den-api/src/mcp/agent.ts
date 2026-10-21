@@ -453,7 +453,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const finishIndexTiming = startMcpAppTiming("den.agent-index-read")
     const catalog = await getCatalog(app as unknown as Hono, c.env)
     const organizationId = normalizeDenTypeId("organization", principal.organizationId)
-    const organizationFeatures = await getOrganizationFeatures(organizationId)
+    const organizationFeatures = await getOrganizationFeatures(organizationId, { userId: principal.userId })
     // External MCP connections are scoped to the calling MEMBER (grants +
     // per-member credentials), not just the org — resolve who this token's
     // user is within the org once per request, reusing the features just read.
