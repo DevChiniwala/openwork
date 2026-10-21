@@ -10,8 +10,11 @@ import type { CapabilityMatch, CapabilityToolAnnotations } from "./search.js"
  * queryParams, hasBody, bodySchema, querySchema, argumentsSchema, invocation,
  * readOnly) because desktop releases from before `inputSchema` still read
  * them and pass path, query, and body. Remove them once those have updated.
+ * A connection's `path` is its server URL, which can carry credentials, so it
+ * is left out; API route templates stay.
  */
-export type CapabilityToolMatch = Omit<CapabilityMatch, "annotations"> & {
+export type CapabilityToolMatch = Omit<CapabilityMatch, "annotations" | "path"> & {
+  path?: string
   description: string
   inputSchema: Record<string, unknown>
   annotations?: CapabilityToolAnnotations
@@ -21,6 +24,10 @@ const NO_ARGUMENTS = { type: "object", additionalProperties: false }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isServerUrl(path: string): boolean {
+  return URL.canParse(path)
 }
 
 /**
@@ -57,9 +64,10 @@ function annotationsFor(match: CapabilityMatch): CapabilityToolAnnotations | und
 
 export function capabilityToolMatch(match: CapabilityMatch, httpArguments: boolean): CapabilityToolMatch {
   const annotations = annotationsFor(match)
-  const { annotations: _providerAnnotations, ...details } = match
+  const { annotations: _providerAnnotations, path, ...details } = match
   return {
     ...details,
+    ...(isServerUrl(path) ? {} : { path }),
     name: match.name,
     description: match.summary,
     inputSchema: inputSchemaFor(match, httpArguments),

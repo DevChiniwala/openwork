@@ -19,7 +19,7 @@ const apiMatch: CapabilityMatch = {
 const externalMatch: CapabilityMatch = {
   name: "mcp:emc_linear:list_issues",
   method: "MCP",
-  path: "https://mcp.example.test/sse",
+  path: "https://mcp.example.test/sse?api_key=secret",
   score: 9,
   summary: "[Linear] List issues in the workspace.",
   pathParams: [],
@@ -58,7 +58,8 @@ test("a connection tool keeps its provider schema and annotations, and the older
   assert.deepEqual(tool.annotations, { readOnlyHint: true, openWorldHint: true })
   assert.equal(tool.description, "[Linear] List issues in the workspace.")
   assert.equal(tool.schemaDigest, externalMatch.schemaDigest)
-  for (const field of ["method", "path", "summary", "argumentsSchema", "invocation", "readOnly", "hasBody", "pathParams", "queryParams"] as const) {
+  assert.equal("path" in tool, false, "a connection's server URL can carry credentials")
+  for (const field of ["method", "summary", "argumentsSchema", "invocation", "readOnly", "hasBody", "pathParams", "queryParams"] as const) {
     assert.deepEqual(tool[field], externalMatch[field], field)
   }
   assert.deepEqual(capabilityToolMatch({ ...externalMatch, argumentsSchema: undefined, hasBody: false }, false).inputSchema,
