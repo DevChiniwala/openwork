@@ -2,14 +2,14 @@ import Darwin
 import Foundation
 import Security
 
-/// mcp-embedded trusts its stdin peer to approve sessions, so the mode
+/// mcp-embedded trusts its stdin peer to control sessions, so the mode
 /// selector alone is not authentication: a team-signed helper only serves a
 /// parent process signed by the same team (the OpenWork desktop).
 enum HostTrust {
     static func embeddedHostIsTrusted() -> Bool {
         guard let team = teamIdentifier() else {
-            // An unsigned helper cannot authenticate its host. Standalone mcp
-            // retains native consent; embedded approvals require a signed peer.
+            // An unsigned helper cannot authenticate its host. Both MCP modes
+            // require a signed peer; standalone mode is no bypass.
             return false
         }
         guard team.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) != nil else { return false }

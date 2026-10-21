@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,7 +115,7 @@ export default defineConfig(({ command, isPreview }) => {
       tailwindcss(),
       react({
         babel: {
-          plugins: [["babel-plugin-react-compiler", { compilationMode: "annotation" }]],
+          plugins: [[createRequire(import.meta.url).resolve("babel-plugin-react-compiler"), { compilationMode: "annotation" }]],
         },
       }),
     ],

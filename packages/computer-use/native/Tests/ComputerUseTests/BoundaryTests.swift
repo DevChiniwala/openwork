@@ -4,7 +4,7 @@ import ApplicationServices
 @testable import ComputerUse
 
 final class BoundaryTests: XCTestCase {
-    func testUnsignedHelperCannotTrustAParentAsItsApprovalHost() {
+    func testUnsignedHelperCannotTrustAParentAsItsControlHost() {
         // SwiftPM's unsigned test process cannot authenticate an embedded host,
         // including when compiled with the former development bypass flag.
         XCTAssertFalse(HostTrust.embeddedHostIsTrusted())
@@ -402,7 +402,7 @@ final class BoundaryTests: XCTestCase {
             ("computer_close_session", ["session_id": "invented"]),
         ]
         for (name, args) in calls {
-            do { _ = try await runtime.call(name, args); XCTFail("Unapproved access succeeded") }
+            do { _ = try await runtime.call(name, args); XCTFail("Unowned session access succeeded") }
             catch let error as UseError { XCTAssertEqual(error.code, "session_unavailable") }
         }
     }
@@ -417,4 +417,17 @@ final class BoundaryTests: XCTestCase {
         let names = Set(MCPServer.schemas().compactMap { $0["name"] as? String })
         XCTAssertEqual(names, ["computer_discover", "computer_open_session", "computer_observe", "computer_act", "computer_session_status", "computer_close_session"])
     }
+    @MainActor
+    func testEnabledWindowResolutionHasNoApprovalDecision() throws {
+        XCTAssertEqual(try WindowSelection.resolve(ids: [17], requested: nil, focused: nil, descriptions: ["17: Draft"]), 17)
+        XCTAssertEqual(try WindowSelection.resolve(ids: [17, 18], requested: nil, focused: 18, descriptions: []), 18)
+        XCTAssertEqual(try WindowSelection.resolve(ids: [17, 18], requested: 17, focused: 18, descriptions: []), 17)
+        XCTAssertThrowsError(try WindowSelection.resolve(ids: [17, 18], requested: nil, focused: nil, descriptions: ["17: Draft", "18: Notes"])) { error in
+            XCTAssertEqual((error as? UseError)?.code, "window_ambiguous")
+        }
+        XCTAssertThrowsError(try WindowSelection.resolve(ids: [17], requested: 18, focused: nil, descriptions: []))
+        let open = try XCTUnwrap(MCPServer.schemas().first { $0["name"] as? String == "computer_open_session" })
+        XCTAssertFalse((open["description"] as? String ?? "").contains("ask the person"))
+    }
+
 }

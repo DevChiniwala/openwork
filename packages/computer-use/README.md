@@ -1,6 +1,6 @@
 # Computer Use
 
-A small macOS 14+ helper that lets OpenWork see and use one app window approved by the person, for one short session. It is a single Swift executable
+A small macOS 14+ helper that lets OpenWork see and use the requested app window while computer use is enabled. It is a single Swift executable
 (`native/`) that the OpenWork desktop packages as **OpenWork Computer Use.app**
 (bundle id `com.differentai.openwork.computer-use`) and launches from its main
 process. It has no model, API key, network listener or clipboard access.
@@ -9,16 +9,17 @@ process. It has no model, API key, network listener or clipboard access.
 
 | Command | Purpose |
 | --- | --- |
-| `ComputerUse mcp-embedded` | What the same-team signed OpenWork desktop launches. MCP over stdio; the person chooses a window in the desktop, which hosts Take over, Continue and Stop over the private `openwork/ui` channel. |
-| `ComputerUse mcp` | Standalone MCP server for local testing, with native consent and a small native control panel. |
+| `ComputerUse mcp-embedded` | What the same-team signed OpenWork desktop launches. MCP over stdio; requested targets open directly; the desktop hosts Take over, Continue and Stop over the private `openwork/ui` channel. |
+| `ComputerUse mcp` | MCP server with native controls, available only to the authenticated same-team desktop host. |
 | `ComputerUse --check` | Prints `{ok, accessibility, screenRecording, supported, protocolVersion: "openwork.computer-use/1"}` and exits. |
 | `ComputerUse permissions accessibility\|screenRecording` | Triggers the macOS prompt and opens the matching System Settings pane. |
 | `ComputerUse permissions-guide accessibility\|screenRecording` | Floating permission guide driven by its parent over line-delimited JSON (below). |
 
 ## Sessions and tools
 
-A session covers one app, one window and one mode, for at most 15 minutes,
-pauses after two idle minutes and allows at most 200 actions. The modes are
+A session covers one app, one window and one mode. Technical leases and action
+accounting renew silently; idle cleanup and follow-up requests preserve enabled
+access. Neither renewal nor cleanup clears a human takeover. The modes are
 `observe` (read only), `assist` (accessibility press/set value) and `control`
 (also targeted mouse and keyboard input; the selected window must be in front).
 A kernel-held lock allows one session at a time. Grants, element references,
@@ -27,7 +28,7 @@ screenshots and receipts live in process memory and are discarded on close.
 | Tool | Purpose |
 | --- | --- |
 | `computer_discover` | App identities, permissions, modes, keys, shortcuts and limits; reads no window content |
-| `computer_open_session` | Launch the app if needed and wait for the person to approve a window |
+| `computer_open_session` | Launch the requested app and resolve its target window without an approval prompt |
 | `computer_observe` | Compact interactive (or all) elements plus an optional window PNG |
 | `computer_zoom` | A region of the current observation at full resolution; read only |
 | `computer_act` | One action or an ordered batch (1–8) against a fresh observation, with a display-only `intent` |
@@ -44,9 +45,11 @@ permission, credential and host apps (`com.differentai.openwork*`,
 `com.differentai.opencoworker*`) can never be targeted. Failures are MCP
 `isError: true` results with machine-readable `code` and `next` fields.
 
-Person input in the approved app, an app switch, sleep or idle expiry pauses
+Person input in the selected app or a deliberate app switch pauses
 the session and releases held input. Only the person's Continue resumes it;
-neither time nor the agent can.
+neither time nor the agent can. Sleep or temporary desktop unavailability
+invalidates observations and releases held input without creating a human
+handoff; fresh target validation is required when the desktop returns.
 
 ## Embedded protocol (`openwork/ui`)
 
@@ -54,14 +57,12 @@ In `mcp-embedded` mode the helper and host also exchange JSON-RPC
 notifications with method `openwork/ui`:
 
 - Helper → host: `{kind: "state", id, phase, appName, appID, pid, windowTitle,
-  task, mode, status, canContinue, windows?}` where `phase` is `approval`,
-  `working`, `paused` or `closed` (`windows` only during approval);
+  task, mode, status, canContinue, cause?}` where `phase` is `working`, `paused` or `closed`;
   `{kind: "frame", id, sequence, capturedAt, width, height, mimeType, data}`
   watch frames (PNG, at most 5 per second, only while the host is watching and
   the agent is working); `{kind: "input", id, sequence, action, phase, at, x?, y?}`
   for each dispatched input.
-- Host → helper: `{id, action}` with `action` one of `approve` (plus
-  `windowId`), `deny`, `takeover`, `resume`, `stop`, or `watch` (plus
+- Host → helper: `{id, action}` with `action` one of `takeover`, `resume`, `stop`, or `watch` (plus
   `visible`). Messages for another `id` are ignored. `resume` only works while
   the session is paused and Continue is allowed.
 
@@ -115,9 +116,12 @@ while accessible controls keep working.
 
 ## Experimental access model
 
-The desktop rollout enables application tools. Personal app windows and manually
-configured remote desktops wait for the person's window choice in the Computer
-view; dedicated conversation cloud VMs select their windows automatically.
+The desktop rollout enables application tools on personal Macs, configured
+remote desktops and conversation-owned cloud VMs without extra OpenWork approval
+flows. Resolve the intended app/window from the request and current state.
+Use an explicit window_id when needed; clarify only genuinely ambiguous targets.
+Routine renewal never asks for permission again. Stop ends the current work;
+Take over remains paused until Continue and interrupted actions are never replayed.
 System permissions still come from macOS. Editable controls do not expose their
 raw Accessibility values to the model; ordinary visible content remains in the
 screenshot. Protected controls that identify
@@ -170,7 +174,7 @@ it is a focused provider diagnostic, separate from the Web rollout UI proof.
 With `computerUse` enabled, `computer_run` executes one bounded JavaScript
 program against the conversation's selected computer or built-in browser. It
 uses the same Stop/takeover controls and organization policy as direct tools.
-Programs share the window approval used by direct tools. The `remoteComputers` rollout is
+Programs share the enabled access, target validation and human handoff used by direct tools. The `remoteComputers` rollout is
 also required when the selected computer is a VM.
 
 ```js

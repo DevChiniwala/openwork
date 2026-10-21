@@ -127,7 +127,7 @@ else:
     },
     async windows() {
       // Metadata is untrusted. JSON framing prevents titles/classes containing
-      // tabs or newlines from creating another approval candidate. Geometry is
+      // tabs or newlines from creating another target candidate. Geometry is
       // parsed as numbers, never evaluated as shell code.
       const script = String.raw`
 import json, pathlib, subprocess
@@ -136,6 +136,8 @@ def command(*args):
     return subprocess.run(["xdotool", *args], check=True, capture_output=True, text=True, timeout=3).stdout.rstrip("\n")
 
 windows = []
+try: focused = int(command("getactivewindow"))
+except (ValueError, subprocess.SubprocessError): focused = None
 try: ids = command("search", "--onlyvisible", "--name", ".").splitlines()
 except subprocess.CalledProcessError: ids = []
 for value in dict.fromkeys(ids):
@@ -153,7 +155,7 @@ for value in dict.fromkeys(ids):
                 app = pathlib.Path(f"/proc/{pid}/comm").read_text().strip()
             except (ValueError, OSError, subprocess.SubprocessError): app = "app"
         title = command("getwindowname", str(window))
-        windows.append({"id": window, "app": app[:120] or "app", "title": title[:500] or "Untitled window", "region": region})
+        windows.append({"id": window, "app": app[:120] or "app", "title": title[:500] or "Untitled window", "region": region, "focused": window == focused})
     except (KeyError, ValueError, OSError, subprocess.SubprocessError): continue
 print(json.dumps(windows))
 `;

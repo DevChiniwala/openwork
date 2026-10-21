@@ -50,19 +50,16 @@ async function fixture(t, overrides = {}) {
     input: async (steps) => { inputs.push(...steps); return { completed: steps.length }; },
     ...overrides,
   };
-  const adapter = createRemoteComputerAdapter({ id: "vm", label: "VM", driver });
+  const adapter = createRemoteComputerAdapter({ id: "vm", label: "VM", driver, ...(overrides.now ? { now: overrides.now } : {}) });
   const transport = await adapter.connect({ signal: new AbortController().signal, onUi: (value) => events.push(value), onClose: () => {} });
   t.after(() => transport.close());
-  const opening = transport.callTool("computer_open_session", { app_id: "Editor", mode: "control", purpose: "Edit the draft" });
-  await new Promise((resolve) => setImmediate(resolve));
-  const approval = events.find((value) => value.kind === "state" && value.phase === "approval");
-  assert.ok(approval);
-  // The broker does this automatically under the rollout, not a user prompt.
-  await transport.notifyUi({ id: approval.id, action: "approve", windowId: 42 });
-  const sessionId = payload(await opening).session_id;
+  const sessionId = payload(await transport.callTool("computer_open_session", { app_id: "Editor", mode: "control", purpose: "Edit the draft" })).session_id;
+  const active = events.find(value => value.kind === "state" && value.phase === "working");
+  assert.ok(active);
+  assert.ok(!events.some(value => value.phase === "approval"));
   const observe = async () => payload(await transport.callTool("computer_observe", { session_id: sessionId })).observation_id;
   const act = (observationId, actions, requestId = "request") => transport.callTool("computer_act", { session_id: sessionId, observation_id: observationId, request_id: requestId, actions });
-  const interact = (action) => transport.notifyUi({ id: approval.id, action });
+  const interact = (action) => transport.notifyUi({ id: active.id, action });
   return { driver, transport, sessionId, inputs, events, observe, act, interact };
 }
 
@@ -148,4 +145,32 @@ test("an invalid VM display reports readiness without crashing app construction 
   assert.equal(status.readiness, "unavailable");
   assert.match(status.detail, /X display/);
   assert.equal(contacted, false);
+});
+
+
+test("lease expiration and idle time never resume a human takeover", async t => {
+  let time = 0;
+  const f = await fixture(t, { now: () => time });
+  const old = await f.observe();
+  await f.interact("takeover");
+  time += 901_000;
+  assert.equal(payload(await f.transport.callTool("computer_session_status", { session_id: f.sessionId })).state, "paused");
+  assert.equal(payload(await f.act(old, [{ type: "type", text: "never" }])).code, "paused");
+  await f.interact("resume");
+  assert.equal(payload(await f.act(old, [{ type: "type", text: "never" }])).code, "observation_expired");
+  assert.equal(payload(await f.act(await f.observe(), [{ type: "type", text: "new work" }], "fresh")).status, "dispatched");
+  assert.equal(f.inputs.length, 1);
+  time += 901_000;
+  assert.equal(payload(await f.transport.callTool("computer_observe", { session_id: f.sessionId })).ok, true);
+});
+
+test("multiple peer windows require target resolution, not approval", async t => {
+  const f = await fixture(t);
+  await f.transport.callTool("computer_close_session", { session_id: f.sessionId });
+  const region = { x: 0, y: 0, width: 400, height: 300 };
+  f.driver.windows = async () => [ { id: 41, title: "Notes", app: "Editor", region }, { id: 42, title: "Draft", app: "Editor", region } ];
+  const args = { app_id: "Editor", mode: "control", purpose: "Edit the draft" };
+  assert.equal(payload(await f.transport.callTool("computer_open_session", args)).code, "window_ambiguous");
+  assert.equal(payload(await f.transport.callTool("computer_open_session", { ...args, window_id: 42 })).window_id, 42);
+  assert.ok(!f.events.some(value => value.phase === "approval"));
 });

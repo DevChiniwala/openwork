@@ -40,11 +40,11 @@ case "permissions-guide":
     NSApplication.shared.delegate = coach
     withExtendedLifetime(coach) { NSApplication.shared.run() }
 case "mcp", "mcp-embedded":
-    // mcp-embedded: the OpenWork desktop owns approval and Continue over the
-    // private openwork/ui channel. mcp: standalone, with native consent and controls.
+    // mcp-embedded: the OpenWork desktop hosts Take over, Continue and Stop over the
+    // private openwork/ui channel. mcp: standalone, with native controls.
     SessionControls.embedded = command == "mcp-embedded"
-    if SessionControls.embedded && !HostTrust.embeddedHostIsTrusted() {
-        fputs("mcp-embedded requires the helper and desktop host to be signed by the same Apple team. Use mcp with native consent for unsigned development.\n", stderr)
+    if !HostTrust.embeddedHostIsTrusted() {
+        fputs("Computer control requires the helper and desktop host to be signed by the same Apple team.\n", stderr)
         exit(1)
     }
     if SessionControls.embedded { MCPOutput.shared.enableNonblocking() }
