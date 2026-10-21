@@ -218,7 +218,7 @@ test("multi-domain blur warning names only unmatched entries and remains after a
   expect(await setupPrecedesVerification(client)).toBe(true);
 });
 
-test("initial administrator setup shows the shared password policy and natively caps typed input at its maximum", async ({ place }) => {
+test("initial administrator setup preserves a 40-character paste, shows an inline error and blocks submission without truncation", async ({ place }) => {
   const code = randomUUID();
   await using den = await server({ place, provision: false, web: true, env: {
     DEN_ORG_MODE: 'single_org', DEN_SINGLE_ORG_OWNER_EMAILS: 'admin@example.test',
@@ -245,12 +245,52 @@ test("initial administrator setup shows the shared password policy and natively 
     return { min: input.minLength, max: input.maxLength, hint: document.querySelector('#setup-password-policy')?.textContent, describedBy: input.getAttribute('aria-describedby') };
   });
   expect(policy.min).toBe(MIN_PASSWORD_LENGTH);
-  expect(policy.max).toBe(MAX_PASSWORD_LENGTH);
+  expect(policy.max).toBe(-1);
   expect(policy.hint).toContain(`Use ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters.`);
   expect(policy.describedBy).toBe('setup-password-policy');
+  await click(client, '#setup-name');
+  await client.send('Input.insertText', { text: 'Example Admin' });
   await click(client, '#setup-password');
-  await client.send('Input.insertText', { text: 'x'.repeat(MAX_PASSWORD_LENGTH + 1) });
-  expect(await evaluate(client, () => document.querySelector<HTMLInputElement>('#setup-password')?.value.length)).toBe(MAX_PASSWORD_LENGTH);
+  // Insert the entire pasted value in one browser input operation, not character-by-character.
+  await client.send('Input.insertText', { text: 'x'.repeat(40) });
+  await eventually(() => evaluate(client, () => Boolean(document.querySelector('#setup-password-error'))), 'inline overlong-password error');
+  const invalid = await evaluate(client, () => {
+    const input = document.querySelector('#setup-password');
+    if (!(input instanceof HTMLInputElement)) throw new Error('Missing password input');
+    return { length: input.value.length, error: document.querySelector('#setup-password-error')?.textContent, invalid: input.getAttribute('aria-invalid'), describedBy: input.getAttribute('aria-describedby'), customError: input.validity.customError, valid: input.checkValidity() };
+  });
+  expect(invalid.length).toBe(40);
+  expect(invalid.error).toBe(`Password must be at most ${MAX_PASSWORD_LENGTH} characters.`);
+  expect(invalid.invalid).toBe('true');
+  expect(invalid.describedBy).toContain('setup-password-error');
+  expect(invalid.customError).toBe(true);
+  expect(invalid.valid).toBe(false);
+  const authPostCount = (log: string) => log.split('\n').filter(line => {
+    try {
+      const entry: unknown = JSON.parse(line);
+      return typeof entry === 'object' && entry !== null && 'http_method' in entry && entry.http_method === 'POST' && 'http_route' in entry && typeof entry.http_route === 'string' && entry.http_route.startsWith('/api/auth/');
+    } catch { return false; }
+  }).length;
+  const beforePosts = authPostCount(await den.apiLog());
+  await click(client, 'button', 'Create administrator');
+  // Also exercise the React submit guard independently of native constraint validation.
+  const blocked = await evaluate(client, async () => {
+    const input = document.querySelector('#setup-password');
+    if (!(input instanceof HTMLInputElement) || !input.form) throw new Error('Missing password form');
+    input.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    return { length: input.value.length, valid: input.checkValidity(), submitting: document.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled };
+  });
+  expect(blocked).toEqual({ length: 40, valid: false, submitting: false });
+  expect(authPostCount(await den.apiLog())).toBe(beforePosts);
+  await callFunction(client, value => {
+    const input = document.querySelector('#setup-password');
+    if (!(input instanceof HTMLInputElement)) throw new Error('Missing password field');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, ['x'.repeat(MAX_PASSWORD_LENGTH)]);
+  await eventually(() => evaluate(client, () => !document.querySelector('#setup-password-error')), 'error clears when corrected without truncation');
+  expect(await evaluate(client, () => document.querySelector<HTMLInputElement>('#setup-password')?.checkValidity())).toBe(true);
   const status = await fetch(`${den.ref.apiUrl}/v1/auth/bootstrap/status`);
   expect(status.status).toBe(200);
   const payload: unknown = await status.json();

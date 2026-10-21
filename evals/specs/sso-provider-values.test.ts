@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { getSamlEntityId, getSsoSetupValues, SsoProviderValues } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-provider-values";
 import { getEmailDomain, getSsoDomainWarning, getSsoRequestError, SsoAdvancedAudience, SsoDomainField, SsoEnableWarning, SsoOidcIssuerHint, SsoSamlNotice } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-form-guidance";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
-import { SetupPasswordField } from "../../ee/apps/den-web/app/(den)/setup/password-field";
+import { getSetupPasswordError, SetupPasswordField } from "../../ee/apps/den-web/app/(den)/setup/password-field";
 import { ORGANIZATION_SAML_ALLOW_IDP_INITIATED } from "../../ee/apps/den-api/src/sso-saml-policy";
 import { isOrganizationSsoReady } from "../../ee/apps/den-api/src/sso-readiness";
 import type { DenOrgSsoConnection } from "../../ee/apps/den-web/app/(den)/_lib/den-org";
@@ -188,10 +188,25 @@ test("setup password input and visible hint use the same 8–32 length policy as
   expect(MIN_PASSWORD_LENGTH).toBe(8);
   expect(MAX_PASSWORD_LENGTH).toBe(32);
   expect(html).toMatch(new RegExp(`minlength="${MIN_PASSWORD_LENGTH}"`, 'i'));
-  expect(html).toMatch(new RegExp(`maxlength="${MAX_PASSWORD_LENGTH}"`, 'i'));
+  expect(html).not.toMatch(/maxlength=/i);
   expect(html).toContain(`Use ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters.`);
   expect(html).toContain('aria-describedby="setup-password-policy"');
   expect(html).toContain('class="den-input"');
+});
+
+test("overlong setup passwords retain all 40 characters and expose an associated inline error, without truncation", () => {
+  const value = 'x'.repeat(40);
+  const html = renderToStaticMarkup(createElement(SetupPasswordField, { value, onChange: () => {} }));
+  expect(html).toContain(`value="${value}"`);
+  expect(html).not.toMatch(/maxlength=/i);
+  expect(html).toContain('aria-invalid="true"');
+  expect(html).toContain('aria-describedby="setup-password-policy setup-password-error"');
+  expect(html).toContain('id="setup-password-error"');
+  expect(html).toContain('role="alert"');
+  expect(html).toContain(`Password must be at most ${MAX_PASSWORD_LENGTH} characters.`);
+  expect(getSetupPasswordError(value)).not.toBeNull();
+  expect(getSetupPasswordError('x'.repeat(MAX_PASSWORD_LENGTH))).toBeNull();
+  expect(renderToStaticMarkup(createElement(SetupPasswordField, { value: 'x'.repeat(MAX_PASSWORD_LENGTH), onChange: () => {} }))).not.toContain('id="setup-password-error"');
 });
 
 test("only a single_org_mode 409 receives the sign-out/sign-in recovery text", () => {

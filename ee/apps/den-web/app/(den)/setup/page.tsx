@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { MemberAuthGuard } from "../_components/member-auth-guard";
 import { AUTH_TOKEN_STORAGE_KEY, getErrorMessage, getToken, requestJson } from "../_lib/den-flow";
 import type { SetupBootstrapStatus } from "../_lib/member-auth-routing";
-import { SetupPasswordField } from "./password-field";
+import { getSetupPasswordError, SetupPasswordField } from "./password-field";
 
 type SetupStatus = SetupBootstrapStatus;
 type SetupStep = "verify" | "create";
@@ -76,6 +76,7 @@ export default function SetupPage() {
 
   async function submitAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (getSetupPasswordError(password)) return;
     setBusy(true);
     setError(null);
     try {
