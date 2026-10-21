@@ -18,7 +18,7 @@ const sqliteTargets = ["darwin", "linux", "linuxmusl", "win32"];
 
 for (const platform of targets) {
   for (const arch of architectures) {
-    test(`${platform}/${arch} ships only its own SQLite and PTY natives, retaining Linux libc variants`, () => {
+    test(`${platform}/${arch} ships only its own SQLite and PTY natives, retaining Linux libc variants`, ({ evidence }) => {
       const root = mkdtempSync(join(tmpdir(), "exp-np-filters-"));
       try {
         const files: string[] = ["node_modules/better-sqlite3/package.json", "node_modules/better-sqlite3/lib/index.js", "node_modules/node-pty/index.js", "server/dist/unchanged.js"];
@@ -57,6 +57,7 @@ for (const platform of targets) {
           writeFileSync(join(root, file), "fixture");
           expect(mainFilter(join(root, file), statSync(join(root, file)))).toBe(["electron/main.mjs", "server/dist/unchanged.js", "package.json"].includes(file));
         }
+        evidence.recordAssertionEvidence("The desktop package file allowlist is unchanged", "Only electron, server and package.json are included; scripts, resources, tests and external plugin sources are excluded", true);
         const collected = getNodeModuleFileMatcher(root, root, expand, options, { config: mergedConfig, debugLogger }).createFilter();
         const stagedSet = options.files.find((file: { from?: string }) => file.from === ".electron-runtime/node_modules");
         const staged = new FileMatcher(root, root, expand, stagedSet.filter).createFilter();
@@ -87,11 +88,14 @@ for (const platform of targets) {
           expect(() => verifyNativeModules(files, platform, arch, root)).toThrow("Foreign");
           // PackContext's real numeric enum must select the same architecture.
           expect(() => verifyNativeModules(kept, platform, arch === "x64" ? 1 : 3, root)).not.toThrow();
+          evidence.recordAssertionEvidence("Only target native modules survive both collector and staged-runtime filters", JSON.stringify(kept.filter((file) => file.endsWith(".node"))), true);
+          evidence.recordAssertionEvidence("Missing target SQLite or PTY and foreign binaries fail the build", "Missing SQLite, missing PTY and unfiltered foreign natives each threw; string and PackContext numeric architectures accepted the valid set", true);
         }
         // Filters never mutate installed dependencies or standalone-server inputs.
         for (const file of files) expect(readFileSync(join(root, file), "utf8")).toBe("fixture");
         rmSync(join(root, `node_modules/better-sqlite3/prebuilds/${platform}-${arch}.node`));
         expect(() => verifyNativeModules(expected, platform, arch, root)).toThrow("Missing unpacked native");
+        evidence.recordAssertionEvidence("Installed dependency inputs stay intact and ASAR references cannot hide a missing unpacked native", "Every original input retained its contents; removing the target unpacked SQLite file made verification fail", true);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
@@ -99,7 +103,8 @@ for (const platform of targets) {
   }
 }
 
-test("unknown native targets fail closed", () => {
+test("unknown native targets fail closed", ({ evidence }) => {
   expect(() => verifyNativeModules([], "win32", "ia32", "/unused")).toThrow("Unsupported");
   expect(() => verifyNativeModules([], "freebsd", "x64", "/unused")).toThrow("Unsupported");
+  evidence.recordAssertionEvidence("Unsupported targets cannot silently produce incomplete installers", "Windows ia32 and FreeBSD x64 both rejected before inspecting files", true);
 });
