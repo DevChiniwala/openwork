@@ -124,3 +124,27 @@ test("Computer follows the member's existing session cell after chat storage mig
   assert.ok(calls.includes(`/v1/sessions/${sessionId}/desktop/viewer`))
   assert.ok(!calls.some(path => path.includes(workbotSessionId("org", "cell_member"))))
 })
+
+test("Computer says when its image is out of date instead of asking to reconnect", async t => {
+  const signed = member("outdated")
+  let viewer: { status: number; body: unknown } = { status: 409, body: { error: "desktop_outdated" } }
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    const parsed = new URL(url instanceof Request ? url.url : url)
+    if (parsed.pathname.endsWith("/desktop/viewer")) return new Response(JSON.stringify(viewer.body), { status: viewer.status, headers: { "content-type": "application/json" } })
+    if (init?.method === "PUT") return Response.json({ id: parsed.pathname.split("/").at(-1) })
+    return Response.json({ turns: [], messages: [], finalAssistantText: "" })
+  })
+  t.mock.method(console, "error", () => {})
+  const app = new Hono<AppEnv>()
+  registerWorkbotRoutes(app, {
+    config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => signed.den },
+    member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
+  })
+  const open = () => app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })
+  const outdated = await open()
+  assert.equal(outdated.status, 409)
+  assert.deepEqual(await outdated.json(), { error: "desktop_outdated", message: "Your computer needs an update before it can connect. Ask your workspace admin to update Workbot's computer." })
+  // Other runner codes, including ones this Workbot doesn't know, keep the reconnect message.
+  viewer = { status: 409, body: { error: "desktop_unresponsive" } }
+  assert.deepEqual(await (await open()).json(), { error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." })
+})

@@ -11,6 +11,13 @@ import { errorMessage, workbotHost } from "./host";
 const viewerSchema = z.union([z.object({ state: z.literal("paused") }), z.object({ state: z.literal("connected"), url: z.string().url(), expiresAt: z.number(), paused: z.boolean() })]);
 const button = "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-[var(--wb-text)] hover:bg-[var(--wb-chip)] disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]";
 
+type ComputerView = "browser" | "computer";
+
+/** Each view has its own path (/browser, /computer), so a reload or a shared link opens the same view. */
+function viewFromLocation(): ComputerView {
+  return typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/computer" ? "computer" : "browser";
+}
+
 /** Both views belong to the main conversation's computer. noVNC carries pixels and native input. */
 export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean }) {
   const host = workbotHost();
@@ -19,7 +26,17 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
   const recording = teaching !== undefined && teaching.phase !== "draft";
   const screen = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<"browser" | "computer">("browser");
+  const [view, setViewState] = useState<ComputerView>(viewFromLocation);
+  const setView = (next: ComputerView) => {
+    if (next === view) return;
+    window.history.pushState(null, "", `/${next}${window.location.search}`);
+    setViewState(next);
+  };
+  useEffect(() => {
+    const sync = () => { if (/^\/(browser|computer)\/?$/.test(window.location.pathname)) setViewState(viewFromLocation()); };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
   const [control, setControl] = useState(false);
   const [agentPaused, setAgentPaused] = useState(false);
   const [paused, setPaused] = useState(false);

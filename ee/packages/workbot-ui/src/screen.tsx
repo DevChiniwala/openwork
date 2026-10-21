@@ -598,7 +598,7 @@ type WorkbotTab = "home" | "calendar" | "documents" | "computer";
 
 function tabFromLocation(): WorkbotTab {
   const path = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") : "";
-  return path === "/computer" ? "computer" : path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
+  return path === "/computer" || path === "/browser" ? "computer" : path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
 }
 
 /** Home (the conversation) and Calendar, as paths so a reload or a shared link opens the same tab. */
@@ -622,7 +622,8 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
   const setTab = (next: WorkbotTab, discard = false) => {
     if (next === tab) return;
     if (!discard && beforeLeaveRef.current?.(next) === false) return;
-    window.history.pushState(null, "", `${next === "home" ? "/" : `/${next}`}${preserveSearch ? window.location.search : ""}`);
+    // The Computer tab opens on its Browser view, which has its own path (see WorkbotComputer).
+    window.history.pushState(null, "", `${next === "home" ? "/" : next === "computer" ? "/browser" : `/${next}`}${preserveSearch ? window.location.search : ""}`);
     setTabState(next);
   };
   return [tab, setTab] as const;

@@ -224,6 +224,13 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     })
   })
 
+  /** The runner's desktop codes in the person's words; anything else reads as a reconnectable outage. */
+  const desktopFailure = (c: Context<AppEnv>, operation: string, code: string) => {
+    console.error("[workbot] desktop unavailable", { operation, code })
+    if (code === "desktop_outdated") return c.json({ error: code, message: "Your computer needs an update before it can connect. Ask your workspace admin to update Workbot's computer." }, 409)
+    return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
+  }
+
   // No sandbox ids or preview credentials are accepted from the page: the member determines the computer.
   app.post("/v1/workbot/computer/:operation", async (c) => {
     const member = c.get("member")
@@ -247,16 +254,16 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       const existing = await client.readSession(sessionId, { turns: 1, limit: 1, outputs: "none" })
       if (!existing.ok && existing.status === 404) sessionId = await workbot.ensureComputer(actorOf(member))
       else {
-        if (!existing.ok) return c.json({ error: "desktop_unavailable" }, 409)
+        if (!existing.ok) return desktopFailure(c, operation, existing.error)
         const updated = await client.putSession(sessionId, { computer: true, desktop: true })
-        if (!updated.ok) return c.json({ error: "desktop_unavailable" }, 409)
+        if (!updated.ok) return desktopFailure(c, operation, updated.error)
       }
       if (operation === "viewer") {
         const body = viewer
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         if (body.data.control) await workbot.stop(actorOf(member))
         const result = await client.desktopViewer(sessionId, { ...body.data, origin: new URL(config.publicUrl).origin })
-        if (!result.ok) return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
+        if (!result.ok) return desktopFailure(c, operation, result.error)
         // A cold VM may take longer than the membership cache: verify again before sharing its stream.
         if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
         return c.json(result.value)
@@ -266,8 +273,11 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
       if (body.data.action === "pause") await workbot.stop(actorOf(member))
       const result = await client.desktopAction(sessionId, body.data.action)
-      return result.ok ? c.json({ ok: true }) : c.json({ error: "desktop_unavailable" }, 409)
-    } catch { return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409) }
+      return result.ok ? c.json({ ok: true }) : desktopFailure(c, operation, result.error)
+    } catch (error) {
+      console.error("[workbot] desktop request failed", { operation, error: error instanceof Error ? error.message : "unknown" })
+      return desktopFailure(c, operation, "desktop_unavailable")
+    }
   })
 
   app.get("/v1/workbot/model-recovery", async (c) => {

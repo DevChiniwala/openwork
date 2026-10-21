@@ -27,6 +27,8 @@ test("a member opens Workbot's Computer tab directly when the rollout is enabled
     await user.see({ role: "button", label: "Computer" });
     await user.click({ role: "button", label: "Computer" });
     await user.see({ role: "button", label: "Browser" });
+    // The tab opens on its Browser view, and the address says so.
+    expect(new URL(await probe.url()).pathname).toBe("/browser");
     await user.see({ text: "Your computer is unavailable. Try reconnecting." }, { timeoutMs: 30_000 });
     await user.see({ role: "button", label: "Reconnect" });
     await user.notSee({ text: "Allow for this chat" });

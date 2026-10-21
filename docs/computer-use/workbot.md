@@ -7,8 +7,8 @@ branch also includes Documents; its `workbotDocuments` rollout remains independe
 
 The two views use one conversation computer:
 
-- **Browser** streams the Chromium window, including its tabs and address bar.
-- **Computer** streams the entire Linux desktop.
+- **Browser** (`/browser`) streams the Chromium window, including its tabs and address bar.
+- **Computer** (`/computer`) streams the entire Linux desktop.
 - **Take control** interrupts Workbot's current turn, pauses both browser and
   computer tools, and enables native mouse/keyboard input through noVNC.
 - **Return to Workbot** ends the manual connection and releases the tools.
@@ -75,11 +75,15 @@ runner workflow and wait for every node to adopt the bundle. Keep its compatibil
 and real-turn checks enabled.
 
 The headless computer build embeds the same guest identity in the image and
-runner bundle, so celld needs no local package asset files. Build both from the
-same desktop sources and locked dependencies. The root-owned bridge is already
-installed in the snapshot; it rejects incompatible runners. Existing computers
-and their files are not replaced automatically, so snapshot upgrades need an
-explicit migration plan for computers already in use.
+runner bundle, so celld needs no local package asset files. The identity covers
+the files esbuild bundles into the guest, the versions of the packages it
+bundles, and the files the image installs (`scripts/desktop-identity.mjs`). The
+rest of the lockfile, Mac-only code and tests do not change it. The root-owned
+bridge is already installed in the snapshot; it rejects incompatible runners.
+The runner then logs the bridge's reason and Workbot tells the person their
+computer needs an update (`desktop_outdated`) instead of asking them to
+reconnect. Existing computers and their files are not replaced automatically,
+so snapshot upgrades need an explicit migration plan for computers already in use.
 
 ## Transport and rollout
 

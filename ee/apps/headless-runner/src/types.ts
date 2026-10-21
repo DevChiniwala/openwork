@@ -125,6 +125,7 @@ export type SessionComputer = {
   image: string
   desktopTools?: ToolSpec[]
   desktopRun?(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>
+  /** Desktop failures may carry `desktopCode` (`desktop_outdated`, `desktop_unresponsive`), which the runner reports as its error code. */
   desktopViewer?(sessionId: string, input: { view: "browser" | "computer"; control: boolean; origin: string }): Promise<{ state: "paused" } | { state: "connected"; url: string; expiresAt: number; paused: boolean }>
   browserDemonstration?(sessionId: string, command: import("@openwork/types/browser-demonstration").DemonstrationCommand): Promise<import("@openwork/types/browser-demonstration").DemonstrationReply>
   desktopAction?(sessionId: string, action: "continue" | "pause" | "resume"): Promise<{ ok: boolean }>
