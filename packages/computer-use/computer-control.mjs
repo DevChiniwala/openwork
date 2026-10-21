@@ -319,7 +319,13 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
       }
       current.presentation = next;
       // Human handoff survives routine transport/session cleanup. Only Continue clears it.
-      current.grant.handoff = value.phase === "paused" ? { ...next, inputs: [] } : null;
+      if (value.phase === "paused") {
+        current.grant.handoff = { ...next, inputs: [] };
+        current.grant.handoffTarget = current.adapter.id;
+      } else if (!current.grant.handoff || presentation?.phase === "paused") {
+        // A working update already in flight before Take over is not Continue.
+        current.grant.handoff = null; current.grant.handoffTarget = null;
+      }
       return;
     }
     if (!presentation || value.id !== presentation.id || presentation.phase !== "working" || current.watchUntil <= now()) return;
@@ -451,10 +457,11 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
     }
     const target = targetFor(grant);
     const status = await readiness(target);
-    const elsewhere = lease && lease.grant !== grant;
+    const pausedElsewhere = [...grants.values()].some(owner => owner !== grant && owner.handoff && owner.handoffTarget === target.id);
+    const elsewhere = lease && lease.grant !== grant || pausedElsewhere;
     const current = lease?.grant === grant ? lease : null;
     return {
-      revision: grant.revision, enabled: featureEnabled && grant.enabled,
+      revision: grant.revision, enabled: featureEnabled && (grant.enabled || Boolean(grant.handoff)),
       entry: await permissionEntry().then(({ name, ours }) => ({ name, ours }), () => ({ name: "OpenWork", ours: false })),
       request: (() => {
         const request = requests.get(grant.sessionId);
@@ -466,7 +473,9 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
       readiness: status.readiness, ...(status.permissions ? { permissions: status.permissions } : {}),
       detail: current?.cleanupPending ? "Stopping computer use. Native release has not yet been confirmed." : status.detail,
       busyElsewhere: Boolean(elsewhere),
-      session: current?.session ? { ...current.session, ...(current.closing ? { state: "stopping" } : {}) } : null,
+      session: current?.session ? { ...current.session, ...(current.closing ? { state: "stopping" } : {}) }
+        : grant.handoff ? { state: "paused", purpose: grant.handoff.task ?? "", appName: grant.handoff.appName,
+          windowTitle: grant.handoff.windowTitle, reason: "You have control. Choose Continue when ready." } : null,
       ...(current?.cleanupPending ? { cleanupPending: true } : {}),
     };
   }
@@ -481,6 +490,7 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
     return serial(async () => {
       limit.check(); check();
       if (grant.handoff && !["computer_status", "computer_close"].includes(name)) return failure("session_paused", "The person took over. Wait for Continue in the Computer view.", { state: "paused", next: "human_takeover" });
+      if ([...grants.values()].some(owner => owner !== grant && owner.handoff && owner.handoffTarget === targetFor(grant).id)) return failure("computer_busy", "The person took over this computer. They return control with Continue in its owning chat. Nothing was dispatched.");
       if (lease && (lease.grant !== grant || lease.closing)) {
         return failure("computer_busy", lease.closing
           ? "The previous computer session is still stopping. Try again in a moment. Nothing was dispatched."
@@ -768,6 +778,7 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
         current.needsObservation = true;
         current.handoffGeneration++;
         current.grant.handoff = { ...presentation, phase: "paused", canContinue: true, inputs: [] };
+        current.grant.handoffTarget = current.adapter.id;
         if (presentation.phase === "paused") return;
         // Reducing authority must not wait on a pending resume.
         try { await current.transport.notifyUi({ id: input.id, action: "takeover" }); }

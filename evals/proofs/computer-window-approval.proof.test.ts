@@ -5,12 +5,19 @@ import { computerWindowApproval } from "../worlds/computer-window-approval.ts";
 const test = spec.world(computerWindowApproval, { timeout: 90_000, needs: { placement: "local" }, resources: { surfaces: [], services: [] } });
 
 test("enabled computer access continues without approval and preserves human handoff", async ({ world, user, probe, step, evidence }) => {
-  await step("before: enabled access opens the requested window directly", async () => {
-    await user.see({ testId: "session-computer-floating" });
+  await step("before: enabled access is ready without a permission prompt", async () => {
+    await user.see({ testId: "session-computer-control" });
     await user.notSee({ role: "button", label: "Allow this window" });
-    await user.see({ role: "button", label: "Take over" });
     expect(world.decisions()).toEqual([]);
-    evidence.recordAssertionEvidence("Enabled access needs no approval", "The production broker and remote adapter opened the requested target without a UI decision.", world.decisions().length === 0);
+    evidence.recordAssertionEvidence("Enabled access needs no approval", "The full chat control reports enabled access without an approval control.", world.decisions().length === 0);
+    await user.screenshot();
+  });
+  await step("after: agent work appears without opening a popover or approving access", async () => {
+    await world.startWork();
+    await user.see({ testId: "session-computer-floating" });
+    await user.see({ role: "button", label: "Take over" });
+    await user.notSee({ role: "button", label: "Allow this window" });
+    evidence.recordAssertionEvidence("The requested target opens directly", "The production broker and adapter started work, and the full chat control displayed Take over without opening a popover or sending an approval.", world.decisions().length === 0);
     await user.screenshot();
   });
   await step("follow-up: technical cleanup reopens directly", async () => {
@@ -23,7 +30,7 @@ test("enabled computer access continues without approval and preserves human han
     await user.click({ role: "button", label: "Take over" });
     await user.see({ role: "button", label: "Continue" });
     await world.followUp();
-    await probe.eventually(world.snapshot, { within: 3000, until: value => value.session === null, label: "the paused technical session is released" });
+    await probe.eventually(world.snapshot, { within: 3000, until: value => value.session?.state === "paused", label: "the human handoff remains visible after technical cleanup" });
     await user.see({ role: "button", label: "Continue" });
     expect(world.inputs()).toBe(0);
     await user.screenshot();

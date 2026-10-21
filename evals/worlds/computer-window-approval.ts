@@ -23,7 +23,6 @@ export async function computerWindowApproval(_seed: Seed, { place }: { place: Pl
   try {
     await control.setFeatureEnabled(true);
     await control.setRemoteEnabled(true);
-    await control.execute({ sessionId, name: "computer_open", args: { app_id: "Editor", mode: "control", purpose: "Edit the project draft" } });
     const vite = await createServer({
       root: fileURLToPath(new URL("../../apps/app", import.meta.url)),
       configFile: fileURLToPath(new URL("../../apps/app/vite.config.ts", import.meta.url)),
@@ -38,6 +37,7 @@ export async function computerWindowApproval(_seed: Seed, { place }: { place: Pl
               const input = JSON.parse(body);
               const result = url.pathname === "/fixture/presentation" ? await control.presentation({ sessionId, visible: input.visible })
                 : url.pathname === "/fixture/stop" ? await control.halt({ sessionId })
+                : url.pathname === "/fixture/snapshot" ? await control.snapshot({ sessionId })
                 : await control.interact(input);
               if (url.pathname === "/fixture/decision") decisions.push(input);
               res.setHeader("content-type", "application/json"); res.end(JSON.stringify(result ?? null));
@@ -56,6 +56,9 @@ export async function computerWindowApproval(_seed: Seed, { place }: { place: Pl
     if (!url) throw new Error("The enabled computer fixture did not start");
     const web = resources.use(await chrome({ host: place.host(), name: "computer-enabled-access", startUrl: url, headless: true }));
     return { web, url, decisions: () => structuredClone(decisions), inputs: () => inputs,
+      async startWork() {
+        return control.execute({ sessionId, name: "computer_open", args: { app_id: "Editor", mode: "control", purpose: "Edit the project draft" } });
+      },
       async followUp() {
         await control.endTurn({ sessionId });
         return control.execute({ sessionId, name: "computer_observe", args: {} });

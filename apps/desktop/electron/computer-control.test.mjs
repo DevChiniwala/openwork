@@ -13,7 +13,8 @@ function fixture(options = {}) {
   const calls = [];
   const requests = [];
   const selected = [];
-  let emit = () => {};
+  /** @type {(value: unknown) => void} */
+  let emit = (_value) => {};
   let disconnect = () => {};
   /** @type {import("@openwork/computer-use/computer-control").ComputerAdapter} */
   const adapter = {
@@ -38,7 +39,7 @@ function fixture(options = {}) {
         },
         notifyUi: async (value) => {
           selected.push(value);
-          if (["takeover", "resume"].includes(value.action)) {
+          if (value.action === "takeover" || value.action === "resume") {
             paused = value.action === "takeover";
             onUi({ kind: "state", id: "view", phase: paused ? "paused" : "working", canContinue: paused });
           }
@@ -102,6 +103,11 @@ test("human takeover survives end-of-turn and idle cleanup until Continue", asyn
   await new Promise(resolve => setTimeout(resolve, 35));
   assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Follow up" } })).code, "session_paused");
   assert.equal((await f.control.presentation({ sessionId: "chat", visible: true })).phase, "paused");
+  assert.equal((await f.control.snapshot({ sessionId: "chat" })).session.state, "paused");
+  const count = f.calls.length;
+  assert.equal(payload(await f.control.execute({ sessionId: "another", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Other work" } })).code, "computer_busy");
+  assert.equal(f.calls.length, count);
+  assert.equal((await f.control.snapshot({ sessionId: "another" })).busyElsewhere, true);
   await assert.rejects(f.control.interact({ sessionId: "another", id: "view", action: "resume" }), /does not own/);
   await f.control.interact({ sessionId: "chat", id: "view", action: "resume" });
   assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} })).ok, true);
