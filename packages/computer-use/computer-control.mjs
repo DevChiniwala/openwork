@@ -37,6 +37,10 @@ const withPostObservation = (receipt, status, content = []) => ({ ...receipt, co
     ...(!status.ok ? { next: status.next, fresh_observation_required: true } : {}) }) }, ...content] });
 const postWarning = (receipt, code, next = "observe") => withPostObservation(receipt, { ok: false, code, next,
   message: "The fresh observation is unavailable. The original receipt is unchanged; do not replay the input. Review the current control state before observing again." });
+const setupNotFinished = (answer) => failure("not_allowed", answer === "dismissed"
+  ? "The person dismissed computer setup. Nothing was dispatched. Do not ask again unless they bring it up; continue another way."
+  : answer === "unavailable" ? "Computer use is not turned on in this OpenWork app. Use connected apps or the browser instead."
+  : "Computer setup did not finish in time. Nothing was dispatched. Tell the person it is waiting for the Computer card in the chat.");
 // A call made in the wrong order dispatched nothing: report it without revoking or closing anything.
 const SEQUENCE_CODES = new Set(["session_open", "session_required"]);
 const uiText = (value, limit) => typeof value === "string" && value.length <= limit;
@@ -747,6 +751,21 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
       void current.finished.then((answer) => { signal.removeEventListener("abort", abort); resolve(answer); });
     });
   }
+  /**
+   * macOS took a permission back mid-chat, or no longer matches this build.
+   * Free the helper (a running one keeps its old Screen Recording answer), ask
+   * in the chat again, then have the agent pick up from a fresh look.
+   */
+  async function recoverPermissions(grant, name, args, signal) {
+    lastReadiness.delete(targetFor(grant).id);
+    if (lease?.grant === grant) await release(lease);
+    const answer = await askPerson(grant, name === "computer_open" ? args : grant.lastOpen ?? args, signal);
+    if (answer !== "ready") return setupNotFinished(answer);
+    return failure("permissions_restored", name === "computer_open"
+      ? "The person turned the macOS permissions back on. Nothing was dispatched. Open the app again."
+      : "The person turned the macOS permissions back on. Nothing was dispatched. Observe again before any action.",
+    { next: name === "computer_open" ? "open_session" : "observe", actions_replayed: false });
+  }
   const api = {
     async presentation(input) {
       if (!input || typeof input.visible !== "boolean" || Object.keys(input).some((key) => !["sessionId", "visible"].includes(key))) throw new Error("A chat and explicit monitor visibility are required.");
@@ -996,18 +1015,15 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
         if (status && status.readiness !== "ready") {
           if (status && ["unsupported", "unavailable"].includes(status.readiness)) return failure("setup_required", status.detail);
           const answer = await askPerson(grant, args, signal);
-          if (answer !== "ready") {
-            return failure("not_allowed", answer === "dismissed"
-              ? "The person dismissed computer setup. Nothing was dispatched. Do not ask again unless they bring it up; continue another way."
-              : answer === "unavailable" ? "Computer use is not turned on in this OpenWork app. Use connected apps or the browser instead."
-              : "Computer setup did not finish in time. Nothing was dispatched. Tell the person it is waiting for the Computer card in the chat.");
-          }
+          if (answer !== "ready") return setupNotFinished(answer);
         }
         if (!featureEnabled || generation !== featureGeneration || grant.adapter.placement === "remote" && remoteRevision !== remoteGeneration) return failure("computer_unavailable", "Computer use was turned off while this request was waiting. Nothing was dispatched.");
         const call = { name, includePostImage, args: structuredClone(args), grant, revision: grant.revision, featureGeneration: generation, remoteGeneration: remoteRevision, remoteTarget: grant.adapter.placement === "remote" };
         // The operation budget starts once the person has answered.
         limit = deadline(operationMs);
-        return deliverResult(call, await run(call, signal, limit));
+        const result = await run(call, signal, limit);
+        if (result.isError && stateOf(result)?.code === "permissions_required" && targetFor(grant).placement === "local") return await recoverPermissions(grant, name, args, signal);
+        return deliverResult(call, result);
       } catch (error) {
         return failure("computer_error", `${error instanceof Error ? error.message : String(error)} Do not replay this call; inspect the computer controls before continuing.`);
       } finally { limit?.dispose(); }

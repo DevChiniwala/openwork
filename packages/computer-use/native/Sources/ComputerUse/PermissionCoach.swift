@@ -275,7 +275,9 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         } else {
             taskLabel.stringValue = "In \(currentPermission.settingsName), turn on \(entryPhrase)."
         }
-        identityLabel.stringValue = entry.map { "Look for “\($0)” in the list. If it's already on and this still waits, turn it off and on again." }
+        // A switch that is on but still waits belongs to an older, differently
+        // signed copy. Toggling keeps that copy; only removing it replaces it.
+        identityLabel.stringValue = entry.map { "Look for “\($0)” in the list. If it's already on and this still waits, macOS is holding an older copy: select it, remove it with −, then add \($0) again with +." }
             ?? "Turn on the app named in the macOS request."
         identityLabel.isHidden = ready
         primaryButton?.title = permissions == nil ? "Check again" : (ready ? "Back to OpenWork" : "Open settings")

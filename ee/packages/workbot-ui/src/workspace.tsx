@@ -42,6 +42,24 @@ export function DocumentOffers({ links }: { links: Array<{ fileId: string; label
   </div>;
 }
 
+export type DocumentNavigationState = "opening" | "opened" | "failed" | "superseded";
+/** What became of the documents Workbot opened for this page's own messages; null without guided navigation. */
+export const DocumentNavigationContext = createContext<{ status: Readonly<Record<string, DocumentNavigationState>>; open(receipt: { id: string; fileId: string }): void } | null>(null);
+
+/** Says whether a document Workbot asked to open actually opened, so a request never reads as done. */
+export function DocumentNavigationStatus({ receipts }: { receipts: Array<{ id: string; fileId: string }> }) {
+  const navigation = useContext(DocumentNavigationContext);
+  const receipt = receipts.at(-1);
+  const status = receipt ? navigation?.status[receipt.id] : undefined;
+  if (!navigation || !receipt || !status) return null;
+  const again = status === "failed" ? "Try again" : status === "superseded" ? "Open" : null;
+  return <p className="workbot-row-enter flex min-h-7 items-center gap-1.5 pl-2.5 pt-1 text-[12px] text-[var(--wb-muted)]" role="status" aria-busy={status === "opening"} data-workbot-document-navigation={status}>
+    <FileText size={14} strokeWidth={1.75} aria-hidden className="shrink-0" />
+    <span className="min-w-0 truncate">{status === "opening" ? "Opening in Documents…" : status === "opened" ? "Opened in Documents" : status === "failed" ? "Couldn't open this document. Check your Drive access." : "Not opened, because you moved on."}</span>
+    {again && <button type="button" onClick={() => navigation.open(receipt)} className="shrink-0 rounded-full px-2 py-0.5 font-medium text-[var(--wb-text)] hover:bg-[var(--wb-chip)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">{again}</button>}
+  </p>;
+}
+
 /** Guided navigation: the latest reply that used Workbot's computer offers to open it, like a mentioned document. */
 export function ComputerOffer() {
   const open = useContext(ComputerNavigationContext);

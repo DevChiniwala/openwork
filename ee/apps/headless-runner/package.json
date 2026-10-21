@@ -12,7 +12,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "tsx scripts/smoke.ts",
-    "test:computer-config": "tsx --test scripts/computer-config.test.ts",
+    "test:computer-config": "tsx --test scripts/computer-config.test.ts scripts/worker-http.test.ts",
     "test:service-health": "tsx --conditions=development --test scripts/service-health.test.ts",
     "test:sql-store": "tsx --test scripts/sql-store.test.ts",
     "test:error-reporting": "tsx --test scripts/error-reporting.test.ts",
@@ -42,7 +42,8 @@
     "@openwork/workbook": "workspace:*",
     "aws4fetch": "1.0.20",
     "hono": "4.13.11",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "axios": "1.20.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

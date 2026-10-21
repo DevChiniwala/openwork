@@ -74,9 +74,9 @@ import {
   windowsBrandShortcutFileName,
   windowsInstalledShortcutFileName,
   windowsInstalledExecutablePath,
-  writeWindowsBrandShortcut,
   windowsIconFromNativeImage,
 } from "./brand-icon-windows.mjs";
+import { createWindowsShortcutScheduler, readWindowsShortcutMarker } from "./windows-shortcut.mjs";
 import { resetMacDockIcon } from "./brand-icon-darwin.mjs";
 import { createDesktopVaultKeyProvider } from "./secure-vault-key.mjs";
 import { desktopFreeBootstrapEligible } from "./desktop-free-eligibility.mjs";
@@ -612,56 +612,31 @@ function windowsExecutablePath() {
 }
 
 async function readWindowsBrandShortcutMarker() {
-  return (await readFile(windowsBrandShortcutMarkerPath(), "utf8").catch(() => "")).trim();
+  return (await readWindowsShortcutMarker(windowsBrandShortcutMarkerPath())).shortcutPath;
 }
 
-function repairWindowsShortcutTarget(shortcutPath, details) {
-  const payload = Buffer.from(JSON.stringify({ shortcutPath, ...details }), "utf8").toString("base64");
-  const script = [
-    `$value = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json`,
-    "$shell = New-Object -ComObject WScript.Shell",
-    "$link = $shell.CreateShortcut($value.shortcutPath)",
-    "$link.TargetPath = $value.target",
-    "$link.WorkingDirectory = $value.cwd",
-    "$link.Description = $value.description",
-    "$link.IconLocation = \"$($value.icon),$($value.iconIndex)\"",
-    "$link.Save()",
-  ].join("\n");
-  execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
-    windowsHide: true,
-  });
-}
+let resolveShortcutWindowReady;
+let resolveShortcutRuntimeReady;
+const shortcutWindowReady = new Promise((resolve) => { resolveShortcutWindowReady = resolve; });
+const shortcutRuntimeReady = new Promise((resolve) => { resolveShortcutRuntimeReady = resolve; });
+const scheduleWindowsShortcut = createWindowsShortcutScheduler({
+  ready: () => Promise.all([shortcutWindowReady, shortcutRuntimeReady]),
+});
 
-async function registerWindowsBrandShortcut(appId, appIconPath) {
-  if (process.platform !== "win32") return null;
-  const shortcutPath = windowsBrandShortcutPath();
-  const shortcutTempPath = `${shortcutPath}.${process.pid}.tmp.lnk`;
-  await mkdir(path.dirname(shortcutPath), { recursive: true });
-  // Recreate instead of replacing in place. Explorer can retain the old
-  // target and search metadata when a prior installer owned this path.
-  await rm(shortcutPath, { force: true });
-  await rm(shortcutTempPath, { force: true });
-  const details = windowsBrandShortcutDetails({
-    target: windowsExecutablePath(),
-    appId,
-    appIconPath,
-    appName: currentDisplayAppName,
+function registerWindowsBrandShortcut(appId, appIconPath) {
+  if (process.platform !== "win32") return;
+  scheduleWindowsShortcut({
+    shell,
+    shortcutPath: windowsBrandShortcutPath(),
+    installedShortcutPath: windowsInstalledShortcutPath(),
+    markerPath: windowsBrandShortcutMarkerPath(),
+    details: windowsBrandShortcutDetails({
+      target: windowsExecutablePath(),
+      appId,
+      appIconPath,
+      appName: currentDisplayAppName,
+    }),
   });
-  const written = writeWindowsBrandShortcut(shell, shortcutTempPath, details, false);
-  if (!written) throw new Error(`Windows rejected the organization shortcut: ${shortcutPath}`);
-  await rename(shortcutTempPath, shortcutPath);
-  if (shell.readShortcutLink(shortcutPath).target !== details.target) {
-    repairWindowsShortcutTarget(shortcutPath, details);
-  }
-  const previousShortcutPath = await readWindowsBrandShortcutMarker();
-  if (previousShortcutPath && previousShortcutPath !== shortcutPath) {
-    await rm(previousShortcutPath, { force: true });
-  }
-  if (windowsInstalledShortcutPath() !== shortcutPath) {
-    await rm(windowsInstalledShortcutPath(), { force: true });
-  }
-  await writeFile(windowsBrandShortcutMarkerPath(), shortcutPath, "utf8");
-  return shortcutPath;
 }
 
 async function removeWindowsBrandShortcut() {
@@ -751,7 +726,8 @@ async function applyDefaultAppIconImage(expectedSequence = null) {
   }
   if (process.platform === "win32") {
     try {
-      await removeWindowsBrandShortcut();
+      // The queued stock registration replaces/removes the old brand shortcut.
+      // Do not erase its marker on every config reconciliation.
       app.setAppUserModelId(APP_IDENTIFIER);
     } catch (error) {
       return brandIconFailure("shortcut-remove-failed", error);
@@ -780,7 +756,7 @@ async function applyDefaultAppIconImage(expectedSequence = null) {
   }
   if (process.platform === "win32" && taskbarIconPath) {
     try {
-      await registerWindowsBrandShortcut(APP_IDENTIFIER, taskbarIconPath);
+      registerWindowsBrandShortcut(APP_IDENTIFIER, taskbarIconPath);
     } catch (error) {
       return brandIconFailure("shortcut-write-failed", error);
     }
@@ -970,20 +946,27 @@ async function ensureWindowsBrandIcon(image) {
   return windowsPath;
 }
 
-async function registerWindowsDisplayShortcut() {
+function registerWindowsDisplayShortcut() {
   if (process.platform !== "win32") return;
+  runDetachedTask("prepare Windows shortcut icon", async () => {
+    await Promise.all([shortcutWindowReady, shortcutRuntimeReady]);
+    await prepareWindowsDisplayShortcut();
+  });
+}
+
+async function prepareWindowsDisplayShortcut() {
   const sidecar = await readBrandIconSidecar();
   const sourceUrl = typeof sidecar?.sourceUrl === "string" ? sidecar.sourceUrl : null;
   const brandedImage = sourceUrl ? resolveBrandIconImage() : null;
   if (brandedImage && sourceUrl) {
     const iconPath = await ensureWindowsBrandIcon(brandedImage);
-    await registerWindowsBrandShortcut(windowsBrandAppUserModelId(APP_IDENTIFIER, sourceUrl), iconPath);
+    registerWindowsBrandShortcut(windowsBrandAppUserModelId(APP_IDENTIFIER, sourceUrl), iconPath);
     return;
   }
   const stockImage = APP_ICON_IMAGE ?? await app.getFileIcon(windowsExecutablePath(), { size: "large" });
   const iconPath = defaultAppWindowsIconPath();
   await writeWindowsIconFile(stockImage, iconPath);
-  await registerWindowsBrandShortcut(APP_IDENTIFIER, iconPath);
+  registerWindowsBrandShortcut(APP_IDENTIFIER, iconPath);
 }
 
 async function applyCachedBrandIcon(image, sourceUrl, expectedSequence = null) {
@@ -993,7 +976,7 @@ async function applyCachedBrandIcon(image, sourceUrl, expectedSequence = null) {
     taskbarIconPath = await ensureWindowsBrandIcon(image);
     if (process.platform === "win32") {
       taskbarAppId = windowsBrandAppUserModelId(APP_IDENTIFIER, sourceUrl);
-      await registerWindowsBrandShortcut(taskbarAppId, taskbarIconPath);
+      registerWindowsBrandShortcut(taskbarAppId, taskbarIconPath);
       app.setAppUserModelId(taskbarAppId);
     }
   } catch (error) {
@@ -1640,6 +1623,8 @@ function startRuntimeBootstrap() {
 
 // Only the launch's first boot counts; a Reload after a failure is a retry.
 function recordStartupEngineSettled(result) {
+  // Cosmetic Shell work never precedes the initial runtime readiness attempt.
+  if (result?.ok !== false) resolveShortcutRuntimeReady();
   if (startupTimings.engineSettledAt !== null) return;
   startupTimings.engineSettledAt = Date.now();
   startupTimings.engine = result?.ok === false ? "failed" : result?.skipped ? "skipped" : "ready";
@@ -2326,7 +2311,7 @@ const desktopCommandHandlers = {
       },
     );
     if (process.platform === "win32" && !BLANK_SLATE_LAUNCH.enabled) {
-      await registerWindowsDisplayShortcut();
+      registerWindowsDisplayShortcut();
     }
     return { ok: true, appName: currentDisplayAppName };
   },
@@ -2619,7 +2604,7 @@ async function createMainWindow() {
     try {
       const taskbarIconPath = await ensureWindowsBrandIcon(cachedBrandImage);
       const taskbarAppId = windowsBrandAppUserModelId(APP_IDENTIFIER, bootSourceUrl);
-      await registerWindowsBrandShortcut(taskbarAppId, taskbarIconPath);
+      registerWindowsBrandShortcut(taskbarAppId, taskbarIconPath);
       app.setAppUserModelId(taskbarAppId);
     } catch (error) {
       console.warn("[brand-icon] failed to register cached Windows shortcut before window creation", error);
@@ -2682,6 +2667,7 @@ async function createMainWindow() {
     mainWindow?.setTitle(currentDisplayAppName);
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
     mainWindow?.show();
+    resolveShortcutWindowReady();
     flushPendingDeepLinks();
   });
 
@@ -2951,7 +2937,7 @@ or use: pnpm dev:worktree`);
       },
     );
     if (process.platform === "win32" && !BLANK_SLATE_LAUNCH.enabled) {
-      await registerWindowsDisplayShortcut();
+      registerWindowsDisplayShortcut();
     }
     if (process.platform !== "linux" && !BLANK_SLATE_LAUNCH.enabled) {
       await applyDesktopBootstrapBrandIcon(bootstrapConfig, applyBrandIconUrl);

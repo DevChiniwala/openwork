@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { runComputerProgram } from "@openwork/computer-use/runtime";
 import { createComputerControl, COMPUTER_PROTOCOL } from "@openwork/computer-use/computer-control";
+import { resolvePermissionEntry } from "./computer-permission-entry.mjs";
 
 const deferred = () => {
   let resolve = () => {};
@@ -31,6 +32,8 @@ function fixture(options = {}) {
         callTool: async (name, args) => {
           calls.push(name);
           await options.beforeTool?.(name);
+          const replaced = options.toolResult?.(name);
+          if (replaced) return replaced;
           if (name === "computer_open_session") {
             onUi({ kind: "state", id: "view", phase: "working", appID: args.app_id, appName: "Editor", windowTitle: "Draft", mode: args.mode, task: args.purpose });
             return text({ ok: true, session_id: "native", window_id: 17, state: "active" });
@@ -159,6 +162,31 @@ test("disable then re-enable during readiness cannot revive an old request", asy
   assert.deepEqual(f.calls, []);
 });
 
+test("a macOS permission lost mid-chat asks in the chat again and resumes from a fresh session", async (t) => {
+  let readiness = "ready";
+  let revoked = false;
+  const f = fixture({
+    readiness: async () => ({ readiness, detail: readiness === "ready" ? "Ready" : "Computer Use needs Accessibility permission." }),
+    toolResult: (name) => revoked && name === "computer_observe"
+      ? { ...text({ ok: false, code: "permissions_required", message: "Grant Accessibility.", next: "human_takeover" }), isError: true } : undefined,
+  });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit the draft" } })).ok, true);
+  revoked = true; readiness = "setup-required";
+  const pending = f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} });
+  for (let waited = 0; !f.requests.some(Boolean) && waited < 3_000; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(f.requests.find(Boolean)?.appId, "editor", "the chat shows the setup card again");
+  assert.ok(f.calls.includes("close"), "the helper is released so a fresh one rereads the permissions");
+  revoked = false; readiness = "ready";
+  const restored = payload(await pending);
+  assert.equal(restored.code, "permissions_restored");
+  assert.equal(restored.next, "observe");
+  assert.equal(f.requests.at(-1), null);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} })).ok, true);
+  assert.equal(f.calls.filter((call) => call === "computer_open_session").length, 2);
+});
+
 test("a turn ending during an admitted tool releases the computer as soon as that tool settles", async (t) => {
   const started = deferred(); const finish = deferred();
   const f = fixture({ beforeTool: async (name) => { if (name === "computer_discover") { started.resolve(); await finish.promise; } } });
@@ -261,4 +289,47 @@ test("native takeover cancels browser programs and neither chat can bypass it wi
   hold = false;
   assert.equal((await f.control.program(input)).ok, true);
   assert.equal(calls, 2);
+});
+
+/** Fake ps and plutil: `processes` maps pid to [parent, command]; `plists` maps an app bundle to its Info.plist values. */
+function fakeExec(processes, plists) {
+  return async (command, args) => {
+    if (command === "/bin/ps") {
+      const entry = processes[args.at(-1)];
+      return { stdout: entry ? `${entry[0]} ${entry[1]}\n` : "" };
+    }
+    const [, key, , , , file] = args;
+    const value = plists[file.slice(0, file.indexOf("/Contents/Info.plist"))]?.[key];
+    if (value === undefined) throw new Error("No such key.");
+    return { stdout: `${value}\n` };
+  };
+}
+
+test("a packaged app that ps lists without its path still names its own bundle", async () => {
+  const entry = await resolvePermissionEntry({
+    pid: 4100,
+    execPath: "/Applications/OpenWork.app/Contents/MacOS/OpenWork",
+    exec: fakeExec({ 4100: [1, "OpenWork"] }, {
+      "/Applications/OpenWork.app": { CFBundleName: "OpenWork", CFBundleIdentifier: "com.differentai.openwork" },
+    }),
+  });
+  assert.deepEqual(entry, { name: "OpenWork", bundleId: "com.differentai.openwork", ours: true });
+});
+
+test("a development build names the terminal that started it, which is not ours to reset", async () => {
+  const electron = "/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron";
+  const entry = await resolvePermissionEntry({
+    pid: 4200,
+    execPath: electron,
+    exec: fakeExec({
+      4200: [4199, electron],
+      4199: [4198, "node"],
+      4198: [4100, "-zsh"],
+      4100: [1, "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"],
+    }, {
+      "/repo/node_modules/electron/dist/Electron.app": { CFBundleName: "Electron", CFBundleIdentifier: "com.github.Electron" },
+      "/System/Applications/Utilities/Terminal.app": { CFBundleDisplayName: "Terminal", CFBundleIdentifier: "com.apple.Terminal" },
+    }),
+  });
+  assert.deepEqual(entry, { name: "Terminal", bundleId: "com.apple.Terminal", ours: false });
 });

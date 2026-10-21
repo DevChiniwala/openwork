@@ -121,6 +121,8 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       // Gateway access is validated for this actor and model by Den when minting each turn, not by the runner catalog.
       verifyModel: !member.den.gatewayModels && member.den.verifyModel,
       workspaceAssistant: async () => member.den.workspaceAssistant,
+      // Opening a document on request needs Documents too; Den still checks the member's Drive access on open.
+      guidedNavigation: async () => member.den.guidedNavigation && member.den.documents === true,
       // Saved steps are GA; older Dens may omit stepTurns, so preserve their continuous-turn protocol.
       stepTurns: member.den.stepTurns,
       // Per-chat cells are GA; older Dens may omit sessionCells, so preserve their legacy placement.
