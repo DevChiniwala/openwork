@@ -188,7 +188,7 @@ export function SessionDebugPanel(props: {
         // Overlap the trigger so the footer bug occupies its exact position.
         side="top" align="end" alignOffset={-4} sideOffset={-36} collisionPadding={0}
         style={{ translate: `${bounds.left}px ${bounds.top}px` }}
-        className="w-90 gap-0 overflow-hidden rounded-md bg-dls-surface p-0 font-mono text-[11px] text-dls-secondary shadow-sm ring-0 transition-none data-open:animate-none data-closed:animate-none"
+        className="w-90 gap-0 overflow-hidden rounded-md bg-dls-surface p-0 font-mono text-[11px] text-dls-secondary shadow-sm ring-0 transition-none duration-0 data-open:animate-none data-closed:animate-none"
       >
       <header className="flex shrink-0 items-center gap-1 border-b border-dls-border px-2 py-1">
         <Button variant="ghost" size="sm" className="min-w-0 flex-1 touch-none select-none justify-start h-6 gap-1.5 rounded-sm px-0 text-[11px] font-medium text-dls-text cursor-grab active:cursor-grabbing"
