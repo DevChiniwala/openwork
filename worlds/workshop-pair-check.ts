@@ -38,7 +38,11 @@ function text(value: unknown, field: string): string {
 const STOP = /^(stop|stop task|stop generating)$/i;
 
 async function attach(id: string, port: number, kind: "chrome" | "electron") {
-  const result = await defaultDaytonaExec(["preview-url", id, "-p", String(port), "--expires", "3600"], { timeoutMs: 30_000 });
+  let result = await defaultDaytonaExec(["preview-url", id, "-p", String(port), "--expires", "3600"], { timeoutMs: 30_000 });
+  for (let retry = 0; result.code !== 0 && retry < 3; retry += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    result = await defaultDaytonaExec(["preview-url", id, "-p", String(port), "--expires", "3600"], { timeoutMs: 30_000 });
+  }
   assert.equal(result.code, 0, "Private control endpoint could not be minted");
   const cdpUrl = parsePrivatePreview(result.stdout, id, port).browserOrigin;
   return attachSurface({ name: `workshop-pair-${kind}`, hostKind: "daytona", sandboxId: id, kind, cdpUrl });
@@ -500,7 +504,7 @@ print(json.dumps(out))`, pptxPath], { encoding: "utf8" }));
         const list = record(body) ? Object.values(body).find(Array.isArray) : Array.isArray(body) ? body : [];
         return { status: result.response.status, items: rows(list) };
       };
-      type Ctx = { reply: string; before: { microsoft: Row; atlassian: Row }; after: { microsoft: Row; atlassian: Row }; workflowsBefore: Row[] };
+      type Ctx = { begin: number; reply: string; before: { microsoft: Row; atlassian: Row }; after: { microsoft: Row; atlassian: Row }; workflowsBefore: Row[] };
       type Verdict = { verdict: "PASS" | "PARTIAL" | "FAIL"; reason: string; criteria: Row; facts: Row };
       const judge = (criteria: Record<string, boolean>, facts: Row, critical: string[]): Verdict => {
         const missing = Object.entries(criteria).filter(([, ok]) => !ok).map(([label]) => label);
@@ -656,17 +660,17 @@ print(json.dumps(out))`, pptxPath], { encoding: "utf8" }));
         },
         T02: async (ctx) => {
           const after = await denList("/v1/workflows");
-          const saved = after.items.filter((item) => /Acme product comparison/i.test(canonical(item.name ?? item.title ?? item)));
-          const isNew = saved.some((item) => !ctx.workflowsBefore.some((old) => old.id === item.id));
+          const saved = after.items.filter((item) => /Acme product comparison/i.test(String(item.title ?? item.name ?? "")));
+          const isNew = saved.some((item) => !ctx.workflowsBefore.some((old) => old.configObjectId === item.configObjectId));
           const runs = await denList("/v1/workflow-runs");
-          const coldRuns = runs.items.filter((run) => /cold-storage/i.test(canonical(run)));
+          const taskRuns = runs.items.filter((run) => run.status === "succeeded" && Date.parse(String(run.createdAt)) >= ctx.begin);
           return judge({
             "Workflow 'Acme product comparison' saved in Library": saved.length >= 1,
             "saved during this task": isNew,
-            "saved version rerun with the cold-storage request": coldRuns.length >= 1 || /cold-storage/i.test(ctx.reply) && /rerun|re-ran|ran the saved/i.test(ctx.reply),
+            "saved version rerun (succeeded runs during the task; reply names cold-storage)": taskRuns.length >= 2 && /cold-storage/i.test(ctx.reply),
             "reply assesses both products with payloads": /Atlas 2/i.test(ctx.reply) && /Atlas Lift/i.test(ctx.reply) && KG300.test(ctx.reply) && KG1200.test(ctx.reply),
             "no workplace mutation": same(ctx.after.microsoft, ctx.before.microsoft) && same(ctx.after.atlassian, ctx.before.atlassian),
-          }, { workflowsStatus: after.status, saved: saved.map((item) => ({ id: item.id, name: item.name ?? item.title })), runsStatus: runs.status, coldStorageRuns: coldRuns.length },
+          }, { workflowsStatus: after.status, saved: saved.map((item) => ({ configObjectId: item.configObjectId, title: item.title })), runsStatus: runs.status, succeededRunsDuringTask: taskRuns.length },
           ["Workflow 'Acme product comparison' saved in Library"]);
         },
       };
@@ -709,7 +713,7 @@ print(json.dumps(out))`, pptxPath], { encoding: "utf8" }));
           entry.workplaceCalls = [...auditSince(after.microsoft, auditCursor(before.microsoft)), ...auditSince(after.atlassian, auditCursor(before.atlassian))]
             .map((call) => `${String(call.name)}:${String(call.status)}`);
           const check = checksById[id]; assert.ok(check, `No check for ${id}`);
-          const result = await check({ reply, before, after, workflowsBefore });
+          const result = await check({ begin, reply, before, after, workflowsBefore });
           Object.assign(entry, result);
           if (entry.error && result.verdict === "PASS") Object.assign(entry, { verdict: "PARTIAL", reason: `outcome met but run errored: ${String(entry.error).slice(0, 200)}` });
         } catch (error) {
