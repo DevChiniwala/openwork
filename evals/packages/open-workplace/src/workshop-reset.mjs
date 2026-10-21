@@ -25,9 +25,13 @@ export function parseResetOptions(argv) {
   return { origin: url.origin, confirm };
 }
 
-export async function resetWorkshop({ origin, confirm }, { token = process.env.OPEN_WORKPLACE_RESET_TOKEN, request = fetch } = {}) {
+export async function resetWorkshop({ origin, confirm }, { token = process.env.OPEN_WORKPLACE_RESET_TOKEN, trustedOrigin = process.env.OPEN_WORKPLACE_RESET_URL, request = fetch } = {}) {
   if (!confirm) return { performed: false, message: "Preview only: --confirm will erase every attendee's changes in Outlook, Calendar, Drive, Jira and Confluence. Browser identities and OAuth connections are retained. VM files and chat history are not changed." };
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{32,128}$/.test(token)) throw new Error("Set the facilitator's OPEN_WORKPLACE_RESET_TOKEN in this process environment. Never pass it in the URL.");
+  // The key is only ever sent to the one workshop it was configured for.
+  let trusted;
+  try { trusted = new URL(String(trustedOrigin)).origin; } catch { trusted = ""; }
+  if (!trusted || trusted !== origin) throw new Error("Set OPEN_WORKPLACE_RESET_URL to this workshop's origin next to its reset key; the key is never sent to any other host.");
   let response;
   try {
     response = await request(`${origin}/_workshop/reset-all`, {

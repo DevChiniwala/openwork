@@ -72,7 +72,7 @@ This is not cross-device account synchronization or an OS sandbox for hostile co
 
 **One attendee:** open `/_workshop/reset`, then confirm **Reset my sample data**. All five services return to their starting data for that browser workspace. Other attendees, the browser identity and existing OAuth connections are retained.
 
-**Whole workshop:** the facilitator can reset everyone's fictional business data without rebuilding desktops or reconnecting the five apps. Configure a private random `OPEN_WORKPLACE_RESET_TOKEN` on the gateway and in the facilitator's shell. Never give that key to attendees or put it in a URL.
+**Whole workshop:** the facilitator can reset everyone's fictional business data without rebuilding desktops or reconnecting the five apps. Configure a private random `OPEN_WORKPLACE_RESET_TOKEN` on the gateway and in the facilitator's shell, together with `OPEN_WORKPLACE_RESET_URL` set to that workshop's origin. The command sends the key only to that configured origin. Never give that key to attendees or put it in a URL.
 
 From this package, first preview the scope (no request or deletion occurs):
 
