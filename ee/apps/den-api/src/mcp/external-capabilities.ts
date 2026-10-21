@@ -44,7 +44,7 @@ import {
 } from "./external-mcp-tool-arguments.js"
 import { compareCapabilityMatches, scoreText, tokenize } from "./search.js"
 import { EXTERNAL_MCP_SEARCH_CONNECTION_LIMIT, scoreExternalTool, selectExternalMcpSearchConnections } from "./external-search-selection.js"
-import type { CapabilityMatch } from "./search.js"
+import type { CapabilityMatch, CapabilityToolAnnotations } from "./search.js"
 import { DEN_MCP_WRITE_SCOPE } from "./scopes.js"
 import {
   codemodeScriptPath,
@@ -716,6 +716,40 @@ function cachedSearchTools(connection: ExternalMcpConnectionRow, member: McpMemb
   return cached?.outcome === "success" ? cached.tools.filter((tool) => !isToolDisabled(connection.toolPolicy, tool.name)) : undefined
 }
 
+/**
+ * The provider's tools for a member who may use this ready connection,
+ * through the search cache: a recent listing or failure is reused, and every
+ * live listing is remembered for the next caller. Tool policy is not applied.
+ */
+export async function listExternalMcpToolsThroughSearchCache(input: {
+  connection: ExternalMcpConnectionRow
+  member: McpMemberIdentity
+  redirectUriBase: string
+  deadline: ExternalMcpLifecycleDeadline
+  requestTimeoutMs?: number
+}): Promise<ExternalMcpTool[]> {
+  const { connection } = input
+  const cacheKey = externalToolsSearchCacheKey(connection, input.member)
+  const cached = cacheKey ? getExternalToolsSearchCache(cacheKey) : undefined
+  if (cached?.outcome === "failure") throw cached.error
+  if (cached?.outcome === "success") return cached.tools
+  try {
+    const tools = await listExternalMcpTools(
+      connection,
+      redirectUriFor(input.redirectUriBase, connection.id),
+      connection.credentialMode === "per_member" ? { orgMembershipId: input.member.orgMembershipId } : undefined,
+      undefined,
+      input.deadline,
+      input.requestTimeoutMs,
+    )
+    if (cacheKey) setExternalToolsSearchCache(cacheKey, { outcome: "success", tools })
+    return tools
+  } catch (error) {
+    if (cacheKey) setExternalToolsSearchCache(cacheKey, { outcome: "failure", error })
+    throw error
+  }
+}
+
 const CONNECTION_CARD_HINT = "Execute this exact capability name once: it returns the live status, renders an actionable connection card for the member in compatible hosts, and includes the action to relay in text."
 
 async function probeExternalMcpConnection(input: {
@@ -801,29 +835,16 @@ async function probeExternalMcpConnection(input: {
     return matches
   }
 
-  const member = connection.credentialMode === "per_member"
-    ? { orgMembershipId: input.member.orgMembershipId }
-    : undefined
   let tools: Awaited<ReturnType<typeof listExternalMcpTools>>
-  const cacheKey = externalToolsSearchCacheKey(connection, input.member)
-  const cachedProbe = cacheKey ? getExternalToolsSearchCache(cacheKey) : undefined
   try {
-    if (cachedProbe?.outcome === "failure") throw cachedProbe.error
-    if (cachedProbe?.outcome === "success") {
-      tools = cachedProbe.tools
-    } else {
-      tools = await listExternalMcpTools(
-        connection,
-        redirectUriFor(input.redirectUriBase, connection.id),
-        member,
-        undefined,
-        input.deadline,
-        EXTERNAL_MCP_SEARCH_REQUEST_TIMEOUT_MS,
-      )
-      if (cacheKey) setExternalToolsSearchCache(cacheKey, { outcome: "success", tools })
-    }
+    tools = await listExternalMcpToolsThroughSearchCache({
+      connection,
+      member: input.member,
+      redirectUriBase: input.redirectUriBase,
+      deadline: input.deadline,
+      requestTimeoutMs: EXTERNAL_MCP_SEARCH_REQUEST_TIMEOUT_MS,
+    })
   } catch (error) {
-    if (cacheKey && !cachedProbe) setExternalToolsSearchCache(cacheKey, { outcome: "failure", error })
     const message = upstreamErrorMessage(error)
     const diagnostic = error instanceof ExternalMcpDiagnosticError ? error.diagnostic : undefined
     const nameTokens = tokenize(connection.name)
@@ -870,6 +891,7 @@ async function probeExternalMcpConnection(input: {
       schemaDigest: externalMcpToolSchemaDigest(tool.inputSchema),
       invocation: { argumentsField: "body" },
       readOnly: providerMarksReadOnly(tool.annotations),
+      ...(tool.annotations ? { annotations: providerToolAnnotations(tool.annotations) } : {}),
       ...(resourceUri ? { kind: "mcp_app" as const, mcpApp: { resourceUri } } : {}),
       ...(input.scriptNamespace ? { scriptPath: codemodeScriptPath(input.scriptNamespace, tool.name) } : {}),
     })
@@ -1043,11 +1065,11 @@ function invalidCapabilityArguments(input: {
     capability: input.capability,
     message: input.diagnostic
       ? diagnosticAgentMessage(input.diagnostic)
-      : "The capability arguments do not match the remote MCP tool's advertised argumentsSchema.",
+      : "The capability arguments do not match the remote MCP tool's advertised inputSchema.",
     issues: input.issues ?? [{
       path: "/",
       keyword: "schema_validation",
-      message: "The remote MCP rejected these arguments as invalid. Correct them using the latest argumentsSchema.",
+      message: "The remote MCP rejected these arguments as invalid. Correct them using the latest inputSchema.",
     }],
     ...(input.schemaDigest ? { schemaDigest: input.schemaDigest } : {}),
     sameArgumentsRetryable: false,
@@ -1151,6 +1173,12 @@ export async function probeExternalConnectionStatus(input: {
  */
 export function providerMarksReadOnly(annotations: { readOnlyHint?: boolean; destructiveHint?: boolean } | undefined): boolean {
   return annotations?.readOnlyHint === true && annotations.destructiveHint !== true
+}
+
+/** The provider's MCP tool annotations, limited to the standard keys. */
+function providerToolAnnotations(annotations: CapabilityToolAnnotations): CapabilityToolAnnotations {
+  return Object.fromEntries((["title", "readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] as const)
+    .flatMap((key) => annotations[key] === undefined ? [] : [[key, annotations[key]]]))
 }
 
 type ExternalCapabilityFailure = Extract<ExternalCapabilityExecuteResult, { ok: false }>
@@ -1453,7 +1481,7 @@ export async function executeExternalCapability(input: {
           message: "The provider advertised a different capability schema after discovery, but OpenWork still forwarded the call.",
           searchedSchemaDigest: input.schemaDigest,
           currentSchemaDigest: schemaDigest,
-          suggestedAction: "If the provider call failed, call search_capabilities again and retry with the latest argumentsSchema. Do not retry solely because of this warning when the provider call succeeded.",
+          suggestedAction: "If the provider call failed, call search_capabilities again and retry with the latest inputSchema. Do not retry solely because of this warning when the provider call succeeded.",
         })
       }
       return { ok: true, tool, schemaWarnings }
@@ -1530,7 +1558,7 @@ export async function executeExternalCapability(input: {
     if (!validation.ok && validation.error === "invalid_arguments") {
       schemaWarnings.push({
         code: "arguments_schema_mismatch",
-        message: "The arguments do not match the provider's advertised argumentsSchema, but OpenWork still forwarded the call because the provider may accept them.",
+        message: "The arguments do not match the provider's advertised inputSchema, but OpenWork still forwarded the call because the provider may accept them.",
         issues: validation.issues,
         suggestedAction: "If the provider call failed, correct the listed issues and retry with changed arguments. Do not retry solely because of this warning when the provider call succeeded.",
       })

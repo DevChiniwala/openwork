@@ -355,7 +355,8 @@ export type ComputerPermission = "accessibility" | "screenRecording";
 /** The agent needs computer use this chat does not have yet: setup, or the person's allowance. */
 export type ComputerRequest = {
   id: string;
-  reason: "setup";
+  /** setup: macOS permissions or a remote connection; script: an app script waiting for the person's approval. */
+  reason: "setup" | "script";
   /** The computer the chat uses, e.g. "This Mac" or "Freestyle VM". */
   computer: string;
   placement: "local" | "remote";
@@ -363,6 +364,8 @@ export type ComputerRequest = {
   detail?: string;
   appId?: string;
   purpose?: string;
+  /** The exact script that runs if the person approves it. */
+  script?: { app: "applescript" | "jxa" | "blender"; code: string };
 };
 
 /** One chat's computer use state, as the broker reports it. */
@@ -391,6 +394,8 @@ export type ComputerSnapshot = {
     reason?: string;
   } | null;
   cleanupPending?: boolean;
+  /** This chat's computer steps: time spent on the computer, and waiting for the model between steps. */
+  timing?: { steps: number; computerMs: number; modelMs: number; last?: { name: string; computerMs: number; modelMs?: number } };
 };
 
 /** The live watch view: recent redacted frames and dispatched input, never actionable. */
@@ -470,7 +475,7 @@ export type DesktopCommandMap = {
   computerDismissSetup: { args: [setupId?: string]; result: void };
   computerChoose: { args: [input: { sessionId: string; targetId: string }]; result: ComputerSnapshot };
   computerHalt: { args: [sessionId: string]; result: ComputerSnapshot };
-  computerAnswerRequest: { args: [input: { sessionId: string; answer: "dismiss" }]; result: ComputerSnapshot };
+  computerAnswerRequest: { args: [input: { sessionId: string; answer: "dismiss" | "allow" | "always"; id?: string }]; result: ComputerSnapshot };
   computerSetFeatureEnabled: { args: [enabled: boolean]; result: boolean };
   computerSetRemoteEnabled: { args: [enabled: boolean]; result: boolean };
   computerResetPermission: { args: [permission: ComputerPermission]; result: { setupId: string } };

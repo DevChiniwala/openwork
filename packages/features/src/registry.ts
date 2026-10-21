@@ -67,9 +67,23 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  connectionMcpServers: {
+    label: "Connect: an MCP server for each connection",
+    description: "Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  agentConnectionRemoval: {
+    label: "Agents remove connections",
+    description: "People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -98,6 +112,13 @@ export const FEATURES = defineFeatures({
   workbotWorkspaceAssistant: {
     label: "Workbot: workspace assistant",
     description: "Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  workbotUsageRecovery: {
+    label: "Workbot: usage limits and upgrades",
+    description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

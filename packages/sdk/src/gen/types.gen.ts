@@ -730,6 +730,304 @@ export type AdminDashboard = {
   }>;
 };
 
+export type AdminOpportunityOverview = {
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  generatedAt: string;
+  timeZone: "UTC";
+  signups: {
+    current: number;
+    previous: number;
+  };
+  joinedMembers: {
+    current: number;
+    previous: number;
+  };
+  activeUsers: {
+    current: number;
+    previous: number;
+  };
+  activeOrganizations: {
+    current: number;
+    previous: number;
+  };
+  daily: Array<{
+    date: string;
+    signups: number;
+    joinedMembers: number;
+  }>;
+  recentSignups: Array<{
+    id: string;
+    name: string;
+    createdAt: string;
+  }>;
+  growingTeams: Array<{
+    id: string;
+    name: string;
+    joinedMembers: number;
+  }>;
+  risingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  fallingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  queue: Array<{
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  }>;
+  waiting: Array<{
+    organizationId: string;
+    organizationName: string;
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    };
+  }>;
+  hidden: {
+    closed: number;
+    dismissed: number;
+  };
+  progress: {
+    reviewed: number;
+    outreach: number;
+    followUpsCompleted: number;
+    followUpsOnTime: number;
+    conversations: number;
+    confirmedExpansion: number;
+    confirmedCommercial: number;
+    activationProgress: number;
+    dueToday: number;
+    overdue: number;
+  };
+};
+
+export type AdminOpportunityAccount = {
+  organization: {
+    id: string;
+    name: string;
+    createdAt: string;
+    planTier: string;
+    seatLimit: number;
+    memberCount: number;
+  };
+  people: Array<{
+    memberId: string;
+    userId: string | null;
+    name: string | null;
+    email: string | null;
+    role: string;
+    joinedAt: string | null;
+    signedUpAt: string | null;
+    lastObservedAt: string | null;
+  }>;
+  opportunity: {
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  } | null;
+  adoption: {
+    stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+    members: number;
+    joinedThisWeek: number;
+    activeUsers: {
+      current: number;
+      previous: number;
+    };
+    lastObservedAt: string | null;
+    skills: number;
+    mcpConnections: number;
+  };
+  followUp: {
+    stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+    ownerUserId: string | null;
+    ownerName: string | null;
+    nextAction: string | null;
+    nextFollowUpAt: string | null;
+    lastContactedAt: string | null;
+    lastActionKind:
+      | "reviewed"
+      | "contacted"
+      | "replied"
+      | "meeting"
+      | "note"
+      | "closed"
+      | "dismissed"
+      | "reopened"
+      | null;
+    lastActionAt: string | null;
+    confirmedOpportunity: "expansion" | "commercial" | null;
+    updatedAt: string;
+  } | null;
+  history: Array<{
+    id: string;
+    kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+    occurredAt: string;
+    actorName: string | null;
+    contactName: string | null;
+    note: string | null;
+    followUpDueAt: string | null;
+  }>;
+  generatedAt: string;
+  timeZone: "UTC";
+};
+
+export type AccountFollowUpActionInput = {
+  requestId: string;
+  kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+  contactUserId?: string | null;
+  note?: string | null;
+  nextAction?: string | null;
+  /**
+   * UTC calendar date (YYYY-MM-DD) of the next follow-up. Null clears it.
+   */
+  followUpOn?: string | null;
+  assignToMe?: boolean;
+  confirmedOpportunity?: "expansion" | "commercial" | null;
+};
+
 export type AdminOpportunities = {
   from: string;
   to: string;
@@ -809,11 +1107,14 @@ export type AdminFeature = {
   key:
     | "nativeDictation"
     | "organizationGrants"
+    | "connectionMcpServers"
     | "liveProviderSync"
+    | "agentConnectionRemoval"
     | "managedDeployments"
     | "workbotDocuments"
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
+    | "workbotUsageRecovery"
     | "automationCalendar"
     | "engineV2ForceUpgrade"
     | "computerUse"
@@ -862,11 +1163,14 @@ export type AdminOrganizationsPageResponse = {
     capabilities?: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
@@ -904,7 +1208,25 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -941,6 +1263,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1086,11 +1417,14 @@ export type AdminOverviewResponse = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
@@ -1128,7 +1462,25 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1165,6 +1517,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -4535,10 +4896,12 @@ export type ExternalMcpConnectionResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt?: string;
   connectedForMe: boolean;
@@ -4814,10 +5177,12 @@ export type ExternalMcpConnectionCreatedResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt?: string;
   connectedForMe: boolean;
@@ -4945,10 +5310,12 @@ export type ExternalMcpConnectionUpdatedResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt: string;
   connectedForMe: boolean;
@@ -5081,6 +5448,42 @@ export type ExternalMcpConnectionByKeyUpsertInput = {
 export type ExternalMcpConnectionDeleteByKeyResponse = {
   ok: true;
   deleted: boolean;
+};
+
+export type ExternalMcpConnectionRemovalRequestResponse = {
+  status: "confirmation_required";
+  connection: {
+    id: string;
+    name: string;
+    url: string;
+  };
+  requiredBy: Array<ExternalMcpConnectionRequiredBy>;
+  handoff: {
+    action: "open_link";
+    url: string;
+    instructions: string;
+  };
+};
+
+export type ExternalMcpConnectionRemovalConflict = {
+  error: "connection_name_mismatch" | "connection_in_use";
+  message: string;
+  connection: {
+    id: string;
+    name: string;
+  };
+  requiredBy?: Array<ExternalMcpConnectionRequiredBy>;
+};
+
+export type ExternalMcpConnectionRemovalRequestBody = {
+  /**
+   * The connection's exact name, as getMcpConnections lists it. Nothing is prepared when it does not match.
+   */
+  expectedName: string;
+  /**
+   * The user agreed it may be removed from plugins that need it. Send true only after telling the user which plugins use it.
+   */
+  detachFromPlugins?: boolean;
 };
 
 export type ExternalMcpConnectionCredentialPromptResponse = {
@@ -6889,6 +7292,7 @@ export type WorkbotSession = {
   nativeDictation?: boolean;
   workspaceAssistant?: boolean;
   guidedNavigation?: boolean;
+  usageRecovery?: boolean;
   sideChats: boolean;
   model?: string | null;
   verifyModel?: boolean;
@@ -6905,6 +7309,7 @@ export type WorkbotRunToken = {
     baseUrl: string;
     apiKey: string;
     protocol: "anthropic" | "openai" | "openai-responses";
+    model?: string;
   };
   indexCapability?: string;
 };
@@ -7243,7 +7648,25 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7280,6 +7703,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7372,11 +7804,14 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
     capabilities: {
       nativeDictation?: boolean | null;
       organizationGrants?: boolean | null;
+      connectionMcpServers?: boolean | null;
       liveProviderSync?: boolean | null;
+      agentConnectionRemoval?: boolean | null;
       managedDeployments?: boolean | null;
       workbotDocuments?: boolean | null;
       workbotDocumentEditing?: boolean | null;
       workbotWorkspaceAssistant?: boolean | null;
+      workbotUsageRecovery?: boolean | null;
       automationCalendar?: boolean | null;
       engineV2ForceUpgrade?: boolean | null;
       computerUse?: boolean | null;
@@ -7441,7 +7876,25 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7478,6 +7931,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7989,6 +8451,122 @@ export type GetV1AdminDashboardResponses = {
 };
 
 export type GetV1AdminDashboardResponse = GetV1AdminDashboardResponses[keyof GetV1AdminDashboardResponses];
+
+export type GetV1AdminOpportunitiesOverviewData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/admin/opportunities/overview";
+};
+
+export type GetV1AdminOpportunitiesOverviewErrors = {
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesOverviewError =
+  GetV1AdminOpportunitiesOverviewErrors[keyof GetV1AdminOpportunitiesOverviewErrors];
+
+export type GetV1AdminOpportunitiesOverviewResponses = {
+  /**
+   * Weekly opportunity overview returned.
+   */
+  200: AdminOpportunityOverview;
+};
+
+export type GetV1AdminOpportunitiesOverviewResponse =
+  GetV1AdminOpportunitiesOverviewResponses[keyof GetV1AdminOpportunitiesOverviewResponses];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}";
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdError =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdErrors[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdErrors];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponses = {
+  /**
+   * Account context returned.
+   */
+  200: AdminOpportunityAccount;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponse =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdResponses[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdResponses];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsData = {
+  body: AccountFollowUpActionInput;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}/actions";
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsError =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses = {
+  /**
+   * Step recorded, or the original retry returned.
+   */
+  200: {
+    ok: true;
+    actionId: string;
+  };
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponse =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses];
 
 export type GetV1AdminOpportunitiesData = {
   body?: never;
@@ -8628,11 +9206,14 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
@@ -8670,7 +9251,25 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8707,6 +9306,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8840,11 +9448,14 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
@@ -8882,7 +9493,25 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8919,6 +9548,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -29397,6 +30035,54 @@ export type PutV1McpConnectionsByConnectionIdAccessResponses = {
 export type PutV1McpConnectionsByConnectionIdAccessResponse =
   PutV1McpConnectionsByConnectionIdAccessResponses[keyof PutV1McpConnectionsByConnectionIdAccessResponses];
 
+export type RequestMcpConnectionRemovalData = {
+  body: ExternalMcpConnectionRemovalRequestBody;
+  path: {
+    /**
+     * Den TypeID with 'emc_' prefix and a 26-character base32 suffix.
+     */
+    connectionId: string;
+  };
+  query?: never;
+  url: "/v1/mcp-connections/{connectionId}/removal-request";
+};
+
+export type RequestMcpConnectionRemovalErrors = {
+  /**
+   * Invalid request.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * The caller may not remove this connection.
+   */
+  403: ForbiddenError;
+  /**
+   * Unknown connection, or removing connections through agents is off for this organization.
+   */
+  404: ExternalMcpConnectionNotFoundError;
+  /**
+   * The name does not match this connection, or plugins need it.
+   */
+  409: ExternalMcpConnectionRemovalConflict;
+};
+
+export type RequestMcpConnectionRemovalError =
+  RequestMcpConnectionRemovalErrors[keyof RequestMcpConnectionRemovalErrors];
+
+export type RequestMcpConnectionRemovalResponses = {
+  /**
+   * The removal is ready for the person to confirm in OpenWork.
+   */
+  200: ExternalMcpConnectionRemovalRequestResponse;
+};
+
+export type RequestMcpConnectionRemovalResponse =
+  RequestMcpConnectionRemovalResponses[keyof RequestMcpConnectionRemovalResponses];
+
 export type PostV1McpConnectionsByConnectionIdDisconnectData = {
   body?: never;
   path: {
@@ -35049,6 +35735,54 @@ export type PostV1IntegrationsSlackByConnectionIdInteractionsResponses = {
 export type PostV1IntegrationsSlackByConnectionIdInteractionsResponse =
   PostV1IntegrationsSlackByConnectionIdInteractionsResponses[keyof PostV1IntegrationsSlackByConnectionIdInteractionsResponses];
 
+export type GetWorkbotModelRecoveryData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/workbot/model-recovery";
+};
+
+export type GetWorkbotModelRecoveryErrors = {
+  /**
+   * The token or membership is invalid.
+   */
+  401: UnauthorizedError;
+  /**
+   * Read scope is required.
+   */
+  403: {
+    error: "insufficient_scope";
+  };
+  /**
+   * Usage recovery is off.
+   */
+  404: {
+    error: "feature_disabled";
+  };
+};
+
+export type GetWorkbotModelRecoveryError = GetWorkbotModelRecoveryErrors[keyof GetWorkbotModelRecoveryErrors];
+
+export type GetWorkbotModelRecoveryResponses = {
+  /**
+   * The member's recovery options.
+   */
+  200: {
+    canUpgrade: boolean;
+    purchaseEligible?: boolean;
+    managedLuna?: boolean;
+    hasModelsSubscription?: boolean;
+    paidContinuation?: "unavailable" | "after_upgrade" | "authorized";
+    upgradeBlockedReason?: "paid_workbot_route_unavailable" | null;
+    canManageModels: boolean;
+    canManageBilling: boolean;
+    freeExhausted: boolean;
+    freeResetsAt: string | null;
+  };
+};
+
+export type GetWorkbotModelRecoveryResponse = GetWorkbotModelRecoveryResponses[keyof GetWorkbotModelRecoveryResponses];
+
 export type RecordWorkbotTelemetryData = {
   body:
     | {
@@ -35240,12 +35974,28 @@ export type CreateWorkbotRunTokenErrors = {
    */
   401: UnauthorizedError;
   /**
-   * Workbot is off or the sign-in grant cannot start a turn.
+   * Workbot or model access cannot start a turn.
    */
-  403: {
-    error: string;
-    message?: string;
-  };
+  403:
+    | {
+        error: string;
+        message?: string;
+      }
+    | {
+        error: "workbot_turn_access_denied";
+        reason:
+          | "gateway_not_configured"
+          | "gateway_provider_missing"
+          | "gateway_member_access_missing"
+          | "gateway_model_unavailable"
+          | "gateway_authentication_required"
+          | "gateway_credentials_unavailable"
+          | "oauth_scope_missing"
+          | "model_access_unavailable"
+          | "managed_models_setup_required"
+          | "rate_limited";
+        retryAfter?: number;
+      };
   /**
    * Too many tokens requested.
    */
@@ -35574,6 +36324,25 @@ export type GetMcpAgentWellKnownOauthProtectedResourceResponses = {
 
 export type GetMcpAgentWellKnownOauthProtectedResourceResponse =
   GetMcpAgentWellKnownOauthProtectedResourceResponses[keyof GetMcpAgentWellKnownOauthProtectedResourceResponses];
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdData = {
+  body?: never;
+  path: {
+    connectionId: string;
+  };
+  query?: never;
+  url: "/.well-known/oauth-protected-resource/mcp/agent/servers/{connectionId}";
+};
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses = {
+  /**
+   * Protected resource metadata (RFC 9728).
+   */
+  200: OAuthProtectedResourceMetadata;
+};
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponse =
+  GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses[keyof GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses];
 
 export type GetWellKnownOauthProtectedResourceMcpAdminData = {
   body?: never;

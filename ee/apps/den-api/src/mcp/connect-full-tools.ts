@@ -18,8 +18,8 @@ import type { ExecuteCapabilityToolResult } from "./capability-registry.js"
  * in Claude Code, which drops names over 128) still accept them.
  *
  * Every tool runs through the executor execute_capability uses, with the same
- * capability name, so grants, tool policy, scopes, connection checks, audit
- * and usage counting are unchanged.
+ * `{ name, arguments }` it receives, so grants, tool policy, scopes,
+ * connection checks, audit and usage counting are unchanged.
  */
 
 export const CONNECT_FULL_TOOL_NAME_MAX_LENGTH = 64
@@ -33,8 +33,6 @@ export type ConnectFullToolCandidate = {
   toolName: string
   /** The exact name execute_capability takes. */
   capability: string
-  /** `api`: Den routes, called with { path, query, body }. `arguments`: the arguments are the body. */
-  call: "api" | "arguments"
   title?: string
   description: string
   inputSchema: Record<string, unknown>
@@ -44,7 +42,8 @@ export type ConnectFullToolCandidate = {
 
 export type ConnectFullTool = ConnectFullToolCandidate & { name: string }
 
-export type CapabilityCall = { name: string; path?: unknown; query?: unknown; body?: unknown }
+/** What execute_capability receives; the older path/query/body fields stay for its own callers. */
+export type CapabilityCall = { name: string; arguments?: unknown; path?: unknown; query?: unknown; body?: unknown }
 
 /** A connection the member may use but cannot call yet; connection_status shows its card. */
 export type PendingConnection = { namespace: string; name: string }
@@ -128,7 +127,6 @@ export function externalToolCandidates(input: {
       namespace: connection.namespace,
       toolName: tool.name,
       capability: input.capabilityName(connection.id, tool.name),
-      call: "arguments" as const,
       ...(title ? { title } : {}),
       description: `[${connection.name}] ${tool.description ?? title ?? tool.name}`,
       inputSchema,
@@ -154,11 +152,6 @@ function advertisedSchema(schema: Record<string, unknown>): StandardSchemaWithJS
   }
 }
 
-export function capabilityCall(tool: Pick<ConnectFullTool, "capability" | "call">, args: unknown): CapabilityCall {
-  if (tool.call === "arguments") return { name: tool.capability, body: args }
-  const record = isRecord(args) ? args : {}
-  return { name: tool.capability, path: record.path, query: record.query, body: record.body }
-}
 
 export function registerConnectFullTools(input: {
   server: McpServer
@@ -173,7 +166,7 @@ export function registerConnectFullTools(input: {
       inputSchema: advertisedSchema(tool.inputSchema),
       ...(tool.outputSchema ? { outputSchema: advertisedSchema(tool.outputSchema) } : {}),
       ...(tool.annotations ? { annotations: tool.annotations } : {}),
-    }, async (args: unknown) => input.execute(capabilityCall(tool, args)))
+    }, async (args: unknown) => input.execute({ name: tool.capability, arguments: args }))
   }
 }
 

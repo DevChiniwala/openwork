@@ -38,6 +38,16 @@
               ],
               "description": "Organization control panel and grants: Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration. Renders DEN_FEATURE_ORGANIZATION_GRANTS."
             },
+            "connectionMcpServers": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: an MCP server for each connection: Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools. Renders DEN_FEATURE_CONNECTION_MCP_SERVERS."
+            },
             "liveProviderSync": {
               "enum": [
                 "",
@@ -47,6 +57,16 @@
                 false
               ],
               "description": "Live provider sync: Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. Renders DEN_FEATURE_LIVE_PROVIDER_SYNC."
+            },
+            "agentConnectionRemoval": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Agents remove connections: People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork. Renders DEN_FEATURE_AGENT_CONNECTION_REMOVAL."
             },
             "managedDeployments": {
               "enum": [
@@ -87,6 +107,16 @@
                 false
               ],
               "description": "Workbot: workspace assistant: Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Renders DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT."
+            },
+            "workbotUsageRecovery": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: usage limits and upgrades: Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation. Renders DEN_FEATURE_WORKBOT_USAGE_RECOVERY."
             },
             "automationCalendar": {
               "enum": [

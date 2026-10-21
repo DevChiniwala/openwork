@@ -25,10 +25,11 @@ const SANDBOX_PREPARED_FINGERPRINT_PATH = "/workspace/.openwork-daytona/source-p
 const RELEASE_REPOSITORY = "different-ai/openwork";
 const MAX_DESKTOP_RELEASE_ARCHIVE_BYTES = 1024 * 1024 * 1024;
 
-const RELEASE_ARTIFACTS: Record<DesktopReleaseDistribution, { prefix: string; binary: string }> = {
-  public: { prefix: "openwork", binary: "openwork" },
-  cloud: { prefix: "openwork-cloud", binary: "openwork-cloud" },
-  enterprise: { prefix: "openwork-enterprise", binary: "openwork-enterprise" },
+// windowsBinary is electron-builder's `${productName}.exe` from apps/desktop/electron-builder*.yml.
+const RELEASE_ARTIFACTS: Record<DesktopReleaseDistribution, { prefix: string; binary: string; windowsBinary: string }> = {
+  public: { prefix: "openwork", binary: "openwork", windowsBinary: "OpenWork.exe" },
+  cloud: { prefix: "openwork-cloud", binary: "openwork-cloud", windowsBinary: "OpenWork Cloud.exe" },
+  enterprise: { prefix: "openwork-enterprise", binary: "openwork-enterprise", windowsBinary: "OpenWork Enterprise.exe" },
 };
 
 export const DESKTOP_RELEASE_ARCHIVE_INSTALLER = `
@@ -307,7 +308,7 @@ function desktopReleaseArtifact(release: DesktopRelease, platform: "linux" | "wi
     assetName: platform === "windows"
       ? `${artifact.prefix}-win-x64-${release.version}.exe`
       : `${artifact.prefix}-linux-x64-${release.version}.tar.gz`,
-    binaryName: platform === "windows" ? "OpenWork.exe" : artifact.binary,
+    binaryName: platform === "windows" ? artifact.windowsBinary : artifact.binary,
   };
 }
 

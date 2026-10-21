@@ -7,6 +7,7 @@ import type { ComputerPresentation } from "@openwork/types/desktop-ipc"
 import { desktopBridge } from "@/app/lib/desktop"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useComputerStore } from "./computer-store"
 
 type Observation = Omit<ComputerPresentation, "phase" | "frame"> & {
   phase: ComputerPresentation["phase"] | "unavailable" | "stopping"
@@ -242,6 +243,8 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
     if (action === "takeover" || action === "resume") clearScreen()
     try {
       await desktopBridge.computerInteract({ sessionId, id: current.id, action })
+      // A turn that ended while the person had control picks up again (see session-surface).
+      if (action === "resume") useComputerStore.getState().markContinued(sessionId)
     } catch {
       if (mounted.current && scope.current === actionScope) {
         setActionError(`${action === "takeover" ? "Take over" : action === "resume" ? "Continue" : "Window choice"} was not confirmed. Check the updated state before trying again.`)

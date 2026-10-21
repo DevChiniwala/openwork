@@ -107,6 +107,8 @@ export type WorkbotTurn = {
    */
   modelSteps: number
   error: string | null
+  /** A closed recovery vocabulary; no provider text, account identifiers or credentials. */
+  modelIssue?: "free_limit" | "usage_limit" | "payment_required"
   /** A failed turn that can work if sent again: the page offers "Try again", which answers it again in place. */
   retryable: boolean
   /** Background tasks this message started, oldest first. */
@@ -163,7 +165,14 @@ const MISCONFIGURED = /^model_(credentials_missing|http_(401|402|403|404)|stream
  */
 export function retryableError(code: string | null): boolean {
   if (!code) return true
-  return !REFUSED.test(code) && !MISCONFIGURED.test(code) && code !== "max_steps_exceeded" && code !== "stuck_repeating"
+  return !REFUSED.test(code) && !MISCONFIGURED.test(code) && !modelIssue(code) && code !== "max_steps_exceeded" && code !== "stuck_repeating"
+}
+
+function modelIssue(code: string | null): WorkbotTurn["modelIssue"] {
+  if (code === "model_free_allowance_exhausted") return "free_limit"
+  if (code === "model_usage_limit_exceeded") return "usage_limit"
+  if (code === "model_payment_required") return "payment_required"
+  return undefined
 }
 
 /**
@@ -400,6 +409,7 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
       parts,
       modelSteps,
       error: status === "failed" ? friendlyError(turn.error) : null,
+      ...(status === "failed" && modelIssue(turn.error) ? { modelIssue: modelIssue(turn.error) } : {}),
       retryable: status === "failed" && retryableError(turn.error),
       tasks: turn.kind === undefined ? tasksOf(snapshot, turn.messageId, byTurn) : [],
       greeting,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import type { Context, Hono } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import type { RequestIdVariables } from "hono/request-id"
-import { describeRoute } from "hono-openapi"
+import { describeRoute, type DescribeRouteOptions } from "hono-openapi"
 import { z } from "zod"
 import {
   discoverConnectionRequirements,
@@ -26,12 +26,14 @@ import {
 } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId, type DenTypeId } from "@openwork-ee/utils/typeid"
 import { attributeOAuthCallbackMember } from "../../audit/request-capture.js"
+import { DEN_MCP_OAUTH_RESOURCE } from "../../auth.js"
+import { connectionServerUrl } from "../../mcp/connection-server-tools.js"
 import { cache, type CachedOrgMember } from "../../cache.js"
 import { db } from "../../db.js"
 import { requestReadFor } from "../../request-reads.js"
 import { env } from "../../env.js"
 import { recordWorkbotConnection } from "../../workbot/telemetry.js"
-import { memberSignInLink } from "../../agent-links.js"
+import { connectionRemovalLink, memberSignInLink } from "../../agent-links.js"
 import { appLogger } from "../../observability/logger.js"
 import {
   jsonValidator,
@@ -43,6 +45,7 @@ import {
   resolveMemberTeamsMiddleware,
 } from "../../middleware/index.js"
 import { memberPermissionsForOrganizationContext } from "../../middleware/member-permissions.js"
+import { requireFeature } from "../../features.js"
 import type { PermissionKey } from "@openwork/types/den/permissions"
 import { forbiddenSchema, htmlResponse, invalidRequestSchema, jsonResponse, okSchema, unauthorizedSchema } from "../../openapi.js"
 import { createOAuthStateToken, verifyOAuthStateToken } from "../../capability-sources/generic-oauth.js"
@@ -472,12 +475,16 @@ const connectionResponseSchema = z.object({
   apiKeyAuthScheme: z.enum(["bearer", "token"]),
   /** True when granted members may use this connection as a standard MCP server with its own tool catalog. */
   exposeDirectly: z.boolean(),
+  /** scope=usable with the connectionMcpServers feature on: this connection's own MCP server, listing only its tools. */
+  mcpUrl: z.string().url().optional(),
   connected: z.boolean(),
   connectedAt: z.string().datetime().nullable(),
   /** Safe creator display label for admin/manageable rows. */
   createdByName: z.string().nullable().optional(),
   /** Present with createdByName: whether the calling member added this connection (and so may always edit or remove it). */
   createdByYou: z.boolean().optional(),
+  /** Present with createdByName: whether the calling member may remove this connection right now (Remove any connection, or they added it). */
+  canRemove: z.boolean().optional(),
   createdAt: z.string().datetime().optional(),
   updatedAt: z.string().datetime().optional(),
   /** For per_member connections: whether the CALLING member has connected their own account. Always true for connected shared connections. */
@@ -531,6 +538,35 @@ const connectionDeleteByKeyResponseSchema = z.object({
   ok: z.literal(true),
   deleted: z.boolean(),
 }).meta({ ref: "ExternalMcpConnectionDeleteByKeyResponse" })
+
+/** An operation agents can discover and call through OpenWork Connect (src/mcp/policy.ts). */
+type AgentDescribeRouteOptions = DescribeRouteOptions & { "x-mcp": true; "x-mcp-search-aliases": string[] }
+const describeAgentRoute = (options: AgentDescribeRouteOptions) => describeRoute(options)
+
+const removalRequestBodySchema = z.object({
+  expectedName: z.string().trim().min(1).max(255).describe("The connection's exact name, as getMcpConnections lists it. Nothing is prepared when it does not match."),
+  detachFromPlugins: z.boolean().optional().describe("The user agreed it may be removed from plugins that need it. Send true only after telling the user which plugins use it."),
+}).strict().meta({ ref: "ExternalMcpConnectionRemovalRequestBody" })
+
+const removalRequestResponseSchema = z.object({
+  /** Nothing has been removed: the person confirms in OpenWork. */
+  status: z.literal("confirmation_required"),
+  connection: z.object({ id: z.string(), name: z.string(), url: z.string() }),
+  /** Plugins that lose this connection when it is removed. */
+  requiredBy: z.array(requiredBySchema),
+  handoff: z.object({
+    action: z.literal("open_link"),
+    url: z.string(),
+    instructions: z.string(),
+  }),
+}).meta({ ref: "ExternalMcpConnectionRemovalRequestResponse" })
+
+const removeConnectionConflictSchema = z.object({
+  error: z.enum(["connection_name_mismatch", "connection_in_use"]),
+  message: z.string(),
+  connection: z.object({ id: z.string(), name: z.string() }),
+  requiredBy: z.array(requiredBySchema).optional(),
+}).meta({ ref: "ExternalMcpConnectionRemovalConflict" })
 
 const connectionListResponseSchema = z.object({
   connections: z.array(connectionResponseSchema),
@@ -1221,6 +1257,8 @@ async function toConnectionResponse(
   row: ExternalMcpConnectionRow,
   options: {
     callerOrgMembershipId: DenTypeId<"member">
+    /** The caller holds `connections.delete`. Creators may always remove their own connections. */
+    callerCanRemoveAnyConnection?: boolean
     createdByName?: string | null
     includeAccess: boolean
     includeManualOAuthEndpoints?: boolean
@@ -1326,6 +1364,7 @@ async function toConnectionResponse(
     ...(options.includeAccess ? {
       createdByName: options.createdByName ?? null,
       createdByYou: row.createdByOrgMembershipId === options.callerOrgMembershipId,
+      canRemove: options.callerCanRemoveAnyConnection === true || row.createdByOrgMembershipId === options.callerOrgMembershipId,
     } : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -1890,6 +1929,7 @@ async function createExternalConnectionResponse(
   }
   const response = await toConnectionResponse(refreshed ?? created, {
     callerOrgMembershipId: payload.currentMember.id,
+    callerCanRemoveAnyConnection: await callerHasPermission(payload, "connections.delete"),
     createdByName: resolveCreatorName(await organizationMembers(payload), (refreshed ?? created).createdByOrgMembershipId),
     includeAccess: true,
     includeManualOAuthEndpoints: await callerHasPermission(payload, "connections.view"),
@@ -2168,6 +2208,7 @@ async function replaceExternalConnectionResponse(
   })
   const response = await toConnectionResponse(result.connection, {
     callerOrgMembershipId: payload.currentMember.id,
+    callerCanRemoveAnyConnection: await callerHasPermission(payload, "connections.delete"),
     createdByName: resolveCreatorName(await organizationMembers(payload), result.connection.createdByOrgMembershipId),
     includeAccess: true,
     includeManualOAuthEndpoints: await callerHasPermission(payload, "connections.view"),
@@ -2299,11 +2340,14 @@ async function deleteExternalConnection(
  * not a fixed registry entry, since third-party MCP servers don't have a
  * pre-shared client id the way Google Workspace does.
  *
- * Mutation and connect/OAuth routes are tagged Authentication (already
- * blocked from the agent-facing MCP surface, same treatment as
- * oauth-providers.ts) — an agent should never create, delete, or drive the
- * OAuth handshake for a connection itself. Read-only list/status/presets are
- * tagged Capability Sources so a harness can at least see what's connected.
+ * Connect/OAuth routes and the dashboard's edit and DELETE routes are tagged
+ * Authentication (blocked from the agent-facing MCP surface, same treatment as
+ * oauth-providers.ts) — an agent should never drive the OAuth handshake for a
+ * connection itself. List/status/presets are tagged Capability Sources so a
+ * harness can see what's connected. Agents prepare removing a connection with
+ * POST /v1/mcp-connections/:connectionId/removal-request
+ * (requestMcpConnectionRemoval, behind agentConnectionRemoval); the person
+ * confirms it in Den, through the DELETE route agents cannot call.
  */
 export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVariables & RequestIdVariables }>(app: Hono<T>) {
   app.get(
@@ -2590,9 +2634,11 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
           requiredByForConnections({ context, includeAllPluginNames: true, rows }),
           organizationMembers(payload),
         ])
+        const canRemoveAnyConnection = await callerHasPermission(payload, "connections.delete")
         const connections = await Promise.all(rows.map((row) =>
           toConnectionResponse(row, {
             callerOrgMembershipId: payload.currentMember.id,
+            callerCanRemoveAnyConnection: canRemoveAnyConnection,
             createdByName: resolveCreatorName(members, row.createdByOrgMembershipId),
             includeAccess: true,
             includeManualOAuthEndpoints: true, // This branch requires connections.view above.
@@ -2603,7 +2649,9 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
         return c.json({ connections })
       }
 
-      return c.json({ connections: await listMemberUsableConnectionFacts({ context }) })
+      const connections = await listMemberUsableConnectionFacts({ context })
+      if (!payload.features.connectionMcpServers) return c.json({ connections })
+      return c.json({ connections: connections.map((connection) => ({ ...connection, mcpUrl: connectionServerUrl(DEN_MCP_OAUTH_RESOURCE, connection.id) })) })
     },
   )
 
@@ -3088,6 +3136,7 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
         })
         const response = await toConnectionResponse(created, {
           callerOrgMembershipId: payload.currentMember.id,
+          callerCanRemoveAnyConnection: await callerHasPermission(payload, "connections.delete"),
           createdByName: resolveCreatorName(await organizationMembers(payload), created.createdByOrgMembershipId),
           includeAccess: true,
           requiredBy: [],
@@ -3332,6 +3381,7 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
       })
       return c.json(await toConnectionResponse(connection, {
         callerOrgMembershipId: payload.currentMember.id,
+        callerCanRemoveAnyConnection: await callerHasPermission(payload, "connections.delete"),
         createdByName: resolveCreatorName(await organizationMembers(payload), connection.createdByOrgMembershipId),
         includeAccess: true,
         includeManualOAuthEndpoints: await hasPermission(c, "connections.view"),
@@ -3376,6 +3426,91 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
         return c.json({ error: "connection_not_found", message: "Unknown connection." }, 404)
       }
       return c.json({ ok: true })
+    },
+  )
+
+  // The agent-facing way to remove a connection (the connector itself, not
+  // anything in the provider). The agent only prepares the removal: it names
+  // the exact connection and surfaces blockers, and gets a link. Nothing is
+  // deleted until the person opens it and confirms in Den, signed in, through
+  // the dashboard DELETE that agents cannot call. A value the agent sends can
+  // therefore never authorize a deletion by itself.
+  // Shown to agents only with agentConnectionRemoval.
+  app.post(
+    "/v1/mcp-connections/:connectionId/removal-request",
+    describeAgentRoute({
+      tags: ["Capability Sources"],
+      operationId: "requestMcpConnectionRemoval",
+      "x-mcp": true,
+      "x-mcp-search-aliases": ["delete connection", "remove connection", "remove connector", "delete connector", "delete MCP connection", "remove MCP server"],
+      summary: "Prepare removing an organization connection",
+      description: "Prepares removing one organization connection (connector) from OpenWork and returns a link where the person confirms it. Nothing is removed by this call: the connection, who can use it, its stored accounts and OAuth app are deleted only when the person opens the link and confirms in OpenWork. It never deletes anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName. A connection that plugins need is refused unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Needs the Remove any connection permission, or having added the connection. Give the person handoff.url and handoff.instructions; afterwards, list connections with getMcpConnections to confirm it is gone.",
+      responses: {
+        200: jsonResponse("The removal is ready for the person to confirm in OpenWork.", removalRequestResponseSchema),
+        400: jsonResponse("Invalid request.", invalidRequestSchema),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+        403: jsonResponse("The caller may not remove this connection.", forbiddenSchema),
+        404: jsonResponse("Unknown connection, or removing connections through agents is off for this organization.", connectionNotFoundSchema),
+        409: jsonResponse("The name does not match this connection, or plugins need it.", removeConnectionConflictSchema),
+      },
+    }),
+    orgMemberRoute(),
+    requireFeature("agentConnectionRemoval"),
+    paramValidator(connectionParamsSchema),
+    jsonValidator(removalRequestBodySchema),
+    async (c) => {
+      const payload = c.get("organizationContext")
+      const { connectionId } = c.req.valid("param")
+      const body = c.req.valid("json")
+      const connection = await getExternalMcpConnection({
+        organizationId: payload.organization.id,
+        connectionId: normalizeDenTypeId("externalMcpConnection", connectionId),
+      })
+      if (!connection) {
+        return c.json({ error: "connection_not_found", message: "There is no connection with this ID in the organization. List connections with getMcpConnections and use an ID from there." }, 404)
+      }
+
+      const canRemoveAny = await callerHasPermission(payload, "connections.delete")
+      if (!canRemoveAny && connection.createdByOrgMembershipId !== payload.currentMember.id) {
+        return c.json({
+          error: "forbidden",
+          message: `You can't remove ${connection.name}. Only the person who added it, or someone with the Remove any connection permission, can. Ask an organization owner or admin to remove it.`,
+        }, 403)
+      }
+      if (connection.name.trim() !== body.expectedName) {
+        return c.json({
+          error: "connection_name_mismatch",
+          message: `This connection is named "${connection.name}", not "${body.expectedName}". Nothing was prepared. Check with the user which connection they mean.`,
+          connection: { id: connection.id, name: connection.name },
+        }, 409)
+      }
+
+      const provenance = await requiredByForConnections({
+        context: { memberTeams: [], organizationContext: payload, session: c.get("session") },
+        includeAllPluginNames: canRemoveAny,
+        rows: [connection],
+      })
+      const requiredBy = provenance.requiredBy.get(connection.id) ?? []
+      if (requiredBy.length > 0 && body.detachFromPlugins !== true) {
+        return c.json({
+          error: "connection_in_use",
+          message: `${connection.name} is needed by these plugins: ${requiredBy.map((plugin) => plugin.name).join(", ")}. Removing it also removes it from them, so their skills lose this connection. Tell the user; only if they agree, call again with detachFromPlugins true. Otherwise remove or change those plugins first.`,
+          connection: { id: connection.id, name: connection.name },
+          requiredBy,
+        }, 409)
+      }
+
+      const url = connectionRemovalLink(connection.id)
+      return c.json({
+        status: "confirmation_required" as const,
+        connection: { id: connection.id, name: connection.name, url: connection.url },
+        requiredBy,
+        handoff: {
+          action: "open_link" as const,
+          url,
+          instructions: `Open the link signed in to ${payload.organization.name} and choose Remove to remove ${connection.name}. Nothing is removed until you do.`,
+        },
+      })
     },
   )
 
@@ -3959,6 +4094,7 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
       })
       return c.json(await toConnectionResponse(connection, {
         callerOrgMembershipId: payload.currentMember.id,
+        callerCanRemoveAnyConnection: await callerHasPermission(payload, "connections.delete"),
         createdByName: resolveCreatorName(await organizationMembers(payload), connection.createdByOrgMembershipId),
         includeAccess: true,
         includeManualOAuthEndpoints: await hasPermission(c, "connections.view"),

@@ -60,12 +60,11 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype
 }
 
-function leafCandidates(leaves: readonly CapabilityLeaf[], call: ConnectFullToolCandidate["call"]): ConnectFullToolCandidate[] {
+function leafCandidates(leaves: readonly CapabilityLeaf[]): ConnectFullToolCandidate[] {
   return leaves.map((leaf) => ({
     namespace: leaf.namespace,
     toolName: leaf.toolName,
     capability: leaf.capabilityName,
-    call,
     description: leaf.definition.description,
     inputSchema: isPlainRecord(leaf.definition.input) ? leaf.definition.input : { type: "object" },
     ...(leaf.readOnly === undefined ? {} : { annotations: { readOnlyHint: leaf.readOnly } }),
@@ -136,10 +135,10 @@ export async function loadConnectFullTools(input: {
   if (scope !== "status") {
     if (wants("den")) {
       const keyRequest = ctx.catalog.filter((operation) => operation.name === CONNECTION_KEY_REQUEST_CAPABILITY)
-      candidates.push(...leafCandidates(await enumerated({ ...ctx, catalog: keyRequest }, "catalog"), "api"))
+      candidates.push(...leafCandidates(await enumerated({ ...ctx, catalog: keyRequest }, "catalog")))
     }
-    if (wants("admin")) candidates.push(...leafCandidates(await enumerated(ctx, "admin"), "arguments"))
-    candidates.push(...leafCandidates((await enumerated(ctx, "native")).filter((leaf) => wants(leaf.namespace)), "api"))
+    if (wants("admin")) candidates.push(...leafCandidates(await enumerated(ctx, "admin")))
+    candidates.push(...leafCandidates((await enumerated(ctx, "native")).filter((leaf) => wants(leaf.namespace))))
   }
 
   // Connections whose tools are all disabled are left out entirely, as in search.
@@ -178,7 +177,6 @@ export async function loadConnectFullTools(input: {
       namespace: WORKFLOW_TOOL_NAMESPACE,
       toolName: names.get(workflow.configObjectId) ?? workflow.configObjectId,
       capability: buildMarketplaceCapabilityName(workflow.pluginId, workflow.configObjectId),
-      call: "arguments" as const,
       title: workflow.title,
       description: `Run the saved Workflow "${workflow.title}". ${workflow.description ?? ""}`.trim(),
       inputSchema: isPlainRecord(workflow.inputSchema) ? workflow.inputSchema : { type: "object" },
@@ -192,7 +190,6 @@ export async function loadConnectFullTools(input: {
       namespace: APP_TOOL_NAMESPACE,
       toolName: names.get(app.appId) ?? app.appId,
       capability: buildMarketplaceCapabilityName(app.pluginId, app.appId),
-      call: "arguments" as const,
       title: app.title,
       description: `Open the App "${app.title}". ${app.description ?? ""} Its appId for read_app and update_app is ${app.appId}.`.replace(/\s+/g, " "),
       inputSchema: { type: "object", description: "Optional launch input the App receives." },
@@ -205,7 +202,6 @@ export async function loadConnectFullTools(input: {
       namespace: REMOTE_SESSION_TOOL_NAMESPACE,
       toolName: capability.action,
       capability: capability.name,
-      call: "arguments" as const,
       description: capability.summary,
       inputSchema: capability.argumentsSchema,
       annotations: { readOnlyHint: READ_ONLY_REMOTE_SESSION_ACTIONS.has(capability.action) },

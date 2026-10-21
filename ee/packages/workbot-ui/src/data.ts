@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { workbotDocumentNavigationSchema, workbotViewContextSchema, WORKBOT_MAX_MESSAGE_CHARS, type WorkbotViewContext } from "@openwork/types/workbot-context";
 import { errorMessage as getErrorMessage, hostFetch, workbotHost } from "./host";
+import { workbotAccessFailureSchema, type WorkbotAccessReason } from "@openwork/types/den/workbot-settings";
 
 const requestJson = (path: string, init?: RequestInit, timeoutMs?: number) => workbotHost().requestJson(path, init, timeoutMs);
 
@@ -73,6 +74,7 @@ const turnSchema = z.object({
   parts: z.array(partSchema),
   modelSteps: z.number(),
   error: z.string().nullable(),
+  modelIssue: z.enum(["free_limit", "usage_limit", "payment_required"]).optional(),
   /** A failed message that can work if answered again: "Try again" answers it again in place. */
   retryable: z.boolean().default(true),
   /** Bigger jobs this message handed to background tasks: shown where they started until they report back. */
@@ -251,7 +253,7 @@ export function useWorkbotLive(enabled: boolean) {
 }
 
 export class WorkbotSendError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly accessReason?: WorkbotAccessReason) {
     super(message);
     this.name = "WorkbotSendError";
   }
@@ -262,6 +264,8 @@ export const MAX_MESSAGE_CHARS = WORKBOT_MAX_MESSAGE_CHARS;
 
 /** Why sending was refused, in the person's words. */
 function sendRefused(status: number, payload: unknown) {
+  const access = workbotAccessFailureSchema.safeParse(payload);
+  if (access.success) return new WorkbotSendError("Workbot's model access needs attention.", status, access.data.reason);
   if (status === 429) {
     const limited = typeof payload === "object" && payload !== null && "error" in payload && payload.error === "rate_limited";
     return new WorkbotSendError(limited ? "You're sending messages quickly. Try again in a minute." : "Too many messages are waiting. Try again when this one is answered.", 429);
@@ -398,7 +402,7 @@ export function useStartWorkbot() {
     mutationFn: async () => {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const { response, payload } = await requestJson("/v1/workbot/hello", { method: "POST", body: JSON.stringify({ timeZone }) }, 30_000);
-      if (!response.ok) throw new Error(getErrorMessage(payload, "Couldn't start."));
+      if (!response.ok) throw sendRefused(response.status, payload);
       const parsed = z.object({ started: z.boolean() }).safeParse(payload);
       if (!parsed.success) throw new Error("Couldn't start.");
       return parsed.data;

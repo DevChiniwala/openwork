@@ -64,7 +64,6 @@ function candidate(namespace: string, toolName: string, extra: Partial<ConnectFu
     namespace,
     toolName,
     capability: mcpName(`emc_${namespace}`, toolName),
-    call: "arguments",
     description: `${namespace} ${toolName}`,
     inputSchema: { type: "object" },
     ...extra,
@@ -77,7 +76,7 @@ test("the full list is deterministic, uniquely named within MCP name rules, and 
     candidate("admin", "den_list_features", { capability: "admin:den_list_features" }),
     candidate("notion", "notion-query"),
     candidate("github", "search/code"),
-    candidate("google_workspace", "getCapabilitiesGoogleWorkspaceDriveFilesByFileIdContent", { capability: "native:emc_g:getCapabilitiesGoogleWorkspaceDriveFilesByFileIdContent", call: "api" }),
+    candidate("google_workspace", "getCapabilitiesGoogleWorkspaceDriveFilesByFileIdContent", { capability: "native:emc_g:getCapabilitiesGoogleWorkspaceDriveFilesByFileIdContent" }),
     candidate("run-workflow", "weekly_report", { capability: "plugin:plg_1:cob_1" }),
     candidate("linear", "broken", { inputSchema: { type: "array" } }),
   ]
@@ -116,7 +115,6 @@ test("an external connection lists only the tools its policy allows, with the pr
     namespace: "linear",
     toolName: "list_issues",
     capability: "mcp:emc_1:list_issues",
-    call: "arguments",
     title: "List issues",
     description: "[Linear] List issues",
     inputSchema: tools[0]?.inputSchema,
@@ -178,13 +176,13 @@ const listResult = z.object({ result: z.object({
 }) })
 const callResult = z.object({ result: z.object({ isError: z.boolean().optional(), content: z.array(z.object({ type: z.string(), text: z.string() })), structuredContent: z.unknown().optional(), _meta: z.record(z.string(), z.unknown()).optional() }) })
 
-test("full-view tools list privately and run through the capability executor with execute_capability's inputs", async () => {
+test("full-view tools list privately and run through the capability executor with execute_capability's name and arguments", async () => {
   const calls: CapabilityCall[] = []
   const issueSchema = { type: "object", properties: { state: { type: "string" } }, required: ["state"] }
   const call = fullViewFixture({
     candidates: [
       candidate("linear", "list_issues", { inputSchema: issueSchema, outputSchema: { type: "object" }, annotations: { readOnlyHint: true } }),
-      candidate("google_workspace", "getCapabilitiesGoogleWorkspaceGmailMessagesById", { capability: "native:emc_g:getCapabilitiesGoogleWorkspaceGmailMessagesById", call: "api", inputSchema: { type: "object", properties: { path: { type: "object" } } } }),
+      candidate("google_workspace", "getCapabilitiesGoogleWorkspaceGmailMessagesById", { capability: "native:emc_g:getCapabilitiesGoogleWorkspaceGmailMessagesById", inputSchema: { type: "object", properties: { path: { type: "object" } } } }),
     ],
     execute: async (request) => {
       calls.push(request)
@@ -214,8 +212,8 @@ test("full-view tools list privately and run through the capability executor wit
   assert.deepEqual(ran.result._meta?.["openwork/schemaGuidance"], { advisory: true })
   await call("tools/call", { name: "google_workspace.getCapabilitiesGoogleWorkspaceGmailMessagesById", arguments: { path: { id: "m_1" }, query: { format: "full" } } })
   assert.deepEqual(calls, [
-    { name: "mcp:emc_linear:list_issues", body: { unexpected: 1 } },
-    { name: "native:emc_g:getCapabilitiesGoogleWorkspaceGmailMessagesById", path: { id: "m_1" }, query: { format: "full" }, body: undefined },
+    { name: "mcp:emc_linear:list_issues", arguments: { unexpected: 1 } },
+    { name: "native:emc_g:getCapabilitiesGoogleWorkspaceGmailMessagesById", arguments: { path: { id: "m_1" }, query: { format: "full" } } },
   ])
 
   // A name outside the member's list never reaches the executor.

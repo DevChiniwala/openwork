@@ -23,7 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd --create-home --shell /bin/sh openwork-browser \
     && useradd --create-home --shell /bin/sh openwork-app \
     && useradd --create-home --shell /bin/bash openwork-command \
-    && printf 'ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/openwork-desktop-bridge\n' > /etc/sudoers.d/ubuntu
+    && printf 'ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/openwork-desktop-bridge\n' > /etc/sudoers.d/ubuntu \
+    && printf 'openwork-command ALL=(root) NOPASSWD: /usr/local/sbin/openwork-install\n' > /etc/sudoers.d/openwork-command \
+    && chmod 0440 /etc/sudoers.d/ubuntu /etc/sudoers.d/openwork-command
 COPY ee/packages/headless-computer/src/image.ts /tmp/openwork-computer-image.ts
 COPY ee/packages/headless-computer/requirements-desktop.lock /usr/local/share/openwork-computer/requirements-desktop.lock
 RUN node --input-type=module -e "import { DESKTOP_COMPUTER_INSTALL_SCRIPT } from '/tmp/openwork-computer-image.ts'; import { writeFileSync } from 'node:fs'; writeFileSync('/tmp/install-computer.sh', DESKTOP_COMPUTER_INSTALL_SCRIPT)" \

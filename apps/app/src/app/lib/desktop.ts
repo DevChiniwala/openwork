@@ -109,7 +109,7 @@ declare global {
         getPathForFile?: (file: File) => string;
       };
       shell?: {
-        openExternal?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
+        openExternal?: (url: string) => Promise<{ ok: boolean; pending?: boolean; error?: string } | void>;
         relaunch?: () => Promise<void>;
       };
       system?: {
@@ -511,19 +511,32 @@ export function assertDesktopWebUrl(url: string): string {
   return parsed.toString();
 }
 
-export async function openDesktopUrl(url: string): Promise<void> {
+/**
+ * "opening" means the system browser was asked and has not confirmed yet. Slow
+ * machines (virtual desktops, endpoint security) can take a minute to show it;
+ * that is not a failure, and asking again would only add another tab.
+ */
+export type DesktopUrlOpenStatus = "opened" | "opening";
+
+export async function openDesktopUrlWithStatus(url: string): Promise<DesktopUrlOpenStatus> {
   const safeUrl = assertDesktopWebUrl(url);
   const openExternal = window.__OPENWORK_ELECTRON__?.shell?.openExternal;
   if (openExternal) {
     const result = await openExternal(safeUrl);
     if (result && result.ok === false) {
+      if (result.pending) return "opening";
       throw new Error(result.error ?? "Failed to open browser");
     }
-    return;
+    return "opened";
   }
   if (typeof window !== "undefined") {
     window.open(safeUrl, "_blank", "noopener,noreferrer");
   }
+  return "opened";
+}
+
+export async function openDesktopUrl(url: string): Promise<void> {
+  await openDesktopUrlWithStatus(url);
 }
 
 export async function openDesktopPath(target: string): Promise<void> {

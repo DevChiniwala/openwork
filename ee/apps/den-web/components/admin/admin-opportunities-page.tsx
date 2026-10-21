@@ -12,6 +12,7 @@ import { AdminAccessScreen } from "./admin-access-screen";
 import { readAdminListLocation } from "./admin-list-location";
 import { requestAdmin, withStoredBearer, type AdminResult } from "./admin-request";
 import { useAdminSessionCookie } from "./admin-shell";
+import { AdminOpportunityNav } from "./admin-opportunity-nav";
 
 type State = (AdminResult<AdminOpportunities> & { query: string }) | { access: "checking"; query: string };
 type Opportunity = AdminOpportunities["organizations"][number];
@@ -73,7 +74,7 @@ export function AdminOpportunitiesPage() {
     const next = new URLSearchParams(window.location.search);
     if (value) next.set(key, value); else next.delete(key);
     if (key !== "page") next.delete("page");
-    const href = `/admin/opportunities${next.size ? `?${next}` : ""}`;
+    const href = `/admin/opportunities/adoption${next.size ? `?${next}` : ""}`;
     if (key === "search") window.history.replaceState(null, "", href);
     else window.history.pushState(null, "", href);
   }
@@ -96,9 +97,10 @@ export function AdminOpportunitiesPage() {
   ];
   return <section data-testid="admin-opportunities" className="min-w-0 text-[var(--dls-text-primary)]">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--dls-border)] py-5">
-      <h1 className="text-lg font-semibold">Opportunities</h1>
+      <h1 className="text-lg font-semibold">Adoption opportunities</h1>
       <DenButton size="sm" variant="secondary" disabled={refreshing} onClick={() => setAttempt(value => value + 1)}>Refresh</DenButton>
     </header>
+    <AdminOpportunityNav active="adoption" />
     <div className="grid gap-4 border-b border-[var(--dls-border)] py-5 sm:grid-cols-2 xl:grid-cols-3" aria-label="Opportunity filters">
       <label className="grid gap-2 text-xs text-[var(--dls-text-secondary)]">Search organizations or domains<DenInput aria-label="Search organizations or domains" maxLength={160} value={search} onChange={event => change("search", event.target.value)} placeholder="Organization or company domain" /></label>
       <label className="grid gap-2 text-xs text-[var(--dls-text-secondary)]">Activity window<DenSelect aria-label="Activity window" value={days} onChange={event => change("days", event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></DenSelect></label>

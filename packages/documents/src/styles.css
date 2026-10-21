@@ -206,3 +206,18 @@
 
 .ow-editor-binary { position: relative; display: flex; flex: 1; min-height: 0; }
 .ow-editor-preview-loading { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--doc-bg); color: var(--doc-muted); pointer-events: none; }
+
+/* Unsaved changes: a modal dialog, as in desktop apps. */
+.ow-unsaved-dialog { width: min(420px, calc(100vw - 32px)); padding: 24px; border: 1px solid var(--doc-line, #e5e5e5); border-radius: 12px; background: var(--doc-surface, #fff); color: var(--doc-text, #111); box-shadow: 0 24px 48px rgb(0 0 0 / 0.18); font: 14px/1.5 system-ui, sans-serif; }
+.ow-unsaved-dialog::backdrop { background: rgb(0 0 0 / 0.32); }
+.ow-unsaved-dialog h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.ow-unsaved-dialog p { margin: 0; color: var(--doc-muted, #666); }
+.ow-unsaved-dialog .ow-unsaved-dialog-error { margin-top: 12px; color: #b42318; }
+.ow-unsaved-dialog-actions { display: flex; gap: 8px; margin-top: 24px; }
+.ow-unsaved-dialog-actions button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--doc-line, #e5e5e5); background: var(--doc-surface, #fff); color: var(--doc-text, #111); font: inherit; cursor: pointer; }
+.ow-unsaved-dialog-actions button:disabled { opacity: 0.5; cursor: default; }
+.ow-unsaved-dialog-actions .ow-unsaved-dialog-discard { margin-right: auto; }
+.ow-unsaved-dialog-actions .ow-unsaved-dialog-save { border-color: var(--doc-text, #111); background: var(--doc-text, #111); color: var(--doc-bg, #fff); font-weight: 600; }
+.ow-unsaved-dialog-actions button:hover:not(:disabled) { background: var(--doc-chip, #f2f2f2); }
+.ow-unsaved-dialog-actions .ow-unsaved-dialog-save:hover:not(:disabled) { background: var(--doc-text, #111); opacity: 0.88; }
+@media (max-width: 480px) { .ow-unsaved-dialog-actions { flex-wrap: wrap; } .ow-unsaved-dialog-actions .ow-unsaved-dialog-discard { margin-right: 0; order: 3; } }
