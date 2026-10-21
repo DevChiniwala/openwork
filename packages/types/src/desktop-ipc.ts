@@ -391,6 +391,8 @@ export type ComputerSnapshot = {
     reason?: string;
   } | null;
   cleanupPending?: boolean;
+  /** This chat's computer steps: time spent on the computer, and waiting for the model between steps. */
+  timing?: { steps: number; computerMs: number; modelMs: number; last?: { name: string; computerMs: number; modelMs?: number } };
 };
 
 /** The live watch view: recent redacted frames and dispatched input, never actionable. */

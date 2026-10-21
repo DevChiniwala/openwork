@@ -18,7 +18,7 @@ export const COMPUTER_STOP_GUIDANCE = "Computer session revocation could not be 
 const ARGUMENTS = Object.freeze({
   computer_open: ["app_id", "pid", "window_id", "mode", "purpose"],
   computer_observe: ["include_image", "elements"],
-  computer_act: ["observation_id", "action", "actions", "intent"],
+  computer_act: ["observation_id", "action", "actions", "intent", "screenshot"],
   computer_zoom: ["observation_id", "x", "y", "width", "height"],
 });
 const failure = (code, message, extra = {}) => ({ isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, code, message, ...extra }) }] });
@@ -37,6 +37,8 @@ const withPostObservation = (receipt, status, content = []) => ({ ...receipt, co
     ...(!status.ok ? { next: status.next, fresh_observation_required: true } : {}) }) }, ...content] });
 const postWarning = (receipt, code, next = "observe") => withPostObservation(receipt, { ok: false, code, next,
   message: "The fresh observation is unavailable. The original receipt is unchanged; do not replay the input. Review the current control state before observing again." });
+/** Apps on this Mac the agent can drive through their own scripting interface. */
+export const SCRIPT_APPS = Object.freeze(["applescript", "jxa", "blender"]);
 const setupNotFinished = (answer) => failure("not_allowed", answer === "dismissed"
   ? "The person dismissed computer setup. Nothing was dispatched. Do not ask again unless they bring it up; continue another way."
   : answer === "unavailable" ? "Computer use is not turned on in this OpenWork app. Use connected apps or the browser instead."
@@ -76,6 +78,7 @@ function deadline(ms) {
 /**
  * @typedef {{ isError?: boolean, content: Array<{ type: string, text?: string, data?: string, mimeType?: string }> }} ComputerResult
  * @typedef {{ sessionId?: string }} ChatInput
+ * @typedef {{ ok?: boolean, error?: { code: string, message: string }, mayHaveActed?: boolean, [key: string]: unknown }} ScriptResult
  * @typedef {{ id: string, reason: "setup", computer: string, placement: "local" | "remote", detail?: string, appId?: string, purpose?: string }} ComputerRequest
  * @typedef {{ targets?: Record<string, string> }} SavedChoices
  * @typedef {{
@@ -112,10 +115,12 @@ function deadline(ms) {
  *   permissionEntry?: () => Promise<{ name: string, ours: boolean }>,
  *   onRequest?: (sessionId: string, request: ComputerRequest | null) => void,
  *   requestMs?: number,
+ *   runScript?: (request: { app: string, code: string, timeoutMs: number }, signal: AbortSignal) => Promise<ScriptResult>,
+ *   onTiming?: (sessionId: string, step: { name: string, computerMs: number, modelMs?: number }) => void,
  *   cleanupMs?: number, operationMs?: number, pollMs?: number, idleMs?: number, now?: () => number,
  * }} options
  */
-export function createComputerControl({ adapters, runProgram, browserTask, readRemoteFeatureEnabled = async () => false, standing = { read: async () => ({ targets: {} }), write: async (_state) => {} }, presence = null,
+export function createComputerControl({ adapters, runProgram, runScript, onTiming = () => {}, browserTask, readRemoteFeatureEnabled = async () => false, standing = { read: async () => ({ targets: {} }), write: async (_state) => {} }, presence = null,
   permissionEntry = async () => ({ name: "OpenWork", ours: false }), onRequest = () => {},
   cleanupMs = 3000, operationMs = 120_000, pollMs = 750, idleMs = 90_000, requestMs = 600_000, now = Date.now }) {
   const targets = new Map();
@@ -152,6 +157,20 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
   let resetting = 0;
   function invalidateObservation(current) {
     current.observationGeneration = (current.observationGeneration ?? 0) + 1;
+  }
+  /**
+   * Per chat: how long the computer took for each step, and how long the model took
+   * since the previous step returned. Both stay on this computer.
+   */
+  function recordStep(grant, name, startedAt) {
+    const finished = now();
+    const computerMs = Math.max(0, finished - startedAt);
+    const modelMs = grant.lastStepAt === undefined ? undefined : Math.max(0, startedAt - grant.lastStepAt);
+    grant.lastStepAt = finished;
+    const timing = grant.timing ??= { steps: 0, computerMs: 0, modelMs: 0 };
+    timing.steps++; timing.computerMs += computerMs; timing.modelMs += modelMs ?? 0;
+    timing.last = { name, computerMs, ...(modelMs === undefined ? {} : { modelMs }) };
+    try { onTiming(grant.sessionId, timing.last); } catch { /* Reporting never affects the step. */ }
   }
   function humanPaused(grant) {
     return Boolean(grant.handoff || lease?.grant === grant && lease.session?.state === "paused"
@@ -478,6 +497,7 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
     const current = lease?.grant === grant ? lease : null;
     return {
       revision: grant.revision, enabled: featureEnabled && (grant.enabled || Boolean(grant.handoff)),
+      ...(grant.timing ? { timing: structuredClone(grant.timing) } : {}),
       entry: await permissionEntry().then(({ name, ours }) => ({ name, ours }), () => ({ name: "OpenWork", ours: false })),
       request: (() => {
         const request = requests.get(grant.sessionId);
@@ -950,6 +970,30 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
      * @param {import("@openwork/computer-use/runtime").ProgramRequest & ChatInput} input
      * @param {{ signal?: AbortSignal }} options
      */
+    /**
+     * Drive a scriptable app on this Mac through its own interface: AppleScript or JXA for
+     * apps with a scripting dictionary, Python for Blender. Same flag, chat and stop rules
+     * as direct tools; the engine asks the person before each new app.
+     * @param {ChatInput & { app?: string, code?: string, timeoutMs?: number }} input
+     * @returns {Promise<ScriptResult>}
+     */
+    async script(input, { signal = new AbortController().signal } = {}) {
+      if (!featureEnabled || closed || resetting || !runScript) return { ok: false, error: { code: "computer_unavailable", message: "App scripting is not available in this OpenWork app." } };
+      if (!input || !SCRIPT_APPS.includes(input.app) || typeof input.code !== "string" || !input.code.trim() || input.code.length > 32_000
+        || input.timeoutMs !== undefined && (!Number.isInteger(input.timeoutMs) || input.timeoutMs < 1000 || input.timeoutMs > 120_000)) {
+        return { ok: false, error: { code: "invalid_arguments", message: `Provide app (${SCRIPT_APPS.join(", ")}), code up to 32000 characters and a timeout from 1000 to 120000 milliseconds.` } };
+      }
+      const grant = await grantFor(input.sessionId);
+      if (!grant.enabled) return { ok: false, error: { code: "computer_stopped", message: "Computer use stopped for this turn. Continue with the person's next message." } };
+      if (humanPaused(grant)) return { ok: false, error: { code: "computer_paused", message: "The person took over. They return control with Continue. No script was run." } };
+      if (targetFor(grant).placement !== "local") return { ok: false, error: { code: "script_unavailable", message: "App scripting runs on this Mac only. Use computer_run on remote computers." } };
+      const started = now();
+      try {
+        return await runScript({ app: input.app, code: input.code, timeoutMs: input.timeoutMs ?? 30_000 }, AbortSignal.any([signal, grant.controller.signal]));
+      } catch (error) {
+        return { ok: false, error: { code: "script_failed", message: error instanceof Error ? error.message : String(error) }, mayHaveActed: true };
+      } finally { recordStep(grant, "computer_script", started); }
+    },
     async program(input, { signal = new AbortController().signal } = {}) {
       if (!featureEnabled || closed || resetting || !runProgram) return { ok: false, error: { code: "computer_unavailable", message: "Computer use is not enabled." } };
       if (!input || !["computer", "browser"].includes(input.surface) || typeof input.code !== "string" || input.code.length > 32_000
@@ -1018,10 +1062,15 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
           if (answer !== "ready") return setupNotFinished(answer);
         }
         if (!featureEnabled || generation !== featureGeneration || grant.adapter.placement === "remote" && remoteRevision !== remoteGeneration) return failure("computer_unavailable", "Computer use was turned off while this request was waiting. Nothing was dispatched.");
-        const call = { name, includePostImage, args: structuredClone(args), grant, revision: grant.revision, featureGeneration: generation, remoteGeneration: remoteRevision, remoteTarget: grant.adapter.placement === "remote" };
+        if (args.screenshot !== undefined && typeof args.screenshot !== "boolean") return failure("invalid_arguments", "screenshot must be true or false.");
+        // screenshot:false returns the settled elements without an image; the native call never sees it.
+        const { screenshot, ...nativeArgs } = args;
+        const call = { name, includePostImage: includePostImage && screenshot !== false, args: structuredClone(nativeArgs), grant, revision: grant.revision, featureGeneration: generation, remoteGeneration: remoteRevision, remoteTarget: grant.adapter.placement === "remote" };
         // The operation budget starts once the person has answered.
         limit = deadline(operationMs);
+        const started = now();
         const result = await run(call, signal, limit);
+        recordStep(grant, name, started);
         if (result.isError && stateOf(result)?.code === "permissions_required" && targetFor(grant).placement === "local") return await recoverPermissions(grant, name, args, signal);
         return deliverResult(call, result);
       } catch (error) {
@@ -1034,6 +1083,9 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
      */
     async endTurn({ sessionId } = {}) {
       if (typeof sessionId !== "string" || !sessionId) return true;
+      // The next turn's first step is not timed against this turn's last.
+      const ended = grants.get(sessionId);
+      if (ended) ended.lastStepAt = undefined;
       if (lease?.grant.sessionId === sessionId) return release(lease, true);
       await rearm(sessionId);
       return true;

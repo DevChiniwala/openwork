@@ -470,8 +470,9 @@ final class MacAccessibility {
     }
 
     /// `region` is window-local points (top-left origin); nil captures the whole window.
+    /// `jpegQuality` encodes JPEG instead of PNG; `maxLongSide` caps the image's longer edge.
     func capture(target: WindowTarget, app: AppIdentity, bounds: CGRect, state: WindowState, region: CGRect? = nil, maxScale: CGFloat = 1,
-                 check: () throws -> Void = {}) async throws -> (Data, Int, Int, Int64) {
+                 maxLongSide: CGFloat = 1600, jpegQuality: CGFloat? = nil, check: () throws -> Void = {}) async throws -> (Data, Int, Int, Int64) {
         try state.requireCapture()
         guard Geometry.valid(bounds) else { throw UseError("invalid_geometry", "The window has invalid capture bounds.", next: "observe") }
         try Task.checkCancellation(); try check()
@@ -484,7 +485,7 @@ final class MacAccessibility {
         guard Geometry.valid(source), CGRect(origin: .zero, size: bounds.size).contains(source) else {
             throw UseError("invalid_arguments", "The region must lie inside the window.", next: "observe")
         }
-        let ratio = min(maxScale, 1600 / max(source.width, source.height))
+        let ratio = min(maxScale, maxLongSide / max(source.width, source.height))
         config.width = max(1, Int(source.width * ratio))
         config.height = max(1, Int(source.height * ratio))
         if let region { config.sourceRect = region }
@@ -517,7 +518,8 @@ final class MacAccessibility {
                 y: CGFloat(image.height) - (clipped.maxY - captured.minY) * yScale,
                 width: clipped.width * xScale, height: clipped.height * yScale).insetBy(dx: -2, dy: -2))
         }
-        guard let redacted = context.makeImage(), let data = NSBitmapImageRep(cgImage: redacted).representation(using: .png, properties: [:]) else {
+        guard let redacted = context.makeImage(), let data = jpegQuality.map({ NSBitmapImageRep(cgImage: redacted).representation(using: .jpeg, properties: [.compressionFactor: $0]) })
+                ?? NSBitmapImageRep(cgImage: redacted).representation(using: .png, properties: [:]) else {
             throw UseError("capture_failed", "Could not encode this window.", next: "observe")
         }
         return (data, image.width, image.height, capturedAt)
