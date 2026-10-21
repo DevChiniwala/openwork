@@ -135,24 +135,23 @@ export function SessionDebugPanel(props: {
     if (!start) return;
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
-    updateBounds(start.bounds, start.rect, dx, dy, start.kind);
+    setBounds(adjustBounds(start.bounds, start.rect, dx, dy, start.kind));
   }
-  function updateBounds(previous: PanelBounds, rect: DOMRect, dx: number, dy: number, kind: "move" | "resize") {
+  function adjustBounds(previous: PanelBounds, rect: Pick<DOMRect, "left" | "top" | "right" | "bottom">, dx: number, dy: number, kind: "move" | "resize"): PanelBounds {
     if (kind === "move") {
-      setBounds({
+      return {
         ...previous,
         left: previous.left + Math.max(-rect.left, Math.min(dx, window.innerWidth - rect.right)),
         top: previous.top + Math.max(-rect.top, Math.min(dy, window.innerHeight - rect.bottom)),
-      });
-      return;
+      };
     }
     const width = Math.max(Math.min(300, window.innerWidth), Math.min(previous.width + dx, window.innerWidth - rect.left));
     const height = Math.max(Math.min(240, window.innerHeight), Math.min(previous.height + dy, window.innerHeight - rect.top));
     // Base UI anchors the bottom-right corner. Offset size changes so resizing
     // keeps the moved panel's top-left corner in place.
-    setBounds({ ...previous, width, height,
+    return { ...previous, width, height,
       left: previous.left + width - previous.width,
-      top: previous.top + height - previous.height });
+      top: previous.top + height - previous.height };
   }
   function adjustWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, kind: "move" | "resize") {
     const dx = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
@@ -161,7 +160,15 @@ export function SessionDebugPanel(props: {
     event.preventDefault();
     const rect = panelRef.current?.getBoundingClientRect();
     const amount = event.shiftKey ? 40 : 10;
-    if (rect) updateBounds(bounds, rect, dx * amount, dy * amount, kind);
+    if (!rect) return;
+    // Key presses can arrive before React commits the previous one. Accumulate
+    // from pending state and account for its geometry relative to this render.
+    setBounds(previous => adjustBounds(previous, {
+      left: rect.left + previous.left - bounds.left - (previous.width - bounds.width),
+      top: rect.top + previous.top - bounds.top - (previous.height - bounds.height),
+      right: rect.right + previous.left - bounds.left,
+      bottom: rect.bottom + previous.top - bounds.top,
+    }, dx * amount, dy * amount, kind));
   }
   async function copyDiagnostics() {
     try {
