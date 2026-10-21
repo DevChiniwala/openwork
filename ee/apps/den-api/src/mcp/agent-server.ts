@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server"
 import { workflowArtifactAppServerCapabilities } from "./workflow-artifact-app.js"
 import { SKILLS_EXTENSION_ID } from "./skills-extension.js"
+import type { ConnectToolView } from "./connect-tool-view.js"
 
 /**
  * Connect steering routes requests; it does not repeat tool rules. With App
@@ -37,11 +38,19 @@ function agentMcpDetailedInstructions(appServers: boolean): string {
 
 export const AGENT_MCP_GUIDANCE_URI = "openwork://agent/guidance.md"
 
-function agentMcpInstructions(appServers: boolean): string {
+/** What the full tool view does instead of searching; every other rule is shared. */
+const FULL_TOOL_VIEW_INSTRUCTIONS = [
+  "Every connection action, Workflow, App and remote session you may use is its own tool: <service>.<action>, run-workflow.<name>, open-app.<name> and remote-session.<action>. Where the guidance says search_capabilities or execute_capability, call these tools (a capability a connection card names is den.<capability>); prepare_app takes their names, and execute_capability_script calls tools.<service>.<action>.",
+  "connection_status shows the sign-in card for a service that is not ready; use it only for an explicit connect request or a failed connection. Relay the connection's exact action; a downstream failure does not mean OpenWork needs reconnecting. Never invent credentials or claim setup is ready.",
+]
+
+function agentMcpInstructions(appServers: boolean, toolView: ConnectToolView = "search"): string {
   return [
     `Read ${AGENT_MCP_GUIDANCE_URI} with resources/read before working; it contains the full connection, remote-session, import, and Workflow rules.`,
-    "Search capabilities with 2-4 keyword variants; execute only exact returned names. Copy external argumentsSchema into body and schemaDigest into schemaDigest. Schema guidance is advisory; never repeat a successful provider call because of it.",
-    "Only use intent connect for an explicit connect/reconnect request. Discovery must not trigger sign-in. Relay the connection's exact action; a downstream failure does not mean OpenWork needs reconnecting. Never invent credentials or claim setup is ready.",
+    ...(toolView === "full" ? FULL_TOOL_VIEW_INSTRUCTIONS : [
+      "Search capabilities with 2-4 keyword variants; execute only exact returned names. Copy external argumentsSchema into body and schemaDigest into schemaDigest. Schema guidance is advisory; never repeat a successful provider call because of it.",
+      "Only use intent connect for an explicit connect/reconnect request. Discovery must not trigger sign-in. Relay the connection's exact action; a downstream failure does not mean OpenWork needs reconnecting. Never invent credentials or claim setup is ready.",
+    ]),
     "Use list_skills/get_skill for authorized skills and follow the matching skill before creating or sharing one. update_skill publishes an immutable version.",
     appServers
       ? "For Apps read build-an-app with get_skill, then use prepare_app/create_app/read_app/update_app; never substitute local HTML or legacy views. Open Apps via their discovered capability."
@@ -56,9 +65,18 @@ export const LEGACY_AGENT_MCP_INSTRUCTIONS = agentMcpInstructions(false)
 /** Rolled out with `remote-session:status`; one rule, the details live in its description. */
 const REMOTE_SESSION_STATUS_INSTRUCTIONS = "To follow remote sessions, call remote-session:status with all of their commandIds or Cloud sessionIds and waitMs instead of calling remote-session:read repeatedly; read only for the transcript or the full answer."
 
+/**
+ * A full-view tools/list is the member's own, so clients may reuse it only for
+ * the same authorization, and briefly: tools/list_changed reaches streams on
+ * this replica only, so other replicas' clients refetch after this.
+ */
+const FULL_TOOL_VIEW_CACHE_HINTS = { "tools/list": { ttlMs: 60_000, cacheScope: "private" as const } }
+
 export function createAgentMcpServer(options: {
   appServers?: boolean
   remoteSessionStatus?: boolean
+  /** Which tools/list this request gets; see connect-tool-view.ts. */
+  toolView?: ConnectToolView
   /** Advertise the MCP Skills Extension (SEP-2640); its handlers are registered by the caller. */
   skillsExtension?: boolean
   /** Short always-on list of the member's skills, appended to the instructions. */
@@ -80,9 +98,10 @@ export function createAgentMcpServer(options: {
       tools: { listChanged: true },
       resources: { listChanged: true },
     },
-    instructions: [options.appServers === false ? LEGACY_AGENT_MCP_INSTRUCTIONS : AGENT_MCP_INSTRUCTIONS,
+    instructions: [agentMcpInstructions(options.appServers !== false, options.toolView),
       ...(options.remoteSessionStatus ? [REMOTE_SESSION_STATUS_INSTRUCTIONS] : []),
       ...(options.skillIndex ? [options.skillIndex] : [])].join("\n"),
+    ...(options.toolView === "full" ? { cacheHints: FULL_TOOL_VIEW_CACHE_HINTS } : {}),
   })
   server.registerResource("agent-guidance", AGENT_MCP_GUIDANCE_URI, {
     title: "OpenWork agent guidance",
