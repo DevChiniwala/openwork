@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultSetupBaseline, missingLanguages } from "./check-codeql-results.mjs";
+import { defaultSetupBaseline, missingLanguages, touchesSwift } from "./check-codeql-results.mjs";
 
 const current = "dynamic/github-code-scanning/codeql:analyze";
 const legacy = "dynamic/github-code-scanning/codeql:upload";
@@ -64,4 +64,20 @@ test("wrong commits, failed results, other tools and custom uploads do not satis
     analysis("python", { key: "custom/codeql:upload" }),
   ];
   assert.deepEqual(missingLanguages(["python"], uploads, [head, merge]), ["python"]);
+});
+
+test("recognizes the advanced-setup workflow baseline", () => {
+  const key = ".github/workflows/codeql.yml:analyze";
+  const result = defaultSetupBaseline([analysis("swift", { key }), analysis("python", { key }), analysis("python", { sha: older })]);
+  assert.deepEqual(result, { commitSha: head, analysisKey: key, languages: ["swift", "python"] });
+});
+
+test("Swift is only required when a PR changes the Swift package or the CodeQL workflow", () => {
+  const uploads = [analysis("python")];
+  assert.deepEqual(missingLanguages(["python", "swift"], uploads, [head], { swift: false }), []);
+  assert.deepEqual(missingLanguages(["python", "swift"], uploads, [head]), ["swift"]);
+  assert.equal(touchesSwift([{ filename: "apps/app/src/index.ts" }]), false);
+  assert.equal(touchesSwift([{ filename: "packages/computer-use/native/Sources/ComputerUse/main.swift" }]), true);
+  assert.equal(touchesSwift([{ filename: "moved.swift", previous_filename: "packages/computer-use/native/Package.swift" }]), true);
+  assert.equal(touchesSwift([{ filename: ".github/workflows/codeql.yml" }]), true);
 });

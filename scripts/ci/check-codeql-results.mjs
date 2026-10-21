@@ -2,10 +2,27 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+// Default setup keys, plus the advanced-setup workflow that replaced it.
+const advancedSetupAnalysisKey = ".github/workflows/codeql.yml:analyze";
 const defaultSetupAnalysisKeys = new Set([
   "dynamic/github-code-scanning/codeql:upload",
   "dynamic/github-code-scanning/codeql:analyze",
+  advancedSetupAnalysisKey,
 ]);
+const codeqlWorkflowPaths = new Set(["dynamic/github-code-scanning/codeql", ".github/workflows/codeql.yml"]);
+
+// Swift is only analyzed on PRs that change these paths. Keep in sync with the
+// changes job in .github/workflows/codeql.yml.
+export const swiftPaths = ["packages/computer-use/native/", ".github/workflows/codeql.yml"];
+
+export function touchesSwift(files) {
+  return files.some((file) => [file.filename, file.previous_filename]
+    .some((name) => name && swiftPaths.some((path) => name.startsWith(path))));
+}
+
+function isCodeqlBaselineKey(key) {
+  return typeof key === "string" && (key.startsWith("dynamic/github-code-scanning/codeql:") || key === advancedSetupAnalysisKey);
+}
 
 function successfulDefaultSetupAnalysis(analysis) {
   return analysis.tool?.name === "CodeQL" && !analysis.error &&
@@ -15,7 +32,7 @@ function successfulDefaultSetupAnalysis(analysis) {
 
 export function defaultSetupBaseline(analyses) {
   const latest = analyses.find((analysis) => analysis.tool?.name === "CodeQL" && !analysis.error &&
-    typeof analysis.analysis_key === "string" && analysis.analysis_key.startsWith("dynamic/github-code-scanning/codeql:"));
+    isCodeqlBaselineKey(analysis.analysis_key));
   if (!latest) throw new Error("No successful default-setup baseline found; inspect CodeQL on the default branch.");
   if (!successfulDefaultSetupAnalysis(latest) || typeof latest.commit_sha !== "string" || !latest.commit_sha) {
     throw new Error("Unsupported CodeQL default-setup baseline; inspect the latest uploaded analysis.");
@@ -27,9 +44,9 @@ export function defaultSetupBaseline(analyses) {
   return { commitSha: latest.commit_sha, analysisKey: latest.analysis_key, languages };
 }
 
-export function missingLanguages(languages, analyses, shas) {
+export function missingLanguages(languages, analyses, shas, { swift = true } = {}) {
   const canonical = (language) => ["javascript", "typescript"].includes(language) ? "javascript-typescript" : language;
-  const expected = [...new Set(languages.map(canonical))];
+  const expected = [...new Set(languages.map(canonical))].filter((language) => swift || language !== "swift");
   const uploaded = new Set(analyses.filter((analysis) =>
     shas.includes(analysis.commit_sha) && successfulDefaultSetupAnalysis(analysis)
   ).map((analysis) => analysis.category));
@@ -60,11 +77,12 @@ async function main() {
     if (pull.state !== "open" || pull.head.repo?.full_name !== repo || pull.base.ref !== repository.default_branch) continue;
     const refs = [`refs/pull/${pull.number}/head`, `refs/pull/${pull.number}/merge`];
     const analyses = refs.flatMap((ref) => api(`${prefix}/code-scanning/analyses?ref=${encodeURIComponent(ref)}&tool_name=CodeQL&per_page=100`, true));
-    const missing = missingLanguages(languages, analyses, [pull.head.sha, pull.merge_commit_sha].filter(Boolean));
+    const swift = !languages.includes("swift") || touchesSwift(api(`${prefix}/pulls/${pull.number}/files?per_page=100`, true));
+    const missing = missingLanguages(languages, analyses, [pull.head.sha, pull.merge_commit_sha].filter(Boolean), { swift });
     // Only query workflow state when coverage is incomplete.
     const runs = missing.length ? api(`${prefix}/actions/runs?head_sha=${pull.head.sha}&per_page=100`, true) : [];
     const active = runs.flatMap((page) => page.workflow_runs).some((run) =>
-      run.path === "dynamic/github-code-scanning/codeql" && run.status !== "completed"
+      codeqlWorkflowPaths.has(run.path?.split("@")[0]) && run.status !== "completed"
     );
     if (!missing.length) {
       lines.push(`- #${pull.number} (${pull.head.sha.slice(0, 7)}): all language results uploaded.`);
