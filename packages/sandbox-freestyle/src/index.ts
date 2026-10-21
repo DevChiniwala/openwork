@@ -35,6 +35,8 @@ export function createFreestyleProvider(options: FreestyleProviderOptions, deps:
   const api = deps.client ?? (options.apiKey ? new Freestyle({ apiKey: options.apiKey }) : (() => { throw new Error("Freestyle requires apiKey or an injected client") })())
   const now = deps.now ?? Date.now
   const id = "freestyle"
+  /** A VM's public hosts never change, so each is read from its metadata once per process. */
+  const published = new Map<string, { label: string; ports: string[] }>()
   const unsupported = (feature: string): never => { throw new SandboxError({ providerId: id, code: "invalid_state", retryable: false, message: `Freestyle adapter does not provide ${feature}` }) }
   const identity = (ref: SandboxRef) => {
     if (ref.providerId !== id || !ref.ref.vmId) unsupported("this sandbox reference")
@@ -124,16 +126,22 @@ export function createFreestyleProvider(options: FreestyleProviderOptions, deps:
     async inspect(h) { return await provider.get(h.ref) ?? { ...h, state: "missing", observedAt: now() } },
     async start(h, opts) { await bounded(() => api.vms.ref(identity(h.ref)).start(), opts.timeoutMs) },
     async stop(h, opts) { await bounded(() => api.vms.ref(identity(h.ref)).pause(), opts.timeoutMs) },
-    async destroy(h, opts) { await bounded(() => api.vms.delete(identity(h.ref)), opts.timeoutMs) },
+    async destroy(h, opts) { published.delete(identity(h.ref)); await bounded(() => api.vms.delete(identity(h.ref)), opts.timeoutMs) },
     async exec(h, spec) {
       if (spec.detach) unsupported("detached exec; use the job's background-process helper")
       const result = await run(h, { command: spec.command ?? spec.script ?? "", timeoutMs: spec.timeoutMs })
       return { id: `freestyle-exec-${now()}`, exitCode: async () => result.exitCode, logs: async () => ({ stdout: result.stdout, stderr: result.stderr }) }
     },
     endpoint: options.endpoint ?? (options.endpointDomain ? async (h, port) => {
-      const data = await mapped(() => api.vms.get(identity(h.ref)))
-      const label = data.metadata[ENDPOINT_LABEL]
-      if (!label || !(data.metadata[ENDPOINT_PORTS] ?? "").split(",").includes(String(port))) {
+      const vmId = identity(h.ref)
+      let entry = published.get(vmId)
+      if (!entry) {
+        const data = await mapped(() => api.vms.get(vmId))
+        entry = { label: data.metadata[ENDPOINT_LABEL] ?? "", ports: (data.metadata[ENDPOINT_PORTS] ?? "").split(",") }
+        if (entry.label) published.set(vmId, entry)
+      }
+      const label = entry.label
+      if (!label || !entry.ports.includes(String(port))) {
         throw new SandboxError({ providerId: id, code: "invalid_state", retryable: false, message: `This VM was created without a public endpoint for port ${port}; it needs a new VM.` })
       }
       return { url: `https://${label}-${port}.${options.endpointDomain}`, expiresAt: null, kind: "stable" as const }

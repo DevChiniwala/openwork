@@ -55,3 +55,14 @@ test("exposed ports need an endpoint domain", async () => {
   const provider = createFreestyleProvider({ snapshot: "desktop", firewall: { rules: [] } }, { client })
   await assert.rejects(provider.create(desktopSpec, { timeoutMs: 1000 }), /exposed ports without an endpoint domain/)
 })
+
+test("a VM's public host is read once and reused", async () => {
+  let reads = 0
+  const { client } = fakeClient()
+  const counting = { vms: { ...client.vms, get: async (...args: Parameters<typeof client.vms.get>) => { reads++; return client.vms.get(...args) } } } as unknown as typeof client
+  const provider = createFreestyleProvider({ snapshot: "desktop", firewall: { rules: [] }, endpointDomain: "style.dev" }, { client: counting })
+  const box = await provider.create(desktopSpec, { timeoutMs: 1000 })
+  const first = await provider.endpoint(box, 6080)
+  assert.deepEqual(await provider.endpoint(box, 6080), first)
+  assert.equal(reads, 1)
+})

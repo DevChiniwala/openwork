@@ -47,11 +47,20 @@ if (exists) {
   process.exit(0)
 }
 
+// The lock's hashes name Debian's Python 3.11 wheels; Freestyle's Ubuntu has 3.12. Install the
+// same pinned versions as binary wheels into the system Python (/usr/bin/python3) instead.
+const lock = await text("requirements-desktop.lock")
+const pinned = [...lock.matchAll(/^([A-Za-z0-9._-]+==[^\s\\]+)/gm)].map(match => match[1]).join("\n") + "\n"
+const lockedInstall = "python3 -m pip install --no-cache-dir --quiet --break-system-packages --require-hashes --only-binary=:all: -r /usr/local/share/openwork-computer/requirements-desktop.lock"
+if (!DESKTOP_COMPUTER_INSTALL_SCRIPT.includes(lockedInstall)) throw new Error("The desktop install script's Python step changed; update this builder.")
+const installComputer = DESKTOP_COMPUTER_INSTALL_SCRIPT.replace(lockedInstall,
+  "/usr/bin/python3 -m pip install --no-cache-dir --quiet --break-system-packages --only-binary=:all: -r /usr/local/share/openwork-computer/requirements-desktop.lock")
+
 // Everything Dockerfile.desktop copies into its image, from this checkout.
 const build = "/opt/openwork-desktop-build"
 const files: Record<string, string> = {
-  "install-computer.sh": DESKTOP_COMPUTER_INSTALL_SCRIPT,
-  "requirements-desktop.lock": await text("requirements-desktop.lock"),
+  "install-computer.sh": installComputer,
+  "requirements-desktop.lock": pinned,
   "apps.mjs": await text("src/desktop-apps.mjs"),
   "desktop-scripting.mjs": await text("src/desktop-scripting.mjs"),
   "configure-files.sh": await text("scripts/configure-desktop-files.sh"),
@@ -148,8 +157,17 @@ try {
   const start = await vm.exec({ command: `sudo -n /usr/local/sbin/openwork-desktop-bridge start ${desktopVersion}`, timeoutMs: 60_000 })
   console.log(start.stdout?.trim())
   if (start.statusCode !== 0) throw new Error(`desktop did not start: ${start.stderr ?? ""}`)
-  const health = await vm.exec({ command: "printf '{}' | sudo -n /usr/local/sbin/openwork-desktop-bridge call /health", timeoutMs: 30_000 })
-  if (health.statusCode !== 0) throw new Error(`desktop is not healthy: ${health.stderr ?? ""}`)
+  // The bridge returns once the guest is launched; poll until it listens, as the runner does.
+  const probeHealth = () => vm.exec({ command: "printf '{}' | sudo -n /usr/local/sbin/openwork-desktop-bridge call /health", timeoutMs: 30_000 })
+  let health = await probeHealth()
+  for (let attempt = 1; attempt < 60 && health.statusCode !== 0; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    health = await probeHealth()
+  }
+  if (health.statusCode !== 0) {
+    const log = await vm.exec({ command: "sudo tail -c 4000 /var/lib/openwork-desktop/guest.log", timeoutMs: 30_000 })
+    throw new Error(`desktop is not healthy: ${health.stderr ?? ""}\n${log.stdout ?? ""}`)
+  }
   console.log(`Desktop healthy: ${health.stdout?.trim()}`)
 
   const snapshot = await vm.snapshot({ slug, displayName: `Workbot desktop ${slug}` })
