@@ -85,7 +85,8 @@ import {
   type ExternalMcpConnectionRow,
 } from "../../capability-sources/external-mcp-connections.js"
 import { evaluateToolPolicy } from "../../capability-sources/external-mcp-tool-policy.js"
-import { credentialPromptResponseFields, mcpConnectionKeyPrompt } from "../../credential-prompt.js"
+import { credentialPromptSchema, type CredentialPrompt } from "@openwork/types/den/credential-prompt"
+import { credentialPromptResponseFields, mcpConnectionKeyPrompt, mcpConnectionMemberKeyPrompt, mcpConnectionSharedSwitchPrompt } from "../../credential-prompt.js"
 import { memberApiKeyUsable, usesMemberApiKey, validMemberApiKey } from "../../capability-sources/member-api-key.js"
 import { externalMcpAppResourceUri } from "../../mcp/external-capabilities.js"
 import { EXECUTE_CAPABILITY_TOOL_NAME, SEARCH_CAPABILITIES_TOOL_NAME } from "../../mcp/search.js"
@@ -674,6 +675,9 @@ const connectionCreatedResponseSchema = connectionResponseSchema.extend({
     /** The exact OAuth redirect URL to whitelist in pre-registered provider apps. */
     oauthCallback: z.string(),
   }),
+  /** Set for a shared API-key connection created without its key; a person enters it in OpenWork. */
+  credentialPrompt: credentialPromptSchema.optional(),
+  nextStep: z.string().optional(),
 }).meta({ ref: "ExternalMcpConnectionCreatedResponse" })
 
 const connectionUpdatedResponseSchema = connectionResponseSchema.extend({
@@ -681,7 +685,28 @@ const connectionUpdatedResponseSchema = connectionResponseSchema.extend({
   identityManagedBy: z.array(requiredBySchema),
   identityChanged: z.boolean(),
   reconnectionRequired: z.boolean(),
+  /** Set while the connection still waits for its shared key; a person enters it in OpenWork. */
+  credentialPrompt: credentialPromptSchema.optional(),
+  nextStep: z.string().optional(),
 }).meta({ ref: "ExternalMcpConnectionUpdatedResponse" })
+
+const credentialPromptRequestBodySchema = z.object({
+  /**
+   * shared: the organization's one key (owners and admins). personal: the
+   * caller's own key, for a connection where each person uses their own.
+   * Defaults to the connection's current mode. shared on a personal-key
+   * connection asks an admin to switch it; nothing changes until they save a
+   * working key.
+   */
+  scope: z.enum(["shared", "personal"]).optional(),
+}).strict()
+
+const credentialPromptRequestResponseSchema = z.object({
+  connectionId: z.string(),
+  scope: z.enum(["shared", "personal"]),
+  credentialPrompt: credentialPromptSchema,
+  nextStep: z.string(),
+}).meta({ ref: "ExternalMcpConnectionCredentialPromptResponse" })
 
 function memberConnectLinks(connection: ExternalMcpConnectionRow) {
   const yourConnections = new URL("/dashboard/your-connections", env.betterAuthUrl)
@@ -2009,12 +2034,19 @@ async function replaceExternalConnectionResponse(
   const apiKey = body.authType === "apikey"
     ? body.apiKey ?? (!identityChanged && connection.authType === "apikey" ? connection.apiKey : null)
     : null
-  if (body.authType === "apikey" && body.credentialMode === "shared" && !apiKey) {
+  // A connection still waiting for its shared key keeps waiting: its other
+  // settings apply and a person is asked for the key, so a stable-key upsert
+  // never strands it or creates a second connection.
+  const awaitingSharedKey = body.authType === "apikey" && body.credentialMode === "shared" && !apiKey
+    && connection.authType === "apikey" && connection.credentialMode === "shared" && !connection.apiKey
+  if (body.authType === "apikey" && body.credentialMode === "shared" && !apiKey && !awaitingSharedKey) {
     return c.json({
       error: "invalid_request",
-      message: identityChanged
-        ? "A replacement apiKey is required when changing an API-key connection's identity."
-        : "This API-key connection has no saved key; provide a replacement apiKey.",
+      message: usesMemberApiKey(connection)
+        ? "Nothing was changed. Switching to one shared key needs a person to enter it: call postMcpConnectionsCredentialPrompt with this connectionId and scope shared."
+        : identityChanged
+          ? "A replacement apiKey is required when changing an API-key connection's identity."
+          : "This API-key connection has no saved key; provide a replacement apiKey.",
     }, 400)
   }
 
@@ -2028,6 +2060,7 @@ async function replaceExternalConnectionResponse(
 
   const shouldValidate = body.authType !== "oauth"
     && body.credentialMode === "shared"
+    && !awaitingSharedKey
     && (identityChanged || connection.url !== body.url || body.apiKey !== undefined)
   let validatedAt: Date | undefined
   if (shouldValidate) {
@@ -2146,7 +2179,84 @@ async function replaceExternalConnectionResponse(
     ...response,
     identityChanged: result.identityChanged,
     reconnectionRequired: result.reconnectionRequired,
+    ...(awaitingSharedKey ? credentialPromptResponseFields(mcpConnectionKeyPrompt(result.connection)) : {}),
   })
+}
+
+/**
+ * Replaces each person's own key with one shared key, from the private field
+ * in chat. The connection keeps its ID and access. Nothing is written unless
+ * the key works and the connection is still exactly as the card showed it, so
+ * a cancelled, rejected or stale card leaves the previous setup working.
+ */
+async function switchToSharedApiKey(
+  c: McpConnectionResponseContext,
+  payload: McpConnectionOrganizationContext,
+  input: { connectionId: ExternalMcpConnectionRow["id"]; apiKey: string; expectedUpdatedAt: Date; requestId: string },
+): Promise<Response> {
+  const { connectionId, apiKey, expectedUpdatedAt, requestId } = input
+  const connection = await getExternalMcpConnection({ organizationId: payload.organization.id, connectionId })
+  if (!connection) return c.json({ error: "connection_not_found", message: "Unknown connection." }, 404)
+  if (connection.updatedAt.getTime() !== expectedUpdatedAt.getTime() || connection.kind !== "external_mcp" || !usesMemberApiKey(connection)) {
+    return c.json({ error: "connection_conflict", message: "This connection changed after the request. Ask the agent to check it again." }, 409)
+  }
+  const canUpdateAnyConnection = await callerHasPermission(payload, "connections.update")
+  if (!canUpdateAnyConnection && connection.createdByOrgMembershipId !== payload.currentMember.id) {
+    return c.json({ error: "forbidden", message: "Only the workspace owner, people allowed to edit any connection, or the connection creator can change how this connection signs in." }, 403)
+  }
+  const proposed: ExternalMcpConnectionRow = { ...connection, credentialMode: "shared", apiKey, connectedAt: null }
+  try {
+    await connectExternalMcp(proposed, await callbackRedirectUri(proposed), undefined, undefined, requestId)
+  } catch (error) {
+    // Provider text is never echoed or logged: it can repeat the key.
+    logger.warn("external_mcp_shared_key_rejected", { connection_id: connectionId, request_id: requestId })
+    const diagnostic = externalMcpDiagnosticForResponse(error, requestId, "MCP_INITIALIZE")
+    const rejected = diagnostic.httpStatus === 401 || diagnostic.httpStatus === 403
+    return c.json({
+      error: rejected ? "credential_rejected" : "connection_validation_failed",
+      message: rejected ? `${connection.name} did not accept this key.` : `Could not reach ${connection.name} to check this key.`,
+    }, rejected ? 400 : 502)
+  }
+  const result = await updateExternalMcpConnection({
+    organizationId: payload.organization.id,
+    connectionId,
+    expectedUpdatedAt,
+    name: connection.name,
+    url: connection.url,
+    authType: "apikey",
+    credentialMode: "shared",
+    apiKey,
+    apiKeyAuthScheme: connection.apiKeyAuthScheme,
+    access: directAccessInput(await listDirectExternalMcpConnectionAccess({ organizationId: payload.organization.id, connectionId })),
+    updatedByOrgMembershipId: payload.currentMember.id,
+    ...(canUpdateAnyConnection ? {} : { createdByOrgMembershipId: payload.currentMember.id }),
+    validatedAt: new Date(),
+  })
+  if (result.status === "not_found") return c.json({ error: "connection_not_found", message: "Unknown connection." }, 404)
+  if (result.status === "marketplace_managed") {
+    return c.json({ error: "marketplace_managed", message: "A marketplace plugin manages this connection's key. Change it in the marketplace definition." }, 409)
+  }
+  if (result.status === "conflict") {
+    return c.json({ error: "connection_conflict", message: "This connection changed after the request. Ask the agent to check it again." }, 409)
+  }
+  const readiness = await checkConnectionReadiness(result.connection, payload.currentMember.id, requestId)
+  return c.json({ ok: true, connectionId, readiness: { status: readiness.status, checkedAt: readiness.checkedAt } })
+}
+
+/** A person may keep their own key only on a connection granted to them directly, to a team of theirs, or to everyone. */
+async function memberMayEnterOwnApiKey(payload: McpConnectionOrganizationContext, connectionId: ExternalMcpConnectionRow["id"], teams: MemberTeamSummary[]): Promise<boolean> {
+  const directGrants = await listDirectExternalMcpConnectionAccess({ organizationId: payload.organization.id, connectionId })
+  if (!directGrants.some((grant) => grant.orgWide || grant.orgMembershipId === payload.currentMember.id || teams.some((team) => team.id === grant.teamId))) return false
+  return memberCanUseExternalMcpConnection({ connectionId, orgMembershipId: payload.currentMember.id, teamIds: teams.map((team) => team.id) })
+}
+
+/** The connection's own access list (not a plugin's), in the shape an update keeps. */
+function directAccessInput(grants: Awaited<ReturnType<typeof listDirectExternalMcpConnectionAccess>>) {
+  return {
+    orgWide: grants.some((grant) => grant.orgWide),
+    memberIds: [...new Set(grants.flatMap((grant) => grant.orgMembershipId ? [grant.orgMembershipId] : []))],
+    teamIds: [...new Set(grants.flatMap((grant) => grant.teamId ? [grant.teamId] : []))],
+  }
 }
 
 async function deleteExternalConnection(
@@ -3297,6 +3407,69 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
     },
   )
 
+  // Asks the person, not the agent, for an existing connection's key. It
+  // changes nothing: the private field in OpenWork saves through the hidden,
+  // human-only credential routes below, which check every permission again.
+  app.post(
+    "/v1/mcp-connections/:connectionId/credential-prompt",
+    describeRoute({
+      tags: ["Capability Sources"],
+      summary: "Ask a person to enter the API key of an existing MCP connection",
+      description: "Shows the person a private field in OpenWork for an existing API-key connection, so the key never passes through you. Use it to finish a connection still waiting for its shared key, to let the caller add or replace their own key (scope personal), or to let an owner or admin replace each person's own key with one shared key (scope shared on a personal-key connection; its ID and access stay, and nothing changes until they save a key that works). Changes nothing by itself.",
+      responses: {
+        200: jsonResponse("A private field is shown to the person.", credentialPromptRequestResponseSchema),
+        400: jsonResponse("This connection does not take this kind of key.", invalidRequestSchema),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+        403: jsonResponse("The caller cannot enter this key.", forbiddenSchema),
+        404: jsonResponse("Unknown connection.", connectionNotFoundSchema),
+        409: jsonResponse("A marketplace plugin manages this connection's key.", marketplaceManagedSchema),
+      },
+    }),
+    orgMemberRoute(),
+    resolveMemberTeamsMiddleware,
+    paramValidator(connectionParamsSchema),
+    jsonValidator(credentialPromptRequestBodySchema),
+    async (c) => {
+      const payload = c.get("organizationContext")
+      const connectionId = normalizeDenTypeId("externalMcpConnection", c.req.valid("param").connectionId)
+      const connection = await getExternalMcpConnection({ organizationId: payload.organization.id, connectionId })
+      if (!connection) return c.json({ error: "connection_not_found", message: "Unknown connection." }, 404)
+      if (connection.kind !== "external_mcp" || connection.authType !== "apikey") {
+        return c.json({ error: "invalid_request", message: `${connection.name} does not use an API key. Use its connect action instead.` }, 400)
+      }
+      const personalKeys = usesMemberApiKey(connection)
+      const scope = c.req.valid("json").scope ?? (personalKeys ? "personal" : "shared")
+      const respond = (prompt: CredentialPrompt) => c.json({ connectionId, scope, ...credentialPromptResponseFields(prompt) })
+
+      if (scope === "personal") {
+        if (!personalKeys) {
+          return c.json({ error: "invalid_request", message: `${connection.name} uses one shared organization key, so people can't add their own. An owner or admin can replace the shared key with scope shared.` }, 400)
+        }
+        if (!(await memberMayEnterOwnApiKey(payload, connectionId, c.get("memberTeams") ?? []))) {
+          return c.json({ error: "forbidden", message: "You have not been granted access to this connection." }, 403)
+        }
+        return respond(mcpConnectionMemberKeyPrompt(connection))
+      }
+
+      if (!(await hasPermission(c, "connections.manage"))) {
+        return c.json({ error: "forbidden", message: `Only workspace owners and admins can enter the shared key for ${connection.name}.` }, 403)
+      }
+      const bindings = await listActiveExternalMcpConnectionBindings({ organizationId: payload.organization.id, connectionIds: [connectionId] })
+      if (bindings.length > 0) {
+        return c.json({ error: "marketplace_managed", message: "A marketplace plugin manages this connection's key. Change it in the marketplace definition." }, 409)
+      }
+      if (!personalKeys) return respond(mcpConnectionKeyPrompt(connection))
+      if (!(await hasPermission(c, "connections.update")) && connection.createdByOrgMembershipId !== payload.currentMember.id) {
+        return c.json({ error: "forbidden", message: "Only the workspace owner, people allowed to edit any connection, or the connection creator can change how this connection signs in." }, 403)
+      }
+      const access = directAccessInput(await listDirectExternalMcpConnectionAccess({ organizationId: payload.organization.id, connectionId }))
+      return respond(mcpConnectionSharedSwitchPrompt({
+        connection,
+        audience: { orgWide: access.orgWide, memberCount: access.memberIds.length, teamCount: access.teamIds.length },
+      }))
+    },
+  )
+
   // Same shape as PUT /v1/llm-providers/:id/my-credential: a write-only
   // credential for the calling member. Hidden from the OpenAPI contract so it
   // can never become an agent capability: personal secrets belong only in the
@@ -3324,13 +3497,8 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
       if (connection.kind !== "external_mcp" || !usesMemberApiKey(connection)) {
         return c.json({ error: "invalid_request", message: "This connection does not accept personal API keys." }, 400)
       }
-      const teams: MemberTeamSummary[] = c.get("memberTeams") ?? []
-      const directGrants = await listDirectExternalMcpConnectionAccess({ organizationId: payload.organization.id, connectionId })
-      if (!directGrants.some((grant) => grant.orgWide || grant.orgMembershipId === payload.currentMember.id || teams.some((team) => team.id === grant.teamId))) {
+      if (!(await memberMayEnterOwnApiKey(payload, connectionId, c.get("memberTeams") ?? []))) {
         return c.json({ error: "forbidden", message: "Personal API keys require a direct organization, team or member grant on this connection." }, 403)
-      }
-      if (!await memberCanUseExternalMcpConnection({ connectionId, orgMembershipId: payload.currentMember.id, teamIds: teams.map((team) => team.id) })) {
-        return c.json({ error: "forbidden", message: "You have not been granted access to this connection." }, 403)
       }
       const saved = await upsertConnectedAccountForExternalMcpIdentity({
         connection,
@@ -3360,10 +3528,19 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
         return c.json({ error: "forbidden", message: "Only a person signed in to OpenWork can enter this key." }, 403)
       }
       // Parse locally so validation diagnostics cannot echo submitted values.
-      const parsed = z.object({ apiKey: z.string().refine(validMemberApiKey) }).strict().safeParse(await c.req.json().catch(() => null))
+      const parsed = z.object({
+        apiKey: z.string().refine(validMemberApiKey),
+        /** Present only when this key replaces each person's own key: the connection as the card showed it. */
+        expectedUpdatedAt: z.string().datetime().optional(),
+      }).strict().safeParse(await c.req.json().catch(() => null))
       if (!parsed.success) return c.json({ error: "invalid_request", message: "Enter only the API key, without a prefix, spaces or control characters." }, 400)
       const payload = c.get("organizationContext")
       const connectionId = normalizeDenTypeId("externalMcpConnection", c.req.valid("param").connectionId)
+      if (parsed.data.expectedUpdatedAt !== undefined) {
+        const fresh = ensureFreshPrivilegedSession(c)
+        if (!fresh.ok) return c.json(fresh.response, orgAccessFailureStatus(fresh.response))
+        return switchToSharedApiKey(c, payload, { connectionId, apiKey: parsed.data.apiKey, expectedUpdatedAt: new Date(parsed.data.expectedUpdatedAt), requestId: c.get("requestId") })
+      }
       const saved = await setExternalMcpSharedApiKey({ organizationId: payload.organization.id, connectionId, apiKey: parsed.data.apiKey })
       if (saved.status !== "saved") {
         if (saved.status === "not_found") return c.json({ error: "connection_not_found", message: "Unknown connection." }, 404)

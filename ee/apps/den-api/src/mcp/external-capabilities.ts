@@ -394,7 +394,7 @@ function actionNavigationUrl(input: {
   surface: ExternalConnectionStatus["action"]["surface"]
 }) {
   if (input.surface === "openwork_your_connections") return openworkYourConnectionsUrl(input.connectionId)
-  if (input.surface === "openwork_organization_connections") return openworkOrganizationConnectionsUrl()
+  if (input.surface === "openwork_organization_connections") return openworkOrganizationConnectionsUrl(input.connectionId)
   return undefined
 }
 

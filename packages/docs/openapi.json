@@ -3645,6 +3645,7 @@
                             "killed",
                             "lock",
                             "override",
+                            "member",
                             "everyone"
                           ]
                         },
@@ -4897,6 +4898,7 @@
                             "killed",
                             "lock",
                             "override",
+                            "member",
                             "everyone"
                           ]
                         },
@@ -20075,6 +20077,243 @@
               "signIn",
               "oauthCallback"
             ]
+          },
+          "credentialPrompt": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "string",
+                "const": "1"
+              },
+              "kind": {
+                "type": "string",
+                "const": "credential_prompt"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_key"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_member_key"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_shared_switch"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "expectedUpdatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      "audience": {
+                        "type": "object",
+                        "properties": {
+                          "orgWide": {
+                            "type": "boolean"
+                          },
+                          "memberCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
+                          "teamCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          }
+                        },
+                        "required": [
+                          "orgWide",
+                          "memberCount",
+                          "teamCount"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId",
+                      "expectedUpdatedAt",
+                      "audience"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "plugin_connection_key"
+                      },
+                      "pluginId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "configObjectId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "serverName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "pluginId",
+                      "configObjectId",
+                      "serverName",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "gateway_provider_key"
+                      },
+                      "inferenceProviderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialSetId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "inferenceProviderId",
+                      "credentialSetId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "gateway_provider_credential"
+                      },
+                      "inferenceProviderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialSetId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialKind": {
+                        "type": "string",
+                        "enum": [
+                          "aws_keys",
+                          "gcp_service_account",
+                          "api_key_map"
+                        ]
+                      },
+                      "envNames": {
+                        "minItems": 1,
+                        "maxItems": 6,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                        }
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "inferenceProviderId",
+                      "credentialSetId",
+                      "credentialKind"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "destination": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "kind",
+              "target",
+              "name",
+              "destination"
+            ],
+            "additionalProperties": false
+          },
+          "nextStep": {
+            "type": "string"
           }
         },
         "required": [
@@ -20517,6 +20756,243 @@
           },
           "reconnectionRequired": {
             "type": "boolean"
+          },
+          "credentialPrompt": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "string",
+                "const": "1"
+              },
+              "kind": {
+                "type": "string",
+                "const": "credential_prompt"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_key"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_member_key"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_shared_switch"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "expectedUpdatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      "audience": {
+                        "type": "object",
+                        "properties": {
+                          "orgWide": {
+                            "type": "boolean"
+                          },
+                          "memberCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
+                          "teamCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          }
+                        },
+                        "required": [
+                          "orgWide",
+                          "memberCount",
+                          "teamCount"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId",
+                      "expectedUpdatedAt",
+                      "audience"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "plugin_connection_key"
+                      },
+                      "pluginId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "configObjectId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "serverName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "pluginId",
+                      "configObjectId",
+                      "serverName",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "gateway_provider_key"
+                      },
+                      "inferenceProviderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialSetId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "inferenceProviderId",
+                      "credentialSetId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "gateway_provider_credential"
+                      },
+                      "inferenceProviderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialSetId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialKind": {
+                        "type": "string",
+                        "enum": [
+                          "aws_keys",
+                          "gcp_service_account",
+                          "api_key_map"
+                        ]
+                      },
+                      "envNames": {
+                        "minItems": 1,
+                        "maxItems": 6,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                        }
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "inferenceProviderId",
+                      "credentialSetId",
+                      "credentialKind"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "destination": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "kind",
+              "target",
+              "name",
+              "destination"
+            ],
+            "additionalProperties": false
+          },
+          "nextStep": {
+            "type": "string"
           }
         },
         "required": [
@@ -20712,6 +21188,264 @@
         "required": [
           "ok",
           "deleted"
+        ]
+      },
+      "ExternalMcpConnectionCredentialPromptResponse": {
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "shared",
+              "personal"
+            ]
+          },
+          "credentialPrompt": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "string",
+                "const": "1"
+              },
+              "kind": {
+                "type": "string",
+                "const": "credential_prompt"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_key"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_member_key"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_shared_switch"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "expectedUpdatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      "audience": {
+                        "type": "object",
+                        "properties": {
+                          "orgWide": {
+                            "type": "boolean"
+                          },
+                          "memberCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
+                          "teamCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          }
+                        },
+                        "required": [
+                          "orgWide",
+                          "memberCount",
+                          "teamCount"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId",
+                      "expectedUpdatedAt",
+                      "audience"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "plugin_connection_key"
+                      },
+                      "pluginId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "configObjectId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "serverName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "pluginId",
+                      "configObjectId",
+                      "serverName",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "gateway_provider_key"
+                      },
+                      "inferenceProviderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialSetId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "inferenceProviderId",
+                      "credentialSetId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "gateway_provider_credential"
+                      },
+                      "inferenceProviderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialSetId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "credentialKind": {
+                        "type": "string",
+                        "enum": [
+                          "aws_keys",
+                          "gcp_service_account",
+                          "api_key_map"
+                        ]
+                      },
+                      "envNames": {
+                        "minItems": 1,
+                        "maxItems": 6,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                        }
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "inferenceProviderId",
+                      "credentialSetId",
+                      "credentialKind"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "destination": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "kind",
+              "target",
+              "name",
+              "destination"
+            ],
+            "additionalProperties": false
+          },
+          "nextStep": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "connectionId",
+          "scope",
+          "credentialPrompt",
+          "nextStep"
         ]
       },
       "ExternalMcpConnectStartResponse": {
@@ -22472,6 +23206,75 @@
                     "required": [
                       "type",
                       "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_member_key"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mcp_connection_shared_switch"
+                      },
+                      "connectionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160
+                      },
+                      "expectedUpdatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      "audience": {
+                        "type": "object",
+                        "properties": {
+                          "orgWide": {
+                            "type": "boolean"
+                          },
+                          "memberCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          },
+                          "teamCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000
+                          }
+                        },
+                        "required": [
+                          "orgWide",
+                          "memberCount",
+                          "teamCount"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "connectionId",
+                      "expectedUpdatedAt",
+                      "audience"
                     ],
                     "additionalProperties": false
                   },
@@ -29738,6 +30541,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "browserDemonstrations": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "browserFloatingView": {
                           "type": "object",
                           "properties": {
@@ -29921,6 +30781,7 @@
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
+                        "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents"
@@ -30590,6 +31451,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "browserDemonstrations": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "browserFloatingView": {
                           "type": "object",
                           "properties": {
@@ -30773,6 +31691,7 @@
                         "automationCalendar",
                         "engineV2ForceUpgrade",
                         "computerUse",
+                        "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents"
@@ -30928,6 +31847,16 @@
                         ]
                       },
                       "computerUse": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "browserDemonstrations": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -34289,6 +35218,7 @@
                                 "killed",
                                 "lock",
                                 "override",
+                                "member",
                                 "everyone"
                               ]
                             },
@@ -35290,6 +36220,7 @@
                                 "killed",
                                 "lock",
                                 "override",
+                                "member",
                                 "everyone"
                               ]
                             },
@@ -70564,6 +71495,75 @@
                               "properties": {
                                 "type": {
                                   "type": "string",
+                                  "const": "mcp_connection_member_key"
+                                },
+                                "connectionId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 160
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "connectionId"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "mcp_connection_shared_switch"
+                                },
+                                "connectionId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 160
+                                },
+                                "expectedUpdatedAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                                },
+                                "audience": {
+                                  "type": "object",
+                                  "properties": {
+                                    "orgWide": {
+                                      "type": "boolean"
+                                    },
+                                    "memberCount": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 100000
+                                    },
+                                    "teamCount": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 100000
+                                    }
+                                  },
+                                  "required": [
+                                    "orgWide",
+                                    "memberCount",
+                                    "teamCount"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "connectionId",
+                                "expectedUpdatedAt",
+                                "audience"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
                                   "const": "plugin_connection_key"
                                 },
                                 "pluginId": {
@@ -93565,6 +94565,120 @@
             "description": "Den TypeID with 'emc_' prefix and a 26-character base32 suffix."
           }
         ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/mcp-connections/{connectionId}/credential-prompt": {
+      "post": {
+        "operationId": "postV1McpConnectionsByConnectionIdCredentialPrompt",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "Ask a person to enter the API key of an existing MCP connection",
+        "description": "Shows the person a private field in OpenWork for an existing API-key connection, so the key never passes through you. Use it to finish a connection still waiting for its shared key, to let the caller add or replace their own key (scope personal), or to let an owner or admin replace each person's own key with one shared key (scope shared on a personal-key connection; its ID and access stay, and nothing changes until they save a key that works). Changes nothing by itself.",
+        "responses": {
+          "200": {
+            "description": "A private field is shown to the person.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalMcpConnectionCredentialPromptResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "This connection does not take this kind of key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller cannot enter this key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalMcpConnectionNotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A marketplace plugin manages this connection's key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalMcpConnectionMarketplaceManagedError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connectionId",
+            "schema": {
+              "format": "typeid",
+              "type": "string",
+              "minLength": 30,
+              "maxLength": 30
+            },
+            "required": true,
+            "description": "Den TypeID with 'emc_' prefix and a 26-character base32 suffix."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "shared",
+                      "personal"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "security": [
           {
             "denApiKey": []
