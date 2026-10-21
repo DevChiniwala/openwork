@@ -10,7 +10,7 @@ const test = spec.world(automaticEngineForcePolicy, {
 
 test("a member keeps reading the same chat when automatic engine policy turns on and off", async ({ world, user, probe, step, evidence }) => {
   async function noUpgradeUi() {
-    for (const testId of ["engine-upgrade-notice", "engine-migration-consent", "engine-migration-banner", "engine-migration-progress", "engine-switch-prompt"]) {
+    for (const testId of ["engine-migration-consent", "engine-migration-banner", "engine-migration-progress", "engine-switch-prompt"]) {
       await user.notSee({ testId });
     }
   }

@@ -21,18 +21,18 @@ setsid nohup bash -c 'cd /workspace; bash -c "$1"; code=$?; echo "[exit $code]";
 echo "Started $name in the background. Follow it with: tail -n 20 $log"
 `
 
-export const COMPUTER_INSTALL_SCRIPT = `set -euo pipefail
+function installScript(officePackages: string, lockedPython = false) { return `set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \\
   ffmpeg imagemagick poppler-utils qpdf ghostscript tesseract-ocr pandoc \\
   jq ripgrep sqlite3 zip unzip p7zip-full file curl ca-certificates git \\
   nodejs npm fonts-dejavu-core fonts-liberation fonts-noto-core \\
-  libreoffice-impress-nogui libreoffice-writer-nogui libreoffice-calc-nogui
-python3 -m pip install --no-cache-dir --quiet --break-system-packages \\
+  ${officePackages}
+${lockedPython ? `python3 -m pip install --no-cache-dir --quiet --break-system-packages --require-hashes --only-binary=:all: -r /usr/local/share/openwork-computer/requirements-desktop.lock` : `python3 -m pip install --no-cache-dir --quiet --break-system-packages \\
   pandas numpy matplotlib openpyxl xlsxwriter python-docx python-pptx pdfplumber pypdf pillow opencv-python-headless requests beautifulsoup4 \\
   || python3 -m pip install --no-cache-dir --quiet \\
-  pandas numpy matplotlib openpyxl xlsxwriter python-docx python-pptx pdfplumber pypdf pillow opencv-python-headless requests beautifulsoup4
+  pandas numpy matplotlib openpyxl xlsxwriter python-docx python-pptx pdfplumber pypdf pillow opencv-python-headless requests beautifulsoup4`}
 cat > /usr/local/bin/background <<'HELPER'
 ${BACKGROUND_HELPER}HELPER
 chmod 755 /usr/local/bin/background
@@ -42,7 +42,10 @@ apt-get clean
 rm -rf /var/lib/apt/lists/* /root/.cache
 sync
 echo 3 > /proc/sys/vm/drop_caches || true
-`
+` }
+
+export const COMPUTER_INSTALL_SCRIPT = installScript("libreoffice-impress-nogui libreoffice-writer-nogui libreoffice-calc-nogui")
+export const DESKTOP_COMPUTER_INSTALL_SCRIPT = installScript("libreoffice-impress libreoffice-writer libreoffice-calc libreoffice-draw", true)
 
 /** The snapshot slug for the current install script. */
 export function computerSnapshotSlug() {

@@ -4,7 +4,7 @@ import { act, createRef } from "react"
 import type { Root } from "react-dom/client"
 import { renderToStaticMarkup } from "react-dom/server"
 import type { DynamicToolUIPart } from "ai"
-import { SecretField, SecretRevealProvider, type SecretFieldHandle } from "../src/components/secret-field"
+import { SecretField, type SecretFieldHandle } from "../src/components/secret-field"
 import { credentialPromptFromToolPart } from "../src/components/chat/credential-prompt"
 import { gatewayCredentialBody, promptFields, promptFieldsProblem } from "../src/components/chat/credential-prompt-fields"
 
@@ -107,12 +107,10 @@ test("the key is shown only while typing and asked for, hidden on blur, and clea
   expect(container.innerHTML).not.toContain("fixture-private-value")
 })
 
-test("with the rollout off the field is a plain masked input with no show button", () => {
+test("the field is masked and offers to show the key while typing", () => {
   const html = renderToStaticMarkup(<SecretField id="key" label="API key" />)
   expect(html).toContain('type="password"')
-  expect(html).not.toContain("Show while typing")
-  const on = renderToStaticMarkup(<SecretRevealProvider enabled><SecretField id="key" label="API key" /></SecretRevealProvider>)
-  expect(on).toContain("Show while typing")
+  expect(html).toContain("Show while typing")
 })
 
 test("a plugin's setup can ask for its connection key in chat", () => {

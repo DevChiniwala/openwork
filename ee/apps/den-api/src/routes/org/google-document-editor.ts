@@ -1,9 +1,11 @@
+import { officeFileTypeSchema, officeFormats, officeMimeTypes } from "@openwork/documents/office-engine"
+import { validateOfficePackage } from "@openwork/documents/office-server"
 import { Hono, type MiddlewareHandler } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { describeRoute, type DescribeRouteOptions } from "hono-openapi"
 import { z } from "zod"
 import { documentIdSchema, documentSaveSchema, editorDocumentSchema, type EditorDocument, type TextDocument } from "@openwork/documents/model"
-import { openExcel, openWord, patchExcel, patchWord, columnLetters } from "@openwork/documents/office"
+import { openExcel, openWord, openOfficeTextPreview, patchExcel, patchWord, columnLetters } from "@openwork/documents/office"
 import { cellInputFromText, unsafeFormulaReason } from "@openwork/documents/office"
 import { env } from "../../env.js"
 import { organizationFeatureEnabled } from "../../features.js"
@@ -118,7 +120,7 @@ export function registerGoogleDocumentEditorRoutes<T extends { Variables: OrgRou
     const meta = await metadata(c, auth.selected, fileId); if (!meta.ok) return meta.reply
     const file = meta.file
     const permitted = file.mimeType === SHEET ? sheetWriteScopes : writeScopes
-    const canEdit = file.capabilities?.canEdit === true && permitted.some(s => auth.token.account.scopes?.includes(s) && auth.token.enabledScopes.includes(s))
+    const canEdit = await organizationFeatureEnabled(c.get("organizationContext")!.organization.id, "workbotDocumentEditing") && file.capabilities?.canEdit === true && permitted.some(s => auth.token.account.scopes?.includes(s) && auth.token.enabledScopes.includes(s))
     const common = { fileId, name: file.name, revision: file.headRevisionId ?? file.version, canEdit, connectionId: auth.connectionId }
     c.header("cache-control", "no-store")
     try {
@@ -137,19 +139,31 @@ export function registerGoogleDocumentEditorRoutes<T extends { Variables: OrgRou
         const after = await metadata(c, auth.selected, fileId); if (!after.ok) return after.reply; if (after.file.version !== file.version) return conflict(c)
         return c.json({ ...common, kind: "spreadsheet", source: "google", sheets: parsed.sheets.map(s => ({ id: String(s.properties.sheetId), name: s.properties.title, rows: s.properties.gridProperties?.rowCount ?? 1000, columns: s.properties.gridProperties?.columnCount ?? 26 })), activeSheetId: String(sheet.properties.sheetId), startRow: input.startRow, endRow, cells })
       }
-      if (file.mimeType === XLSX || file.mimeType === DOCX || file.mimeType.startsWith("text/")) {
+      if (officeMimeTypes.has(file.mimeType) || file.mimeType.startsWith("text/")) {
         const result = await media(c, auth.selected, fileId); if (!result.ok) return result.reply
         const bytes = await boundedBytes(result.response, file.mimeType.startsWith("text/") ? 1_000_000 : MAX_BYTES)
         const after = await metadata(c, auth.selected, fileId); if (!after.ok) return after.reply; if (after.file.version !== file.version) return conflict(c)
         if (file.mimeType === XLSX) return c.json({ ...common, ...await openExcel(bytes, input) })
         if (file.mimeType === DOCX) return c.json({ ...common, ...await openWord(bytes) })
+        const officeType = officeFileTypeSchema.options.find(type => officeFormats[type].mimeType === file.mimeType)
+        if (officeType) {
+          await validateOfficePackage(bytes, officeType)
+          const text = await openOfficeTextPreview(bytes, officeType)
+          return c.json({ ...common, kind: "text", text, notice: "Text preview. Layout and images are available in the original file." })
+        }
         return c.json({ ...common, kind: "text", text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) })
       }
       return c.json({ ...common, kind: "preview", mimeType: file.mimeType, canEdit: false, ...(file.mimeType === SLIDES ? { notice: "Preview only. Open in Google Slides to edit; changes stay in the original presentation." } : {}) })
-    } catch (error) { return failure(c, error instanceof Error ? error.message : "This file cannot be edited inline.") }
+    } catch (error) {
+      // A limited reader must not force an Office startup or hide the explicit Edit action.
+      if (officeMimeTypes.has(file.mimeType)) return c.json({ ...common, kind: "preview", mimeType: file.mimeType })
+      return failure(c, error instanceof Error ? error.message : "This file cannot be edited inline.")
+    }
   })
 
   app.post(`${base}/editor`, description("saveGoogleDriveDocumentEdits", "Save explicit inline edits to the same Drive file", z.object({ ok: z.literal(true) })), orgMemberRoute(), guard, bodyLimit({ maxSize: 2 * 1024 * 1024 }), paramValidator(params), jsonValidator(documentSaveSchema), async c => {
+    const context = c.get("organizationContext")!
+    if (!await organizationFeatureEnabled(context.organization.id, "workbotDocumentEditing")) return c.json({ error: "feature_disabled", message: "Document editing is off for this workspace." }, 403)
     const { fileId } = c.req.valid("param"); const save = c.req.valid("json")
     const auth = await authorize(c, save.connectionId); if (!auth.ok) return auth.reply
     const meta = await metadata(c, auth.selected, fileId); if (!meta.ok) return meta.reply

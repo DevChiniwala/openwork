@@ -11,13 +11,13 @@ browser ── chat.openworklabs.com (this app: page + API) ──┬── Den 
 
 - **The page** is [`@openwork-ee/workbot-ui`](../../packages/workbot-ui), built with Vite and served by this app.
 - **The API** (`/v1/workbot/...`) is [`@openwork-ee/workbot-server`](../../packages/workbot-server) behind this
-  app's sign-in. Every request needs a signed-in member and Den's answer that Workbot is on for their workspace.
+  app's sign-in. Every request needs a signed-in member and Den's current access decision.
 - **Den stays the identity provider.** Workbot is Den's first-party OAuth client `openwork-workbot` (PKCE, no
   secret, no consent screen, one return address `${WORKBOT_PUBLIC_URL}/auth/callback`). Den creates it from
   `DEN_WORKBOT_URL`. The access token Workbot gets only works on Den's `/mcp/agent` resource and on
   `GET /v1/workbot/session` and `POST /v1/workbot/run-token`; it never sees the person's Den session.
 - **Each turn** gets a fresh member-scoped token from `POST /v1/workbot/run-token` (at most an hour). Den refuses it
-  when Workbot is off for the workspace or the membership ended.
+  when membership or the required access grant is no longer valid.
 
 ## Sessions
 
@@ -44,7 +44,16 @@ Signing out revokes the refresh token at Den.
 | `WORKBOT_SENTRY_ENVIRONMENT`, `WORKBOT_SENTRY_RELEASE` | unset, `workbot@<WORKBOT_VERSION>` | Tags on those reports |
 
 On Den, set `DEN_WORKBOT_URL` (den-api) to the same address as `WORKBOT_PUBLIC_URL`; den-web's `/workbot` redirects
-there. Then turn Workbot on per organization: the admin panel, or the `den_set_org_capability` admin tool.
+there. Workbot is generally available; service configuration and each member's model access are still required.
+
+### Internal health check
+
+`GET /internal/readiness` authenticates with the existing `WORKBOT_RUNNER_TOKEN`.
+An authenticated `X-OpenWork-Den-Origin` header asks it to compare the expected Den
+origin with its configuration, without returning either URL. The versioned
+response contains configuration facts only; it does not test sign-in, a model
+completion or delivery. It has no effect on public `/healthz` liveness checks.
+See [diagnostics](../../../docs/diagnostics.md).
 
 ## Run
 

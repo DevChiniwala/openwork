@@ -203,6 +203,14 @@
       "development": "./src/den/managed-models-policy.ts",
       "default": "./src/den/managed-models-policy.ts"
     },
+    "./den/diagnostics": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/diagnostics.d.ts",
+        "default": "./src/den/diagnostics.ts"
+      },
+      "development": "./src/den/diagnostics.ts",
+      "default": "./src/den/diagnostics.ts"
+    },
     "./den/deployment-capabilities": {
       "types": {
         "openwork-build": "./dist/types/src/den/deployment-capabilities.d.ts",
@@ -350,6 +358,30 @@
       "bun": "./src/den/agent-permissions.ts",
       "default": "./dist/den/agent-permissions.js"
     },
+    "./den/service-health": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/service-health.d.ts",
+        "default": "./src/den/service-health.ts"
+      },
+      "development": "./src/den/service-health.ts",
+      "default": "./src/den/service-health.ts"
+    },
+    "./den/service-readiness": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/service-readiness.d.ts",
+        "default": "./src/den/service-readiness.ts"
+      },
+      "development": "./src/den/service-readiness.ts",
+      "default": "./src/den/service-readiness.ts"
+    },
+    "./den/organization-grants": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/organization-grants.d.ts",
+        "default": "./src/den/organization-grants.ts"
+      },
+      "development": "./src/den/organization-grants.ts",
+      "default": "./src/den/organization-grants.ts"
+    },
     "./den/admin-organization": {
       "types": {
         "openwork-build": "./dist/types/src/den/admin-organization.d.ts",
@@ -375,6 +407,14 @@
       "bun": "./src/managed-provider-config.ts",
       "browser": "./src/managed-provider-config.ts",
       "default": "./dist/managed-provider-config.js"
+    },
+    "./browser-demonstration": {
+      "types": {
+        "openwork-build": "./dist/types/src/browser-demonstration.d.ts",
+        "default": "./src/browser-demonstration.ts"
+      },
+      "development": "./src/browser-demonstration.ts",
+      "default": "./dist/browser-demonstration.js"
     }
   },
   "files": [

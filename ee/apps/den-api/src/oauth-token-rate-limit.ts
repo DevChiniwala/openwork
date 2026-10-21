@@ -32,11 +32,6 @@ async function defaultRateLimitCheck(
   return checkRateLimit(key, maxRequests, windowMs, now, consume)
 }
 
-function requestAddress(headers: Headers) {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-  return forwarded || headers.get("x-real-ip")?.trim() || "unknown"
-}
-
 function rateLimitHash(value: string) {
   return createHash("sha256").update(value).digest("hex").slice(0, 32)
 }
@@ -49,7 +44,8 @@ async function readFormClientId(request: Request) {
 }
 
 async function oauthTokenRateLimitKeys(request: Request) {
-  const ipHash = rateLimitHash(requestAddress(request.headers))
+  const { requestClientIpKey } = await import("./request-client-ip.js")
+  const ipHash = rateLimitHash(requestClientIpKey(request.headers))
   const clientId = readBasicAuthClientId(request.headers) ?? await readFormClientId(request)
   const clientHash = clientId ? rateLimitHash(clientId) : null
 

@@ -7,23 +7,37 @@ import { Store } from "../src/store.js"
 export type ProbeFixtureMode = "answered" | "unauthorized" | "payment_required" | "unavailable" | "empty" | "timeout"
 export type ProbeFixtureProtocol = Config["model"]["protocol"]
 
-async function listen(handler: (request: IncomingMessage, response: ServerResponse) => Promise<void>) {
+async function listen(handler: (request: IncomingMessage, response: ServerResponse) => Promise<void>, port = 0) {
   const server = createServer((request, response) => { void handler(request, response).catch(() => { response.writeHead(500).end() }) })
-  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve))
+  await new Promise<void>(resolve => server.listen(port, "127.0.0.1", resolve))
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("Local fixture did not start")
   return { url: `http://127.0.0.1:${address.port}`, async close() { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) } }
 }
 
 /** Real Node runner/runtime/adapter, synthetic localhost provider, memory-only SQLite, no external credentials. */
-export async function modelProbeFixture(options: { mode?: ProbeFixtureMode; lunaAvailable?: boolean; catalogVerified?: boolean; protocol?: ProbeFixtureProtocol; modelKey?: string; reportedModel?: string } = {}) {
+export async function modelProbeFixture(options: {
+  mode?: ProbeFixtureMode
+  lunaAvailable?: boolean
+  catalogVerified?: boolean
+  protocol?: ProbeFixtureProtocol
+  modelKey?: string
+  reportedModel?: string
+  /** Serve the synthetic provider on this port, e.g. the address Den hands out as the AI Gateway. */
+  providerPort?: number
+  /** Also accept keys this matches, e.g. per-member Gateway keys Den mints during the test. */
+  acceptKey?: (key: string) => boolean
+} = {}) {
   let mode = options.mode ?? "answered"
   const modelKey = options.modelKey ?? "fixture-model-key"
   const reportedModel = options.reportedModel ?? "gpt-6-luna-fixture-snapshot"
   const calls: { path: string; body: unknown; authorized: boolean }[] = []
+  // Keys the synthetic provider accepts: the runner's configured key, plus any scoped per-member key a test adds.
+  const acceptedKeys = new Set([modelKey])
   const provider = await listen(async (request, response) => {
     let raw = ""; for await (const chunk of request) raw += chunk
-    const authorized = (options.protocol === "anthropic" ? request.headers["x-api-key"] : request.headers.authorization) === (options.protocol === "anthropic" ? modelKey : `Bearer ${modelKey}`)
+    const presented = options.protocol === "anthropic" ? request.headers["x-api-key"] : request.headers.authorization?.match(/^Bearer (.+)$/)?.[1]
+    const authorized = typeof presented === "string" && (acceptedKeys.has(presented) || options.acceptKey?.(presented) === true)
     response.setHeader("content-type", "application/json")
     if (request.url === "/models") {
       if (!authorized || options.catalogVerified === false) { response.writeHead(401).end(JSON.stringify({ error: "catalog_denied" })); return }
@@ -40,7 +54,7 @@ export async function modelProbeFixture(options: { mode?: ProbeFixtureMode; luna
       : options.protocol === "openai-responses"
         ? { model: reportedModel, status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }], usage: { input_tokens: 1, output_tokens: 1 } }
         : { model: reportedModel, choices: [{ message: { role: "assistant", content: text } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }))
-  })
+  }, options.providerPort)
   const sql = nodeSqlite(":memory:")
   try {
     const runtime = await createRuntime(loadConfig({ HEADLESS_API_TOKEN: "r".repeat(32), HEADLESS_MODEL_PROTOCOL: options.protocol ?? "openai", HEADLESS_MODEL_BASE_URL: provider.url, HEADLESS_MODEL: "gateway/other", HEADLESS_MODEL_API_KEY: modelKey }), new Store(sql))
@@ -55,6 +69,10 @@ export async function modelProbeFixture(options: { mode?: ProbeFixtureMode; luna
     })
     return {
       url: runner.url,
+      /** The synthetic provider, e.g. as a scoped modelAccess base URL. */
+      providerUrl: provider.url,
+      /** Accept one more provider key, e.g. the per-member Gateway key a scoped modelAccess presents. */
+      acceptModelKey: (key: string) => { acceptedKeys.add(key) },
       app: runtime.app,
       calls: () => [...calls],
       setMode: (next: ProbeFixtureMode) => { mode = next },

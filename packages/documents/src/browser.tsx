@@ -15,6 +15,8 @@ export type DocumentsBrowserProps = {
   /** Include the authenticated organization and person. Never reuse a cache across identities. */
   scope: readonly string[]
   enabled: boolean
+  /** Preview is always available; editing must be explicitly enabled by the host. */
+  editingEnabled?: boolean
   connectionsHref?: string | null
   /** A host's existing sign-in flow, opened separately so recovery stays mounted. */
   signInHref?: string | null
@@ -51,7 +53,7 @@ export function DocumentsBrowser(props: DocumentsBrowserProps) {
   return <ScopedDocumentsBrowser key={JSON.stringify([props.scope, props.provider.id])} {...props} />
 }
 
-function ScopedDocumentsBrowser({ provider, editor, scope, enabled, connectionsHref, signInHref, verifyScope, authorization, renderConnect, onDirtyChange, onContextChange, openDocument }: DocumentsBrowserProps) {
+function ScopedDocumentsBrowser({ provider, editor, scope, enabled, editingEnabled = false, connectionsHref, signInHref, verifyScope, authorization, renderConnect, onDirtyChange, onContextChange, openDocument }: DocumentsBrowserProps) {
   const policy = useRef({ enabled, authorization })
   policy.current = { enabled, authorization }
   const [resources, setResources] = useState<ReadonlyMap<string, DocumentItem>>(new Map())
@@ -292,7 +294,7 @@ function ScopedDocumentsBrowser({ provider, editor, scope, enabled, connectionsH
           {visible && selected && <aside className="ow-documents-detail" aria-label="Document details"><div className="ow-documents-detail-heading"><Info size={16} aria-hidden /><span>Details</span><button type="button" aria-label="Close document details" onClick={() => setSelected(null)}><X size={16} /></button></div><ItemIcon item={selected} /><h2>{selected.name}</h2><dl><dt>Type</dt><dd>{documentType(selected)}</dd><dt>Last modified</dt><dd>{date(selected.modifiedTime)}</dd><dt>Size</dt><dd>{size(selected.size)}</dd></dl>{selected.openUrl ? <a className="ow-documents-open" href={selected.openUrl} target="_blank" rel="noopener noreferrer">Open in {provider.label}<ExternalLink size={14} aria-hidden /></a> : <p>This file has no available link.</p>}</aside>}
         </div></>}
     </div>
-    {editor && opened.map(item => <DocumentEditorTab toolbarHost={actionsHost} key={item.id} item={item} editor={editor} enabled={editorEnabled && !locks.has(item.id)} active={editorEnabled && !locks.has(item.id) && activeTab === item.id} scope={scope} connectionsHref={connectionsHref} renderConnect={renderConnect} onDirtyChange={updateDirty} onSavingChange={updateSaving} onResourceChange={resourceChanged} onControlsChange={registerControls} onClose={() => close(item.id)} />)}
+    {editor && opened.map(item => <DocumentEditorTab toolbarHost={actionsHost} key={item.id} item={item} editor={editor} editingEnabled={editingEnabled} enabled={editorEnabled && !locks.has(item.id)} active={editorEnabled && !locks.has(item.id) && activeTab === item.id} scope={scope} connectionsHref={connectionsHref} renderConnect={renderConnect} onDirtyChange={updateDirty} onSavingChange={updateSaving} onResourceChange={resourceChanged} onControlsChange={registerControls} onClose={() => close(item.id)} />)}
     </div>
   </section>
 }

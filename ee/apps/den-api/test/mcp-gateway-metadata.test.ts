@@ -9,9 +9,9 @@ import { z } from "zod"
 import { createAgentMcpServer, AGENT_MCP_GUIDANCE_URI } from "../src/mcp/agent-server.js"
 
 for (const appServers of [true, false]) {
-  for (const remoteSessionEvents of [true, false]) {
-    test(`gateway initialization preserves identity, capabilities and full guidance (Apps ${appServers}, receipts ${remoteSessionEvents})`, async () => {
-      const server = createAgentMcpServer({ appServers, remoteSessionEvents })
+  for (const remoteSessionStatus of [true, false]) {
+    test(`gateway initialization preserves identity, capabilities and full guidance (Apps ${appServers}, status ${remoteSessionStatus})`, async () => {
+      const server = createAgentMcpServer({ appServers, remoteSessionStatus })
       const client = new Client({ name: "gateway-metadata-unit-test", version: "1" })
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
       await server.connect(serverTransport)
@@ -22,11 +22,12 @@ for (const appServers of [true, false]) {
         assert.equal(client.getServerVersion()?.title, "OpenWork Connect")
         assert.equal(client.getServerCapabilities()?.tools?.listChanged, true)
         assert.equal(client.getServerCapabilities()?.resources?.listChanged, true)
-        assert.equal(client.getServerCapabilities()?.resources?.subscribe, remoteSessionEvents || undefined)
+        assert.equal(client.getServerCapabilities()?.resources?.subscribe, undefined)
         const instructions = client.getInstructions() ?? ""
         assert.ok(Buffer.byteLength(instructions, "utf8") <= 2048)
         assert.ok(instructions.includes(AGENT_MCP_GUIDANCE_URI))
-        assert.equal(instructions.includes("subscriptions/listen"), remoteSessionEvents)
+        assert.equal(instructions.includes("subscriptions/listen"), false)
+        assert.equal(instructions.includes("remote-session:status"), remoteSessionStatus)
         const guidance = await client.readResource({ uri: AGENT_MCP_GUIDANCE_URI })
         const text = guidance.contents.flatMap(content => "text" in content ? [content.text] : []).join("\n")
         assert.ok(Buffer.byteLength(text, "utf8") > 2048)

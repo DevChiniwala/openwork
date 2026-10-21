@@ -30,7 +30,7 @@ import { McpStoryTiles, mcpStoryCopy } from "../mcp-story";
 import { useLocationQuery } from "../use-location-query";
 import { FIRST_PARTY_APP_CLIENT_IDS } from "../client-trust-constants";
 import { useMcpClient } from "../use-mcp-client";
-import { useWorkbotFirstRun } from "../use-workbot-first-run";
+import { isWorkbotSignIn } from "../workbot-sign-in";
 
 type Organization = {
   id: string;
@@ -140,7 +140,7 @@ export default function McpSelectOrganizationPage() {
   const params = useMemo(() => new URLSearchParams(oauthQuery), [oauthQuery]);
   const requestedScope = params.get("scope") ?? "openid profile email mcp:read";
   const client = useMcpClient(oauthQuery);
-  const workbot = useWorkbotFirstRun(oauthQuery, selectedOrgId);
+  const workbot = isWorkbotSignIn(oauthQuery);
   // OpenWork's own apps (Workbot): choosing a workspace is all there is to it.
   const firstParty = client.clientId !== null && FIRST_PARTY_APP_CLIENT_IDS.has(client.clientId);
   const redirect = useMcpRedirect(oauthQuery);

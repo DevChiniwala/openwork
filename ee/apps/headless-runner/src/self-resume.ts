@@ -6,7 +6,7 @@ import type { Store } from "./store.js"
 
 /**
  * Turns that keep going on their own. A caller that sends a turn with a resume grant (Den mints one per turn when
- * `headlessDurableTurns` is on) lets the runner:
+ * the turn is named) lets the runner:
  *
  * - refresh the turn's MCP token in place when it would otherwise pause for `credentials_refresh`, and
  * - resume the turn itself when it was cut off (`runner_restarted`, `runner_shutdown`) or paused anyway.

@@ -32,7 +32,7 @@ function Signed({ me, authorization, refreshIdentity }: { me: Me; authorization?
 }
 
 function App() {
-  const me = useQuery({ queryKey: ["workbot", "me"], queryFn: fetchMe, staleTime: 60_000, refetchOnReconnect: "always" })
+  const me = useQuery({ queryKey: ["workbot", "me"], queryFn: fetchMe, staleTime: 60_000, refetchOnReconnect: "always", refetchInterval: query => query.state.data?.nativeDictation === true ? 60_000 : false })
   const [owner, setOwner] = useState<Me | null>(null)
   const [until, setUntil] = useState<number | null>(null)
   const [identityWaiters, setIdentityWaiters] = useState<Array<(value: Me | null) => void>>([])
@@ -74,7 +74,7 @@ function App() {
   }, [me.isFetching, me.data, verified, identityWaiters])
   if (owner !== null) {
     const authorization = blocked ? workspaceDisabled ? "disabled" : identityUnavailable || me.isFetching ? "blocked" : "signin" : undefined
-    if (!blocked && !owner.enabled && owner.firstRun) return <WorkspaceAccess me={owner} />
+    if (!blocked && !owner.enabled) return <WorkspaceAccess me={owner} />
     // Hidden, not conditionally removed: auth revalidation cannot run editor teardown.
     return <>
       <div className="h-full" hidden={blocked} data-workbot-retained-owner><Signed key={JSON.stringify([owner.organizationId, owner.userId])} me={owner} authorization={authorization} refreshIdentity={refreshIdentity} /></div>

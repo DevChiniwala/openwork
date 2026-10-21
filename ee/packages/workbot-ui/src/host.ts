@@ -25,6 +25,14 @@ export type WorkbotHost = {
   calendar?: boolean
   /** Documents browsing is enabled for this organization; omitted means off. */
   documents?: boolean
+  /** Shared browser and computer desktop, enabled by the organization flags. */
+  computer?: boolean
+  /** Teach browser tasks and save private Cloud skills; omitted means off. */
+  browserDemonstrations?: boolean
+  /** Explicit document editing is enabled; omitted means preview only. */
+  documentEditing?: boolean
+  /** Native dictation entry point; omitted means off. Speech stays with the OS. */
+  nativeDictation?: boolean
   /** Contextual chat and workspace navigation. Omitted means off. */
   workspaceAssistant?: boolean
   /** Offers to open documents a reply mentions and keeps the chat open beside them. Needs workspaceAssistant. */
@@ -41,8 +49,6 @@ export type WorkbotHost = {
   documentAuthorization?: "signin" | "blocked" | "disabled"
   /** The person can start side chats next to their main chat (on while Workbot is on). Off when unset. */
   sideChats?: boolean
-  /** Den-resolved team permissions. Omitted by older hosts; no admin controls then. */
-  teamLinks?: { enabled: boolean; settings: boolean; apps: boolean; denUrl: string; organizationId: string }
   /** Authenticated identity for permission-protected model-setting caches; absent on older hosts. */
   identity?: { principalId: string; organizationId: string }
 }
