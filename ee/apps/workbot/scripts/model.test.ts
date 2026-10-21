@@ -133,7 +133,7 @@ test("unavailable, old, unreachable and unverified catalogs cannot send on anoth
   }
 })
 
-test("turns run step by step only when Den says stepTurns (headlessDurableTurns)", async () => {
+test("turns run step by step only when Den says stepTurns (saved step turns)", async () => {
   for (const stepTurns of [undefined, false]) {
     const runner = fakeRunner()
     await sendEveryKind({ client: runner.client, canSchedule: async () => false, ...(stepTurns === undefined ? {} : { stepTurns }) })

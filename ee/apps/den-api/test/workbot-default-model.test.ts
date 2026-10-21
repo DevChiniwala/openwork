@@ -65,6 +65,8 @@ test("Gateway settings use the actor's exact default alias, never a display-name
   assert.equal(view.gatewayModels, true)
   assert.equal(workbotSettingsView(null, { ...scoped, models: [scoped.models[1]!] }).defaultReadiness, "unavailable")
   assert.equal(workbotSettingsView(null, null).defaultReadiness, "unverified")
+  // An unreachable catalog still names the model Workbot will ask for, so the page never shows an empty default.
+  assert.equal(workbotSettingsView(null, null).defaultModel, "openai/gpt-6-luna")
   assert.equal(workbotSettingsView("removed_alias", scoped).modelAvailable, false)
 })
 

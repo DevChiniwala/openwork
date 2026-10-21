@@ -52,6 +52,8 @@ export const RETIRED_FEATURE_KEYS = [
   // Generally available (2026-10, fourth pass): always on, on cloud and self-hosted.
   "cloudAgentGateway", "secureSecretFields", "slackAssistant", "workbotFirstRun", "workbotInlineConnect",
   "headlessSessionIndex",
+  // Generally available (2026-10): durable step turns and per-chat cells are always on.
+  "headlessDurableTurns", "headlessSessionCells",
   // Folded (2026-10): workbotGuidedNavigation → workbotWorkspaceAssistant, engineV2Upgrade →
   // engineV2ForceUpgrade, headlessStepTurns → headlessDurableTurns.
   "workbotGuidedNavigation", "engineV2Upgrade", "headlessStepTurns",

@@ -61,7 +61,7 @@ type WorkerDeps = {
 
 const defaultWorkerDeps: WorkerDeps = {
   slack: slackClient,
-  // Turns run step by step where `headlessDurableTurns` is on for the actor's organization.
+  // Turns always run step by step.
   runner: (actor) => slackRunnerForActor(actor),
   live: createLiveFeeds({ open: (sessionId, signal) => openSlackRunnerEvents(sessionId, signal) }),
 }

@@ -146,20 +146,6 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  headlessDurableTurns: {
-    label: "Cloud tasks survive restarts and updates",
-    description: "Workbot, Slack and Automations answers run one saved step at a time, keep going through OpenWork updates, and resume on their own after a restart or server failure, without waiting for someone to reopen the chat.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  headlessSessionCells: {
-    label: "Workbot: each chat in its own space",
-    description: "Each Workbot chat is stored on its own, so long histories stay fast to open and move during updates.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
 })
 
 export type FeatureKey = keyof typeof FEATURES

@@ -2,7 +2,6 @@ import {
   createHeadlessRunnerClient,
   defaultHeadlessRunnerDeps,
   headlessRunnerConfig,
-  headlessDurableTurnsEnabled,
   stepLabel,
   TERMINAL_TURN_STATUSES,
   type HeadlessRunnerActor,
@@ -54,7 +53,7 @@ export function slackHeadlessDeps(base: HeadlessDeps | null = defaultHeadlessRun
     ...base,
     // Loaded lazily: the minter pulls in the auth and database modules.
     mintToken: async (input) => {
-      // A resume grant (feature `headlessDurableTurns`) and an index capability pass through unchanged with the token.
+      // A resume grant and an index capability pass through unchanged with the token.
       const minted = await (await import("../headless-runner/resume-grants.js")).mintHeadlessTurnCredentials({ ...input, indexKind: "slack" })
       try {
         const { recordSlackRunToken } = await import("./desktop-handoff.js")
@@ -176,15 +175,14 @@ const unknownSession: RunnerFailure = { ok: false, error: "unknown_session", ret
 
 export type SlackRunnerOptions = {
   /**
-   * Feature `headlessDurableTurns` for the actor's organization, read before each send: on, turns go to the runner with
-   * `execution: "steps"`. Unset (or failing): turns are sent exactly as without the feature.
+   * Test injection for protocol compatibility; production always sends step-by-step turns.
    */
   stepTurns?: () => Promise<boolean>
 }
 
-/** The Slack worker's runner: step-by-step turns follow `headlessDurableTurns` for the actor's organization. */
+/** The Slack worker always runs turns step by step. */
 export function slackRunnerForActor(actor: HeadlessRunnerActor, suppliedDeps: HeadlessDeps | null = slackHeadlessDeps()): SlackRunner {
-  return createSlackRunner(actor, suppliedDeps, { stepTurns: () => headlessDurableTurnsEnabled(actor.organizationId) })
+  return createSlackRunner(actor, suppliedDeps)
 }
 
 export function createSlackRunner(
@@ -215,7 +213,7 @@ export function createSlackRunner(
       if (!saved.ok) return retryable(`headless_put_${saved.status}`)
     }
     // Re-sending a turn keeps the mode the runner stored for it, so a resume may carry the field either way.
-    const execution: "steps" | undefined = options.stepTurns && (await options.stepTurns().catch(() => false)) ? "steps" : undefined
+    const execution: "steps" | undefined = (options.stepTurns ? await options.stepTurns().catch(() => false) : true) ? "steps" : undefined
     // One fresh, member-scoped MCP token per admitted run; the runner holds it in memory only.
     let sent
     try {

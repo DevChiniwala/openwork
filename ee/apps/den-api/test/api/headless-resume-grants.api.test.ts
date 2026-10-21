@@ -1,9 +1,4 @@
-/**
- * Resume grants for headless runner turns (feature headlessDurableTurns): minted only where the feature is on and the
- * turn is named, exchanged by the runner at POST /v1/headless/resume-token for a fresh member-scoped MCP token, bound
- * to the turn and its tasks/reports, refused once revoked, expired, mismatched, the member left or the feature is off,
- * and rate limited per grant.
- */
+/** GA resume grants remain turn-bound, revocable, expiring, member-scoped and rate limited. */
 import assert from "node:assert/strict"
 import { createHash, randomBytes } from "node:crypto"
 import { after, before, test } from "node:test"
@@ -69,9 +64,10 @@ before(async () => {
   memberMcpToken = await den.mintMcpToken(member, orgId)
 })
 
-async function setDurable(enabled: boolean) {
-  const changed = await den.setFeature(orgId, "headlessDurableTurns", enabled)
-  assert.equal(changed.status, 200, summary(changed))
+async function arrangeLegacyDurableRows(enabled: boolean) {
+  // Arrange rows left behind by an older Den; these are no longer writable through the feature API.
+  await sql("INSERT INTO organization_feature (organization_id, feature_key, enabled, source) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)", [orgId, "headlessDurableTurns", enabled, "platform"])
+  await sql("INSERT INTO feature_rollout (feature_key, enabled, killed) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), killed = VALUES(killed)", ["headlessDurableTurns", enabled, !enabled])
 }
 
 function runToken(body: Record<string, unknown>, token = memberMcpToken) {
@@ -91,15 +87,15 @@ async function grantFor(ids: { sessionId: string; messageId: string }, extra: Re
   return text(field(minted.body, "resumeGrant"), `resume grant (${summary(minted)})`)
 }
 
-test("Workbot run-token returns a resume grant only with the feature on and the turn named", async () => {
-  await setDurable(false)
+test("Workbot run-token returns a grant for named turns despite legacy disabled rows", async () => {
+  await arrangeLegacyDurableRows(false)
   const off = await runToken(nextTurn())
   assert.equal(off.status, 200, summary(off))
   assert.equal(typeof field(off.body, "token"), "string")
-  assert.equal(field(off.body, "resumeGrant"), undefined, "no grant while headlessDurableTurns is off")
-  assert.equal((await sql("SELECT id FROM headless_resume_grant")).length, 0)
+  assert.match(String(field(off.body, "resumeGrant")), GRANT, "GA ignores disabled rows")
+  assert.equal((await sql("SELECT id FROM headless_resume_grant")).length, 1)
 
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const ids = nextTurn()
   const on = await runToken(ids)
   assert.equal(on.status, 200, summary(on))
@@ -124,16 +120,16 @@ test("Workbot run-token returns a resume grant only with the feature on and the 
   assert.equal(lifetime, 12 * 3_600_000, "12 hour lifetime")
 })
 
-test("defaultHeadlessRunnerDeps (Slack, Automations) mints a grant only with the feature on and sends it with the turn", async () => {
+test("defaultHeadlessRunnerDeps mints and forwards grants despite legacy disabled rows", async () => {
   const deps = defaultHeadlessRunnerDeps({ DEN_HEADLESS_RUNNER_URL: "http://127.0.0.1:9", DEN_HEADLESS_RUNNER_TOKEN: RUNNER_TOKEN })
   assert.ok(deps)
   const actor = { userId: member.userId, organizationId: orgId }
 
-  await setDurable(false)
+  await arrangeLegacyDurableRows(false)
   const off = await deps.mintToken({ ...actor, ...nextTurn() })
-  assert.deepEqual(Object.keys(off).sort(), ["modelAccess", "token"], "no resumeGrant field while the feature is off")
+  assert.match(off.resumeGrant ?? "", GRANT)
 
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const on = await deps.mintToken({ ...actor, ...nextTurn() })
   assert.match(on.resumeGrant ?? "", GRANT)
   const unnamed = await deps.mintToken({ ...actor, messageId: "msg-only" })
@@ -161,15 +157,15 @@ test("defaultHeadlessRunnerDeps (Slack, Automations) mints a grant only with the
   assert.equal(row?.session_id, ids.sessionId)
   assert.equal(row?.message_id, ids.messageId)
 
-  await setDurable(false)
+  await arrangeLegacyDurableRows(false)
   bodies.length = 0
   await createHeadlessRunnerClient({ ...deps, fetch: recordingFetch }).sendTurn(actor, { ...nextTurn(), prompt: "hello" })
-  assert.deepEqual(Object.keys(Object(field(bodies[0], "credentials"))).sort(), ["mcpToken", "modelAccess"], "no resume grant in the turn body while the feature is off")
-  await setDurable(true)
+  assert.match(String(field(bodies[0], "credentials", "resumeGrant")), GRANT)
+  await arrangeLegacyDurableRows(true)
 })
 
 test("the exchange checks the callback token first, and answers 404 when it is not configured", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const grant = await grantFor(nextTurn())
   const missing = await exchange({ grant, sessionId: "x", messageId: "y" }, null)
   assert.equal(missing.status, 401, summary(missing))
@@ -193,7 +189,7 @@ test("the exchange checks the callback token first, and answers 404 when it is n
 })
 
 test("a grant exchanges for a fresh member-scoped token for its turn, tasks and reports", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const ids = nextTurn()
   const grant = await grantFor(ids)
   const before = Date.now()
@@ -241,7 +237,7 @@ test("a grant exchanges for a fresh member-scoped token for its turn, tasks and 
 })
 
 test("a read-only turn's grant only ever yields read-only tokens", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const ids = nextTurn()
   const grant = await grantFor(ids, { readOnly: true })
   const fresh = await exchange({ grant, ...ids })
@@ -252,7 +248,7 @@ test("a read-only turn's grant only ever yields read-only tokens", async () => {
 })
 
 test("unknown, malformed and expired grants are refused for good", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const ids = nextTurn()
   const unknown = await exchange({ grant: `hrg_${randomBytes(32).toString("base64url")}`, ...ids })
   assert.equal(unknown.status, 403, summary(unknown))
@@ -271,24 +267,16 @@ test("unknown, malformed and expired grants are refused for good", async () => {
   assert.equal((await sql("SELECT id FROM headless_resume_grant WHERE token_hash = ?", [sha256(grant)])).length, 0)
 })
 
-test("turning the feature off makes every exchange fail with feature_disabled", async () => {
-  await setDurable(true)
+test("legacy disabled rows and kill switches cannot revoke a GA resume grant", async () => {
   const ids = nextTurn()
   const grant = await grantFor(ids)
-  await setDurable(false)
-  try {
-    const refused = await exchange({ grant, ...ids })
-    assert.equal(refused.status, 403, summary(refused))
-    assert.equal(field(refused.body, "error"), "feature_disabled")
-  } finally {
-    await setDurable(true)
-  }
-  const restored = await exchange({ grant, ...ids })
-  assert.equal(restored.status, 200, `stored grants stay usable after the feature is back: ${summary(restored)}`)
+  await arrangeLegacyDurableRows(false)
+  const fresh = await exchange({ grant, ...ids })
+  assert.equal(fresh.status, 200, summary(fresh))
 })
 
 test("exchanges are rate limited per grant", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const ids = nextTurn()
   const grant = await grantFor(ids)
   for (let index = 0; index < HEADLESS_RESUME_GRANT_EXCHANGES_PER_WINDOW; index += 1) {
@@ -308,7 +296,7 @@ test("exchanges are rate limited per grant", async () => {
 })
 
 test("a member whose membership ended cannot exchange, and removing a member revokes their grants", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const leaving = await den.newMember(owner, orgId, "Lena Leaving")
   await grantGatewayModels(den, owner, orgId, [leaving])
   const token = await den.mintMcpToken(leaving, orgId)
@@ -344,7 +332,7 @@ test("a member whose membership ended cannot exchange, and removing a member rev
 })
 
 test("a grant minted concurrently with a role change cannot be exchanged afterwards", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const changing = await den.newMember(owner, orgId, "Rowan Role", "admin")
   const authorizedAt = new Date()
   const racingIds = nextTurn()
@@ -394,7 +382,7 @@ test("removing a member still works when den-api is deployed before the resume g
 })
 
 test("an exchange overlapping a role change cannot return a usable token", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const { findHeadlessResumeGrant, exchangeHeadlessResumeGrant, activeHeadlessResumeGrantMember } = await import("../../src/headless-runner/resume-grants.js")
   const changing = await den.newMember(owner, orgId, "Overlap Olive", "admin")
   const ids = nextTurn()
@@ -418,7 +406,7 @@ test("an exchange overlapping a role change cannot return a usable token", async
 })
 
 test("a missing revocation table is never swallowed while grants can exist", async () => {
-  await setDurable(true)
+  await arrangeLegacyDurableRows(true)
   const { revokeHeadlessResumeGrantsForMember } = await import("../../src/headless-runner/resume-grant-revocation.js")
   const holder = await den.newMember(owner, orgId, "Half Migrated")
   const ids = nextTurn()
