@@ -2,9 +2,8 @@ import { addInitScript, browserScript, reload } from "@openwork/cdp";
 import type { Seed } from "@openwork/env";
 import { configureProvider } from "./chat.ts";
 import { denForAppWeb, signedInAppWeb } from "./signed-in-app-web.ts";
-import { seededOrganizationId } from "./organization-capabilities.ts";
 
-type OfflineFault = {
+type AppConnectionFault = {
   disconnected: boolean;
   prompts: number;
   stops: number;
@@ -12,7 +11,7 @@ type OfflineFault = {
   views: number;
   setOffline(value: boolean): void;
 };
-declare global { interface Window { __offlineRecoveryFault?: OfflineFault } }
+declare global { interface Window { __appConnectionFault?: AppConnectionFault } }
 
 export const SAVED_PROMPT = "Keep this completed report in the conversation.";
 export const SAVED_REPLY = "The completed report is preserved.";
@@ -20,12 +19,11 @@ export const MCP_PROMPT = "Prepare my report and update the client note.";
 export const MCP_REPLY = "The report is saved; the note service timed out.";
 export const APP_CONNECTION_ERROR = "Streamable HTTP POST: connection or protocol negotiation failed";
 
-export async function offlineRecoveryWorld(seed: Seed) {
-  // This feature only applies to v2, including when CI's default lane is v1.
+export async function appConnectionErrorsWorld(seed: Seed) {
+  // Compact connection errors are standard on v2, including when CI defaults to v1.
   const engine = "v2";
   const { den, webPort } = await denForAppWeb(seed);
-  const organizationId = await seededOrganizationId(seed, den.admin);
-  const providerId = "offline-proof";
+  const providerId = "connection-proof";
   const modelId = "report";
   const mock = seed.mock({ isolatedProcessEnv: true, allowUnauthenticatedMcp: true, tools: [
     { name: "read_report", description: "Read the completed report", inputSchema: { type: "object", properties: {} },
@@ -42,7 +40,7 @@ export async function offlineRecoveryWorld(seed: Seed) {
     ] },
   ] });
   const { app, workspace } = await signedInAppWeb(seed, {
-    den, webPort, engine, env: process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}, name: "offline-recovery", workspacePath: seed.tmpPath("offline-recovery"), mocks: { agent: mock },
+    den, webPort, engine, env: process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}, name: "app-connection-errors", workspacePath: seed.tmpPath("app-connection-errors"), mocks: { agent: mock },
   });
   const witness = app.mocks.agent;
   if (!witness) throw new Error("The report model witness did not start");
@@ -50,12 +48,12 @@ export async function offlineRecoveryWorld(seed: Seed) {
     permission: { "*": "allow" },
     mcp: { "openwork": { type: "remote", url: witness.mcpUrl, enabled: true, oauth: false } },
     provider: { [providerId]: { npm: "@ai-sdk/openai-compatible", name: "Report model",
-      options: { baseURL: `${witness.url}/v1`, apiKey: "sk-offline-proof" }, models: { [modelId]: { name: "Report model" } } } },
+      options: { baseURL: `${witness.url}/v1`, apiKey: "sk-connection-proof" }, models: { [modelId]: { name: "Report model" } } } },
   }, engine);
-  const session = await seed.session(app, { title: "Offline report recovery" });
+  const session = await seed.session(app, { title: "App connection errors" });
   const registration = await addInitScript(app.client, browserScript(() => {
     const original = window.fetch.bind(window);
-    const fault: OfflineFault = window.__offlineRecoveryFault = {
+    const fault: AppConnectionFault = window.__appConnectionFault = {
       disconnected: false, prompts: 0, stops: 0, probes: 0, views: 0,
       setOffline(value) {
         this.disconnected = value;
@@ -85,20 +83,13 @@ export async function offlineRecoveryWorld(seed: Seed) {
   await reload(app);
   return {
     app, workspace, session, engine,
-    async enable() {
-      const result = await seed.api(den.admin, `/v1/admin/organizations/${organizationId}/capabilities`, {
-        method: "PUT", body: JSON.stringify({ capabilities: { offlineRecovery: true } }),
-      });
-      if (!result.response.ok) throw new Error(`Offline recovery could not be enabled (${result.response.status})`);
-      await reload(app);
-    },
     // Test-owned OS connectivity hint; requests still reach the local v2 engine.
     offline: (value: boolean) => seed.evalIn(app, browserScript((value) => {
-      if (!window.__offlineRecoveryFault) throw new Error("The connectivity fault is not installed");
-      window.__offlineRecoveryFault.setOffline(value);
+      if (!window.__appConnectionFault) throw new Error("The connectivity fault is not installed");
+      window.__appConnectionFault.setOffline(value);
     }, [value])),
     counts: () => seed.evalIn(app, () => {
-      const state = window.__offlineRecoveryFault;
+      const state = window.__appConnectionFault;
       if (!state) throw new Error("The connectivity fault is not installed");
       return { prompts: state.prompts, stops: state.stops, probes: state.probes, views: state.views };
     }),

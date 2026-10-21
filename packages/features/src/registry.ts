@@ -53,6 +53,13 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  nativeDictation: {
+    label: "Native dictation",
+    description: "Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   organizationGrants: {
     label: "Organization control panel and grants",
     description: "Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.",
@@ -63,13 +70,6 @@ export const FEATURES = defineFeatures({
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  offlineRecovery: {
-    label: "Connection failure presentation",
-    description: "Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

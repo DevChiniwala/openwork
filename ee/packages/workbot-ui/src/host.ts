@@ -29,6 +29,8 @@ export type WorkbotHost = {
   computer?: boolean
   /** Explicit document editing is enabled; omitted means preview only. */
   documentEditing?: boolean
+  /** Native dictation entry point; omitted means off. Speech stays with the OS. */
+  nativeDictation?: boolean
   /** Contextual chat and workspace navigation. Omitted means off. */
   workspaceAssistant?: boolean
   /** Offers to open documents a reply mentions and keeps the chat open beside them. Needs workspaceAssistant. */

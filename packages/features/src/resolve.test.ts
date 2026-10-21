@@ -38,7 +38,7 @@ test("precedence: unavailable, kill switch, lock, override, everyone", () => {
 })
 
 test("an organization override can turn a feature off while it is on for everyone", () => {
-  const key = "offlineRecovery"
+  const key = "liveProviderSync"
   const resolved = resolveFeature(key, { ...base, rollouts: { [key]: { enabled: true, killed: false } }, overrides: { [key]: false } })
   assert.equal(resolved.everyone, true)
   assert.equal(resolved.enabled, false)
@@ -103,7 +103,7 @@ test("every key maps to a unique DEN_FEATURE_ name", () => {
   const names = FEATURE_KEYS.map(featureLockEnvName)
   for (const name of names) assert.match(name, /^DEN_FEATURE_[A-Z0-9]+(?:_[A-Z0-9]+)*$/)
   assert.equal(new Set(names).size, names.length)
-  assert.equal(featureLockEnvName("offlineRecovery"), "DEN_FEATURE_OFFLINE_RECOVERY")
+  assert.equal(featureLockEnvName("liveProviderSync"), "DEN_FEATURE_LIVE_PROVIDER_SYNC")
 })
 
 test("environment: self_hosted by default, strict values, unknown keys warn", () => {
@@ -114,7 +114,7 @@ test("environment: self_hosted by default, strict values, unknown keys warn", ()
 
   const parsed = parseFeatureEnvironment({
     DEN_DEPLOYMENT: "cloud",
-    DEN_FEATURE_OFFLINE_RECOVERY: "true",
+    DEN_FEATURE_WORKBOT_DOCUMENTS: "true",
     DEN_FEATURE_LIVE_PROVIDER_SYNC: "false",
     DEN_FEATURE_WORKBOT: "false",
     DEN_FEATURE_PERMISSIONS: "false",
@@ -122,11 +122,21 @@ test("environment: self_hosted by default, strict values, unknown keys warn", ()
     DEN_FEATURE_NOT_A_THING: "true",
   })
   assert.equal(parsed.deployment, "cloud")
-  assert.deepEqual(parsed.locks, { offlineRecovery: true, liveProviderSync: false })
+  assert.deepEqual(parsed.locks, { workbotDocuments: true, liveProviderSync: false })
   assert.deepEqual(parsed.problems.map((problem) => [problem.variable, problem.fatal]), [["DEN_FEATURE_WORKBOT", false], ["DEN_FEATURE_PERMISSIONS", false], ["DEN_FEATURE_NOT_A_THING", false]])
 
-  const fatal = parseFeatureEnvironment({ DEN_DEPLOYMENT: "prod", DEN_FEATURE_OFFLINE_RECOVERY: "yes" })
-  assert.deepEqual(fatal.problems.map((problem) => [problem.variable, problem.fatal]), [["DEN_DEPLOYMENT", true], ["DEN_FEATURE_OFFLINE_RECOVERY", true]])
+  const fatal = parseFeatureEnvironment({ DEN_DEPLOYMENT: "prod", DEN_FEATURE_LIVE_PROVIDER_SYNC: "yes" })
+  assert.deepEqual(fatal.problems.map((problem) => [problem.variable, problem.fatal]), [["DEN_DEPLOYMENT", true], ["DEN_FEATURE_LIVE_PROVIDER_SYNC", true]])
+})
+
+test("connection presentation is retired and old operator locks are ignored", () => {
+  assert.equal(featureKeySchema.safeParse("offlineRecovery").success, false)
+  for (const value of ["true", "false"]) {
+    const parsed = parseFeatureEnvironment({ DEN_FEATURE_OFFLINE_RECOVERY: value })
+    assert.deepEqual(parsed.locks, {})
+    assert.equal(parsed.problems.length, 1)
+    assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+  }
 })
 
 test("fourth pass: graduated, folded and removed keys are retired and their old locks are ignored", () => {

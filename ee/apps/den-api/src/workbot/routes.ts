@@ -54,6 +54,7 @@ const sessionSchema = z.object({
   /** Connected document browsing; off on older Dens. */
   documents: z.boolean().optional(),
   documentEditing: z.boolean().optional(),
+  nativeDictation: z.boolean().optional(),
   workspaceAssistant: z.boolean().optional(),
   /** Offers to open mentioned documents and keeps the chat beside them: on with the workspace assistant. */
   guidedNavigation: z.boolean().optional(),
@@ -323,6 +324,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         calendar: true,
         documents: features.workbotDocuments,
         documentEditing: features.workbotDocuments && features.workbotDocumentEditing,
+        nativeDictation: features.nativeDictation,
         workspaceAssistant: features.workbotWorkspaceAssistant,
         guidedNavigation: features.workbotWorkspaceAssistant,
         sideChats: true,

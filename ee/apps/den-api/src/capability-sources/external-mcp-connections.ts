@@ -43,6 +43,7 @@ import {
   type ExternalMcpOAuthStateIdentitySource,
 } from "./external-mcp-oauth-state-identity.js"
 import { normalizeConnectedAccountScopes, normalizeOAuthClientExtra } from "./oauth-credentials.js"
+import { withExternalMcpCreationRetry } from "./external-mcp-creation-retry.js"
 
 export { normalizeExternalMcpIdentityUrl } from "./external-mcp-oauth-state-identity.js"
 
@@ -523,7 +524,7 @@ export async function createExternalMcpConnection(input: {
         callbackMode: "shared-v1",
       }
     : null
-  await db.insert(ExternalMcpConnectionTable).values({
+  const connection = {
     id,
     organizationId: input.organizationId,
     name: input.name,
@@ -539,13 +540,20 @@ export async function createExternalMcpConnection(input: {
     apiKeyAuthScheme: input.apiKeyAuthScheme ?? "bearer",
     oauthConfiguration,
     createdByOrgMembershipId: input.createdByOrgMembershipId,
-  })
-  await replaceExternalMcpConnectionAccess({
+  } satisfies typeof ExternalMcpConnectionTable.$inferInsert
+  const grants = accessGrantRows({
     organizationId: input.organizationId,
     connectionId: id,
     access: input.access,
     createdByOrgMembershipId: input.createdByOrgMembershipId,
   })
+  await withExternalMcpCreationRetry(() => db.transaction(async (tx) => {
+    await tx.insert(ExternalMcpConnectionTable).values(connection)
+    // A fresh connection has no grants to replace. Deleting its absent index
+    // range takes gap locks that can deadlock other concurrent creations.
+    // Save both records together so a failed grant never leaves a connection.
+    if (grants.length > 0) await tx.insert(ExternalMcpConnectionAccessGrantTable).values(grants)
+  }))
   const created = await getExternalMcpConnection({ organizationId: input.organizationId, connectionId: id })
   if (!created) throw new Error("Failed to create external MCP connection.")
   return created

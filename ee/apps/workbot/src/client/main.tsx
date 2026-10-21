@@ -32,7 +32,7 @@ function Signed({ me, authorization, refreshIdentity }: { me: Me; authorization?
 }
 
 function App() {
-  const me = useQuery({ queryKey: ["workbot", "me"], queryFn: fetchMe, staleTime: 60_000, refetchOnReconnect: "always" })
+  const me = useQuery({ queryKey: ["workbot", "me"], queryFn: fetchMe, staleTime: 60_000, refetchOnReconnect: "always", refetchInterval: query => query.state.data?.nativeDictation === true ? 60_000 : false })
   const [owner, setOwner] = useState<Me | null>(null)
   const [until, setUntil] = useState<number | null>(null)
   const [identityWaiters, setIdentityWaiters] = useState<Array<(value: Me | null) => void>>([])

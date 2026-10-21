@@ -32,6 +32,7 @@ export const denSessionSchema = z.object({
   calendar: z.boolean().optional(),
   documents: z.boolean().default(false),
   documentEditing: z.boolean().default(false),
+  nativeDictation: z.boolean().default(false),
   workspaceAssistant: z.boolean().default(false),
   guidedNavigation: z.boolean().default(false),
   /** Side chats are on for this person. A Den from before side chats doesn't say: off. */

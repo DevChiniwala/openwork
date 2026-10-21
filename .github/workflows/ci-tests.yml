@@ -113,6 +113,11 @@ jobs:
           bun test apps/app/tests/deployment-service-readiness.test.ts
       - name: Boot the app provider tree
         run: pnpm test:boot
+      - name: Test native dictation focus and draft boundaries
+        run: |
+          node --test apps/desktop/test/native-dictation.test.mjs
+          # Load Lexical's synchronous development exports for the DOM editor tests.
+          pnpm --filter @openwork/app exec bun --conditions=development test --isolate ./tests/native-dictation.test.tsx ./tests/browser-dictation.test.ts ./tests/composer-caret-refocus.test.tsx
       - name: Check desktop links open real Den pages
         run: pnpm --filter @openwork/app test:den-links
       - name: Test the shared Calendar logic

@@ -60,6 +60,8 @@ export const RETIRED_FEATURE_KEYS = [
   // Removed (2026-10): Workbot team settings links, remote session events, and the deprecated
   // Models and Task analytics screens.
   "workbotTeamLinks", "remoteSessionEvents", "modelsAnalyticsUi", "taskAnalyticsUi",
+  // Compact App errors are standard on v2; the separate offline indicator was removed.
+  "offlineRecovery",
 ] as const
 
 export function isFeatureKey(value: string): value is FeatureKey {

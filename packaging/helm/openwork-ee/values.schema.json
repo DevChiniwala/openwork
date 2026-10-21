@@ -18,6 +18,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "nativeDictation": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Native dictation: Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition. Renders DEN_FEATURE_NATIVE_DICTATION."
+            },
             "organizationGrants": {
               "enum": [
                 "",
@@ -37,16 +47,6 @@
                 false
               ],
               "description": "Live provider sync: Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. Renders DEN_FEATURE_LIVE_PROVIDER_SYNC."
-            },
-            "offlineRecovery": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Connection failure presentation: Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations. Renders DEN_FEATURE_OFFLINE_RECOVERY."
             },
             "managedDeployments": {
               "enum": [
@@ -869,6 +869,16 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "taskAnalyticsUi": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "offlineRecovery": {
               "enum": [
                 "",
                 "true",

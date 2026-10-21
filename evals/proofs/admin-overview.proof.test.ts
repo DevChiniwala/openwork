@@ -75,7 +75,7 @@ test("an admin navigates organizations and member usage without loading every de
     const tabs = await adminProbe.dom('nav[aria-label="Organization sections"] [aria-current="page"]');
     const traffic = await world.traffic("admin");
     const location = await world.location();
-    const blocked = await adminProbe.dom('[data-testid="admin-capability-offlineRecovery"][disabled]');
+    const blocked = await adminProbe.dom('[data-testid="admin-capability-automationCalendar"][disabled]');
     const ok = location.pathname === `${world.detailPath}/features` && tabs.elements[0]?.text === "Features"
       && traffic.features === 1 && traffic.organizationUsage === 0 && traffic.organizationInsights === 0 && blocked.elements.length === 1;
     evidence.recordAssertionEvidence("The Features tab loads only this organization's flags and keeps the global kill switch locked", `${JSON.stringify(location)}; feature reads=${traffic.features}; locked controls=${blocked.elements.length}`, ok);
@@ -247,7 +247,10 @@ test("an admin navigates organizations and member usage without loading every de
     const location = await world.location();
     const layout = await adminProbe.dom("body");
     const navigation = await adminProbe.dom('[data-testid="admin-navigation"] a');
-    const visibleSections = navigation.elements.length === 5 && navigation.elements.every((link) => link.rect.left >= 0 && link.rect.left + link.rect.width <= navigation.viewportWidth);
+    expect(navigation.elements.map((link) => link.text)).toEqual([
+      "Overview", "Users", "Organizations", "Opportunities", "Feature rollouts", "Free Auto usage", "Services",
+    ]);
+    const visibleSections = navigation.elements.every((link) => link.rect.left >= 0 && link.rect.left + link.rect.width <= navigation.viewportWidth);
     const ok = location.page === 1 && location.search === "Routing organization 00" && layout.documentWidth <= layout.viewportWidth && visibleSections;
     evidence.recordAssertionEvidence("Every admin destination fits the compact navigation without sideways scrolling", `${JSON.stringify(location)}; sections=${navigation.elements.length}; document=${layout.documentWidth}px; viewport=${layout.viewportWidth}px`, ok);
     expect(ok).toBe(true);
@@ -328,7 +331,9 @@ test("an admin navigates organizations and member usage without loading every de
     // A fresh deep link starts at the top, independent of the preceding Usage
     // page's pagination/viewport scroll restoration during client navigation.
     await admin.navigate(world.url(`${world.detailPath}/insights`));
-    await admin.see({ testId: "admin-organization-insights" }, { text: /Active member adoption/ });
+    // Target the top statistic: locating the entire tall panel scrolls down
+    // and loads charts before the deferred-loading assertion can observe them.
+    await admin.see({ text: "Active member adoption" });
     await admin.see({ testId: "admin-breadcrumb-current" }, { text: "Insights" });
     const deferredModels = await adminProbe.eventually(
       () => adminProbe.dom('[aria-label="Most used models"] [data-admin-deferred="pending"]'),
