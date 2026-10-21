@@ -162,6 +162,11 @@ export async function allocateDesktops<T>(
   return results.sort((a, b) => a.key.localeCompare(b.key));
 }
 
+/** Provisioning time is part of the approved event lifetime, not free extra runtime. */
+export function remainingWorkshopLifetimeMs(expires: Date, now = Date.now()): number {
+  return Math.max(1, expires.getTime() - now);
+}
+
 /** The facilitator reset, run from this checkout; the reset key is read from the world's outputs, never typed or printed. */
 export function resetCommand(stage: string | undefined): string {
   return `node worlds/lib/workshop-reset.ts${stage ? ` --stage ${stage}` : ""} --confirm`;

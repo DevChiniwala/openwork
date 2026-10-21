@@ -4,7 +4,7 @@ import { startWorkshop } from "../../evals/packages/open-workplace/src/workshop.
 import { newResetToken, nodeSupportsGateway, parseSignedPreviewOrigin, probeAutomaticJoin, probeGatewayHealth, startDaytonaGateway } from "./workshop-gateway.ts";
 import { provisionWorkshopModel } from "./workshop-model.ts";
 import {
-  allocateDesktops, attendeeKeys, DAYTONA_MAX_LIFETIME_MINUTES, parseWorkshopArgs, PreflightError, redact, resetCommand, runPreflight, workshopOutputs,
+  allocateDesktops, attendeeKeys, DAYTONA_MAX_LIFETIME_MINUTES, parseWorkshopArgs, PreflightError, redact, remainingWorkshopLifetimeMs, resetCommand, runPreflight, workshopOutputs,
 } from "./workshop-plan.ts";
 import type { WorkshopOutputInput } from "./workshop-plan.ts";
 import { parseArgs as parseResetArgs, readWorldOutputs } from "./workshop-reset.ts";
@@ -25,6 +25,12 @@ test("arguments: backend-only default, explicit count, strict validation", () =>
   assert.throws(() => parseWorkshopArgs(["--lifetime", "0"], "daytona"), /24 hours/);
   assert.throws(() => parseWorkshopArgs(["--lifetime", String(DAYTONA_MAX_LIFETIME_MINUTES + 1)], "daytona"), /24 hours/);
   assert.equal(parseWorkshopArgs(["--lifetime", "0"], "local").lifetimeMinutes, 0);
+});
+
+test("event lifetime includes provisioning time and never silently restarts after boot", () => {
+  const expires = new Date(120 * 60_000);
+  assert.equal(remainingWorkshopLifetimeMs(expires, 5 * 60_000), 115 * 60_000);
+  assert.equal(remainingWorkshopLifetimeMs(expires, 121 * 60_000), 1);
 });
 
 test("attendee keys are distinct, ordered and never prefix one another", () => {

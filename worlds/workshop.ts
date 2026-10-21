@@ -25,7 +25,7 @@ import {
 } from "./lib/workshop-gateway.ts";
 import type { WorkplaceGateway, WorkshopConnection } from "./lib/workshop-gateway.ts";
 import { provisionWorkshopModel } from "./lib/workshop-model.ts";
-import { allocateDesktops, attendeeKeys, attendeeName, parseWorkshopArgs, runPreflight, workshopOutputs } from "./lib/workshop-plan.ts";
+import { allocateDesktops, attendeeKeys, attendeeName, parseWorkshopArgs, remainingWorkshopLifetimeMs, runPreflight, workshopOutputs } from "./lib/workshop-plan.ts";
 import type { WorkshopOptions } from "./lib/workshop-plan.ts";
 
 const steps = progress();
@@ -252,7 +252,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     }
     throw error;
   }
-  const timer = expires ? setTimeout(() => process.kill(process.pid, "SIGTERM"), options.lifetimeMinutes * 60_000) : undefined;
+  const timer = expires ? setTimeout(() => process.kill(process.pid, "SIGTERM"), remainingWorkshopLifetimeMs(expires)) : undefined;
   try {
     await hold({ name: "workshop", outputs: world.outputs });
   } finally {
