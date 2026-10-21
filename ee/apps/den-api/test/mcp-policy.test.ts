@@ -38,3 +38,13 @@ test("MCP agents can read permission sets but never create, change or delete the
   assert.equal(mcpAllowed(document, "get", "/v1/permissions/sets"), true)
   assert.equal(mcpAllowed(document, "get", "/v1/permissions/sets/{permissionSetId}"), true)
 })
+
+test("MCP agents remove connections only through removeMcpConnection, never the dashboard's DELETE", () => {
+  const document = readSnapshot()
+  assert.equal(document.paths["/v1/mcp-connections/{connectionId}/remove"]?.post?.operationId, "removeMcpConnection")
+  assert.equal(mcpAllowed(document, "post", "/v1/mcp-connections/{connectionId}/remove"), true)
+  assert.equal(mcpAllowed(document, "get", "/v1/mcp-connections"), true)
+
+  assert.equal(mcpAllowed(document, "delete", "/v1/mcp-connections/{connectionId}"), false)
+  assert.equal(mcpAllowed(document, "delete", "/v1/mcp-connections/by-key/{externalKey}"), false)
+})

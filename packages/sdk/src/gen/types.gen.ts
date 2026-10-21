@@ -810,6 +810,7 @@ export type AdminFeature = {
     | "nativeDictation"
     | "organizationGrants"
     | "liveProviderSync"
+    | "agentConnectionRemoval"
     | "managedDeployments"
     | "workbotDocuments"
     | "workbotDocumentEditing"
@@ -862,6 +863,7 @@ export type AdminOrganizationsPageResponse = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
@@ -903,6 +905,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -1076,6 +1087,7 @@ export type AdminOverviewResponse = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
@@ -1117,6 +1129,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -4518,6 +4539,7 @@ export type ExternalMcpConnectionResponse = {
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt?: string;
   connectedForMe: boolean;
@@ -4797,6 +4819,7 @@ export type ExternalMcpConnectionCreatedResponse = {
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt?: string;
   connectedForMe: boolean;
@@ -4883,6 +4906,7 @@ export type ExternalMcpConnectionUpdatedResponse = {
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt: string;
   connectedForMe: boolean;
@@ -4970,6 +4994,42 @@ export type ExternalMcpConnectionByKeyUpsertInput = {
 export type ExternalMcpConnectionDeleteByKeyResponse = {
   ok: true;
   deleted: boolean;
+};
+
+export type RemoveExternalMcpConnectionResponse = {
+  ok: true;
+  removed: {
+    id: string;
+    name: string;
+    url: string;
+  };
+  detachedFromPlugins: Array<ExternalMcpConnectionRequiredBy>;
+  listed: false;
+};
+
+export type RemoveExternalMcpConnectionConflict = {
+  error: "connection_name_mismatch" | "connection_in_use";
+  message: string;
+  connection: {
+    id: string;
+    name: string;
+  };
+  requiredBy?: Array<ExternalMcpConnectionRequiredBy>;
+};
+
+export type RemoveExternalMcpConnectionBody = {
+  /**
+   * True only when the user explicitly asked to remove this connection. Finding or selecting it is not a request to remove it.
+   */
+  confirm: true;
+  /**
+   * The connection's exact name, as getMcpConnections lists it. Nothing is removed when it does not match.
+   */
+  expectedName: string;
+  /**
+   * Also remove it from plugins that need it. Send true only after telling the user which plugins use it and they agree.
+   */
+  detachFromPlugins?: boolean;
 };
 
 export type ExternalMcpConnectStartResponse = {
@@ -8076,6 +8136,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
@@ -8117,6 +8178,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -8278,6 +8348,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
@@ -8319,6 +8390,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "everyone";
         everyone: boolean;
@@ -28809,6 +28889,59 @@ export type PutV1McpConnectionsByConnectionIdAccessResponses = {
 
 export type PutV1McpConnectionsByConnectionIdAccessResponse =
   PutV1McpConnectionsByConnectionIdAccessResponses[keyof PutV1McpConnectionsByConnectionIdAccessResponses];
+
+export type RemoveMcpConnectionData = {
+  body: RemoveExternalMcpConnectionBody;
+  path: {
+    /**
+     * Den TypeID with 'emc_' prefix and a 26-character base32 suffix.
+     */
+    connectionId: string;
+  };
+  query?: never;
+  url: "/v1/mcp-connections/{connectionId}/remove";
+};
+
+export type RemoveMcpConnectionErrors = {
+  /**
+   * Invalid request, for example confirm missing.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * The caller may not remove this connection, or must sign in again.
+   */
+  403: ForbiddenError;
+  /**
+   * Unknown connection, or removing connections through agents is off for this organization.
+   */
+  404: ExternalMcpConnectionNotFoundError;
+  /**
+   * The name does not match this connection, or plugins need it.
+   */
+  409: RemoveExternalMcpConnectionConflict;
+  /**
+   * The removal could not be confirmed.
+   */
+  500: {
+    error: "removal_unconfirmed";
+    message: string;
+  };
+};
+
+export type RemoveMcpConnectionError = RemoveMcpConnectionErrors[keyof RemoveMcpConnectionErrors];
+
+export type RemoveMcpConnectionResponses = {
+  /**
+   * The connection was removed and is no longer listed.
+   */
+  200: RemoveExternalMcpConnectionResponse;
+};
+
+export type RemoveMcpConnectionResponse = RemoveMcpConnectionResponses[keyof RemoveMcpConnectionResponses];
 
 export type PostV1McpConnectionsByConnectionIdDisconnectData = {
   body?: never;

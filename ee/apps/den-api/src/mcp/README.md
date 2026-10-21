@@ -82,6 +82,23 @@ These individual operations are blocked even though their tags may otherwise be 
 - `postOauthProvidersByProviderIdDisconnect`: removing a connected OAuth credential is a mutation that should stay behind explicit UI/API flows, not an agent-callable tool.
 - `postV1OauthProvidersByProviderIdDisconnect`: generated OpenAPI ID for disconnecting an OAuth provider.
 
+## Removing connections
+
+The dashboard's `DELETE /v1/mcp-connections/{connectionId}` stays blocked
+(`Authentication`). Agents remove a connection through
+`removeMcpConnection` (`POST /v1/mcp-connections/{connectionId}/remove`),
+which is shown and accepted only with the `agentConnectionRemoval` feature and
+only to a person's own agent (`usageSource: "agent"`, see
+`catalog-availability.ts`): saved Workflows, Automations and Apps never get
+it. The request carries `confirm: true` and the connection's exact
+`expectedName`, so a wrong or ambiguous match removes nothing (409
+`connection_name_mismatch`). Permissions are the same as the dashboard
+(`connections.delete`, or having added the connection). A connection that
+active plugins need is refused (409 `connection_in_use`, with `requiredBy`)
+unless the user agreed to `detachFromPlugins`. Credentials, access grants and
+the OAuth app are deleted in the same transaction, and the route checks the
+connection is gone before answering `listed: false`.
+
 ## Untagged Operations
 
 Untagged operations are excluded by default. Today these are OAuth/MCP discovery and registration routes, for example:

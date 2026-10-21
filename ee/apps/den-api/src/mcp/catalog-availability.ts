@@ -3,7 +3,17 @@ export type CatalogAvailabilityContext = {
   generatedArtifactViewsEnabled: boolean
   /** Managed deployment planning, launch preparation and status: managed deployments enabled. */
   managedDeploymentsEnabled: boolean
+  /** Removing an organization connection on the user's explicit request: agent connection removal enabled. */
+  agentConnectionRemovalEnabled: boolean
+  /**
+   * What started these capability calls. Removal is offered only to a person's
+   * own agent, never to saved Workflows, Automations or Apps that run unattended.
+   */
+  usageSource?: string
 }
+
+/** The agent-facing connection removal operation (POST /v1/mcp-connections/{connectionId}/remove). */
+export const AGENT_CONNECTION_REMOVAL_PATH = "/v1/mcp-connections/{connectionId}/remove"
 
 export function catalogOperationAvailableToCapabilities(
   context: CatalogAvailabilityContext,
@@ -13,6 +23,10 @@ export function catalogOperationAvailableToCapabilities(
   // the managed deployments rollout; the routes themselves still enforce permissions and features.
   if (operation.path === "/v1/managed-deployments" || operation.path.startsWith("/v1/managed-deployments/")) {
     return context.managedDeploymentsEnabled
+  }
+  // Hidden until the organization has the rollout; the route also refuses while it is off.
+  if (operation.path === AGENT_CONNECTION_REMOVAL_PATH) {
+    return context.agentConnectionRemovalEnabled && context.usageSource === "agent"
   }
   if (context.generatedArtifactViewsEnabled) return true
   return operation.path !== "/v1/workflows/{configObjectId}/views"

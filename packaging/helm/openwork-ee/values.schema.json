@@ -48,6 +48,16 @@
               ],
               "description": "Live provider sync: Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. Renders DEN_FEATURE_LIVE_PROVIDER_SYNC."
             },
+            "agentConnectionRemoval": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Agents remove connections: People allowed to remove a connection can ask their agent to remove it, after naming the exact connection and confirming. Renders DEN_FEATURE_AGENT_CONNECTION_REMOVAL."
+            },
             "managedDeployments": {
               "enum": [
                 "",

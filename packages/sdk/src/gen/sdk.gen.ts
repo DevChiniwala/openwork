@@ -1032,6 +1032,9 @@ import type {
   RecordWorkbotTelemetryErrors,
   RecordWorkbotTelemetryResponses,
   RemoteSessionStatusRequest,
+  RemoveExternalMcpConnectionBody,
+  RemoveMcpConnectionErrors,
+  RemoveMcpConnectionResponses,
   RenamePermissionSetBody,
   ReplaceGoogleDocumentTextErrors,
   ReplaceGoogleDocumentTextResponses,
@@ -12686,6 +12689,43 @@ export class DenClient extends HeyApiClient {
         ...params.headers,
       },
     });
+  }
+
+  /**
+   * Remove an organization connection
+   *
+   * Permanently removes one organization connection (connector) from OpenWork: who can use it, every stored account and its OAuth app. It does not delete anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName and confirm true. A connection that plugins need is not removed unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Removing needs the Remove any connection permission, or having added the connection. Never retry an uncertain removal; list connections to check instead.
+   */
+  public removeMcpConnection<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+      removeExternalMcpConnectionBody: RemoveExternalMcpConnectionBody;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "connectionId" },
+            { key: "removeExternalMcpConnectionBody", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<RemoveMcpConnectionResponses, RemoveMcpConnectionErrors, ThrowOnError>(
+      {
+        url: "/v1/mcp-connections/{connectionId}/remove",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    );
   }
 
   /**

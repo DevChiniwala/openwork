@@ -140,7 +140,9 @@ export function AdminConnectorPageScreen({ connection }: { connection: ExternalM
   const canShareWithEveryone = memberAccess?.canShareWithEveryone === true;
   // People can always edit and remove connections they added.
   const editLockedReason = memberAccess?.canEditAnyConnection || connection.createdByYou ? null : permissionLockReason("connections.update");
-  const canRemove = memberAccess?.canRemoveAnyConnection === true || connection.createdByYou === true;
+  // Prefer the server's answer: it comes with the connection, so it stays current
+  // when permissions change while Den is open. The org context is loaded once.
+  const canRemove = connection.canRemove ?? (memberAccess?.canRemoveAnyConnection === true || connection.createdByYou === true);
   const saveAccess = useSaveConnectionAccess();
   const deleteConnection = useDeleteMcpConnection();
   const disconnect = useDisconnectMcpConnection();
