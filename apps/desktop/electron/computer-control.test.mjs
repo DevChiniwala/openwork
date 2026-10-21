@@ -375,19 +375,70 @@ test("each step records computer time and the model's time since the previous st
   assert.equal(steps[2].modelMs, undefined, "a new turn's first step is not timed against the last turn");
 });
 
-test("scripts run under the computer use flag, the chat's access and this Mac only", async (t) => {
+/** Waits for the script request showing `code` and returns it. */
+async function scriptRequest(f, code) {
+  for (let waited = 0; waited < 2_000; waited += 5) {
+    const request = f.requests.findLast((value) => value?.reason === "script" && value.script.code === code);
+    if (request) return request;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("No script request was shown.");
+}
+
+test("scripts run under the computer use flag, the chat's access, the person's approval and this Mac only", async (t) => {
   const ran = [];
   const f = fixture({ remote: true, authority: async () => true, runScript: async (request) => { ran.push(request); return { ok: true, stdout: "done" }; } });
   t.after(() => f.control.reset(true));
   assert.equal((await f.control.script({ sessionId: "chat", app: "applescript", code: "return 1" })).error.code, "computer_unavailable");
   await f.control.setFeatureEnabled(true);
   assert.equal((await f.control.script({ sessionId: "chat", app: "terminal", code: "ls" })).error.code, "invalid_arguments");
-  assert.deepEqual(await f.control.script({ sessionId: "chat", app: "applescript", code: "return 1" }), { ok: true, stdout: "done" });
+  const pending = f.control.script({ sessionId: "chat", app: "applescript", code: "return 1" });
+  const request = await scriptRequest(f, "return 1");
+  assert.deepEqual(request.script, { app: "applescript", code: "return 1" }, "the person sees the exact full script");
+  assert.deepEqual(ran, [], "nothing runs before the answer");
+  await assert.rejects(f.control.answerRequest({ sessionId: "chat", answer: "allow", id: "another-request" }), /changed/);
+  await f.control.answerRequest({ sessionId: "chat", answer: "allow", id: request.id });
+  assert.deepEqual(await pending, { ok: true, stdout: "done" });
   assert.deepEqual(ran, [{ app: "applescript", code: "return 1", timeoutMs: 30_000 }]);
+  assert.equal(f.requests.at(-1), null);
   await f.control.setRemoteEnabled(true);
   await f.control.choose({ sessionId: "chat", targetId: "vm" });
   assert.equal((await f.control.script({ sessionId: "chat", app: "jxa", code: "1" })).error.code, "script_unavailable");
   assert.equal(ran.length, 1);
+});
+
+test("declined scripts never run, always-run skips the question for that app, and turning computer use off stops scripts", async (t) => {
+  const ran = [];
+  let release = () => {};
+  const f = fixture({ runScript: async (request, signal) => {
+    ran.push(request.code);
+    if (request.code !== "slow") return { ok: true };
+    await new Promise((resolve, reject) => { release = () => resolve(undefined); signal.addEventListener("abort", () => reject(signal.reason), { once: true }); });
+    return { ok: true };
+  } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  const declined = f.control.script({ sessionId: "chat", app: "jxa", code: "first" });
+  await f.control.answerRequest({ sessionId: "chat", answer: "dismiss", id: (await scriptRequest(f, "first")).id });
+  assert.equal((await declined).error.code, "script_declined");
+  assert.deepEqual(ran, []);
+  const always = f.control.script({ sessionId: "chat", app: "jxa", code: "second" });
+  await f.control.answerRequest({ sessionId: "chat", answer: "always", id: (await scriptRequest(f, "second")).id });
+  assert.equal((await always).ok, true);
+  const shown = f.requests.length;
+  assert.equal((await f.control.script({ sessionId: "chat", app: "jxa", code: "third" })).ok, true);
+  assert.equal(f.requests.length, shown, "no new question for an always-run app");
+  const waiting = f.control.script({ sessionId: "chat", app: "blender", code: "result = 1" });
+  await scriptRequest(f, "result = 1");
+  const running = f.control.script({ sessionId: "other", app: "jxa", code: "slow" });
+  const other = await scriptRequest(f, "slow");
+  await f.control.answerRequest({ sessionId: "other", answer: "allow", id: other.id });
+  for (let waited = 0; !ran.includes("slow") && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  await f.control.setFeatureEnabled(false);
+  assert.equal((await waiting).error.code, "script_declined", "a pending approval ends when computer use is turned off");
+  assert.equal((await running).error.code, "script_failed", "a running script is stopped");
+  release();
+  assert.deepEqual(ran, ["second", "third", "slow"]);
 });
 
 /** A fake osascript: records its arguments and stdin, then exits as told. */
@@ -434,8 +485,9 @@ test("Blender scripts reach the bridge with its token, and an open Blender witho
     socket.on("data", (chunk) => {
       data += chunk;
       if (!data.endsWith("\n")) return;
-      received.push(JSON.parse(data));
-      socket.end(`${JSON.stringify({ ok: true, result: 3, stdout: "" })}\n`);
+      const request = JSON.parse(data);
+      received.push(request);
+      if (request.code !== "hang") socket.end(`${JSON.stringify({ ok: true, result: 3, stdout: "" })}\n`);
     });
   });
   await new Promise((resolve) => { bridge.listen(join(stateDir, "blender.sock"), () => resolve(undefined)); });
@@ -443,4 +495,11 @@ test("Blender scripts reach the bridge with its token, and an open Blender witho
   const script = createComputerScripting({ platform: "darwin", stateDir, bridgeScript: "/bridge.py", blenderRunning: async () => true });
   assert.deepEqual(await script({ app: "blender", code: "result = len(bpy.data.objects)", timeoutMs: 5_000 }, signal), { ok: true, result: 3, stdout: "" });
   assert.deepEqual(received, [{ token: "secret-token", code: "result = len(bpy.data.objects)", timeoutMs: 5_000 }]);
+  const stop = new AbortController();
+  const hanging = script({ app: "blender", code: "hang", timeoutMs: 5_000 }, stop.signal);
+  for (let waited = 0; received.length < 2 && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  stop.abort();
+  await assert.rejects(hanging, /stopped/);
+  for (let waited = 0; received.length < 3 && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.deepEqual(received.at(-1), { token: "secret-token", cancel: true }, "stopping asks Blender to stop the script");
 });

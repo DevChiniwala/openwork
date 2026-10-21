@@ -90,7 +90,13 @@ export function createComputerScripting({ stateDir, bridgeScript, platform = pro
         settled = true; clearTimeout(timer); signal.removeEventListener("abort", stop); socket.destroy();
         if (error) reject(error); else resolve(value);
       };
-      const stop = () => finish(null, new Error("The script was stopped. Blender may still finish it."));
+      const stop = () => {
+        // Ask the bridge to stop the script at its next Python line, then stop waiting.
+        const cancel = connectSocket(socketPath);
+        cancel.on("error", () => {});
+        cancel.on("connect", () => cancel.end(`${JSON.stringify({ token, cancel: true })}\n`));
+        finish(null, new Error("The script was stopped. Blender stops it at its next Python line; effects so far may have landed."));
+      };
       const timer = setTimeout(() => finish(null, new Error("Blender did not answer in time. It may still be running the script.")), timeoutMs + 5_000);
       if (signal.aborted) { stop(); return; }
       signal.addEventListener("abort", stop, { once: true });
