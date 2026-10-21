@@ -278,8 +278,8 @@ export async function runComputerProgram(request: ProgramRequest, host: ProgramH
     }, catch: (error) => error }),
   })
   const tools = { ui: {
-    open: add("Open a website or app on this program's surface. Access follows the enabled rollout; local apps and configured remote desktops wait for the person's window approval.", z.object({ url: z.url().optional(), appId: z.string().max(256).optional(), mode: z.enum(["observe", "assist", "control"]).default("control"), purpose: z.string().max(500).default("Complete the requested task") }).strict(), async (args) => {
-      const input = request.surface === "browser" ? { url: args.url ?? issue("invalid_url", "Provide a website URL.") } : { app_id: args.appId ?? issue("missing_app", "Provide an appId from discovery, or desktop for a Linux VM."), mode: args.mode, purpose: args.purpose }
+    open: add("Open a website or app on this program's surface. Enabled computer use opens the requested target directly. Internal sessions renew silently. Resolve genuine target ambiguity from the request or ask for clarification. Human takeover requires Continue.", z.object({ url: z.url().optional(), appId: z.string().max(256).optional(), windowId: z.number().int().min(1).max(0xffffffff).optional(), mode: z.enum(["observe", "assist", "control"]).default("control"), purpose: z.string().max(500).default("Complete the requested task") }).strict(), async (args) => {
+      const input = request.surface === "browser" ? { url: args.url ?? issue("invalid_url", "Provide a website URL.") } : { app_id: args.appId ?? issue("missing_app", "Provide an appId from discovery, or desktop for a Linux VM."), mode: args.mode, purpose: args.purpose, ...(args.windowId !== undefined ? { window_id: args.windowId } : {}) }
       latest = null; images = []; mayHaveActed = true; actions++
       const receipt = { index: receipts.length, status: "unconfirmed" }
       receipts.push(receipt)

@@ -21,8 +21,8 @@ final class ControlLease {
 
 @MainActor
 final class SessionControls: NSObject {
-    /// The OpenWork desktop hosts approval and Continue over openwork/ui.
-    /// Otherwise (standalone `mcp`) the helper shows native consent and controls.
+    /// The OpenWork desktop hosts Take over, Continue and Stop over openwork/ui.
+    /// Standalone `mcp` exposes the same controls in a native panel.
     static var embedded = false
     static weak var active: SessionControls?
     private var hostID = UUID().uuidString
@@ -31,8 +31,6 @@ final class SessionControls: NSObject {
     private var inputSequence = 0
     private var lastFrameAt: TimeInterval = -.infinity
     private var canContinue = false
-    private var approval: ((WindowTarget?) -> Void)?
-    private var approvalWindows: [WindowTarget] = []
     private var menuToggle: NSMenuItem?
 
     private func publish(_ values: [String: Any]) {
@@ -40,9 +38,8 @@ final class SessionControls: NSObject {
         hostState.merge(values) { _, new in new }
         hostState["id"] = hostID
         hostState["kind"] = "state"
-        let fields: Set<String> = ["kind", "id", "phase", "appName", "appID", "pid", "windowTitle", "task", "mode", "windows", "status", "canContinue"]
+        let fields: Set<String> = ["kind", "id", "phase", "appName", "appID", "pid", "windowTitle", "task", "mode", "status", "canContinue", "cause"]
         hostState = hostState.filter { fields.contains($0.key) }
-        if hostState["phase"] as? String != "approval" { hostState.removeValue(forKey: "windows") }
         MCPOutput.shared.send(["jsonrpc": "2.0", "method": "openwork/ui", "params": hostState])
     }
     func frame(_ data: Data, width: Int, height: Int, capturedAt: Int64) {
@@ -65,17 +62,12 @@ final class SessionControls: NSObject {
         MCPOutput.shared.send(["jsonrpc": "2.0", "method": "openwork/ui", "params": value])
     }
     func hostDisconnected() {
-        cancelConsent(); onStop?()
+        onStop?()
     }
     func hostAction(_ value: [String: Any]) {
         guard Self.embedded,
               value["id"] as? String == hostID, let action = value["action"] as? String else { return }
         switch action {
-        case "approve":
-            guard let id = try? Arguments(values: value).integer("windowId", min: 1, max: Int(UInt32.max)),
-                  let target = approvalWindows.first(where: { Int($0.id) == id }), let approval else { return }
-            self.approval = nil; approvalWindows = []; approval(target)
-        case "deny": cancelConsent()
         case "resume":
             if isPaused && canContinue { onResume?() }
         case "takeover":
@@ -83,7 +75,7 @@ final class SessionControls: NSObject {
         case "watch":
             guard let visible = try? Arguments(values: value).bool("visible", default: false) else { return }
             onWatch?(visible)
-        case "stop": cancelConsent(); onStop?()
+        case "stop": onStop?()
         // Embedded sessions show no native panel; "hide"/"show" are accepted and ignored.
         default: break
         }
@@ -106,7 +98,7 @@ final class SessionControls: NSObject {
         let pause = NSMenuItem(title: "Take over", action: #selector(togglePause), keyEquivalent: "")
         pause.target = self; menu.addItem(pause); menuToggle = pause
         menu.addItem(.separator())
-        let end = NSMenuItem(title: "Stop computer use and end access", action: #selector(stopSession), keyEquivalent: "")
+        let end = NSMenuItem(title: "Stop computer use", action: #selector(stopSession), keyEquivalent: "")
         end.target = self; menu.addItem(end)
         item.menu = menu; statusItem = item
     }
@@ -119,9 +111,10 @@ final class SessionControls: NSObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var stopObserver: NSObjectProtocol?
     private var timer: Timer?
-    private var consentWindow: NSWindow?
     private var statusItem: NSStatusItem?
     var isVisible: Bool { panel?.isVisible == true }
+    private var desktopAvailable = true
+    var onAvailability: ((Bool) -> Void)?
     var onUserInteraction: (() -> Void)?
     var onPause: ((String) -> Void)?
     var onResume: (() -> Void)?
@@ -130,51 +123,9 @@ final class SessionControls: NSObject {
     var onWatch: ((Bool) -> Void)?
     var isPaused = false
 
-    func chooseWindow(app: AppIdentity, mode: AccessMode, windows: [WindowTarget], purpose: String) async throws -> WindowTarget {
-        if Self.embedded {
-            Self.active = self; hostID = UUID().uuidString; hostState = [:]; approvalWindows = windows
-            frameSequence = 0; inputSequence = 0; lastFrameAt = -.infinity; canContinue = false
-            let target: WindowTarget? = await withCheckedContinuation { continuation in
-                approval = { continuation.resume(returning: $0) }
-                publish(["phase": "approval", "appName": app.name, "appID": app.bundleID, "pid": Int(app.pid),
-                    "windowTitle": "", "task": purpose, "mode": mode.rawValue, "status": "Waiting for window approval.", "canContinue": false,
-                    "windows": windows.map { ["id": Int($0.id), "title": $0.title] }])
-            }
-            guard let target else { throw UseError("access_denied", "App access was declined. Wait for the person to ask again.", next: "human_takeover") }
-            return target
-        }
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "Allow OpenWork to use \(app.name)?"
-        alert.informativeText = "\(mode.explanation)\n\nChoose the window below. This approval lasts for this session, up to 15 minutes. App content may be sent to your selected model provider.\n\nRequested task: \(purpose)\n\nApp: \(app.bundleID)"
-        alert.icon = app.app.icon
-        alert.addButton(withTitle: mode == .control ? "Allow and start" : "Allow this session")
-        alert.addButton(withTitle: "Cancel")
-        // Allow is deliberately not the Return default: a previous app's typing must not consent.
-        alert.buttons[0].keyEquivalent = ""
-        alert.buttons[1].keyEquivalent = "\u{1b}"
-        let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 390, height: 28))
-        picker.addItems(withTitles: windows.map { String($0.title.prefix(120)) })
-        picker.setAccessibilityLabel("Window to allow")
-        alert.accessoryView = picker
-        let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
-        host.title = "Computer Use · App access"
-        host.isReleasedWhenClosed = false
-        host.center(); host.makeKeyAndOrderFront(nil); consentWindow = host
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        let response = await withCheckedContinuation { continuation in
-            alert.beginSheetModal(for: host) { continuation.resume(returning: $0) }
-        }
-        host.close(); consentWindow = nil
-        guard response == .alertFirstButtonReturn else { throw UseError("access_denied", "The person declined app access. Do not request it again unless they ask.", next: "human_takeover") }
-        return windows[picker.indexOfSelectedItem]
-    }
-    func cancelConsent() {
-        if let approval { self.approval = nil; approvalWindows = []; approval(nil); publish(["phase": "closed", "status": "Access declined.", "canContinue": false]) }
-        if let host = consentWindow, let sheet = host.attachedSheet { host.endSheet(sheet, returnCode: .cancel) }
-    }
-
     func show(app: AppIdentity, target: WindowTarget, mode: AccessMode, purpose: String) {
+        Self.active = self; hostID = UUID().uuidString; hostState = [:]
+        frameSequence = 0; inputSequence = 0; lastFrameAt = -.infinity
         isPaused = false; canContinue = true
         let presence = AgentCursor.shared
         presence.onTakeOver = { [weak self] in
@@ -208,7 +159,7 @@ final class SessionControls: NSObject {
         task.maximumNumberOfLines = 3
         task.lineBreakMode = .byTruncatingTail
         task.setAccessibilityLabel("Current task")
-        let expiry = NSTextField(labelWithString: "Access ends in 15:00")
+        let expiry = NSTextField(labelWithString: "Computer use enabled")
         expiry.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         expiry.textColor = .secondaryLabelColor
         let status = NSTextField(wrappingLabelWithString: "OpenWork is working. You can take over at any time.")
@@ -243,7 +194,7 @@ final class SessionControls: NSObject {
         statusItem = item
         }
         // Passive pointer motion (including activation-generated motion) is not takeover.
-        // Clicks, typing, scrolling and dragging on the approved app, and app switches,
+        // Clicks, typing, scrolling and dragging on the selected app, and app switches,
         // still stop agent input. Scrolling or dragging over another app (such as reading
         // the conversation while the agent works) does not; a click there activates that
         // app, and the switch below pauses control.
@@ -259,14 +210,19 @@ final class SessionControls: NSObject {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
             workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.onPause?("Paused while the desktop is unavailable. Click Continue when you are ready.") }
+                MainActor.assumeIsolated { self?.desktopAvailable = false; self?.onAvailability?(false) }
+            })
+        }
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.desktopAvailable = true; self?.onAvailability?(true) }
             })
         }
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
             MainActor.assumeIsolated {
-                if mode == .control, let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                if self?.desktopAvailable == true, mode == .control, let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                    activated.processIdentifier != app.pid, NSWorkspace.shared.frontmostApplication?.processIdentifier != app.pid {
-                    self?.onPause?("You switched apps. Continue will return to the approved window.")
+                    self?.onPause?("You switched apps. Continue will return to the selected window.")
                 }
             }
         })
@@ -279,7 +235,7 @@ final class SessionControls: NSObject {
         // Keep expiry and screenshot age current while the menu-bar controls are open.
         if Self.embedded, let timer { RunLoop.main.add(timer, forMode: .common) }
     }
-    /// Whether the pointer is over one of the approved app's windows (or the menu bar
+    /// Whether the pointer is over one of the selected app's windows (or the menu bar
     /// while it is frontmost). Unknown geometry counts, so a missed read never hides a takeover.
     private static func pointerOnApp(_ pid: pid_t, frontmost: Bool) -> Bool {
         let mouse = NSEvent.mouseLocation
@@ -306,17 +262,16 @@ final class SessionControls: NSObject {
         AgentCursor.shared.setPaused(paused, canContinue: canContinue)
         isPaused = paused; status?.stringValue = message; toggle?.title = paused ? "Continue" : "Take over"
         toggle?.isEnabled = !paused || canContinue
-        menuToggle?.title = paused ? "Continue in approved window" : "Take over"
+        menuToggle?.title = paused ? "Continue in selected window" : "Take over"
         menuToggle?.isEnabled = !paused || canContinue
     }
     func updateExpiry(seconds: Int) {
-        expiry?.stringValue = String(format: "Access ends in %d:%02d", seconds / 60, seconds % 60)
+        expiry?.stringValue = "Computer use enabled"
     }
-    func close() {
-        cancelConsent()
+    func close(stoppedByPerson: Bool = false) {
         AgentCursor.shared.end()
         if Self.active === self && hostState["phase"] as? String != "closed" {
-            publish(["phase": "closed", "status": "Access ended.", "canContinue": false])
+            publish(["phase": "closed", "status": stoppedByPerson ? "Stopped by you." : "Session ended.", "canContinue": false, "cause": stoppedByPerson ? "human_stop" : "session_end"])
         }
         Self.active = nil; canContinue = false; menuToggle = nil
         status = nil; toggle = nil; expiry = nil; isPaused = false

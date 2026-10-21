@@ -118,7 +118,7 @@ export const FEATURES = defineFeatures({
   },
   computerUse: {
     label: "Computer use",
-    description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. Personal and configured desktops require the person to choose a window; conversation-owned cloud desktops open directly. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
+    description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -134,7 +134,7 @@ export const FEATURES = defineFeatures({
 
   remoteComputers: {
     label: "Desktop: computer use on remote computers",
-    description: "Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Conversation-owned desktops open when enabled; configured desktops require a window choice. Take over and Stop stay available.",
+    description: "Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Configured and conversation-owned desktops open directly when enabled, including follow-ups and internal session renewal. Take over and Stop stay available.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
