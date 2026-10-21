@@ -132,10 +132,10 @@ $rows = @(foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File) {
     $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
     $unchanged = $false
     if ($signature.SignerCertificate) {
-        $unchanged = @($preserved | Where-Object {
-            $_.sha256 -eq $hash -and $_.subject -eq $signature.SignerCertificate.Subject -and
-            $_.thumbprint -eq $signature.SignerCertificate.Thumbprint
-        }).Count -gt 0
+        # The hash includes every embedded signature byte. Windows may choose
+        # a different valid catalog certificate on another verification host;
+        # do not confuse that host-local choice with a changed/re-signed file.
+        $unchanged = @($preserved | Where-Object { $_.sha256 -eq $hash }).Count -gt 0
     }
     [pscustomobject]@{
         file = [IO.Path]::GetRelativePath($root, $file.FullName)

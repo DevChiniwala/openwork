@@ -69,6 +69,12 @@ function Invoke-ArtifactSigning {
     $before = (Get-FileHash $thirdParty).Hash
     $output = @(Invoke-TestScript -Arguments @('-Mode', 'Sign', '-Path', $thirdParty))
     if ($output[-1] -ne 0 -or (Get-FileHash $thirdParty).Hash -ne $before) { throw 'Valid third-party binary changed' }
+    # Windows can select a catalog certificate on one host and the embedded
+    # certificate on another for the very same file. The byte hash is stable.
+    $preservation = Get-Content $env:WINDOWS_PRESERVED_SIGNATURES | ConvertFrom-Json
+    $preservation.subject = 'CN=Alternate validation-host catalog certificate'
+    $preservation.thumbprint = '00'
+    $preservation | ConvertTo-Json -Compress | Set-Content $env:WINDOWS_PRESERVED_SIGNATURES
     [IO.File]::WriteAllBytes((Join-Path $payload 'linux.node'), [byte[]]@(0x7f, 0x45, 0x4c, 0x46))
     [IO.File]::WriteAllBytes((Join-Path $payload 'darwin.node'), [byte[]]@(0xcf, 0xfa, 0xed, 0xfe))
     $output = @(Invoke-TestScript -Arguments @('-Mode', 'Verify', '-Path', $payload, '-Installer', $installer, '-Report', (Join-Path $root 'valid.json')))
