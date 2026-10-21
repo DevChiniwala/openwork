@@ -22,12 +22,22 @@ test("a developer can inspect, move, resize and dismiss session diagnostics with
     await user.screenshot();
   });
 
-  await step("after: developer mode shows versions, waiting state and measured connection health", async () => {
+  await step("after: the bottom rail bug opens diagnostics with a matching corner button", async () => {
     await user.press(world.paletteShortcut);
     await user.see({ role: "combobox" });
     await user.type({ role: "combobox" }, "Enable Developer Mode");
     await user.click({ text: "Enable Developer Mode" });
+    await user.notSee({ testId: "session-debug-panel" });
+    await user.see({ role: "button", label: "Show session debug" });
+    const rail = (await probe.dom('[data-testid="session-debug-rail"]')).elements[0]!.rect;
+    expect(rail.bottom).toBeGreaterThan(850);
+    expect(rail.right).toBeGreaterThan(1200);
+    await user.screenshot();
+    await user.click({ role: "button", label: "Show session debug" });
     await user.see({ testId: "session-debug-panel" });
+    const hide = (await probe.dom('[aria-label="Hide session debug"]')).elements[0]!.rect;
+    expect(Math.abs((hide.left + hide.right) / 2 - (rail.left + rail.right) / 2)).toBeLessThanOrEqual(2);
+    expect(Math.abs((hide.top + hide.bottom) / 2 - (rail.top + rail.bottom) / 2)).toBeLessThanOrEqual(2);
     await user.see({ text: /^Connected$/ }, { timeoutMs: 20_000 });
     const text = (await probe.dom(panel)).elements[0]?.text ?? "";
     expect(text).toContain("Waiting on");
@@ -58,9 +68,14 @@ test("a developer can inspect, move, resize and dismiss session diagnostics with
   });
 
   await step("dismissal is reversible and resizing the viewport keeps the controls reachable", async () => {
-    await user.click({ role: "button", label: "Dismiss session debug" });
+    await user.click({ role: "button", label: "Hide session debug" });
     await user.notSee({ testId: "session-debug-panel" });
     await user.see("composer");
+    await user.click({ role: "button", label: "Show session debug" });
+    const reopened = await rect();
+    expect(reopened.left).toBeGreaterThan(800);
+    await user.press("Escape");
+    await user.notSee({ testId: "session-debug-panel" });
     await user.click({ role: "button", label: "Show session debug" });
     await user.resizeViewport({ width: 640, height: 480, deviceScaleFactor: 1 });
     const bounds = await probe.eventually(rect, { within: 5_000, label: "debug panel stays in the smaller viewport", until: value => value.right <= 640 && value.bottom <= 480 });

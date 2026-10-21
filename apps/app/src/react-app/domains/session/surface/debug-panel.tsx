@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronRight, Copy, Grip, GripHorizontal, RefreshCw, X } from "lucide-react";
+import { Check, ChevronRight, Copy, Bug, GripHorizontal, RefreshCw, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useDebugRailSlot } from "../panel/debug-rail-slot";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { appBuildInfo } from "@/app/lib/desktop";
@@ -15,16 +17,6 @@ import { useWorkspaceSyncStreamStore, workspaceSyncStreamKey } from "../sync/ses
 import type { SessionRenderModel } from "../sync/transition-controller";
 
 type PanelBounds = { left: number; top: number; width: number; height: number };
-
-function fitInViewport(bounds: PanelBounds): PanelBounds {
-  const width = Math.min(Math.max(300, bounds.width), window.innerWidth - 16);
-  const height = Math.min(Math.max(240, bounds.height), window.innerHeight - 16);
-  return {
-    width, height,
-    left: Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8)),
-    top: Math.max(8, Math.min(bounds.top, window.innerHeight - height - 8)),
-  };
-}
 
 function DiagnosticTable({ rows }: { rows: readonly (readonly [string, string | number])[] }) {
   return (
@@ -53,12 +45,12 @@ export function SessionDebugPanel(props: {
   modelLabel: string;
   waitingOn: string;
 }) {
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(true);
+  const slot = useDebugRailSlot();
+  const panelRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
-  const [bounds, setBounds] = useState(() => fitInViewport({
-    left: window.innerWidth - 396, top: window.innerHeight - 432, width: 380, height: 352,
-  }));
-  const interaction = useRef<{ kind: "move" | "resize"; x: number; y: number; bounds: PanelBounds } | null>(null);
+  const [bounds, setBounds] = useState<PanelBounds>({ left: 0, top: 0, width: 380, height: 352 });
+  const interaction = useRef<{ kind: "move" | "resize"; x: number; y: number; bounds: PanelBounds; rect: DOMRect } | null>(null);
   const streamKey = workspaceSyncStreamKey({ workspaceId: props.workspaceId, baseUrl: props.opencodeBaseUrl });
   const streamPhase = useWorkspaceSyncStreamStore(state => state.phasesByKey[streamKey]);
   const reconcileHealth = useWorkspaceSyncStreamStore(state => state.reconcileHealthByKey[streamKey]);
@@ -95,7 +87,7 @@ export function SessionDebugPanel(props: {
   });
 
   useEffect(() => {
-    const fit = () => setBounds(previous => fitInViewport(previous));
+    const fit = () => setBounds({ left: 0, top: 0, width: Math.min(380, window.innerWidth), height: Math.min(352, window.innerHeight) });
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, []);
@@ -135,29 +127,41 @@ export function SessionDebugPanel(props: {
     event.preventDefault();
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
-    interaction.current = { kind, x: event.clientX, y: event.clientY, bounds };
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (rect) interaction.current = { kind, x: event.clientX, y: event.clientY, bounds, rect };
   }
   function movePointer(event: PointerEvent<HTMLButtonElement>) {
     const start = interaction.current;
     if (!start) return;
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
-    setBounds(fitInViewport(start.kind === "move"
-      ? { ...start.bounds, left: start.bounds.left + dx, top: start.bounds.top + dy }
-      : { ...start.bounds,
-        width: Math.min(start.bounds.width + dx, window.innerWidth - start.bounds.left - 8),
-        height: Math.min(start.bounds.height + dy, window.innerHeight - start.bounds.top - 8) }));
+    updateBounds(start.bounds, start.rect, dx, dy, start.kind);
+  }
+  function updateBounds(previous: PanelBounds, rect: DOMRect, dx: number, dy: number, kind: "move" | "resize") {
+    if (kind === "move") {
+      setBounds({
+        ...previous,
+        left: previous.left + Math.max(-rect.left, Math.min(dx, window.innerWidth - rect.right)),
+        top: previous.top + Math.max(-rect.top, Math.min(dy, window.innerHeight - rect.bottom)),
+      });
+      return;
+    }
+    const width = Math.max(Math.min(300, window.innerWidth), Math.min(previous.width + dx, window.innerWidth - rect.left));
+    const height = Math.max(Math.min(240, window.innerHeight), Math.min(previous.height + dy, window.innerHeight - rect.top));
+    // Base UI anchors the bottom-right corner. Offset size changes so resizing
+    // keeps the moved panel's top-left corner in place.
+    setBounds({ ...previous, width, height,
+      left: previous.left + width - previous.width,
+      top: previous.top + height - previous.height });
   }
   function adjustWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, kind: "move" | "resize") {
     const dx = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     const dy = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!dx && !dy) return;
     event.preventDefault();
+    const rect = panelRef.current?.getBoundingClientRect();
     const amount = event.shiftKey ? 40 : 10;
-    setBounds(previous => fitInViewport(kind === "move"
-      ? { ...previous, left: previous.left + dx * amount, top: previous.top + dy * amount }
-      : { ...previous, width: Math.min(previous.width + dx * amount, window.innerWidth - previous.left - 8),
-        height: Math.min(previous.height + dy * amount, window.innerHeight - previous.top - 8) }));
+    if (rect) updateBounds(bounds, rect, dx * amount, dy * amount, kind);
   }
   async function copyDiagnostics() {
     try {
@@ -172,19 +176,22 @@ export function SessionDebugPanel(props: {
     }
   }
 
-  if (dismissed) return createPortal(
-    <Button variant="secondary" size="sm" className="fixed bottom-20 right-4 z-30 text-xs" onClick={() => setDismissed(false)}>
-      Show session debug
-    </Button>, document.body,
-  );
+  if (!slot) return null;
 
-  // Persistent movable developer utility, rather than an anchored menu. The portal
-  // escapes transformed chat panes; native pointer capture keeps dragging local.
   return createPortal(
-    <section aria-label="React session debug" data-testid="session-debug-panel" style={bounds}
-      className="fixed z-30 flex flex-col overflow-hidden rounded-2xl bg-dls-surface text-xs text-dls-secondary shadow-[var(--dls-card-shadow)]"
-      onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setDismissed(true); } }}
-    >
+    <Popover open={!dismissed} onOpenChange={open => {
+      setDismissed(!open);
+      if (open) setBounds({ left: 0, top: 0, width: Math.min(380, window.innerWidth), height: Math.min(352, window.innerHeight) });
+    }}>
+      <PopoverTrigger render={<Button variant="ghost" size="icon-sm" className="rounded-xl" aria-label="Show session debug" title="Show session debug" />}>
+        <Bug className="size-4" />
+      </PopoverTrigger>
+      <PopoverContent ref={panelRef} aria-label="React session debug" data-testid="session-debug-panel"
+        // Overlap the trigger so the footer bug occupies its exact position.
+        side="top" align="end" alignOffset={-4} sideOffset={-40} collisionPadding={0}
+        style={{ width: bounds.width, height: bounds.height, translate: `${bounds.left}px ${bounds.top}px` }}
+        className="gap-0 overflow-hidden rounded-2xl bg-dls-surface p-0 text-xs text-dls-secondary shadow-[var(--dls-card-shadow)] ring-0 transition-none data-open:animate-none data-closed:animate-none"
+      >
       <header className="flex shrink-0 items-center gap-1 border-b border-dls-border px-3 py-2">
         <Button variant="ghost" size="sm" className="min-w-0 flex-1 touch-none select-none justify-start gap-2 px-0 text-xs font-medium text-dls-text cursor-grab active:cursor-grabbing"
           aria-label="Move session debug" title="Drag to move; arrow keys to nudge"
@@ -208,21 +215,23 @@ export function SessionDebugPanel(props: {
           <CollapsibleContent><DiagnosticTable rows={details} /></CollapsibleContent>
         </Collapsible>
       </div>
-      <footer className="shrink-0 border-t border-dls-border px-3 py-2 text-[11px]">
-        <div className="flex items-center gap-2">
+      <footer className="shrink-0 border-t border-dls-border px-1 py-2 text-[11px]">
+        <div className="flex items-center gap-2 px-2">
           <span className={data && !connected ? "text-destructive" : "text-dls-text"}>{connectionLabel}</span>
           <span className="ml-auto tabular-nums" title="Combined server and engine health round trip, including proxy overhead">Health RTT {latency}</span>
           <Button variant="ghost" size="icon-sm" aria-label="Refresh diagnostics" title="Refresh diagnostics" disabled={diagnostics.isFetching} onClick={() => void diagnostics.refetch()}><RefreshCw className="size-3" /></Button>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span>Event stream: {streamPhase ?? "Not started"}</span>
-          <Button variant="ghost" size="icon-sm" className="touch-none cursor-se-resize" aria-label="Resize session debug" title="Drag to resize; arrow keys to resize"
+          <span className="pl-2">Event stream: {streamPhase ?? "Not started"}</span>
+          <Button variant="ghost" size="icon-sm" className="ml-auto touch-none cursor-se-resize" aria-label="Resize session debug" title="Drag to resize; arrow keys to resize"
             onPointerDown={event => startInteraction(event, "resize")} onPointerMove={movePointer}
             onPointerUp={() => { interaction.current = null; }} onPointerCancel={() => { interaction.current = null; }}
             onLostPointerCapture={() => { interaction.current = null; }} onKeyDown={event => adjustWithKeyboard(event, "resize")}
-          ><Grip className="size-3" /></Button>
+          ><GripHorizontal className="size-3" /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Hide session debug" title="Hide session debug" onClick={() => setDismissed(true)}><Bug className="size-4" /></Button>
         </div>
       </footer>
-    </section>, document.body,
+      </PopoverContent>
+    </Popover>, slot,
   );
 }
