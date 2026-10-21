@@ -44,6 +44,11 @@ class AdoptionTests(unittest.TestCase):
                     self.assertEqual(change["actions"], ["no-op"])
                     key = "result" if resource["type"] == "random_password" else "secret_data"
                     self.assertEqual(change["before"][key], change["after"][key])
+                if resource["type"] == "google_sql_user":
+                    self.assertEqual(change["before"]["host"], "")
+                    self.assertEqual(change["after"]["host"], "")
+                    self.assertEqual(change["actions"], ["no-op"])
+                    self.assertTrue(change["before"]["password"] == change["after"]["password"], "SQL password must remain unchanged")
                 if resource["type"] == "google_sql_database_instance":
                     self.assertEqual(change["after"]["database_version"], "MYSQL_8_0")
                     self.assertEqual(change["after"]["name"], change["before"]["name"])
@@ -53,6 +58,7 @@ class AdoptionTests(unittest.TestCase):
             ("google_secret_manager_secret_version", {"actions": ["update"], "before": {}, "after": {}}),
             ("random_password", {"actions": ["delete", "create"], "before": {}, "after": {}}),
             ("google_sql_user", {"actions": ["update"], "before": {"password": "same"}, "after": {"password": "same"}, "after_unknown": {"password": True}}),
+            ("google_sql_user", {"actions": ["delete", "create"], "before": {"host": ""}, "after": {"host": "%"}, "replace_paths": [["host"]]}),
             ("google_sql_database_instance", {"actions": ["update"], "before": {"database_version": "MYSQL_8_0"}, "after": {"database_version": "MYSQL_8_4"}}),
             ("google_cloud_run_v2_service", {"actions": ["delete", "create"]}),
         ]:

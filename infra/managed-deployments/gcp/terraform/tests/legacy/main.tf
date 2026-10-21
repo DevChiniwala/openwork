@@ -57,7 +57,7 @@ resource "google_sql_database" "main" {
 resource "google_sql_user" "main" {
   project  = "test-project"
   name     = "openwork"
-  host     = "%"
+  host     = "" # Observed legacy identity when the managed root omits host.
   instance = google_sql_database_instance.main.name
   password = random_password.values["database"].result
   lifecycle { prevent_destroy = true }

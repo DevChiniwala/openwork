@@ -31,6 +31,10 @@ run "managed_maintenance_prepares_disabled_revisions" {
 run "managed_compatibility" {
   command = apply
   assert {
+    condition     = google_sql_user.openwork[0].host == ""
+    error_message = "Managed SQL user must retain its observed empty legacy host identity."
+  }
+  assert {
     condition     = google_sql_database_instance.this[0].name == "ow-example-mysql" && google_sql_database_instance.this[0].database_version == "MYSQL_8_0" && google_sql_database_instance.this[0].deletion_protection && google_sql_database_instance.this[0].settings[0].deletion_protection_enabled
     error_message = "Adoption must retain protected MySQL 8.0 and the old physical name."
   }
