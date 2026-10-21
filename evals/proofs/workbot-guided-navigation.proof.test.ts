@@ -86,14 +86,20 @@ test("Workbot offers a document it mentions and the conversation stays open besi
     await user.see({ text: "Opening in Documents…" });
     // Until it loads, the chip claims no document: the next message would not reference the wrong one.
     await user.notSee({ testId: "workbot-view-context", text: /Project brief/ });
-    evidence.recordAssertionEvidence("A requested document reads as opening until Drive answers", "Skeleton and 'Opening in Documents…' while metadata is held", (await probe.dom("[data-workbot-document-navigation=opening]")).elements.length === 1);
+    // The conversation renders on Home (hidden) and beside the document, so count at least one.
+    const openingShown = (await probe.dom('[data-workbot-document-navigation="opening"]')).elements.length >= 1;
+    expect(openingShown).toBe(true);
+    evidence.recordAssertionEvidence("A requested document reads as opening until Drive answers", "Skeleton and 'Opening in Documents…' while metadata is held", openingShown);
     await user.screenshot();
     world.releaseDocumentMetadata();
     await user.see({ role: "textbox", label: "Document text" }, { value: "Project overview" });
     await user.see({ text: "Opened in Documents" });
     await user.see({ testId: "workbot-view-context", text: /Project brief\.txt · Read-only context/ });
     expect((await probe.dom("[data-workbot-workspace-chat]")).elements).toHaveLength(1);
-    evidence.recordAssertionEvidence("Opened is only said once the document is on screen", "Project brief shown; status 'Opened in Documents'; conversation still open", (await probe.dom("[data-workbot-document-navigation=opened]")).elements.length === 1);
+    // The conversation renders on Home (hidden) and beside the document, so count at least one.
+    const openedShown = (await probe.dom('[data-workbot-document-navigation="opened"]')).elements.length >= 1;
+    expect(openedShown).toBe(true);
+    evidence.recordAssertionEvidence("Opened is only said once the document is on screen", "Project brief shown; status 'Opened in Documents'; conversation still open", openedShown);
     await user.screenshot();
   });
   await step("reloading the conversation never replays an earlier request to open a document", async () => {
@@ -132,7 +138,10 @@ test("Workbot offers a document it mentions and the conversation stays open besi
     await user.click({ role: "button", label: "Show workspace chat" });
     await user.see({ text: "Not opened, because you moved on." });
     expect((await probe.dom('.ow-document-tabs [data-document-id="file_sheet"]')).elements).toHaveLength(0);
-    evidence.recordAssertionEvidence("The member's own choice wins over a slower request", "Project brief stays on screen; no Trigger phrases tab; status offers Open", (await probe.dom("[data-workbot-document-navigation=superseded]")).elements.length === 1);
+    // The conversation renders on Home (hidden) and beside the document, so count at least one.
+    const setAsideShown = (await probe.dom('[data-workbot-document-navigation="superseded"]')).elements.length >= 1;
+    expect(setAsideShown).toBe(true);
+    evidence.recordAssertionEvidence("The member's own choice wins over a slower request", "Project brief stays on screen; no Trigger phrases tab; status offers Open", setAsideShown);
     await user.screenshot();
   });
   await step("a document the member cannot open is reported as not opened and the current one stays", async () => {
