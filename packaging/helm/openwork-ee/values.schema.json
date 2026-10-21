@@ -148,26 +148,6 @@
               ],
               "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
             },
-            "headlessDurableTurns": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Cloud tasks survive restarts and updates: Workbot, Slack and Automations answers run one saved step at a time, keep going through OpenWork updates, and resume on their own after a restart or server failure, without waiting for someone to reopen the chat. Renders DEN_FEATURE_HEADLESS_DURABLE_TURNS."
-            },
-            "headlessSessionCells": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Workbot: each chat in its own space: Each Workbot chat is stored on its own, so long histories stay fast to open and move during updates. Renders DEN_FEATURE_HEADLESS_SESSION_CELLS."
-            },
             "gatewayDashboard": {
               "enum": [
                 "",
@@ -799,6 +779,26 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "headlessSessionIndex": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "headlessDurableTurns": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "headlessSessionCells": {
               "enum": [
                 "",
                 "true",

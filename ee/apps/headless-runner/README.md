@@ -166,8 +166,7 @@ A caller with more than one conversation per person (Workbot's side chats) sets 
 Without it, a turn cut off by a restart, a deploy or a failover, or paused every 50 minutes for a fresh MCP token
 (`credentials_refresh`), waits `interrupted` until its caller re-sends it. With `HEADLESS_DEN_API_URL`,
 `HEADLESS_DEN_CALLBACK_TOKEN` and `HEADLESS_GRANT_KEY` set (all three, or the runner refuses to start), turns that
-Den sends with a **resume grant** (`credentials.resumeGrant`, minted per turn when `headlessDurableTurns` is on for
-the organization) keep going on their own:
+Den sends with a **resume grant** (`credentials.resumeGrant`, minted for every named turn) keep going on their own:
 
 - **The grant is kept encrypted** on the turn (AES-256-GCM, keyed by `HEADLESS_GRANT_KEY`). It is never returned by
   the API, logged, reported, or included in an [export](#move-conversations-to-node). A value that doesn't decrypt
@@ -183,14 +182,14 @@ the organization) keep going on their own:
   another node, recovers its turns and resumes them with no request.
 - **Failures.** A busy or unreachable Den (429, 5xx, timeout) is retried per turn after 30 s, doubling up to 15
   minutes, with jitter (and never before Den's `retryAfterMs`). A grant Den refuses for good (403: expired, revoked,
-  member left, feature off, or not this turn's) is forgotten, so the turn stays `interrupted` for its caller. A 401 or
+  member left, or not this turn's) is forgotten, so the turn stays `interrupted` for its caller. A 401 or
   404 means the runner's settings are wrong: self-resume stops until a restart and `resume_config_invalid` is
   reported once. Reports carry codes and ids only (`resume_exchange_failed`, `resume_config_invalid`,
   `resume_sweep_failed`, `resume_grant_unreadable`, `resume_grant_store_failed`).
 - A resumed turn uses the runner's `HEADLESS_MODEL_API_KEY`: a caller's own per-turn model key is never stored.
 
 Callers keep their re-send logic as a fallback; sends are idempotent. Deploy a runner that accepts `resumeGrant` and
-`execution` before turning `headlessDurableTurns` on: older runners refuse the unknown fields.
+`execution` before deploying a GA Den: older runners refuse the unknown fields.
 
 ## Den's session index
 
@@ -209,9 +208,9 @@ index, never a turn.
 ## Step mode
 
 A turn sent with `execution: "steps"` runs one step at a time from what is stored, instead of in one go. Callers send
-it only when `headlessDurableTurns` is on for the organization (Den's Slack runner and Automations, and Workbot), the
-same feature that mints [resume grants](#self-resume), so step mode and self-resume turn on and off together; a turn
-sent without it runs exactly as before, and a resent turn keeps the mode it was admitted with. Its background tasks
+it for all new turns (Den's Slack runner and Automations, and Workbot). [Resume grants](#self-resume)
+are minted for all named turns. Older Dens may send turns without it, which run as before; a resent turn keeps
+the mode it was admitted with. Its background tasks
 and their reports run in step mode too. Lanes, the queue, `HEADLESS_MAX_CONCURRENT_TURNS`, Stop, follow-ups that
 interrupt, the repeat check and `credentials_refresh` work the same way.
 
@@ -245,10 +244,8 @@ interrupt, the repeat check and `credentials_refresh` work the same way.
 - **Moving conversations.** Exports carry each turn's `execution`. A session with a running turn can't be exported,
   so the next-step schedule and checkpoints are never needed after an import, and never included.
 
-Turn `headlessDurableTurns` on only after the runner deploy that accepts `execution` is live: older runners refuse the
-unknown field. Turning it off sends new turns without `execution` or a grant. A turn already admitted in step mode keeps
-its mode; if it loses its credentials, Den refuses its grant while the feature is off, so it waits `interrupted` for
-its caller to re-send it, as turns did before.
+Saved steps are generally available; there is no organization rollout switch. Deploy a runner that accepts
+`execution` and resume grants before GA Den. Existing turns keep their stored execution mode.
 
 ## Isolation
 

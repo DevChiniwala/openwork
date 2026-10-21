@@ -41,9 +41,9 @@ export const denSessionSchema = z.object({
   verifyModel: z.boolean().default(false),
   /** Den validates the exact gateway alias and mints model access for each turn. Older Dens stay on runner credentials. */
   gatewayModels: z.boolean().default(false),
-  /** Turns run one step at a time on the runner (`headlessDurableTurns`). A Den from before it doesn't say: off. */
+  /** Turns run one step at a time on the runner (saved step turns). A Den from before it doesn't say: off. */
   stepTurns: z.boolean().default(false),
-  /** New chats get their own session cell on the runner (`headlessSessionCells`). A Den from before it doesn't say: off. */
+  /** New chats get their own session cell on the runner (per-chat session cells). A Den from before it doesn't say: off. */
   sessionCells: z.boolean().default(false),
 })
 
@@ -198,7 +198,7 @@ export function createDen(options: { apiUrl: string; publicUrl: string; serviceT
     },
     /**
      * A token for one turn. With the turn's runner `sessionId` and `messageId`, Den also returns a resume grant where
-     * turns keep going on their own (`headlessDurableTurns`); older Dens ignore both and never return one.
+     * turns keep going on their own (saved step turns); older Dens ignore both and never return one.
      */
     async runToken(
       accessToken: string,

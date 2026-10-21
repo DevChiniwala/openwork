@@ -1,7 +1,7 @@
 /**
- * Step-by-step headless turns (feature headlessDurableTurns), without a database: the protocol client sends
- * `execution: "steps"` only when given, and Slack's runner and the Automations executor ask for it only when their
- * feature check says so (a failing check sends the turn as before). The organization wiring is covered with a real
+ * Step-by-step headless turns (saved steps), without a database: the protocol client sends
+ * `execution: "steps"` only when given. Slack and Automations default to saved steps, with dependency injection
+ * for compatibility tests. The GA wiring is covered with a real
  * database in test/api/headless-step-turns.api.test.ts.
  */
 import assert from "node:assert/strict"
@@ -79,9 +79,9 @@ test("sendTurn sends execution only when given", async () => {
   assert.deepEqual(Object.keys(runner.turns[0] ?? {}).sort(), ["credentials", "messageId", "prompt"])
 })
 
-test("Slack's runner asks for step mode only when its check says so", async () => {
+test("Slack defaults to GA step mode and retains protocol test injection", async () => {
   const cases: Array<{ name: string; stepTurns?: () => Promise<boolean>; expected: "steps" | undefined }> = [
-    { name: "no check", expected: undefined },
+    { name: "GA default", expected: "steps" },
     { name: "off", stepTurns: async () => false, expected: undefined },
     { name: "check fails", stepTurns: async () => { throw new Error("den_unreachable") }, expected: undefined },
     { name: "on", stepTurns: async () => true, expected: "steps" },
@@ -96,7 +96,7 @@ test("Slack's runner asks for step mode only when its check says so", async () =
   }
 })
 
-test("the Automations executor asks for step mode only when its check says so", async () => {
+test("the Automations executor retains protocol test injection", async () => {
   const cases: Array<{ name: string; stepTurns: (organizationId: string) => Promise<boolean>; expected: "steps" | undefined }> = [
     { name: "off", stepTurns: async () => false, expected: undefined },
     { name: "check fails", stepTurns: async () => { throw new Error("den_unreachable") }, expected: undefined },
@@ -139,7 +139,7 @@ test("with the AI Gateway on, step mode and scoped model access travel together"
   assert.equal(direct.turns[0]?.execution, "steps")
   assert.deepEqual(field(direct.turns[0], "credentials", "modelAccess"), modelAccess)
 
-  // Slack: the member's resolved model with scoped access, and step mode only with the flag.
+  // Slack: the member's resolved model with scoped access, and injected execution mode.
   for (const stepTurns of [false, true]) {
     const runner = recordingRunner({ gateway: true })
     const slack = createSlackRunner(actor, runner.deps, { stepTurns: async () => stepTurns })
@@ -150,7 +150,7 @@ test("with the AI Gateway on, step mode and scoped model access travel together"
     assert.equal(runner.turns[0]?.execution, stepTurns ? "steps" : undefined)
   }
 
-  // Automations: the owner's Gateway model with scoped access, and step mode only with the flag.
+  // Automations: the owner's Gateway model with scoped access, and injected execution mode.
   for (const stepTurns of [false, true]) {
     const runner = recordingRunner({ gateway: true })
     const result = await executeHeadlessAgent({

@@ -138,3 +138,18 @@ test("fourth pass: graduated, folded and removed keys are retired and their old 
   assert.equal(parsed.problems.length, 3)
   assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
 })
+
+
+test("retired headless GA locks cannot disable durable turns or session cells", () => {
+  const parsed = parseFeatureEnvironment({
+    DEN_FEATURE_HEADLESS_DURABLE_TURNS: "false",
+    DEN_FEATURE_HEADLESS_SESSION_CELLS: "false",
+  })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, 2)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+  for (const key of ["headlessDurableTurns", "headlessSessionCells"]) {
+    assert.equal(featureKeySchema.safeParse(key).success, false)
+    assert.equal(Object.hasOwn(resolveFeatures(base), key), false)
+  }
+})

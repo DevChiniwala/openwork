@@ -1,8 +1,8 @@
 /**
- * Feature `headlessSessionCells` in Workbot: new chats get `hs_c_<32 hex>` ids with owner-scoped memory and the
- * person's existing chats are split out once per process, only with the flag. Chats are found from the runner's chat
- * list whatever the flag says, a chat in a session cell preferred, so turning the flag off never makes a chat look empty
- * or get replaced. A list that can't be read never leads to a new chat replacing an existing one.
+ * Per-chat session cells in Workbot: new chats get `hs_c_<32 hex>` ids with owner-scoped memory and the
+ * person's existing chats are split out once per process with current Den. Older Den's missing/false sessionCells
+ * field preserves legacy creation. Chats are found from the runner's list regardless, preferring a session cell, so
+ * reconnecting to an older Den never makes a chat look empty or get replaced. A list that can't be read never leads to a new chat replacing an existing one.
  * Den's session index: the index capability Den returns with a run token reaches the runner with the turn.
  */
 import assert from "node:assert/strict"
@@ -81,14 +81,14 @@ function fakeRunner(options: { split?: number } = {}) {
   return { calls, fetch, sessions, state }
 }
 
-function workbotWith(runner: ReturnType<typeof fakeRunner>, flags: { sessionCells?: boolean; indexCapability?: string } = {}) {
+function workbotWith(runner: ReturnType<typeof fakeRunner>, compat: { sessionCells?: boolean; indexCapability?: string } = {}) {
   const client = createHeadlessRunnerClient({
     config: { url: "http://runner.test", token: "x".repeat(32), owner },
     fetch: runner.fetch,
-    mintToken: async () => ({ token: "turn-token", ...(flags.indexCapability ? { indexCapability: flags.indexCapability } : {}) }),
+    mintToken: async () => ({ token: "turn-token", ...(compat.indexCapability ? { indexCapability: compat.indexCapability } : {}) }),
     maxTokenTtlMs: 3_600_000,
   })
-  return createWorkbot({ client, canSchedule: async () => false, ...(flags.sessionCells ? { sessionCells: true } : {}) })
+  return createWorkbot({ client, canSchedule: async () => false, ...(compat.sessionCells ? { sessionCells: true } : {}) })
 }
 
 const puts = (calls: Call[]) => calls.filter((call) => call.method === "PUT")
@@ -102,13 +102,13 @@ const texts = (thread: Awaited<ReturnType<ReturnType<typeof workbotWith>["readTh
 
 beforeEach(() => resetWorkbotSessionCells())
 
-test("Den's session flag: sessionCells is read, and off from a Den that doesn't send it", () => {
+test("Den protocol compatibility: missing sessionCells from an older Den defaults false", () => {
   const base = { user: { id: "u", name: null, email: "a@example.test" }, organization: { id: "o", name: "O", brandAppName: null }, memberId: "m", enabled: true, canSchedule: false }
   assert.equal(denSessionSchema.parse(base).sessionCells, false)
   assert.equal(denSessionSchema.parse({ ...base, sessionCells: true }).sessionCells, true)
 })
 
-test("off, new person: chats are created exactly as before (legacy ids, memoryOf, no split, no index capability)", async () => {
+test("older Den, new person: chats are created exactly as before (legacy ids, memoryOf, no split, no index capability)", async () => {
   const runner = fakeRunner()
   const workbot = workbotWith(runner)
   await workbot.readThread(actor)
@@ -127,7 +127,7 @@ test("off, new person: chats are created exactly as before (legacy ids, memoryOf
   assert.equal(lists(runner.calls).length, 1, "one list call per person per process")
 })
 
-test("on, new person: new chats get hs_c_ ids with owner memory, and the split is asked once per process", async () => {
+test("current Den, new person: new chats get hs_c_ ids with owner memory, and the split is asked once per process", async () => {
   const runner = fakeRunner()
   const workbot = workbotWith(runner, { sessionCells: true })
   await workbot.readThread(actor)
@@ -148,7 +148,7 @@ test("on, new person: new chats get hs_c_ ids with owner memory, and the split i
   assert.equal(lists(runner.calls).length, 1, "one list call per person per process")
 })
 
-test("turned off after on: the same main chat and side chats still open with their history, and nothing new is created", async () => {
+test("older Den after current Den: the same main chat and side chats still open with their history, and nothing new is created", async () => {
   const runner = fakeRunner()
   const on = workbotWith(runner, { sessionCells: true })
   await on.send(actor, { id: "message_0001", text: "Main history" })
@@ -174,7 +174,7 @@ test("turned off after on: the same main chat and side chats still open with the
   assert.equal(runner.sessions.has(legacyMain), false, "never a legacy main chat")
 })
 
-test("off, main chat in a cell but not listed yet: starting it finds the cell instead of creating a legacy chat", async () => {
+test("older Den, main chat in a cell but not listed yet: starting it finds the cell instead of creating a legacy chat", async () => {
   const runner = fakeRunner()
   await workbotWith(runner, { sessionCells: true }).send(actor, { id: "message_0001", text: "Main history" })
   const [cellMain] = runner.sessions.keys()
@@ -188,7 +188,7 @@ test("off, main chat in a cell but not listed yet: starting it finds the cell in
   assert.equal(runner.sessions.get(cellMain)?.turns.length, 2)
 })
 
-test("on, a legacy chat that never had a message (e.g. only a kept file) is kept, not replaced by a new cell chat", async () => {
+test("current Den, a legacy chat that never had a message (e.g. only a kept file) is kept, not replaced by a new cell chat", async () => {
   const runner = fakeRunner()
   runner.sessions.set(legacyMain, { ref: "main", turns: [], files: 1, body: {} })
   const side = workbotSideChatSessionId(actor.organizationId, actor.memberId, SIDE)
@@ -200,7 +200,7 @@ test("on, a legacy chat that never had a message (e.g. only a kept file) is kept
   assert.equal(runner.sessions.get(side)?.body.memoryOf, legacyMain, "the legacy side chat keeps sharing the main chat's memory")
 })
 
-test("on, existing person: listed chats keep their ids; a chat in a cell wins over its legacy id; a new side chat gets a cell", async () => {
+test("current Den, existing person: listed chats keep their ids; a chat in a cell wins over its legacy id; a new side chat gets a cell", async () => {
   const runner = fakeRunner({ split: 404 })
   const legacySide = workbotSideChatSessionId(actor.organizationId, actor.memberId, SIDE)
   const movedSide = "hs_c_0123456789abcdef0123456789abcdef"

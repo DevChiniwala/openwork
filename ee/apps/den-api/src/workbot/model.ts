@@ -1,7 +1,7 @@
 import { eq } from "@openwork-ee/den-db/drizzle"
 import { OrganizationTable } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
-import { readWorkbotModel } from "@openwork/types/den/workbot-settings"
+import { readWorkbotModel, WORKBOT_DEFAULT_MODEL_ID } from "@openwork/types/den/workbot-settings"
 import { db } from "../db.js"
 import { cloudAgentGatewayCatalog } from "./gateway-model.js"
 import { createHeadlessRunnerClient, defaultHeadlessRunnerDeps, type HeadlessModelCatalog } from "../headless-runner/client.js"
@@ -90,7 +90,8 @@ export function workbotSettingsView(chosen: string | null, catalog: HeadlessMode
   return {
     model: chosen,
     gatewayModels: true,
-    defaultModel: catalog?.defaultModel || null,
+    // Same fallback as /v1/workbot/session, so the page names the model Workbot will actually ask for.
+    defaultModel: catalog?.defaultModel || WORKBOT_DEFAULT_MODEL_ID,
     defaultReadiness,
     models: catalog?.models ?? [],
     modelAvailable: chosen === null || catalog === null || catalog.models.some((entry) => entry.id === chosen),

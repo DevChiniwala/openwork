@@ -69,13 +69,13 @@ const sessionSchema = z.object({
   /** Den authorizes the member's AI Gateway model for every turn; no deployment catalog precheck. */
   gatewayModels: z.boolean().optional(),
   /**
-   * Feature `headlessDurableTurns` (the field keeps its older name): Workbot sends turns to run one step at a time
+   * Saved step turns (the wire field keeps its older name): Workbot sends turns to run one step at a time
    * (`execution: "steps"`) and follows them over the runner's WebSocket, so a runner deploy doesn't cut a step off. The
-   * same feature mints the turns' resume grants. Workbot reads it as off from older Dens.
+   * server also mints the turns' resume grants. Workbot reads it as off from older Dens.
    */
   stepTurns: z.boolean(),
   /**
-   * Feature `headlessSessionCells`: Workbot creates new chats in their own session cells (`hs_c_…` ids, memory shared
+   * Per-chat session cells: Workbot creates new chats in their own session cells (`hs_c_…` ids, memory shared
    * through the owner) and asks the runner to split the person's existing chats out. Workbot reads it as off from
    * older Dens.
    */
@@ -86,7 +86,7 @@ const runTokenSchema = z.object({
   token: z.string(),
   expiresAt: z.iso.datetime(),
   /**
-   * Feature `headlessDurableTurns`, when the request names the turn (`sessionId` and `messageId`): a resume grant the
+   * When the request names the turn (`sessionId` and `messageId`): a resume grant the
    * headless runner can exchange for fresh tokens for this turn, so it continues on its own after a restart.
    */
   resumeGrant: z.string().optional(),
@@ -328,8 +328,8 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         sideChats: true,
         model,
         gatewayModels: true,
-        stepTurns: features.headlessDurableTurns,
-        sessionCells: features.headlessSessionCells,
+        stepTurns: true,
+        sessionCells: true,
       })
     },
   )
