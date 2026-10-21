@@ -39,16 +39,16 @@ function computerUseHelperPath(appPath) {
   return path.join(appPath, "Contents", "Resources", "helpers", computerUseHelperAppName);
 }
 
-function verifyComputerUseHelper(appPath, requireDistributionSignature) {
+function verifyComputerUseHelper(appPath, requireDistributionSignature, { runCommand = run, spawn = spawnSync } = {}) {
   const helperPath = computerUseHelperPath(appPath);
   if (!existsSync(helperPath)) {
     throw new Error(`Computer Use helper app is missing from packaged app: ${helperPath}`);
   }
 
-  run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", helperPath]);
+  runCommand("codesign", ["--verify", "--deep", "--strict", "--verbose=2", helperPath]);
 
   if (!requireDistributionSignature) return;
-  const result = spawnSync("codesign", ["--display", "--verbose=4", helperPath], { encoding: "utf8" });
+  const result = spawn("codesign", ["--display", "--verbose=4", helperPath], { encoding: "utf8" });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(`codesign --display failed for Computer Use helper with status ${result.status}`);
@@ -124,7 +124,7 @@ async function afterSign(context, { runCommand = run, runRetry = runWithRetry, s
 
   const appName = `${context.packager.appInfo.productFilename}.app`;
   const appPath = path.join(context.appOutDir, appName);
-  verifyComputerUseHelper(appPath, process.env.MACOS_NOTARIZE === "true");
+  verifyComputerUseHelper(appPath, process.env.MACOS_NOTARIZE === "true", { runCommand, spawn: spawnNotary });
 
   const notaryTempDir = mkdtempSync(path.join(tmpdir(), "openwork-electron-notary-"));
   const notaryZipPath = path.join(notaryTempDir, `${context.packager.appInfo.productFilename}-notary.zip`);

@@ -147,7 +147,7 @@ export function createRemoteComputerAdapter({ id, label, driver, now = Date.now 
       const tools = {
         async computer_discover() {
           const windows = await serial(() => driver.windows());
-          const apps = new Map([["desktop", { app_id: "desktop", name: "Whole screen", windows: 1 }]]);
+          const apps = new Map([["desktop", { app_id: "desktop", name: "Whole screen", windows: 1, targets: [] }]]);
           for (const window of windows) {
             const entry = apps.get(window.app) ?? { app_id: window.app, name: window.app, windows: 0, targets: [] };
             entry.windows++;
@@ -165,8 +165,8 @@ export function createRemoteComputerAdapter({ id, label, driver, now = Date.now 
           if (!["observe", "control", "assist"].includes(args.mode) || typeof args.app_id !== "string" || !args.app_id || typeof args.purpose !== "string" || !args.purpose || args.purpose.length > 500) return failure("invalid_arguments", "Provide an app, mode and task purpose.");
           if (args.mode === "assist") return failure("mode_unsupported", "This computer has no accessibility controls. Use control (mouse and keyboard) or observe. Nothing was dispatched.");
           const windows = args.app_id === "desktop"
-            ? [{ id: 1, title: "Whole screen", app: "desktop", region: await serial(() => driver.screen()), whole: true }]
-            : (await serial(() => driver.windows())).filter((window) => window.app === args.app_id);
+            ? [{ id: 1, title: "Whole screen", app: "desktop", region: await serial(() => driver.screen()), whole: true, focused: false }]
+            : (await serial(() => driver.windows())).filter((window) => window.app === args.app_id).map(window => ({ ...window, whole: false }));
           options.signal.throwIfAborted();
           if (closed) throw new Error("Computer use ended while finding the app.");
           if (!windows.length) return failure("app_not_found", "That app has no open window on this computer. Call computer_discover again. Nothing was dispatched.");

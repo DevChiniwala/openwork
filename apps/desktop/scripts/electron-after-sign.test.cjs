@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
-const { existsSync } = require("node:fs");
+const { existsSync, mkdtempSync, mkdirSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { after, before, test } = require("node:test");
 const afterSign = require("./electron-after-sign.cjs");
@@ -11,6 +12,10 @@ const environment = {
   APPLE_API_ISSUER: "test-issuer",
 };
 const originalEnvironment = {};
+const appOutDir = mkdtempSync(path.join(tmpdir(), "openwork-signing-test-"));
+const appPath = path.join(appOutDir, "Test App.app");
+const helperPath = path.join(appPath, "Contents", "Resources", "helpers", "OpenWork Computer Use.app");
+mkdirSync(helperPath, { recursive: true });
 before(() => {
   for (const [name, value] of Object.entries(environment)) {
     originalEnvironment[name] = process.env[name];
@@ -18,13 +23,14 @@ before(() => {
   }
 });
 after(() => {
+  rmSync(appOutDir, { recursive: true, force: true });
   for (const [name, value] of Object.entries(originalEnvironment)) {
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
   }
 });
 
-function harness(results) {
+function harness(results, signature = "Signature=CMS") {
   const commands = [];
   const reports = [];
   const notaryCalls = [];
@@ -32,6 +38,10 @@ function harness(results) {
     runCommand(command, args) { commands.push({ command, args }); },
     async runRetry(command, args, attempts) { commands.push({ command, args, attempts }); },
     spawnNotary(command, args, options) {
+      if (command === "codesign") {
+        assert.deepEqual(args, ["--display", "--verbose=4", helperPath]);
+        return { status: 0, stderr: signature };
+      }
       notaryCalls.push({ command, args, options });
       assert.ok(results.length, "unexpected notarytool call");
       return results.shift();
@@ -43,12 +53,12 @@ function harness(results) {
     run() {
       return afterSign({
         electronPlatformName: "darwin",
-        appOutDir: "/test/output",
+        appOutDir,
         packager: { appInfo: { productFilename: "Test App" } },
       }, dependencies);
     },
     assertCleanedUp() {
-      const zipPath = commands[0].args.at(-1);
+      const zipPath = commands.find(value => value.command === "ditto").args.at(-1);
       assert.equal(existsSync(path.dirname(zipPath)), false);
     },
   };
@@ -60,17 +70,18 @@ test("Accepted submission staples with retries and verifies the signed app", asy
   const h = harness([success({ id: "submission-id", status: "Accepted" })]);
   await h.run();
   assert.equal(h.notaryCalls.length, 1);
+  assert.deepEqual(h.commands[0], { command: "codesign", args: ["--verify", "--deep", "--strict", "--verbose=2", helperPath] });
   const submit = h.notaryCalls[0];
   assert.equal(submit.command, "xcrun");
   assert.deepEqual(submit.args.slice(0, 2), ["notarytool", "submit"]);
   assert.ok(submit.args.includes("--wait"));
   assert.deepEqual(submit.args.slice(4, 6), ["--output-format", "json"]);
   assert.deepEqual(submit.options, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  assert.deepEqual(h.commands.slice(1), [
-    { command: "xcrun", args: ["stapler", "staple", "/test/output/Test App.app"], attempts: 5 },
-    { command: "codesign", args: ["--verify", "--deep", "--strict", "--verbose=2", "/test/output/Test App.app"] },
-    { command: "spctl", args: ["--assess", "--type", "execute", "--verbose=2", "/test/output/Test App.app"] },
-    { command: "xcrun", args: ["stapler", "validate", "/test/output/Test App.app"] },
+  assert.deepEqual(h.commands.slice(2), [
+    { command: "xcrun", args: ["stapler", "staple", appPath], attempts: 5 },
+    { command: "codesign", args: ["--verify", "--deep", "--strict", "--verbose=2", appPath] },
+    { command: "spctl", args: ["--assess", "--type", "execute", "--verbose=2", appPath] },
+    { command: "xcrun", args: ["stapler", "validate", appPath] },
   ]);
   h.assertCleanedUp();
 });
@@ -81,7 +92,7 @@ test("Invalid with exit zero fetches issue report using the same credentials and
     success({ issues: [{ message: "The binary is not signed." }], echoedKey: environment.APPLE_API_KEY }),
   ]);
   await assert.rejects(h.run(), /not Accepted/);
-  assert.equal(h.commands.length, 1);
+  assert.equal(h.commands.length, 2);
   assert.equal(h.notaryCalls.length, 2);
   assert.deepEqual(h.notaryCalls[1].args, [
     "notarytool", "log", "rejected-id",
@@ -112,7 +123,7 @@ for (const [name, result, message] of [
       assert.ok(!error.message.includes("secret command arguments"));
       return true;
     });
-    assert.equal(h.commands.length, 1);
+    assert.equal(h.commands.length, 2);
     assert.equal(h.notaryCalls.length, 1);
     h.assertCleanedUp();
   });
@@ -125,6 +136,24 @@ test("failure fetching a rejection log still fails without stapling", async () =
   ]);
   await assert.rejects(h.run(), /not Accepted/);
   assert.match(h.reports.join("\n"), /notarytool log failed with status 1/);
-  assert.equal(h.commands.length, 1);
+  assert.equal(h.commands.length, 2);
   h.assertCleanedUp();
+});
+
+
+test("notarization rejects a missing helper before contacting Apple", async () => {
+  rmSync(helperPath, { recursive: true });
+  try {
+    const h = harness([]);
+    await assert.rejects(h.run(), /helper app is missing/);
+    assert.deepEqual(h.commands, []);
+    assert.deepEqual(h.notaryCalls, []);
+  } finally { mkdirSync(helperPath, { recursive: true }); }
+});
+
+test("notarization rejects an ad-hoc helper before contacting Apple", async () => {
+  const h = harness([], "Signature=adhoc");
+  await assert.rejects(h.run(), /ad-hoc signed/);
+  assert.equal(h.commands.length, 1);
+  assert.deepEqual(h.notaryCalls, []);
 });

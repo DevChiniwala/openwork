@@ -13,7 +13,8 @@ function fixture(options = {}) {
   const calls = [];
   const requests = [];
   const selected = [];
-  let emit = () => {};
+  /** @type {(value: unknown) => void} */
+  let emit = (_value) => {};
   let disconnect = () => {};
   /** @type {import("@openwork/computer-use/computer-control").ComputerAdapter} */
   const adapter = {
@@ -38,7 +39,7 @@ function fixture(options = {}) {
         },
         notifyUi: async (value) => {
           selected.push(value);
-          if (["takeover", "resume"].includes(value.action)) {
+          if (value.action === "takeover" || value.action === "resume") {
             paused = value.action === "takeover";
             onUi({ kind: "state", id: "view", phase: paused ? "paused" : "working", canContinue: paused });
           }
