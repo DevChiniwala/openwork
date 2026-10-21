@@ -24,6 +24,7 @@ dev, or demo work. Names follow `<lifecycle>-<surface>`:
 | `preview-app-web` | The web app plus the server it needs (local, private Daytona URL, Freestyle). |
 | `acme-web` | The seeded Acme demo stack: Den, AI Gateway, and the web app. |
 | `preview-workbot` | Workbot with Den sign-in and the headless runner: the seeded Acme org, Workbot turned on. `-- --calendar` adds the owner's seeded Automations, the calendar mock and a desktop on the Calendar. |
+| `workshop` | A disposable workshop event: one dev-mode Den (web, API, AI Gateway, MySQL), the private Open Workplace gateway with its five OAuth connections, and `-- --count N` signed-in attendee desktops. See [Workshops](#workshops). |
 | `dev-app-web` | Your working tree as the local server plus web app (`pnpm dev:headless-web`). |
 | `live-desktop`, `live-app-web` | Source desktop or web app on your installed production state. |
 
@@ -93,6 +94,42 @@ distribution. The CLI fingerprints the resolved source and seed with the rest
 of the invocation. Daytona scripts that use `resolvePlace()` also pin an omitted
 source to the current `origin/dev` commit before adoption rather than silently
 reusing an older branch tip.
+
+## Workshops
+
+```sh
+pnpm world up workshop --place daytona --stage acme-oct --detach -- --count 20
+pnpm world outputs workshop --stage acme-oct --reveal   # host sign-in, per-attendee viewer links
+node worlds/lib/workshop-reset.ts --stage acme-oct            # preview a reset (changes nothing)
+node worlds/lib/workshop-reset.ts --stage acme-oct --confirm  # reset every attendee's sample data
+pnpm world down workshop --stage acme-oct                    # deletes Den, workplace data, desktops
+```
+
+One stage is one event; nothing is shared between events. The world boots a
+dev-mode Den (fictional `@example.test` accounts, no email delivery) with one
+host and `attendee-01 … attendee-NN` ordinary members, then starts
+`evals/packages/open-workplace/src/workshop.mjs` inside the world (inside the
+Den sandbox on Daytona, behind a signed 24-hour preview URL used as its
+`PUBLIC_URL`; a loopback child process locally). Every browser that opens it
+joins its own private, persisted workspace automatically; there are no guest or
+seat caps. Outlook, Calendar, Drive, Jira and Confluence are added org-wide as
+per-member OAuth connections exposed directly.
+
+Before any desktop is allocated, preflight checks Den health, gateway health
+and OAuth metadata, a fresh automatic join (which it then resets and forgets),
+and that all five connections exist and are visible to a member; the first
+failure stops the world. Desktops start with one pilot, then two at a time
+(`--concurrency 1-4`); a non-pilot desktop gets one retry and is reported as
+`failed` rather than tearing down the rest. `--count 0` boots the backend only.
+
+With `OPENAI_API_KEY` exported, the key is added once as an AI Gateway provider
+for every member with a daily per-member usage limit (`--allowance-usd`,
+default 5; `--model` to choose the model). Without it, the `model` output says
+so and nothing else changes. Resetting keeps desktops, accounts, browser
+identities and OAuth grants; an attendee can reset only their own data at the
+`attendeeReset` URL. Changing `--count` needs `world down` first. On Daytona
+`--lifetime` is 1-1380 minutes (default 720) because the signed preview links
+expire after 24 hours.
 
 ## App settings
 
