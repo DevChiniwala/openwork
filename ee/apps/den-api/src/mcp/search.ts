@@ -20,15 +20,6 @@ export const SEARCH_CAPABILITIES_TOOL_NAME = "search_capabilities"
 export const EXECUTE_CAPABILITY_TOOL_NAME = "execute_capability"
 export type SearchCapabilityType = "all" | "api" | "admin" | "mcp" | "marketplace" | "skills"
 
-/** MCP `Tool.annotations` hints. They come from providers, so clients treat them as untrusted. */
-export type CapabilityToolAnnotations = {
-  title?: string
-  readOnlyHint?: boolean
-  destructiveHint?: boolean
-  idempotentHint?: boolean
-  openWorldHint?: boolean
-}
-
 export type CapabilityMatch = {
   name: string
   method: string
@@ -52,8 +43,6 @@ export type CapabilityMatch = {
   invocation?: { argumentsField: "body" }
   /** For a connection tool: whether its provider marks it read-only and not destructive. */
   readOnly?: boolean
-  /** For a connection tool: the provider's own MCP tool annotations, unchanged. */
-  annotations?: CapabilityToolAnnotations
   /** Exact confined-script path when Code Mode scripts are enabled. */
   scriptPath?: string
   /** Callable capability or a source-specific advisory/content kind. */

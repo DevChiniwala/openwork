@@ -86,7 +86,6 @@ import {
   type SearchCapabilityType,
 } from "./search.js"
 import { externalToolContent } from "./tool-content.js"
-import { capabilityCallInput, capabilityToolMatch, type CapabilityToolMatch } from "./capability-tool.js"
 
 export const CAPABILITY_SOURCE_KINDS = ["catalog", "native", "externalMcp", "marketplace", "builtinSkill", "remoteSession", "admin"] as const
 export type CapabilitySourceKind = (typeof CAPABILITY_SOURCE_KINDS)[number]
@@ -114,8 +113,6 @@ export type CapabilityExecuteInput = {
   requireSchemaMatch?: boolean
   /** Refuse an external tool that its provider no longer marks read-only for this caller. */
   requireReadOnly?: boolean
-  /** One object matching the search match's `inputSchema`; wins over path/query/body. */
-  arguments?: unknown
   path?: unknown
   query?: unknown
   body?: unknown
@@ -273,16 +270,15 @@ function textContent(text: string): { text: string; type: "text" }[] {
   return [{ type: "text", text }]
 }
 
-/** A tool execution error the model can act on, as text and as structured content. */
-function capabilityErrorResult(payload: Record<string, unknown>): ExecuteCapabilityToolResult {
-  return { isError: true, content: textContent(JSON.stringify(payload)), structuredContent: payload }
-}
-
-function unknownCapabilityResult(name: string): ExecuteCapabilityToolResult {
-  return capabilityErrorResult({
+function unknownCapabilityText(name: string): string {
+  return JSON.stringify({
     error: "unknown_capability",
     message: `No capability named "${name}". Call search_capabilities to find a valid name.`,
   })
+}
+
+function unknownCapabilityResult(name: string): ExecuteCapabilityToolResult {
+  return { isError: true, content: textContent(unknownCapabilityText(name)) }
 }
 
 const externalMcpProviderErrorOutputSchema = z.object({
@@ -341,7 +337,12 @@ export function externalCapabilityErrorToolResult(
       ? { connectionCard: `Execute "${statusCapability}" once to show the member an actionable connection card, then relay the action in text.` }
       : {}),
   })
-  if (!result.connectionStatus) return capabilityErrorResult(payload)
+  if (!result.connectionStatus) {
+    return {
+      isError: true,
+      content: textContent(JSON.stringify(payload)),
+    }
+  }
   return {
     isError: true,
     content: textContent(JSON.stringify(payload)),
@@ -387,7 +388,11 @@ export function externalCapabilitySuccessToolResult(
 function marketplaceCapabilityErrorToolResult(
   result: Exclude<MarketplaceCapabilityExecuteResult, { ok: true }>,
 ): ExecuteCapabilityToolResult {
-  return capabilityErrorResult(Object.fromEntries(Object.entries(result).filter(([key]) => key !== "ok")))
+  const payload = Object.fromEntries(Object.entries(result).filter(([key]) => key !== "ok"))
+  return {
+    isError: true,
+    content: textContent(JSON.stringify(payload)),
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -606,7 +611,7 @@ const externalMcpSource: CapabilitySource = {
         connectionId: parsed.connectionId,
       })
       if (!probe.ok) {
-        return capabilityErrorResult({ error: probe.error, message: probe.message })
+        return { isError: true, content: textContent(JSON.stringify({ error: probe.error, message: probe.message })) }
       }
       const payload = probe.connected
         ? connectedConnectionActionPayload({ connectionId: probe.connection.id, connectionName: probe.connection.name })
@@ -747,10 +752,13 @@ const remoteSessionSource: CapabilitySource = {
     if (!parsedForKind(parsed, "remoteSession")) return unknownCapabilityResult(input.name)
     if (parsed.action === "status" && !ctx.remoteSessionStatusEnabled) return unknownCapabilityResult(input.name)
     if (!ctx.member) {
-      return capabilityErrorResult({
-        error: "membership_required",
-        message: "Remote sessions require an active organization membership.",
-      })
+      return {
+        isError: true,
+        content: textContent(JSON.stringify({
+          error: "membership_required",
+          message: "Remote sessions require an active organization membership.",
+        })),
+      }
     }
     const run = () => executeRemoteSessionCapability({
       action: parsed.action,
@@ -857,12 +865,7 @@ export function createCapabilityRegistry(sources: Record<CapabilitySourceKind, C
       for (const kind of CAPABILITY_SOURCE_KINDS) {
         const source = sources[kind]
         const parsed = source.parseName(input.name)
-        if (!parsed) continue
-        const call = capabilityCallInput(
-          input.arguments === undefined ? input : { ...input, arguments: normalizeToolBody(input.arguments) },
-          HTTP_ARGUMENT_KINDS.has(kind),
-        )
-        return call.ok ? source.execute(ctx, parsed, call.input) : capabilityErrorResult(call.error)
+        if (parsed) return source.execute(ctx, parsed, input)
       }
       return unknownCapabilityResult(input.name)
     },
@@ -889,15 +892,6 @@ export function createCapabilityRegistry(sources: Record<CapabilitySourceKind, C
       }
     },
   }
-}
-
-/** Den API and native connector operations take `{ path, query, body }` as their arguments. */
-const HTTP_ARGUMENT_KINDS: ReadonlySet<CapabilitySourceKind> = new Set(["catalog", "native"])
-
-/** A search match in MCP `Tool` shape, with its `inputSchema` built the way execute reads `arguments`. */
-export function capabilitySearchMatch(match: CapabilityMatch): CapabilityToolMatch {
-  const kind = CAPABILITY_SOURCE_KINDS.find((candidate) => CAPABILITY_SOURCES[candidate].parseName(match.name) !== null)
-  return capabilityToolMatch(match, kind !== undefined && HTTP_ARGUMENT_KINDS.has(kind))
 }
 
 export const CAPABILITY_REGISTRY = createCapabilityRegistry(CAPABILITY_SOURCES)
