@@ -45,10 +45,51 @@ if [ -e /proc/net/if_inet6 ]; then
   ip6tables -w -C OUTPUT -m owner --uid-owner "$uid" -j OPENWORK_DESKTOP_EGRESS
   ${IPV6_PRIVATE.map(([network, prefix]) => `ip6tables -w -C OPENWORK_DESKTOP_EGRESS -d ${network}/${prefix} -j REJECT`).join("\n  ")}
 fi`;
-const verifyLocalEgress = () => new Promise((resolve, reject) => {
-  execFile("/bin/sh", ["-c", BROWSER_EGRESS_CHECK], { timeout: 5000 }, error => error
-    ? reject(Object.assign(new Error("The cloud browser's private-network filter is unavailable. Reconnect the computer."), { code: "egress_unavailable" })) : resolve());
+/** The native guard must attach complete, UID-scoped reject rules to OUTPUT. */
+export function nativeBrowserEgress(payload, uid) {
+  if (!Number.isInteger(uid) || uid <= 0 || !Array.isArray(payload?.nftables)) return false;
+  const entries = payload.nftables.filter(entry => entry && typeof entry === "object");
+  if (!entries.some(({ chain }) => chain?.family === "inet" && chain.table === "openwork_desktop"
+    && chain.name === "output" && chain.type === "filter" && chain.hook === "output")) return false;
+  const address = (value, family) => {
+    if (typeof value !== "string" || isIP(value) !== (family === "ip" ? 4 : 6)) return null;
+    return family === "ip" ? value : new URL(`http://[${value}]`).hostname;
+  };
+  return [["ip", IPV4_PRIVATE], ["ip6", IPV6_PRIVATE]].every(([family, required]) => entries.some(({ rule }) => {
+    if (rule?.family !== "inet" || rule.table !== "openwork_desktop" || rule.chain !== "output" || rule.expr?.length !== 3) return false;
+    const [owner, destination, verdict] = rule.expr;
+    if (owner?.match?.op !== "==" || owner.match.left?.meta?.key !== "skuid" || owner.match.right !== uid || !verdict?.reject) return false;
+    const match = destination?.match;
+    if (match?.op !== "==" || match.left?.payload?.protocol !== family || match.left.payload.field !== "daddr" || !Array.isArray(match.right?.set)) return false;
+    return required.every(([network, prefix]) => match.right.set.some(item => item?.prefix?.len === prefix
+      && address(item.prefix.addr, family) === address(network, family)));
+  }));
+}
+const egressCommand = (command, args) => new Promise((resolve, reject) => {
+  execFile(command, args, { timeout: 5000, maxBuffer: 1024 * 1024 }, (error, stdout) => error ? reject(error) : resolve(stdout));
 });
+/** Authenticated helper diagnostics contain kernel policy metadata, never page contents. */
+export async function browserEgressStatus(execute = egressCommand) {
+  let backend = "unknown", stage = "detect";
+  try {
+    const native = await execute("/bin/sh", ["-c", "command -v nft"]).then(() => true, () => false);
+    backend = native ? "nft" : "iptables";
+    if (!native) { stage = "legacy"; await execute("/bin/sh", ["-c", BROWSER_EGRESS_CHECK]); return { ok: true, backend }; }
+    stage = "uid";
+    const uid = Number((await execute("id", ["-u", "openwork-browser"])).trim());
+    stage = "query";
+    const rules = JSON.parse(await execute("nft", ["-n", "-j", "list", "table", "inet", "openwork_desktop"]));
+    stage = "validate";
+    const entries = Array.isArray(rules?.nftables) ? rules.nftables.filter(entry => entry && typeof entry === "object") : [];
+    return { ok: nativeBrowserEgress(rules, uid), backend, uid, stage,
+      chains: entries.flatMap(entry => entry.chain ? [entry.chain] : []),
+      rejects: entries.flatMap(entry => entry.rule?.expr?.some(expr => Object.hasOwn(expr, "reject")) ? [entry.rule] : []),
+    };
+  } catch { return { ok: false, backend, stage }; }
+}
+const verifyLocalEgress = async () => {
+  if (!(await browserEgressStatus()).ok) throw Object.assign(new Error("The cloud browser's private-network filter is unavailable. Reconnect the computer."), { code: "egress_unavailable" });
+};
 
 export function createCloudBrowser({ statePath, assertActive, enabled, beforeInput, endpoint = "http://127.0.0.1:9222", privateBrowsing = false, verifyEgress = verifyLocalEgress }) {
   // privateBrowsing is only for operator diagnostics on a dedicated VM.

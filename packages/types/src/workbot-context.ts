@@ -2,6 +2,8 @@ import { z } from "zod"
 
 const id = z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/)
 const label = z.string().trim().min(1).max(512)
+/** A request to open one Drive file beside the chat; the host still checks access before anything loads. */
+export const workbotDocumentNavigationSchema = z.object({ fileId: id }).strict()
 const instant = z.number().int().min(0).max(8_640_000_000_000_000)
 const selection = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("meeting"), provider: z.enum(["google", "microsoft"]), id: z.string().min(1).max(512).regex(/^[A-Za-z0-9_=.@+/-]+$/), title: label }).strict(),
@@ -80,10 +82,10 @@ export function googleDriveFileId(href: string): string | null {
   try {
     const url = new URL(href)
     if (url.protocol !== "https:" || url.username || url.password || url.port) return null
-    const path = url.hostname === "docs.google.com" ? /^\/(?:document|spreadsheets|presentation)\/d\/([A-Za-z0-9_-]{1,512})(?:\/|$)/.exec(url.pathname)
+    const path = url.hostname === "docs.google.com" ? /^\/(?:document|spreadsheets|presentation)(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{1,512})(?:\/|$)/.exec(url.pathname)
       : url.hostname === "drive.google.com" ? /^\/file\/d\/([A-Za-z0-9_-]{1,512})(?:\/|$)/.exec(url.pathname) : null
     if (path) return path[1] ?? null
-    const queryId = url.hostname === "drive.google.com" && url.pathname === "/open" ? url.searchParams.get("id") : null
+    const queryId = url.hostname === "drive.google.com" && (url.pathname === "/open" || url.pathname === "/uc") ? url.searchParams.get("id") : null
     return queryId && id.safeParse(queryId).success ? queryId : null
   } catch { return null }
 }

@@ -119,6 +119,17 @@ file is saved as an Office copy, context follows the confirmed copy’s file ID.
 Canonical Google document links in replies offer an explicit open action in
 Documents. Metadata resolves through Den again before the file opens; links
 never navigate automatically. Other links keep their usual external behavior.
+
+When the person explicitly asks Workbot to open or show a document, Workbot can
+request it with `open_document` (message turns only, including read-only
+contextual ones; never tasks or reports). The runner records only a request.
+The page follows it once, only for a message sent from that page and only if
+the person is still on the view they sent it from; reloads, history and
+retries never replay an earlier request. Under the reply, Workbot says
+"Opening in Documents…", then "Opened in Documents", "Couldn't open this
+document" (Den refused or failed), or "Not opened, because you moved on" with
+an Open action. While a document opens, the view context names nothing, so a
+message sent meanwhile never references the previous document.
 The Documents browser remains mounted while the user switches surfaces, keeping
 local drafts intact. Turning the assistant off removes contextual actions and
 rejects new context requests without unmounting an already-open editor.
