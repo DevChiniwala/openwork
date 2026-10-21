@@ -67,6 +67,24 @@ export function seatKey(index: number): string {
   return `attendee${String(index).padStart(2, "0")}`;
 }
 
+export function isProviderThrottle(error: unknown): boolean {
+  return /Too Many Requests|ThrottlerException|\b429\b/i.test(error instanceof Error ? error.message : String(error));
+}
+
+/**
+ * Retry only provider rate limiting, and only before any sandbox exists: the
+ * throttled calls (snapshot lookup, create) fail before a resource is owned.
+ */
+export async function retryThrottled<T>(run: () => Promise<T>, attempts = 5, baseMs = 4_000): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try { return await run(); }
+    catch (error) {
+      if (attempt >= attempts || !isProviderThrottle(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, baseMs * attempt + Math.floor(Math.random() * 2_000)));
+    }
+  }
+}
+
 /** Run every seat; one seat failing never stops or tears down the others. */
 export async function forEachSeat<T>(count: number, concurrency: number, run: (index: number) => Promise<T>): Promise<PromiseSettledResult<T>[]> {
   const results: PromiseSettledResult<T>[] = new Array(count);
@@ -226,13 +244,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       try {
         await seatStage("member-budget", () => verifyMember(member, setup.orgId, seatSetup.memberId));
         const desktopId = await seatStage("desktop-sandbox", async () => {
-          const provisioned = await provisionDesktopSandbox({ ref: base.ref, name: `workshop-${runId}-${key}`, private: true, secrets: false,
+          // Spread the first wave out: ten simultaneous provider calls are throttled.
+          await new Promise((resolve) => setTimeout(resolve, ((index - 1) % options.concurrency) * 1_500));
+          const provisioned = await retryThrottled(() => provisionDesktopSandbox({ ref: base.ref, name: `workshop-${runId}-${key}`, private: true, secrets: false,
             ...(options.snapshot ? { snapshot: options.snapshot } : {}),
             ttlMinutes: Math.floor(remaining() / 60), autoStopMinutes: 0, log: () => {},
             onCreated: async (sandbox) => {
               stack.defer(() => deleteSandboxes([sandbox], { log: () => {} }));
               await trackResource({ kind: "daytona", id: sandbox, label: `workshop-${key}` });
-            } });
+            } }));
           if (!provisioned.created) throw new Error("Only newly created desktop sandboxes are owned.");
           const id = await privateSandboxId(provisioned.sandbox);
           await verifySandbox(id);
