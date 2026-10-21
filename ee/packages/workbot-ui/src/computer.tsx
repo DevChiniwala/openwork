@@ -24,6 +24,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
   const [agentPaused, setAgentPaused] = useState(false);
   const [paused, setPaused] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [changing, setChanging] = useState(false);
@@ -66,7 +67,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
         client.background = "#f5f6f7";
         client.addEventListener("connect", () => {
           if (disposed) return;
-          failures = 0; setConnected(true); setError(null);
+          failures = 0; setConnected(true); setReconnecting(false); setError(null);
         });
         client.addEventListener("securityfailure", () => {
           if (!disposed) setError("Couldn't connect to your computer. Try reconnecting.");
@@ -74,6 +75,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
         client.addEventListener("disconnect", () => {
           if (disposed) return;
           setConnected(false);
+          setReconnecting(true);
           failures++;
           if (failures > 3) { setError("Connection lost. Reconnect to continue."); return; }
           // Every connection expires after a minute; renewal goes through membership and flags again.
@@ -86,7 +88,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
         controller.signal.removeEventListener("abort", abort);
       }
     };
-    setError(null); setConnected(false); void connect();
+    setError(null); setConnected(false); setReconnecting(false); void connect();
     return () => { disposed = true; controller.abort(); clearTimeout(retry); client?.disconnect(); target.replaceChildren(); };
   }, [host, identity, view, control, paused, revision]);
 
@@ -119,9 +121,13 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
         <button type="button" className={button} aria-label="Full screen" onClick={() => void container.current?.requestFullscreen().catch(() => setError("Full screen isn't available in this browser."))}><Maximize2 size={14} aria-hidden /></button>
       </div>
     </div>
-    {canTeach && <div hidden={view !== "browser"} style={{ display: view === "browser" ? undefined : "none" }}><WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? async text => { if (!await action("continue")) throw new Error("Return browser control to Workbot before starting the run. Your inputs are still here."); await onRun(text); } : undefined} /></div>}
+    {canTeach && host.browserDemonstrations === true && <div hidden={view !== "browser"} style={{ display: view === "browser" ? undefined : "none" }}><WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? async text => { if (!await action("continue")) throw new Error("Return browser control to Workbot before starting the run. Your inputs are still here."); await onRun(text); } : undefined} /></div>}
     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#f5f6f7]">
       <div ref={screen} className={`h-full w-full ${paused || error ? "hidden" : ""}`} aria-label={`${view === "browser" ? "Browser" : "Computer"} live view`} />
+      {!paused && !error && !connected ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <ComputerLoading />
+        <span className="workbot-shimmer text-[13px]">{reconnecting ? "Reconnecting" : view === "browser" ? "Connecting to the browser" : "Connecting to your computer"}</span>
+      </div> : null}
       {paused || error ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <Monitor size={24} strokeWidth={1.5} className="text-[var(--wb-muted)]" aria-hidden />
         <p className="text-[14px] text-[var(--wb-text)]">{error ?? "Your computer is paused."}</p>
@@ -129,4 +135,14 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
       </div> : null}
     </div>
   </section>;
+}
+
+/** Workbot's computer glyph at the size of the empty screen; its lines write while the view connects (V6). */
+function ComputerLoading() {
+  return <svg viewBox="0 0 16 16" width={40} height={40} fill="none" className="workbot-computer is-working" aria-hidden>
+    <rect x="2.25" y="3" width="11.5" height="8" rx="1.75" className="workbot-computer-screen" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+    <path d="M1.5 13h13" className="workbot-computer-stand" strokeWidth={1.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    <path className="workbot-computer-line" d="M4.75 6h3.5" strokeWidth={1.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    <path className="workbot-computer-line" d="M4.75 8.25h5.5" strokeWidth={1.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+  </svg>;
 }

@@ -126,7 +126,7 @@ export function WorkbotTeaching({ onTakeControl, onTeachingChange, onRun, suspen
   const needsVariable = selected?.parameter || selected?.field;
   return <section aria-label="Teach Workbot" className="flex min-h-0 w-full flex-col border-b border-[var(--wb-hairline)] bg-[var(--wb-bg)] text-[var(--wb-text)]" data-testid="workbot-teaching">
     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-      <Button className={button} disabled={!enabled || busy} onClick={() => { setOpened(current => !current); if (!opened) void command({ action: "tabs" }); }} aria-expanded={opened}>{suspended ? "Teaching paused · Resume the computer" : enabled ? "Teach Workbot" : "Teaching is off · Ask your admin"}</Button>
+      <Button className={button} disabled={!enabled || busy} onClick={() => { setOpened(current => !current); if (!opened) void command({ action: "tabs" }); }} aria-expanded={opened}>{suspended ? "Teaching paused · Resume the computer" : "Teach Workbot"}</Button>
       {(opened || demo) && <span role="status" className="text-[12px] text-[var(--wb-muted)]">{saved ? "Saved · No run verified" : demo ? `${demo.phase === "recording" ? "Recording" : demo.phase === "paused" ? "Paused" : "Reviewing"} · ${demo.steps.length} steps` : "No demonstration"}</span>}
     </div>
     {opened && <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto px-4 pb-4">
