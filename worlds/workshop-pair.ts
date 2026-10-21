@@ -15,7 +15,7 @@ import type { Den } from "../evals/packages/env/src/den.ts";
 import { resolvePlace } from "../evals/packages/env/src/place.ts";
 import { chrome } from "../evals/packages/hosts/src/browser.ts";
 import { createDaytonaHost, defaultDaytonaExec } from "../evals/packages/hosts/src/daytona.ts";
-import { deleteSandboxes, provisionDesktopSandbox } from "../evals/packages/hosts/src/provision.ts";
+import { deleteSandboxes, execInSandbox, provisionDesktopSandbox } from "../evals/packages/hosts/src/provision.ts";
 import { parsePrivatePreview, privateSandboxId } from "../evals/packages/hosts/src/private-web-preview.ts";
 import { hold } from "../packages/world/src/hold.ts";
 import { trackResource } from "../packages/world/src/ledger.ts";
@@ -26,7 +26,7 @@ import { configureWorkshop } from "./lib/workshop-setup.ts";
 import { redactWorkshopDiagnostic } from "./lib/workshop-redaction.ts";
 import { unlockWorkshopDesktop } from "./lib/workshop-unlock.ts";
 import { linkWorkshopRuntime, selectWorkshopModel } from "./lib/workshop-models.ts";
-import { connectWorkshopBrowser, foregroundWorkshopDesktop, installWorkshopBrowser, WORKSHOP_BROWSER_LAUNCHER, WORKSHOP_BROWSER_PROFILE } from "./lib/workshop-browser.ts";
+import { connectWorkshopBrowser, foregroundWorkshopDesktop, installWorkshopBrowser, WORKSHOP_BROWSER_LAUNCHER, WORKSHOP_BROWSER_PROFILE, workshopRemoteScript } from "./lib/workshop-browser.ts";
 import { freshComposer, verifyMember, verifySandbox, verifyViewer, workshopAccountPassword } from "./workshop-fleet.ts";
 
 export const summary = "One private Den/Gateway with the workshop model and five OAuth connectors, plus one ordinary member's Daytona desktop; holds on failure for inspection.";
@@ -39,6 +39,7 @@ export interface PairStage { name: string; startedAt: string; endedAt?: string; 
 export function parsePairOptions(argv: readonly string[]) {
   let lifetimeMinutes = 240;
   let outputDir = "";
+  let timezone = "America/Los_Angeles";
   const seen = new Set<string>();
   for (let i = 0; i < argv.length; i += 2) {
     const flag = argv[i];
@@ -47,12 +48,24 @@ export function parsePairOptions(argv: readonly string[]) {
     seen.add(flag);
     if (flag === "--lifetime" && /^\d+$/.test(value) && Number(value) >= 30 && Number(value) <= 1440) lifetimeMinutes = Number(value);
     else if (flag === "--output-dir" && isAbsolute(value)) outputDir = resolve(value);
-    else throw new Error("Use --output-dir <private absolute path outside git> and optional --lifetime 30..1440 (minutes, default 240).");
+    else if (flag === "--timezone" && /^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value) && Intl.supportedValuesOf("timeZone").includes(value)) timezone = value;
+    else throw new Error("Use --output-dir <private absolute path outside git>, optional --lifetime 30..1440 (minutes, default 240) and --timezone <IANA zone, default America/Los_Angeles>.");
   }
   if (!outputDir) throw new Error("Pair requires --output-dir outside git (it holds a member test login and a private viewer link).");
   const rel = relative(REPO_ROOT, outputDir);
   if (rel !== ".." && !rel.startsWith(`..${sep}`)) throw new Error("Pair output directory must be outside this checkout.");
-  return { lifetimeMinutes, outputDir };
+  return { lifetimeMinutes, outputDir, timezone };
+}
+
+/** The attendee's local clock: "today"/"tomorrow" must not be UTC dates. */
+export function workshopTimezoneScript(timezone: string): string {
+  if (!/^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(timezone)) throw new Error("Invalid IANA timezone.");
+  return `set -eu
+test -f /usr/share/zoneinfo/${timezone}
+sudo ln -sf /usr/share/zoneinfo/${timezone} /etc/localtime
+echo ${timezone} | sudo tee /etc/timezone >/dev/null
+test "$(date +%Z)" != UTC || test "${timezone}" = Etc/UTC
+`;
 }
 
 /** Two 4 CPU / 8 GiB snapshot sandboxes at list price, plus disk. */
@@ -104,7 +117,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const privateValues = [upstreamKey, hostPassword, memberPassword];
   const redact = (text: string) => redactWorkshopDiagnostic(text, privateValues);
   const stages: PairStage[] = [];
-  const status: Record<string, unknown> = { runId, ref: base.ref, startedAt: new Date(startedAtMs).toISOString(), expiresAt: new Date(deadline).toISOString(), ready: false, stages };
+  const status: Record<string, unknown> = { runId, ref: base.ref, timezone: options.timezone, startedAt: new Date(startedAtMs).toISOString(), expiresAt: new Date(deadline).toISOString(), ready: false, stages };
   const statusPath = join(options.outputDir, "status.json");
   const control: Record<string, unknown> = { runId, ref: base.ref, member: MEMBER, expiresAt: status.expiresAt };
   const controlPath = join(options.outputDir, "control.json");
@@ -185,6 +198,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     const browser = await stage("browser-and-five-oauth", async () => {
       await installWorkshopBrowser(desktopId);
       await unlockWorkshopDesktop(desktopId);
+      await execInSandbox(defaultDaytonaExec, desktopId, workshopRemoteScript(workshopTimezoneScript(options.timezone)), { timeoutMs: 30_000, context: "set the attendee's local timezone" });
       const surface = stack.use(await chrome({ name: "workshop-pair", host, profileDir: WORKSHOP_BROWSER_PROFILE, headless: false, startUrl: "about:blank" }));
       diagnostic = surface;
       const oauth = await connectWorkshopBrowser(surface, member, setup.orgId, setup.connections);
@@ -193,7 +207,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     });
     const desktop = await stage("desktop-signed-in", async () => {
       const surface = stack.use(await app({ den, place, host, as: MEMBER, enterpriseActivated: true, workspacePath: "/home/daytona/workshop/workspace",
-        env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER } }));
+        env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER, TZ: options.timezone } }));
       diagnostic = surface;
       return surface;
     });
