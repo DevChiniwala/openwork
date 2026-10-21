@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
+import { getPasswordPolicyHint, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
 import { setTimeout as delay } from "node:timers/promises";
 import { expect } from "vitest";
+import { z } from "zod";
 import { chrome, server, setViewport, test } from "@openwork/testkit";
 import { callFunction, evaluate, navigate } from "@openwork/cdp";
 import type { CdpClient } from "@openwork/cdp";
@@ -246,8 +247,33 @@ test("initial administrator setup preserves a 40-character paste, shows an inlin
   });
   expect(policy.min).toBe(MIN_PASSWORD_LENGTH);
   expect(policy.max).toBe(-1);
-  expect(policy.hint).toContain(`Use ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters.`);
+  expect(policy.hint?.trim()).toBe(getPasswordPolicyHint());
+  expect(policy.hint).toContain('uppercase letter (A–Z)');
+  expect(policy.hint).toContain('lowercase letter (a–z)');
+  expect(policy.hint).toContain('a number (0–9)');
+  expect(policy.hint).toContain('a special character');
+  expect(policy.hint).toContain('password strength is also checked');
   expect(policy.describedBy).toBe('setup-password-policy');
+  // Exercise the real server before creating any account, keeping the original
+  // validation errors/order and weak-password rejection as policy regressions.
+  const verification = await fetch(`${den.ref.apiUrl}/v1/auth/bootstrap/verify`, { method: 'POST', headers: { 'content-type': 'application/json', origin: den.ref.webUrl }, body: JSON.stringify({ email: 'admin@example.test', code }) });
+  expect(verification.status).toBe(200);
+  const { grant } = z.object({ grant: z.string().min(1) }).parse(await verification.json());
+  const invalidPasswords = [
+    { password: 'Aa1!abc', error: 'password_too_short' },
+    { password: 'A'.repeat(33), error: 'password_too_long' },
+    { password: 'quiet-harbor-77!', error: 'password_missing_uppercase' },
+    { password: 'QUIET-HARBOR-77!', error: 'password_missing_lowercase' },
+    { password: 'QuietHarbor773922', error: 'password_missing_special_character' },
+    { password: 'Quiet-Harbor-Brook!', error: 'password_missing_digit' },
+    { password: 'Password123!', error: 'password_too_weak' },
+  ];
+  for (const candidate of invalidPasswords) {
+    const rejected = await fetch(`${den.ref.apiUrl}/api/auth/sign-up/email`, { method: 'POST', headers: { 'content-type': 'application/json', origin: den.ref.webUrl }, body: JSON.stringify({ email: 'admin@example.test', name: 'Example Admin', password: candidate.password, bootstrapGrant: grant }) });
+    expect(rejected.status).toBe(400);
+    const result: unknown = await rejected.json();
+    expect(result).toMatchObject({ error: candidate.error });
+  }
   await click(client, '#setup-name');
   await client.send('Input.insertText', { text: 'Example Admin' });
   await click(client, '#setup-password');

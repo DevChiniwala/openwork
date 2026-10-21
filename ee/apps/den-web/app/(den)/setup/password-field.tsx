@@ -1,6 +1,6 @@
 "use client";
 
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
+import { getPasswordPolicyHint, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
 
 export function getSetupPasswordError(value: string): string | null {
   return value.length > MAX_PASSWORD_LENGTH ? `Password must be at most ${MAX_PASSWORD_LENGTH} characters.` : null;
@@ -26,7 +26,7 @@ export function SetupPasswordField({ value, onChange }: { value: string; onChang
         required
       />
       <p id="setup-password-policy" className="m-0 text-xs leading-5 text-[var(--dls-text-secondary)]">
-        Use {MIN_PASSWORD_LENGTH}–{MAX_PASSWORD_LENGTH} characters.
+        {getPasswordPolicyHint()}
       </p>
       {error ? <p id="setup-password-error" className="m-0 text-sm font-medium text-rose-600" role="alert">{error}</p> : null}
     </>

@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getSamlEntityId, getSsoSetupValues, SsoProviderValues } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-provider-values";
 import { getEmailDomain, getSsoDomainWarning, getSsoRequestError, SsoAdvancedAudience, SsoDomainField, SsoEnableWarning, SsoOidcIssuerHint, SsoSamlNotice } from "../../ee/apps/den-web/app/(den)/dashboard/_components/sso-form-guidance";
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@openwork/types/den/password-policy";
+import { getPasswordPolicyHint, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, MIN_PASSWORD_STRENGTH_SCORE, PASSWORD_COMPOSITION_RULES } from "@openwork/types/den/password-policy";
 import { getSetupPasswordError, SetupPasswordField } from "../../ee/apps/den-web/app/(den)/setup/password-field";
 import { ORGANIZATION_SAML_ALLOW_IDP_INITIATED } from "../../ee/apps/den-api/src/sso-saml-policy";
 import { isOrganizationSsoReady } from "../../ee/apps/den-api/src/sso-readiness";
@@ -183,15 +183,34 @@ test("OIDC issuer guidance distinguishes discovery issuer from authorize and tok
   expect(html).toContain('mt-1 block text-[12px] text-gray-500');
 });
 
-test("setup password input and visible hint use the same 8–32 length policy as server validation", () => {
+test("setup password hint states the shared length, composition and strength requirements", () => {
   const html = renderToStaticMarkup(createElement(SetupPasswordField, { value: '', onChange: () => {} }));
   expect(MIN_PASSWORD_LENGTH).toBe(8);
   expect(MAX_PASSWORD_LENGTH).toBe(32);
   expect(html).toMatch(new RegExp(`minlength="${MIN_PASSWORD_LENGTH}"`, 'i'));
   expect(html).not.toMatch(/maxlength=/i);
-  expect(html).toContain(`Use ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} characters.`);
+  expect(html).toContain(getPasswordPolicyHint());
+  for (const rule of Object.values(PASSWORD_COMPOSITION_RULES)) {
+    expect(rule.required).toBe(true);
+    expect(html).toContain(rule.hint);
+  }
+  expect(MIN_PASSWORD_STRENGTH_SCORE).toBe(3);
+  expect(html).toContain('Avoid common words or patterns; password strength is also checked.');
   expect(html).toContain('aria-describedby="setup-password-policy"');
   expect(html).toContain('class="den-input"');
+});
+
+test("shared composition checks preserve the server's ASCII character classes and punctuation set", () => {
+  for (let code = 32; code <= 127; code++) {
+    const character = String.fromCharCode(code);
+    expect(PASSWORD_COMPOSITION_RULES.uppercase.pattern.test(character)).toBe(code >= 65 && code <= 90);
+    expect(PASSWORD_COMPOSITION_RULES.lowercase.pattern.test(character)).toBe(code >= 97 && code <= 122);
+    expect(PASSWORD_COMPOSITION_RULES.digit.pattern.test(character)).toBe(code >= 48 && code <= 57);
+    expect(PASSWORD_COMPOSITION_RULES.special.pattern.test(character)).toBe((code >= 33 && code <= 47) || (code >= 58 && code <= 64) || (code >= 91 && code <= 96) || (code >= 123 && code <= 126));
+  }
+  expect(PASSWORD_COMPOSITION_RULES.uppercase.pattern.test('É')).toBe(false);
+  expect(PASSWORD_COMPOSITION_RULES.lowercase.pattern.test('é')).toBe(false);
+  expect(PASSWORD_COMPOSITION_RULES.special.pattern.test('’')).toBe(false);
 });
 
 test("overlong setup passwords retain all 40 characters and expose an associated inline error, without truncation", () => {
