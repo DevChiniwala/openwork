@@ -8,7 +8,7 @@ const test = spec.world(sessionDebug, {
   needs: { commands: ["bun"] },
 });
 
-test("a developer can inspect, move, resize and dismiss session diagnostics without leaving the conversation", async ({ world, user, probe, step, evidence }) => {
+test("a developer can inspect, move and dismiss session diagnostics without leaving the conversation", async ({ world, user, probe, step, evidence }) => {
   const panel = '[data-testid="session-debug-panel"]';
   const rect = async () => (await probe.dom(panel)).elements[0]!.rect;
 
@@ -48,22 +48,21 @@ test("a developer can inspect, move, resize and dismiss session diagnostics with
     await user.screenshot();
   });
 
-  await step("the panel moves and resizes using its keyboard-accessible handles", async () => {
+  await step("the compact panel moves from its header without a bottom handle", async () => {
     const before = await rect();
     await user.click({ role: "button", label: "Move session debug" });
     await user.press("ArrowLeft");
     await user.press("ArrowUp");
-    await user.click({ role: "button", label: "Resize session debug" });
-    await user.press("ArrowRight");
-    await user.press("ArrowDown");
     const after = await rect();
     expect(after.left).toBe(before.left - 10);
     expect(after.top).toBe(before.top - 10);
-    expect(after.width).toBe(before.width + 10);
-    expect(after.height).toBe(before.height + 10);
+    expect(after.width).toBe(before.width);
+    expect(after.height).toBe(before.height);
+    expect(after.height).toBeLessThan(300);
+    expect((await probe.dom('[aria-label="Resize session debug"]')).elements).toHaveLength(0);
     await user.click({ role: "button", label: "More details" });
     await user.see({ text: "Intended session" });
-    evidence.recordAssertionEvidence("Move, resize and details work in the conversation", `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`, after.width > before.width && after.left < before.left);
+    evidence.recordAssertionEvidence("Compact diagnostics move from the header and expand details", `before=${JSON.stringify(before)}; after=${JSON.stringify(after)}`, after.left < before.left && after.height < 300);
     await user.screenshot();
   });
 
