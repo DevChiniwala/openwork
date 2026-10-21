@@ -32,7 +32,8 @@ test('signed builds use the same PowerShell lifecycle hook for each PE', t => {
     sign({ path: file }, { env: { SIGN_WINDOWS: 'true' }, execute(command, args, options) {
       calls++; assert.equal(command, 'pwsh');
       assert.equal(args.at(-1), file); assert.equal(args.at(-3), 'Sign');
-      assert.match(args[3], /scripts[/\\]release[/\\]windows-signatures.ps1$/);
+      assert.equal(args[3], path.resolve(__dirname, '../../../scripts/release/windows-signatures.ps1'));
+      assert.equal(fs.existsSync(args[3]), true, 'signer must resolve inside this checkout');
       assert.equal(options.env.SIGN_WINDOWS, 'true');
     }});
     assert.equal(calls, 1);

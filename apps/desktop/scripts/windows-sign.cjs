@@ -33,7 +33,7 @@ function sign(configuration, { env = process.env, execute = execFileSync } = {})
     throw new Error(`Refusing to sign a non-PE executable: ${path.basename(configuration.path)}`);
   }
   execute("pwsh", ["-NoProfile", "-NonInteractive", "-File",
-    path.resolve(__dirname, "../../../..", "scripts/release/windows-signatures.ps1"),
+    path.resolve(__dirname, "../../..", "scripts/release/windows-signatures.ps1"),
     "-Mode", "Sign", "-Path", configuration.path], { stdio: "inherit", env, timeout: 600_000 });
   // Builder deletes its generated uninstaller after embedding it in NSIS.
   // Retain the exact signed bytes so cross-packaged ARM64 builds can audit it too.

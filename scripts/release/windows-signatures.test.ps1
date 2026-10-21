@@ -5,6 +5,7 @@ New-Item -ItemType Directory -Path $root | Out-Null
 $certificate = $null
 $previousManifest = $env:WINDOWS_PRESERVED_SIGNATURES
 $previousCertificate = $env:WINDOWS_TEST_CERTIFICATE_SHA1
+$previousSigning = $env:SIGN_WINDOWS
 $script = Join-Path $PSScriptRoot 'windows-signatures.ps1'
 function Invoke-TestScript([string[]]$Arguments) {
     & pwsh -NoProfile -NonInteractive -File $script @Arguments
@@ -20,8 +21,10 @@ try {
     New-Item -ItemType Directory -Path $payload | Out-Null
     $native = Join-Path $payload 'native.node'
     Add-Type -TypeDefinition 'public class SigningFixture { public static int Value() { return 42; } }' -OutputAssembly $native -OutputType Library
-    $output = @(Invoke-TestScript -Arguments @('-Mode', 'Sign', '-Path', $native))
-    if ($output[-1] -ne 0) { throw 'Unsigned PE was not signed' }
+    $env:SIGN_WINDOWS = 'true'
+    $hook = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../apps/desktop/scripts/windows-sign.cjs'))
+    & node -e 'require(process.argv[1])({path:process.argv[2]})' $hook $native
+    if ($LASTEXITCODE -ne 0) { throw 'The actual builder hook did not sign the unsigned PE' }
     if ((Get-AuthenticodeSignature -LiteralPath $native).SignerCertificate.Thumbprint -ne $certificate.Thumbprint) { throw 'Wrong test signer' }
     $installer = Join-Path $root 'installer.exe'
     Copy-Item $native $installer
@@ -62,6 +65,7 @@ try {
 } finally {
     $env:WINDOWS_PRESERVED_SIGNATURES = $previousManifest
     $env:WINDOWS_TEST_CERTIFICATE_SHA1 = $previousCertificate
+    $env:SIGN_WINDOWS = $previousSigning
     if ($certificate) {
         Remove-Item "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
         Remove-Item "Cert:\LocalMachine\Root\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
