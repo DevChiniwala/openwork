@@ -7,7 +7,8 @@ import { dirname, join, resolve } from "node:path";
 
 const desktopRequire = createRequire(new URL("../../apps/desktop/package.json", import.meta.url));
 const builderRequire = createRequire(desktopRequire.resolve("electron-builder"));
-const { FileMatcher, getNodeModuleFileMatcher } = builderRequire("app-builder-lib/out/fileMatcher.js");
+const { FileMatcher, getNodeModuleFileMatcher, getMainFileMatchers } = builderRequire("app-builder-lib/out/fileMatcher.js");
+const { doMergeConfigs } = builderRequire("app-builder-lib/out/util/config/config.js");
 const { parse } = desktopRequire("yaml");
 const { verifyNativeModules } = desktopRequire("./scripts/verify-native-modules.cjs");
 const config = parse(readFileSync(new URL("../../apps/desktop/electron-builder.base.yml", import.meta.url), "utf8"));
@@ -39,9 +40,24 @@ for (const platform of targets) {
           mkdirSync(dirname(join(root, file)), { recursive: true });
           writeFileSync(join(root, file), "fixture");
         }
-        const options = config[platform === "darwin" ? "mac" : platform === "win32" ? "win" : "linux"];
+        const mergedConfig = doMergeConfigs([structuredClone(config)]);
+        const options = mergedConfig[platform === "darwin" ? "mac" : platform === "win32" ? "win" : "linux"];
         const expand = (pattern: string) => pattern.replaceAll("${arch}", arch);
-        const collected = getNodeModuleFileMatcher(root, root, expand, options, { config, debugLogger: { isEnabled: false } }).createFilter();
+        const debugLogger = { isEnabled: false };
+        const mainMatchers = getMainFileMatchers(root, join(root, "destination"), expand, options, {
+          info: { projectDir: root, buildResourcesDir: "build", config: mergedConfig, debugLogger },
+        }, join(root, "out"), false);
+        // OS-specific exclusions must not introduce an include-all root matcher.
+        // That would silently ship scripts/resources/tests alongside the app.
+        const rootMatchers = mainMatchers.filter((matcher: { from: string }) => matcher.from === root);
+        expect(rootMatchers).toHaveLength(1);
+        const mainFilter = rootMatchers[0].createFilter();
+        for (const file of ["electron/main.mjs", "server/dist/unchanged.js", "package.json", "scripts/private.cjs", "resources/extra.bin", "test/extra.js", "server/dist/opencode-plugins/external.js"]) {
+          mkdirSync(dirname(join(root, file)), { recursive: true });
+          writeFileSync(join(root, file), "fixture");
+          expect(mainFilter(join(root, file), statSync(join(root, file)))).toBe(["electron/main.mjs", "server/dist/unchanged.js", "package.json"].includes(file));
+        }
+        const collected = getNodeModuleFileMatcher(root, root, expand, options, { config: mergedConfig, debugLogger }).createFilter();
         const stagedSet = options.files.find((file: { from?: string }) => file.from === ".electron-runtime/node_modules");
         const staged = new FileMatcher(root, root, expand, stagedSet.filter).createFilter();
         const expected = files.filter((file) => {

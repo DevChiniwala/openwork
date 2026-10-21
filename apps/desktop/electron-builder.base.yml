@@ -2,11 +2,6 @@ directories:
   output: dist-electron
 toolsets:
   appimage: "1.0.3"
-files:
-  - electron/**/*
-  - server/**/*
-  - "!server/dist/opencode-plugins/**"
-  - package.json
 extraResources:
   - from: .electron-runtime/openwork-sentry.json
     to: openwork-sentry.json
@@ -44,6 +39,10 @@ publish:
 mac:
   # Filter both dependency-collector and explicitly staged runtime copies.
   files:
+    - electron/**/*
+    - server/**/*
+    - "!server/dist/opencode-plugins/**"
+    - package.json
     - &macSqlite "!**/better-sqlite3/prebuilds/!(darwin-${arch}).node"
     - &macPty "!**/@lydell/node-pty-!(darwin-${arch}){,/**}"
     - &macPnpmPty "!**/.pnpm/@lydell+node-pty-!(darwin-${arch})@*/**"
@@ -81,6 +80,10 @@ mac:
     - zip
 linux:
   files:
+    - electron/**/*
+    - server/**/*
+    - "!server/dist/opencode-plugins/**"
+    - package.json
     # Preserve both libc variants; the SQLite loader selects at runtime.
     - &linuxSqlite "!**/better-sqlite3/prebuilds/!(linux-${arch}|linuxmusl-${arch}).node"
     - &linuxPty "!**/@lydell/node-pty-!(linux-${arch}){,/**}"
@@ -112,6 +115,10 @@ linux:
     - tar.gz
 win:
   files:
+    - electron/**/*
+    - server/**/*
+    - "!server/dist/opencode-plugins/**"
+    - package.json
     - &winSqlite "!**/better-sqlite3/prebuilds/!(win32-${arch}).node"
     - &winPty "!**/@lydell/node-pty-!(win32-${arch}){,/**}"
     - &winPnpmPty "!**/.pnpm/@lydell+node-pty-!(win32-${arch})@*/**"
