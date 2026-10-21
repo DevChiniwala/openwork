@@ -45,4 +45,3 @@ const identity = `${fingerprint.digest("hex")}\n`;
 await writeFile(new URL("../dist/desktop-guest.version", import.meta.url), identity);
 // Keep the same identity in bundled Workers, which have no package asset files.
 await writeFile(new URL("../dist/desktop-identity.mjs", import.meta.url), `export default ${JSON.stringify(identity)};\n`);
-await writeFile(new URL("../dist/desktop-identity.d.mts", import.meta.url), "declare const identity: string;\nexport default identity;\n");

@@ -1,3 +1,4 @@
+/// <reference path="./desktop-assets.d.ts" />
 import identity from "../dist/desktop-identity.mjs"
 import { createHash } from "node:crypto"
 import { shellQuote, type SandboxHandle, type SandboxProvider } from "@openwork/sandbox"
