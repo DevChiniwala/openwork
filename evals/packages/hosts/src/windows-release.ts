@@ -9,10 +9,36 @@ import type { DesktopRelease, ElectronStartupObservation } from "./types.ts";
 
 const SNAPSHOT = "windows-medium";
 const INSTALLER = "C:\\ow\\release.exe";
-const BINARY = "C:\\Users\\Administrator\\AppData\\Local\\Programs\\@openworkdesktop\\OpenWork.exe";
+export function windowsReleaseBinary(distribution: DesktopRelease["distribution"]): string {
+  const names = { public: "OpenWork.exe", cloud: "OpenWork Cloud.exe", enterprise: "OpenWork Enterprise.exe" };
+  const name = names[distribution];
+  if (!name) throw new Error("Unsupported Windows release distribution.");
+  return `C:\\Users\\Administrator\\AppData\\Local\\Programs\\@openworkdesktop\\${name}`;
+}
+
+export function windowsDiagnosticPolicy(retain: boolean, hardDeadline: string | undefined, now = Date.now()): { retain: boolean; ttlMinutes?: number } {
+  if (!hardDeadline) {
+    if (retain) throw new Error("Retained Windows diagnostics require an explicit hard deadline.");
+    return { retain: false };
+  }
+  const remaining = Date.parse(hardDeadline) - now;
+  if (!Number.isFinite(remaining) || remaining < 60_000 || remaining > 90 * 60_000) {
+    throw new Error("Windows hard deadline must be 1-90 minutes in the future.");
+  }
+  return { retain, ttlMinutes: Math.floor(remaining / 60_000) };
+}
 const PROFILE = "C:\\Users\\Administrator\\AppData\\Roaming\\com.differentai.openwork";
 const LOG = "C:\\ow\\desktop.log";
-const CDP_PORT = 9223; // The packaged app overrides the requested 9222 port with 9223.
+const CDP_PORT = 9223; // The packaged app enforces loopback and overrides the requested port.
+const CDP_PREVIEW_PORT = 19825; // Private VM-only TCP relay; never make the sandbox public.
+
+export function windowsCdpMatchesRelease(text: string, version: string): boolean {
+  return ["OpenWork", "OpenWork Cloud", "OpenWork Enterprise"].some(name => {
+    const marker = `${name}/${version}`;
+    const index = text.indexOf(marker);
+    return index >= 0 && !/[0-9A-Za-z.-]/.test(text[index + marker.length] ?? "");
+  });
+}
 const POLL_MS = 5_000;
 
 function literal(value: string): string {
@@ -83,6 +109,8 @@ export interface WindowsReleaseSandbox extends AsyncDisposable {
   viewerUrl: string;
   cdpUrl: string | undefined;
   startup: ElectronStartupObservation;
+  /** The outer viewer/RFB gate must acknowledge success; otherwise opt-in diagnostics survive disposal until provider TTL. */
+  markReady(): void;
 }
 
 /**
@@ -92,6 +120,8 @@ export interface WindowsReleaseSandbox extends AsyncDisposable {
 export async function provisionWindowsReleaseSandbox(options: {
   release: DesktopRelease;
   lifetimeMinutes: number;
+  retainOnFailure?: boolean;
+  hardDeadline?: string;
   exec?: DaytonaExec;
   releaseFetch?: typeof fetch;
   request?: typeof fetch;
@@ -103,6 +133,11 @@ export async function provisionWindowsReleaseSandbox(options: {
   const exec = options.exec ?? defaultDaytonaExec;
   const log = options.log ?? console.error;
   const step = options.step;
+  const diagnostic = windowsDiagnosticPolicy(options.retainOnFailure === true, options.hardDeadline);
+  const BINARY = windowsReleaseBinary(options.release.distribution);
+  const executableName = BINARY.split("\\").at(-1)!;
+  const providerTtl = diagnostic.ttlMinutes ?? (options.lifetimeMinutes === 0 ? 0 : options.lifetimeMinutes + 30);
+  let ready = false;
   const release = await stage(step, "win-release", `Resolve published release ${options.release.version} (${options.release.distribution})`,
     () => resolvePublishedDesktopRelease(options.release, options.releaseFetch, "windows"), (value) => value.assetName);
   if (!Number.isSafeInteger(options.lifetimeMinutes) || options.lifetimeMinutes < 0 || options.lifetimeMinutes > 1410) {
@@ -115,7 +150,7 @@ export async function provisionWindowsReleaseSandbox(options: {
     await stage(step, "win-create", "Create private Windows VM", async () => {
     await checkedExec(exec, ["create", "--name", name, "--snapshot", SNAPSHOT,
       "--auto-pause", "0", "--auto-delete", "-1",
-      "--ttl", String(options.lifetimeMinutes === 0 ? 0 : options.lifetimeMinutes + 30),
+      "--ttl", String(providerTtl),
       "--target", "us"], "private Windows world sandbox creation", { timeoutMs: 300_000 });
     created = true;
     sandbox = await privateSandboxId(name, exec);
@@ -141,6 +176,7 @@ export async function provisionWindowsReleaseSandbox(options: {
       `if ($LASTEXITCODE -ne 0) { throw 'Published Windows download failed' }\n` +
       `if ((Get-Item -LiteralPath ${literal(INSTALLER)}).Length -ne ${release.size}) { throw 'Published Windows release size mismatch' }\n` +
       `if ((Get-FileHash -Algorithm SHA256 -LiteralPath ${literal(INSTALLER)}).Hash.ToLowerInvariant() -ne ${literal(digest)}) { throw 'Published Windows release SHA-256 mismatch' }\n` +
+      `if ((Get-AuthenticodeSignature -LiteralPath ${literal(INSTALLER)}).Status -ne 'Valid') { throw 'Published Windows installer signature is not valid' }\n` +
       `Write-Output 'WINDOWS_RELEASE_VERIFIED'`;
     await stage(step, "win-download", "Download installer and verify SHA-256 in the VM", async () => {
       const verified = await runPowerShell(exec, sandbox, download, "published Windows release digest", 900_000);
@@ -168,7 +204,7 @@ export async function provisionWindowsReleaseSandbox(options: {
       "launch Windows release as interactive Administrator");
     const observed = await pollWindowsUntil(async () => {
       const output = await runPowerShell(exec, sandbox,
-        `$p = Get-CimInstance Win32_Process -Filter \"name='OpenWork.exe'\" | Where-Object { $_.CommandLine -notmatch '--type=' -and $_.SessionId -eq 1 }\n` +
+        `$p = Get-CimInstance Win32_Process -Filter \"name='${executableName}'\" | Where-Object { $_.CommandLine -notmatch '--type=' -and $_.SessionId -eq 1 }\n` +
         `if ($p) { Write-Output 'GUI_SESSION_1' }`, "Windows interactive session witness", 30_000);
       return output.includes("GUI_SESSION_1") ? true : undefined;
     }, 120_000, "Windows GUI session");
@@ -191,16 +227,23 @@ export async function provisionWindowsReleaseSandbox(options: {
       await pollWindowsUntil(async () => {
         const response = await runPowerShell(exec, sandbox,
           `& curl.exe --fail --silent --max-time 4 http://127.0.0.1:${CDP_PORT}/json/version`, "Windows release CDP probe", 15_000);
-        return response.includes(`OpenWork/${release.version}`) ? true : undefined;
+        return windowsCdpMatchesRelease(response, release.version) ? true : undefined;
       }, options.startupTimeoutMs ?? 180_000, "Windows release CDP");
-      const privateCdp = await privateWebPreview(sandbox, CDP_PORT, exec, expiresInSeconds);
+      // The shipping app deliberately binds CDP to loopback. Daytona's proxy
+      // cannot reach that listener directly; expose only a private VM relay.
+      await runPowerShell(exec, sandbox,
+        `& netsh.exe interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=${CDP_PREVIEW_PORT} connectaddress=127.0.0.1 connectport=${CDP_PORT}\n` +
+        `if ($LASTEXITCODE -ne 0) { throw 'Private Windows CDP relay setup failed' }\n` +
+        `New-NetFirewallRule -DisplayName 'OpenWork private preview CDP' -Direction Inbound -LocalPort ${CDP_PREVIEW_PORT} -Protocol TCP -Action Allow | Out-Null`,
+        "private Windows CDP relay", 30_000);
+      const privateCdp = await privateWebPreview(sandbox, CDP_PREVIEW_PORT, exec, expiresInSeconds);
       const response = await (options.request ?? fetch)(new URL("/json/version", privateCdp.browserOrigin), { signal: AbortSignal.timeout(10_000) });
-      if (!response.ok || !(await response.text()).includes(`OpenWork/${release.version}`)) throw new Error("Windows CDP is not reachable through the signed private preview.");
+      if (!response.ok || !windowsCdpMatchesRelease(await response.text(), release.version)) throw new Error("Windows CDP is not reachable through the signed private preview.");
       cdpUrl = privateCdp.browserOrigin;
       await cdpStep?.ok(`OpenWork/${release.version}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await cdpStep?.fail(`not responsive; viewer kept for inspection — ${message}`);
+      await cdpStep?.fail(`not responsive; outer viewer readiness is still required${diagnostic.retain ? "; failure will retain diagnostics until hard TTL" : "; failure cleans up the VM"} — ${message}`);
       log(`==> Windows app not CDP-responsive: ${message}`);
     }
     const startup: ElectronStartupObservation = cdpUrl
@@ -209,11 +252,20 @@ export async function provisionWindowsReleaseSandbox(options: {
     const value: WindowsReleaseSandbox = {
       sandbox, release, installPath: BINARY, installerPath: INSTALLER, profilePath: PROFILE,
       logPath: LOG, viewerUrl: viewer.href, cdpUrl, startup,
-      async [Symbol.asyncDispose](): Promise<void> { await deleteSandboxes([sandbox], { exec }); },
+      markReady(): void { ready = true; },
+      async [Symbol.asyncDispose](): Promise<void> {
+        if (diagnostic.retain && !ready) {
+          log(`==> Retained failed Windows diagnostic VM ${sandbox} until provider hard TTL; no ready viewer is claimed`);
+          return;
+        }
+        await deleteSandboxes([sandbox], { exec });
+      },
     };
     return value;
   } catch (error) {
-    if (created) await deleteSandboxes([sandbox], { exec }).catch((cleanup: unknown) => {
+    if (created && diagnostic.retain) {
+      log(`==> Retained failed Windows diagnostic VM ${sandbox} until provider hard TTL; no ready viewer is claimed`);
+    } else if (created) await deleteSandboxes([sandbox], { exec }).catch((cleanup: unknown) => {
       log(`==> Windows world cleanup failed: ${cleanup instanceof Error ? cleanup.message : String(cleanup)}`);
     });
     throw error;

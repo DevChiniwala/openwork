@@ -242,12 +242,15 @@ export async function bootDesktopPreview(stack: AsyncDisposableStack, place: Pla
     const windowsRelease = stack.use(await provisionWindowsReleaseSandbox({
       release,
       lifetimeMinutes: Number(process.env.OPENWORK_WORLD_PREVIEW_LIFETIME_MINUTES ?? "120"),
+      retainOnFailure: process.env.OPENWORK_DAYTONA_RETAIN_FAILED === "1",
+      hardDeadline: process.env.OPENWORK_WINDOWS_PREVIEW_DEADLINE,
       onCreated: (sandbox, name) => trackResource({ kind: "daytona-windows-preview", id: sandbox, match: name, label: "Windows published desktop" }),
       step: (id, label) => previewSteps.step(id, label),
       // Provisioning chatter belongs in the world log, not over the live step list.
       log: (line) => console.log(line),
     }));
     await waitForNoVnc(windowsRelease.viewerUrl);
+    windowsRelease.markReady();
     outputs.preview = secret(windowsRelease.viewerUrl, { group: "Preview", note: "Private Windows noVNC viewer; reveal only in your terminal" });
     outputs.desktopSandbox = output(windowsRelease.sandbox, { group: "World" });
     if (windowsRelease.cdpUrl) outputs.cdp = secret(windowsRelease.cdpUrl, { group: "Services" });
