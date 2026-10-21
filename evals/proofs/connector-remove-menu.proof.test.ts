@@ -97,3 +97,35 @@ test("an admin given Remove any connection while Den is open can remove a connec
     await user.screenshot();
   });
 });
+
+test("an agent's removal link opens the confirmation, and the connector goes only when the person chooses Remove", async ({ world, user, probe, step, evidence }) => {
+  await step("the person opens the link their agent gave them", async () => {
+    await world.grantRemoveAny();
+    await user.navigate(`${world.den.ref.webUrl}/dashboard/mcp-connections/${world.id}?remove=1`);
+    await user.see({ text: "Remove Lab Tracker?" }, { timeoutMs: 90_000 });
+    const exists = await world.connectorExists();
+    evidence.recordAssertionEvidence("Opening the link removes nothing", `still listed=${exists}`, exists);
+    expect(exists).toBe(true);
+    await user.screenshot();
+  });
+
+  await step("Cancel keeps it and does not ask again", async () => {
+    await user.click({ role: "button", label: "Cancel" });
+    await user.notSee({ text: "Remove Lab Tracker?" }, { timeoutMs: 15_000 });
+    const url = await probe.eventually(() => probe.url(), { within: 15_000, label: "link cleared", until: value => !value.includes("remove=1") });
+    expect(url).not.toContain("remove=1");
+    expect(await world.connectorExists()).toBe(true);
+    await user.screenshot();
+  });
+
+  await step("after: from the link again, the person chooses Remove and it is gone", async () => {
+    await user.navigate(`${world.den.ref.webUrl}/dashboard/mcp-connections/${world.id}?remove=1`);
+    await user.see({ text: "Remove Lab Tracker?" }, { timeoutMs: 60_000 });
+    await user.click({ role: "button", label: "Remove" });
+    await user.see({ text: "Lab Tracker is removed" }, { timeoutMs: 30_000 });
+    const exists = await probe.eventually(() => world.connectorExists(), { within: 15_000, label: "connector removed", until: value => !value });
+    evidence.recordAssertionEvidence("The connector is gone after the person confirms", `still listed=${exists}`, !exists);
+    expect(exists).toBe(false);
+    await user.screenshot();
+  });
+});

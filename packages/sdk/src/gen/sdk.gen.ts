@@ -138,6 +138,7 @@ import type {
   DownloadHostGoogleDriveFileResponses,
   ExternalMcpConnectionAccessInput,
   ExternalMcpConnectionByKeyUpsertInput,
+  ExternalMcpConnectionRemovalRequestBody,
   ExternalMcpConnectionToolPolicyInput,
   ExternalMcpConnectionToolRunInput,
   ExternalMcpIssuerReviewInput,
@@ -1038,12 +1039,11 @@ import type {
   RecordWorkbotTelemetryErrors,
   RecordWorkbotTelemetryResponses,
   RemoteSessionStatusRequest,
-  RemoveExternalMcpConnectionBody,
-  RemoveMcpConnectionErrors,
-  RemoveMcpConnectionResponses,
   RenamePermissionSetBody,
   ReplaceGoogleDocumentTextErrors,
   ReplaceGoogleDocumentTextResponses,
+  RequestMcpConnectionRemovalErrors,
+  RequestMcpConnectionRemovalResponses,
   RunAutomationNowErrors,
   RunAutomationNowResponses,
   SaveGoogleDriveDocumentEditsErrors,
@@ -12789,14 +12789,14 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Remove an organization connection
+   * Prepare removing an organization connection
    *
-   * Permanently removes one organization connection (connector) from OpenWork: who can use it, every stored account and its OAuth app. It does not delete anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName and confirm true. A connection that plugins need is not removed unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Removing needs the Remove any connection permission, or having added the connection. Never retry an uncertain removal; list connections to check instead.
+   * Prepares removing one organization connection (connector) from OpenWork and returns a link where the person confirms it. Nothing is removed by this call: the connection, who can use it, its stored accounts and OAuth app are deleted only when the person opens the link and confirms in OpenWork. It never deletes anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName. A connection that plugins need is refused unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Needs the Remove any connection permission, or having added the connection. Give the person handoff.url and handoff.instructions; afterwards, list connections with getMcpConnections to confirm it is gone.
    */
-  public removeMcpConnection<ThrowOnError extends boolean = false>(
+  public requestMcpConnectionRemoval<ThrowOnError extends boolean = false>(
     parameters: {
       connectionId: string;
-      removeExternalMcpConnectionBody: RemoveExternalMcpConnectionBody;
+      externalMcpConnectionRemovalRequestBody: ExternalMcpConnectionRemovalRequestBody;
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -12806,23 +12806,25 @@ export class DenClient extends HeyApiClient {
         {
           args: [
             { in: "path", key: "connectionId" },
-            { key: "removeExternalMcpConnectionBody", map: "body" },
+            { key: "externalMcpConnectionRemovalRequestBody", map: "body" },
           ],
         },
       ],
     );
-    return (options?.client ?? this.client).post<RemoveMcpConnectionResponses, RemoveMcpConnectionErrors, ThrowOnError>(
-      {
-        url: "/v1/mcp-connections/{connectionId}/remove",
-        ...options,
-        ...params,
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-          ...params.headers,
-        },
+    return (options?.client ?? this.client).post<
+      RequestMcpConnectionRemovalResponses,
+      RequestMcpConnectionRemovalErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/{connectionId}/removal-request",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
       },
-    );
+    });
   }
 
   /**

@@ -12,8 +12,8 @@ export type CatalogAvailabilityContext = {
   usageSource?: string
 }
 
-/** The agent-facing connection removal operation (POST /v1/mcp-connections/{connectionId}/remove). */
-export const AGENT_CONNECTION_REMOVAL_PATH = "/v1/mcp-connections/{connectionId}/remove"
+/** The agent-facing connection removal operation (POST /v1/mcp-connections/{connectionId}/removal-request). */
+export const AGENT_CONNECTION_REMOVAL_PATH = "/v1/mcp-connections/{connectionId}/removal-request"
 
 export function catalogOperationAvailableToCapabilities(
   context: CatalogAvailabilityContext,

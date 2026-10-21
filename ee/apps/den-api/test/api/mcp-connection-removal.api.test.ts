@@ -1,9 +1,10 @@
 /**
- * Removing an organization connection through OpenWork Connect
- * (removeMcpConnection): discoverable only with the rollout, the same
- * permissions as the dashboard, the exact connection named and confirmed,
- * plugin dependencies refused unless the user agreed, credentials cleaned up,
- * and the connection gone from later listings.
+ * Removing an organization connection with an agent
+ * (requestMcpConnectionRemoval): discoverable only with the rollout, the same
+ * permissions as the dashboard, the exact connection named, plugin
+ * dependencies refused unless the user agreed. The agent's call removes
+ * nothing; the person confirms through the dashboard DELETE, which agents
+ * cannot call, and the connection and its credentials are then gone.
  */
 import assert from "node:assert/strict"
 import { after, test } from "node:test"
@@ -53,23 +54,23 @@ function matchNames(result: McpToolResult): string[] {
   return list(field(result.body, "matches")).map((entry) => String(entry.name))
 }
 
-function remove(token: string, connectionId: string, body: Record<string, unknown>) {
-  return den.callMcpTool(token, "execute_capability", { name: "removeMcpConnection", path: { connectionId }, body })
+function requestRemoval(token: string, connectionId: string, body: Record<string, unknown>) {
+  return den.callMcpTool(token, "execute_capability", { name: "requestMcpConnectionRemoval", path: { connectionId }, body })
 }
 
 test("with the rollout off, agents cannot find or call connection removal", async () => {
   const id = await addConnection(owner, "Rollout Off Tracker")
   const search = await den.callMcpTool(ownerToken, "search_capabilities", { query: "delete connection", limit: 20 })
   assert.equal(search.isError, false, search.raw.slice(0, 400))
-  assert.equal(matchNames(search).includes("removeMcpConnection"), false)
+  assert.equal(matchNames(search).includes("requestMcpConnectionRemoval"), false)
 
-  const direct = await ownerApi("POST", `/v1/mcp-connections/${id}/remove`, { confirm: true, expectedName: "Rollout Off Tracker" })
+  const direct = await ownerApi("POST", `/v1/mcp-connections/${id}/removal-request`, { expectedName: "Rollout Off Tracker" })
   assert.equal(direct.status, 404, summary(direct))
   assert.equal(field(direct.body, "error"), "feature_disabled")
   assert.ok((await listedIds()).includes(id))
 })
 
-test("an owner's agent finds removal, removes the exact connection it was asked to, and it is gone with its credentials", async () => {
+test("an owner's agent prepares removing the exact connection; nothing is removed until the person confirms in Den", async () => {
   const enabled = await den.setFeature(orgId, "agentConnectionRemoval", true)
   assert.equal(enabled.status, 200, summary(enabled))
   const id = await addConnection(owner, "Lab Deploys")
@@ -81,54 +82,67 @@ test("an owner's agent finds removal, removes the exact connection it was asked 
   assert.ok(matchNames(getConnections).includes("getMcpConnections"), getConnections.raw.slice(0, 400))
   for (const query of ["delete connection", "remove connector", "delete MCP connection"]) {
     const search = await den.callMcpTool(ownerToken, "search_capabilities", { query, limit: 20 })
-    assert.ok(matchNames(search).includes("removeMcpConnection"), `${query}: ${search.raw.slice(0, 400)}`)
+    assert.ok(matchNames(search).includes("requestMcpConnectionRemoval"), `${query}: ${search.raw.slice(0, 400)}`)
   }
 
-  const unconfirmed = await remove(ownerToken, id, { expectedName: "Lab Deploys" })
-  assert.equal(unconfirmed.isError, true, unconfirmed.raw.slice(0, 400))
-  const wrongName = await remove(ownerToken, id, { confirm: true, expectedName: "Lab Deploy" })
+  const wrongName = await requestRemoval(ownerToken, id, { expectedName: "Lab Deploy" })
   assert.equal(wrongName.isError, true, wrongName.raw.slice(0, 400))
   assert.match(wrongName.raw, /connection_name_mismatch/)
-  assert.ok((await listedIds()).includes(id), "nothing is removed without confirmation and the exact name")
 
-  const removed = await remove(ownerToken, id, { confirm: true, expectedName: "Lab Deploys" })
-  assert.equal(removed.isError, false, removed.raw.slice(0, 400))
-  assert.equal(field(removed.body, "ok"), true)
-  assert.equal(field(removed.body, "removed", "id"), id)
-  assert.equal(field(removed.body, "removed", "name"), "Lab Deploys")
-  assert.equal(field(removed.body, "listed"), false)
+  // Even a call claiming the user confirmed is refused: approval is not something the agent can send.
+  const selfConfirmed = await requestRemoval(ownerToken, id, { expectedName: "Lab Deploys", confirm: true })
+  assert.equal(selfConfirmed.isError, true, selfConfirmed.raw.slice(0, 400))
+
+  const prepared = await requestRemoval(ownerToken, id, { expectedName: "Lab Deploys" })
+  assert.equal(prepared.isError, false, prepared.raw.slice(0, 400))
+  assert.equal(field(prepared.body, "status"), "confirmation_required")
+  assert.equal(field(prepared.body, "connection", "id"), id)
+  assert.equal(field(prepared.body, "handoff", "action"), "open_link")
+  const link = new URL(text(field(prepared.body, "handoff", "url"), "handoff link"))
+  assert.equal(link.pathname, `/dashboard/mcp-connections/${id}`)
+  assert.equal(link.searchParams.get("remove"), "1")
+  assert.deepEqual(await storedRows(id), before, "preparing removes nothing")
+  assert.ok((await listedIds()).includes(id))
+
+  // The agent cannot take the dashboard's delete path.
+  const dashboardDelete = await den.callMcpTool(ownerToken, "execute_capability", { name: "deleteMcpConnectionsByConnectionId", path: { connectionId: id } })
+  assert.equal(dashboardDelete.isError, true, dashboardDelete.raw.slice(0, 400))
+  assert.ok((await listedIds()).includes(id))
+
+  // The person opens the link and chooses Remove: Den sends the dashboard DELETE with their session.
+  const confirmed = await ownerApi("DELETE", `/v1/mcp-connections/${id}`)
+  assert.equal(confirmed.status, 200, summary(confirmed))
   assert.equal((await listedIds()).includes(id), false)
   assert.deepEqual(await storedRows(id), { accounts: 0, grants: 0, connections: 0 })
 
-  const again = await remove(ownerToken, id, { confirm: true, expectedName: "Lab Deploys" })
-  assert.equal(again.isError, true, again.raw.slice(0, 400))
-  assert.match(again.raw, /connection_not_found/)
+  const afterwards = await requestRemoval(ownerToken, id, { expectedName: "Lab Deploys" })
+  assert.equal(afterwards.isError, true, afterwards.raw.slice(0, 400))
+  assert.match(afterwards.raw, /connection_not_found/)
 })
 
-test("a member cannot remove a connection someone else added, but can remove their own", async () => {
+test("a member cannot prepare removing a connection someone else added, but can for their own", async () => {
   const ownersId = await addConnection(owner, "Owner Billing")
-  const denied = await remove(teammateToken, ownersId, { confirm: true, expectedName: "Owner Billing" })
+  const denied = await requestRemoval(teammateToken, ownersId, { expectedName: "Owner Billing" })
   assert.equal(denied.isError, true, denied.raw.slice(0, 400))
   assert.match(denied.raw, /forbidden/)
-  assert.ok((await listedIds()).includes(ownersId))
 
   const teammatesId = await addConnection(teammate, "Teammate Notes")
-  const own = await remove(teammateToken, teammatesId, { confirm: true, expectedName: "Teammate Notes" })
+  const own = await requestRemoval(teammateToken, teammatesId, { expectedName: "Teammate Notes" })
   assert.equal(own.isError, false, own.raw.slice(0, 400))
-  assert.equal((await listedIds()).includes(teammatesId), false)
+  assert.equal(field(own.body, "status"), "confirmation_required")
+  assert.ok((await listedIds()).includes(teammatesId))
 })
 
-test("an unknown connection is reported missing and nothing else is touched", async () => {
-  const before = await listedIds()
-  const missing = await remove(ownerToken, createDenTypeId("externalMcpConnection"), { confirm: true, expectedName: "Ghost" })
+test("an unknown connection is reported missing", async () => {
+  const missing = await requestRemoval(ownerToken, createDenTypeId("externalMcpConnection"), { expectedName: "Ghost" })
   assert.equal(missing.isError, true, missing.raw.slice(0, 400))
   assert.match(missing.raw, /connection_not_found/)
-  assert.deepEqual(await listedIds(), before)
 })
 
-test("a connection a plugin needs is kept until the user agrees to remove it from that plugin", async () => {
+test("a connection a plugin needs is refused until the user agrees it may leave that plugin", async () => {
   const id = await addConnection(owner, "Plugin Tracker")
-  const plugin = await ownerApi("POST", "/v1/plugins", { name: `Tracker Plugin ${den.stamp}` })
+  const pluginName = `Tracker Plugin ${den.stamp}`
+  const plugin = await ownerApi("POST", "/v1/plugins", { name: pluginName })
   assert.equal(plugin.status, 201, summary(plugin))
   const pluginId = text(field(plugin.body, "item", "id"), "plugin id")
   // ARRANGE ONLY: bind the plugin's declared MCP server to this connection, as configuring the plugin's requirement does.
@@ -137,25 +151,13 @@ test("a connection a plugin needs is kept until the user agrees to remove it fro
     [createDenTypeId("pluginMcpRequirementBinding"), orgId, pluginId, createDenTypeId("configObject"), "tracker", id, owner.memberId],
   )
 
-  const blocked = await remove(ownerToken, id, { confirm: true, expectedName: "Plugin Tracker" })
+  const blocked = await requestRemoval(ownerToken, id, { expectedName: "Plugin Tracker" })
   assert.equal(blocked.isError, true, blocked.raw.slice(0, 400))
   assert.match(blocked.raw, /connection_in_use/)
-  assert.ok(blocked.raw.includes(`Tracker Plugin ${den.stamp}`), "the error names the plugin that needs it")
-  assert.ok((await listedIds()).includes(id))
+  assert.ok(blocked.raw.includes(pluginName), "the error names the plugin that needs it")
 
-  const detached = await remove(ownerToken, id, { confirm: true, expectedName: "Plugin Tracker", detachFromPlugins: true })
-  assert.equal(detached.isError, false, detached.raw.slice(0, 400))
-  assert.deepEqual(list(field(detached.body, "detachedFromPlugins")).map((entry) => entry.pluginId), [pluginId])
-  assert.equal((await listedIds()).includes(id), false)
-  const [bindings] = await client.query("SELECT COUNT(*) AS total FROM plugin_mcp_requirement_binding WHERE external_mcp_connection_id = ?", [id])
-  assert.equal(Number(list(bindings)[0]?.total), 0)
-})
-
-test("the dashboard's delete route is unchanged and still not offered to agents", async () => {
-  const id = await addConnection(owner, "Dashboard Delete")
-  const search = await den.callMcpTool(ownerToken, "search_capabilities", { query: "deleteMcpConnectionsByConnectionId", limit: 20 })
-  assert.equal(matchNames(search).some((name) => name.startsWith("deleteMcpConnections")), false)
-  const deleted = await ownerApi("DELETE", `/v1/mcp-connections/${id}`)
-  assert.equal(deleted.status, 200, summary(deleted))
-  assert.equal((await listedIds()).includes(id), false)
+  const agreed = await requestRemoval(ownerToken, id, { expectedName: "Plugin Tracker", detachFromPlugins: true })
+  assert.equal(agreed.isError, false, agreed.raw.slice(0, 400))
+  assert.deepEqual(list(field(agreed.body, "requiredBy")).map((entry) => entry.pluginId), [pluginId])
+  assert.ok((await listedIds()).includes(id), "still nothing is removed before the person confirms")
 })

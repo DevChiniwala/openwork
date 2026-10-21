@@ -76,7 +76,7 @@ export const FEATURES = defineFeatures({
   },
   agentConnectionRemoval: {
     label: "Agents remove connections",
-    description: "People allowed to remove a connection can ask their agent to remove it, after naming the exact connection and confirming.",
+    description: "People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

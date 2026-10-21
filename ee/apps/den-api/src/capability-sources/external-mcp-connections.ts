@@ -1543,24 +1543,6 @@ export async function deleteExternalMcpConnection(input: {
   connectionId: ExternalMcpConnectionId
   createdByOrgMembershipId?: OrgMembershipId
 }): Promise<boolean> {
-  return (await removeExternalMcpConnection(input)) === "deleted"
-}
-
-export type ExternalMcpConnectionRemoval = "deleted" | "not_found" | "bound_to_plugins"
-
-/**
- * Deletes a connection with its access grants, stored accounts, OAuth client
- * and Slack assistant rows in one transaction. With
- * `refuseWhenBoundToPlugins`, a connection a plugin requirement is bound to is
- * left untouched (checked under the same row lock, so a binding added
- * meanwhile cannot be dropped silently); otherwise those bindings go too.
- */
-export async function removeExternalMcpConnection(input: {
-  organizationId: OrganizationId
-  connectionId: ExternalMcpConnectionId
-  createdByOrgMembershipId?: OrgMembershipId
-  refuseWhenBoundToPlugins?: boolean
-}): Promise<ExternalMcpConnectionRemoval> {
   return db.transaction(async (tx) => {
     const ownershipConditions = input.createdByOrgMembershipId === undefined
       ? []
@@ -1576,23 +1558,7 @@ export async function removeExternalMcpConnection(input: {
       .limit(1)
       .for("update")
     const existing = rows[0]
-    if (!existing) return "not_found"
-    if (input.refuseWhenBoundToPlugins) {
-      // Same rule as listActiveExternalMcpConnectionBindings: only active plugins count.
-      const [binding] = await tx
-        .select({ id: PluginMcpRequirementBindingTable.id })
-        .from(PluginMcpRequirementBindingTable)
-        .innerJoin(PluginTable, eq(PluginMcpRequirementBindingTable.pluginId, PluginTable.id))
-        .where(and(
-          eq(PluginMcpRequirementBindingTable.organizationId, input.organizationId),
-          eq(PluginMcpRequirementBindingTable.externalMcpConnectionId, existing.id),
-          eq(PluginTable.organizationId, input.organizationId),
-          eq(PluginTable.status, "active"),
-          isNull(PluginTable.deletedAt),
-        ))
-        .limit(1)
-      if (binding) return "bound_to_plugins"
-    }
+    if (!existing) return false
     // The enterprise adapter takes the same connection-row lock before any
     // credential commit. Deletion and credential persistence therefore have
     // one deterministic winner; a completed delete cannot be followed by a
@@ -1624,7 +1590,7 @@ export async function removeExternalMcpConnection(input: {
       await tx.delete(table).where(eq(table.connectionId, existing.id))
     }
     await tx.delete(ExternalMcpConnectionTable).where(eq(ExternalMcpConnectionTable.id, existing.id))
-    return "deleted"
+    return true
   })
 }
 

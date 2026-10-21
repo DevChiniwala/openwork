@@ -56,7 +56,7 @@
                 true,
                 false
               ],
-              "description": "Agents remove connections: People allowed to remove a connection can ask their agent to remove it, after naming the exact connection and confirming. Renders DEN_FEATURE_AGENT_CONNECTION_REMOVAL."
+              "description": "Agents remove connections: People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork. Renders DEN_FEATURE_AGENT_CONNECTION_REMOVAL."
             },
             "managedDeployments": {
               "enum": [

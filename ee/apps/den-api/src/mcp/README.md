@@ -85,19 +85,20 @@ These individual operations are blocked even though their tags may otherwise be 
 ## Removing connections
 
 The dashboard's `DELETE /v1/mcp-connections/{connectionId}` stays blocked
-(`Authentication`). Agents remove a connection through
-`removeMcpConnection` (`POST /v1/mcp-connections/{connectionId}/remove`),
-which is shown and accepted only with the `agentConnectionRemoval` feature and
-only to a person's own agent (`usageSource: "agent"`, see
-`catalog-availability.ts`): saved Workflows, Automations and Apps never get
-it. The request carries `confirm: true` and the connection's exact
-`expectedName`, so a wrong or ambiguous match removes nothing (409
-`connection_name_mismatch`). Permissions are the same as the dashboard
-(`connections.delete`, or having added the connection). A connection that
-active plugins need is refused (409 `connection_in_use`, with `requiredBy`)
-unless the user agreed to `detachFromPlugins`. Credentials, access grants and
-the OAuth app are deleted in the same transaction, and the route checks the
-connection is gone before answering `listed: false`.
+(`Authentication`), so no agent request can delete a connection. Agents
+prepare one with `requestMcpConnectionRemoval`
+(`POST /v1/mcp-connections/{connectionId}/removal-request`), shown and
+accepted only with the `agentConnectionRemoval` feature and only to a
+person's own agent (`usageSource: "agent"`, see `catalog-availability.ts`).
+It checks the same permissions as the dashboard (`connections.delete`, or
+having added the connection), requires the connection's exact
+`expectedName` (409 `connection_name_mismatch`), and refuses a connection
+active plugins need (409 `connection_in_use`, with `requiredBy`) unless the
+user agreed to `detachFromPlugins`. It deletes nothing: it returns
+`status: "confirmation_required"` and a `handoff` link to the connector page,
+which opens its Remove confirmation. The person removes it there, signed in,
+through the dashboard DELETE; the agent then lists connections to check.
+Approval therefore never rests on a value the agent sends.
 
 ## Untagged Operations
 

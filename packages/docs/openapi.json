@@ -21324,14 +21324,14 @@
           "deleted"
         ]
       },
-      "RemoveExternalMcpConnectionResponse": {
+      "ExternalMcpConnectionRemovalRequestResponse": {
         "type": "object",
         "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
+          "status": {
+            "type": "string",
+            "const": "confirmation_required"
           },
-          "removed": {
+          "connection": {
             "type": "object",
             "properties": {
               "id": {
@@ -21350,25 +21350,41 @@
               "url"
             ]
           },
-          "detachedFromPlugins": {
+          "requiredBy": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ExternalMcpConnectionRequiredBy"
             }
           },
-          "listed": {
-            "type": "boolean",
-            "const": false
+          "handoff": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "open_link"
+              },
+              "url": {
+                "type": "string"
+              },
+              "instructions": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "url",
+              "instructions"
+            ]
           }
         },
         "required": [
-          "ok",
-          "removed",
-          "detachedFromPlugins",
-          "listed"
+          "status",
+          "connection",
+          "requiredBy",
+          "handoff"
         ]
       },
-      "RemoveExternalMcpConnectionConflict": {
+      "ExternalMcpConnectionRemovalConflict": {
         "type": "object",
         "properties": {
           "error": {
@@ -21409,27 +21425,21 @@
           "connection"
         ]
       },
-      "RemoveExternalMcpConnectionBody": {
+      "ExternalMcpConnectionRemovalRequestBody": {
         "type": "object",
         "properties": {
-          "confirm": {
-            "type": "boolean",
-            "const": true,
-            "description": "True only when the user explicitly asked to remove this connection. Finding or selecting it is not a request to remove it."
-          },
           "expectedName": {
             "type": "string",
             "minLength": 1,
             "maxLength": 255,
-            "description": "The connection's exact name, as getMcpConnections lists it. Nothing is removed when it does not match."
+            "description": "The connection's exact name, as getMcpConnections lists it. Nothing is prepared when it does not match."
           },
           "detachFromPlugins": {
-            "description": "Also remove it from plugins that need it. Send true only after telling the user which plugins use it and they agree.",
+            "description": "The user agreed it may be removed from plugins that need it. Send true only after telling the user which plugins use it.",
             "type": "boolean"
           }
         },
         "required": [
-          "confirm",
           "expectedName"
         ],
         "additionalProperties": false
@@ -94995,35 +95005,36 @@
         ]
       }
     },
-    "/v1/mcp-connections/{connectionId}/remove": {
+    "/v1/mcp-connections/{connectionId}/removal-request": {
       "post": {
-        "operationId": "removeMcpConnection",
+        "operationId": "requestMcpConnectionRemoval",
         "tags": [
           "Capability Sources"
         ],
         "x-mcp": true,
         "x-mcp-search-aliases": [
           "delete connection",
+          "remove connection",
           "remove connector",
           "delete connector",
           "delete MCP connection",
           "remove MCP server"
         ],
-        "summary": "Remove an organization connection",
-        "description": "Permanently removes one organization connection (connector) from OpenWork: who can use it, every stored account and its OAuth app. It does not delete anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName and confirm true. A connection that plugins need is not removed unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Removing needs the Remove any connection permission, or having added the connection. Never retry an uncertain removal; list connections to check instead.",
+        "summary": "Prepare removing an organization connection",
+        "description": "Prepares removing one organization connection (connector) from OpenWork and returns a link where the person confirms it. Nothing is removed by this call: the connection, who can use it, its stored accounts and OAuth app are deleted only when the person opens the link and confirms in OpenWork. It never deletes anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName. A connection that plugins need is refused unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Needs the Remove any connection permission, or having added the connection. Give the person handoff.url and handoff.instructions; afterwards, list connections with getMcpConnections to confirm it is gone.",
         "responses": {
           "200": {
-            "description": "The connection was removed and is no longer listed.",
+            "description": "The removal is ready for the person to confirm in OpenWork.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RemoveExternalMcpConnectionResponse"
+                  "$ref": "#/components/schemas/ExternalMcpConnectionRemovalRequestResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request, for example confirm missing.",
+            "description": "Invalid request.",
             "content": {
               "application/json": {
                 "schema": {
@@ -95043,7 +95054,7 @@
             }
           },
           "403": {
-            "description": "The caller may not remove this connection, or must sign in again.",
+            "description": "The caller may not remove this connection.",
             "content": {
               "application/json": {
                 "schema": {
@@ -95067,30 +95078,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RemoveExternalMcpConnectionConflict"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "The removal could not be confirmed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "const": "removal_unconfirmed"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error",
-                    "message"
-                  ]
+                  "$ref": "#/components/schemas/ExternalMcpConnectionRemovalConflict"
                 }
               }
             }
@@ -95115,7 +95103,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RemoveExternalMcpConnectionBody"
+                "$ref": "#/components/schemas/ExternalMcpConnectionRemovalRequestBody"
               }
             }
           }

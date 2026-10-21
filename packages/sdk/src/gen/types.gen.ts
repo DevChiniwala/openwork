@@ -5086,18 +5086,22 @@ export type ExternalMcpConnectionDeleteByKeyResponse = {
   deleted: boolean;
 };
 
-export type RemoveExternalMcpConnectionResponse = {
-  ok: true;
-  removed: {
+export type ExternalMcpConnectionRemovalRequestResponse = {
+  status: "confirmation_required";
+  connection: {
     id: string;
     name: string;
     url: string;
   };
-  detachedFromPlugins: Array<ExternalMcpConnectionRequiredBy>;
-  listed: false;
+  requiredBy: Array<ExternalMcpConnectionRequiredBy>;
+  handoff: {
+    action: "open_link";
+    url: string;
+    instructions: string;
+  };
 };
 
-export type RemoveExternalMcpConnectionConflict = {
+export type ExternalMcpConnectionRemovalConflict = {
   error: "connection_name_mismatch" | "connection_in_use";
   message: string;
   connection: {
@@ -5107,17 +5111,13 @@ export type RemoveExternalMcpConnectionConflict = {
   requiredBy?: Array<ExternalMcpConnectionRequiredBy>;
 };
 
-export type RemoveExternalMcpConnectionBody = {
+export type ExternalMcpConnectionRemovalRequestBody = {
   /**
-   * True only when the user explicitly asked to remove this connection. Finding or selecting it is not a request to remove it.
-   */
-  confirm: true;
-  /**
-   * The connection's exact name, as getMcpConnections lists it. Nothing is removed when it does not match.
+   * The connection's exact name, as getMcpConnections lists it. Nothing is prepared when it does not match.
    */
   expectedName: string;
   /**
-   * Also remove it from plugins that need it. Send true only after telling the user which plugins use it and they agree.
+   * The user agreed it may be removed from plugins that need it. Send true only after telling the user which plugins use it.
    */
   detachFromPlugins?: boolean;
 };
@@ -29436,8 +29436,8 @@ export type PutV1McpConnectionsByConnectionIdAccessResponses = {
 export type PutV1McpConnectionsByConnectionIdAccessResponse =
   PutV1McpConnectionsByConnectionIdAccessResponses[keyof PutV1McpConnectionsByConnectionIdAccessResponses];
 
-export type RemoveMcpConnectionData = {
-  body: RemoveExternalMcpConnectionBody;
+export type RequestMcpConnectionRemovalData = {
+  body: ExternalMcpConnectionRemovalRequestBody;
   path: {
     /**
      * Den TypeID with 'emc_' prefix and a 26-character base32 suffix.
@@ -29445,12 +29445,12 @@ export type RemoveMcpConnectionData = {
     connectionId: string;
   };
   query?: never;
-  url: "/v1/mcp-connections/{connectionId}/remove";
+  url: "/v1/mcp-connections/{connectionId}/removal-request";
 };
 
-export type RemoveMcpConnectionErrors = {
+export type RequestMcpConnectionRemovalErrors = {
   /**
-   * Invalid request, for example confirm missing.
+   * Invalid request.
    */
   400: InvalidRequestError;
   /**
@@ -29458,7 +29458,7 @@ export type RemoveMcpConnectionErrors = {
    */
   401: UnauthorizedError;
   /**
-   * The caller may not remove this connection, or must sign in again.
+   * The caller may not remove this connection.
    */
   403: ForbiddenError;
   /**
@@ -29468,26 +29468,21 @@ export type RemoveMcpConnectionErrors = {
   /**
    * The name does not match this connection, or plugins need it.
    */
-  409: RemoveExternalMcpConnectionConflict;
-  /**
-   * The removal could not be confirmed.
-   */
-  500: {
-    error: "removal_unconfirmed";
-    message: string;
-  };
+  409: ExternalMcpConnectionRemovalConflict;
 };
 
-export type RemoveMcpConnectionError = RemoveMcpConnectionErrors[keyof RemoveMcpConnectionErrors];
+export type RequestMcpConnectionRemovalError =
+  RequestMcpConnectionRemovalErrors[keyof RequestMcpConnectionRemovalErrors];
 
-export type RemoveMcpConnectionResponses = {
+export type RequestMcpConnectionRemovalResponses = {
   /**
-   * The connection was removed and is no longer listed.
+   * The removal is ready for the person to confirm in OpenWork.
    */
-  200: RemoveExternalMcpConnectionResponse;
+  200: ExternalMcpConnectionRemovalRequestResponse;
 };
 
-export type RemoveMcpConnectionResponse = RemoveMcpConnectionResponses[keyof RemoveMcpConnectionResponses];
+export type RequestMcpConnectionRemovalResponse =
+  RequestMcpConnectionRemovalResponses[keyof RequestMcpConnectionRemovalResponses];
 
 export type PostV1McpConnectionsByConnectionIdDisconnectData = {
   body?: never;

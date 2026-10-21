@@ -287,6 +287,7 @@ export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
   change("POST", "/v1/mcp-connections", "mcp_connection.create", MCP, res("mcp_connection"), "May probe the MCP server (initialize) before storing; secrets write-only."),
   change("PUT", "/v1/mcp-connections/:connectionId", "mcp_connection.update", MCP, res("mcp_connection", "connectionId"), "May probe the MCP server when validating; secrets write-only."),
   change("DELETE", "/v1/mcp-connections/:connectionId", "mcp_connection.delete", MCP, res("mcp_connection", "connectionId")),
+  change("POST", "/v1/mcp-connections/:connectionId/removal-request", "mcp_connection.removal_request", MCP, res("mcp_connection", "connectionId"), "Agent prepares a removal; nothing is deleted until the person confirms through DELETE in Den."),
   change("PUT", "/v1/mcp-connections/by-key/:externalKey", "mcp_connection.by_key.upsert", MCP, res("mcp_connection", "externalKey"), "May probe the MCP server when validating."),
   change("DELETE", "/v1/mcp-connections/by-key/:externalKey", "mcp_connection.by_key.delete", MCP, res("mcp_connection", "externalKey")),
   change("PUT", "/v1/mcp-connections/:connectionId/access", "mcp_connection.access.replace", MCP, res("mcp_connection", "connectionId")),
