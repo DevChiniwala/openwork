@@ -31,6 +31,8 @@ function fixture(options = {}) {
         callTool: async (name, args) => {
           calls.push(name);
           await options.beforeTool?.(name);
+          const replaced = options.toolResult?.(name);
+          if (replaced) return replaced;
           if (name === "computer_open_session") {
             onUi({ kind: "state", id: "view", phase: "working", appID: args.app_id, appName: "Editor", windowTitle: "Draft", mode: args.mode, task: args.purpose });
             return text({ ok: true, session_id: "native", window_id: 17, state: "active" });
@@ -157,6 +159,31 @@ test("disable then re-enable during readiness cannot revive an old request", asy
   gate.resolve();
   assert.equal(payload(await request).code, "computer_unavailable");
   assert.deepEqual(f.calls, []);
+});
+
+test("a macOS permission lost mid-chat asks in the chat again and resumes from a fresh session", async (t) => {
+  let readiness = "ready";
+  let revoked = false;
+  const f = fixture({
+    readiness: async () => ({ readiness, detail: readiness === "ready" ? "Ready" : "Computer Use needs Accessibility permission." }),
+    toolResult: (name) => revoked && name === "computer_observe"
+      ? { ...text({ ok: false, code: "permissions_required", message: "Grant Accessibility.", next: "human_takeover" }), isError: true } : undefined,
+  });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit the draft" } })).ok, true);
+  revoked = true; readiness = "setup-required";
+  const pending = f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} });
+  for (let waited = 0; !f.requests.some(Boolean) && waited < 3_000; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(f.requests.find(Boolean)?.appId, "editor", "the chat shows the setup card again");
+  assert.ok(f.calls.includes("close"), "the helper is released so a fresh one rereads the permissions");
+  revoked = false; readiness = "ready";
+  const restored = payload(await pending);
+  assert.equal(restored.code, "permissions_restored");
+  assert.equal(restored.next, "observe");
+  assert.equal(f.requests.at(-1), null);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} })).ok, true);
+  assert.equal(f.calls.filter((call) => call === "computer_open_session").length, 2);
 });
 
 test("a turn ending during an admitted tool releases the computer as soon as that tool settles", async (t) => {
