@@ -274,7 +274,7 @@ async function traffic() {
 }
 
 /**
- * A chat in its own session cell (hs_c_, Workbot with headlessSessionCells on), for set-ups whose cells are the new
+ * A chat in its own session cell (hs_c_, Workbot with a current Den), for set-ups whose cells are the new
  * version: an old router sends it to the owner cell, which forwards it. Not with old cells: the flag goes on only after
  * the runner that serves it is live.
  */

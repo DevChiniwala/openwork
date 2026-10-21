@@ -39,6 +39,8 @@ import { readWorkbotCorrectionPrompt, workbotCorrectionPrompt, workbotViewContex
 import type { DocumentOpenRequest } from "@openwork/documents";
 import { ComputerNavigationContext, ComputerOffer, DocumentOffers, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNativeDictation } from "@openwork/ui/react";
+import { WorkbotDictation } from "./native-dictation";
 
 /**
  * Workbot: one thread, instant. Layout and values follow the Paper file "WorkBot — one chat, set up once",
@@ -254,7 +256,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
     /> : null;
-    const composer = <WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled}
+    const composer = <WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
       onSend={text => submit(text)} onStop={() => stop.mutate()} autoFocus={false} disabled={!data} />;
     const firstName = user?.name?.trim().split(/\s+/)[0] ?? null;
@@ -363,6 +365,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const starting = empty && (start.isPending || (greetingAwaited && start.data?.started === true));
   const composer = (
     <WorkbotComposer
+      nativeDictation={host.nativeDictation}
       text={draft.text}
       onText={composerState.setText}
       name={data.name}
@@ -1735,6 +1738,7 @@ function OutputFiles({ files }: { files: WorkbotAttachment[] }) {
 
 export function WorkbotComposer(props: {
   teaching?: BrowserTeachingContext;
+  nativeDictation?: boolean;
   text: string;
   onText: (text: string) => void;
   name: string;
@@ -1752,23 +1756,38 @@ export function WorkbotComposer(props: {
 }) {
   const { text } = props;
   const input = useRef<HTMLTextAreaElement>(null);
+  const dictation = useNativeDictation({ enabled: props.nativeDictation === true, text, onText: props.onText,
+    selection: () => ({ start: input.current?.selectionStart ?? text.length, end: input.current?.selectionEnd ?? text.length }),
+    focusInput: () => input.current?.focus() });
   const hasFiles = props.uploads.length > 0;
   const canSend = text.trim().length > 0 || (hasFiles && props.uploads.every((upload) => upload.status !== "failed"));
 
   useLayoutEffect(() => {
     const node = input.current;
     if (!node) return;
-    node.style.height = "auto";
-    node.style.height = `${Math.min(node.scrollHeight, 200)}px`;
+    const fit = () => {
+      node.style.height = "auto";
+      node.style.height = `${Math.min(node.scrollHeight, 200)}px`;
+    };
+    fit();
+    let width = node.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const next = node.getBoundingClientRect().width;
+      if (next === width) return;
+      width = next;
+      fit();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [text]);
 
   const sendNow = () => {
     if (!canSend || props.disabled) return;
-    props.onSend(text);
+    props.onSend(props.nativeDictation === true ? dictation.commit() : text);
     input.current?.focus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
       event.preventDefault();
       sendNow();
     } else if (event.key === "Escape" && props.busy) {
@@ -1796,7 +1815,7 @@ export function WorkbotComposer(props: {
       }`}
     >
       {hasFiles ? <UploadTray uploads={props.uploads} onRemove={props.onRemoveUpload} onRetry={props.onRetryUpload} /> : null}
-      <div className={hasFiles ? "flex min-w-0 flex-1 items-end gap-1" : "contents"}>
+      <div className={hasFiles ? "flex w-full min-w-0 flex-1 items-end gap-1" : "contents"}>
         <AttachButton enabled={props.filesEnabled} onFiles={props.onFiles} />
         <textarea
           ref={input}
@@ -1804,13 +1823,14 @@ export function WorkbotComposer(props: {
           rows={1}
           autoFocus={props.autoFocus ?? true}
           disabled={props.disabled}
-          onChange={(event) => props.onText(event.target.value)}
+          onChange={(event) => dictation.edit(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={props.teaching ? "Explain this step or ask a question" : `Message ${props.name}`}
           aria-label={`Message ${props.name}`}
           className="max-h-[200px] min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[7px] text-[16px] leading-[22px] text-[var(--wb-text)] outline-none placeholder:text-[var(--wb-faint)] sm:py-[9px] sm:text-[14px] sm:leading-[18px]"
         />
+        {props.nativeDictation === true ? <WorkbotDictation dictation={dictation} disabled={props.disabled} text={text} /> : null}
         <button
           type="button"
           onClick={showStop ? props.onStop : sendNow}

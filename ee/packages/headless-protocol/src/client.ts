@@ -68,7 +68,7 @@ export type HeadlessRunnerDeps = {
   fetch: typeof fetch
   /**
    * `sessionId` and `messageId` are the turn the token is minted for, so a caller can remember which run it belongs
-   * to. `resumeGrant` (feature `headlessDurableTurns`): a credential the runner can exchange with Den for a fresh token
+   * to. `resumeGrant` (saved step turns): a credential the runner can exchange with Den for a fresh token
    * for this turn, so it can continue the turn on its own after a restart. `indexCapability`: what the runner presents
    * to report the session's content-free totals and state to Den's session index.
    */
@@ -252,7 +252,7 @@ export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?
  * Who a conversation belongs to and how it is shown to the model: `owner` (the caller's key for one person) and `ref`
  * (the caller's id for the conversation) list a person's conversations; `timeZone` dates their messages; `autoTitle`
  * names it after its first answer; `memoryOf` shares memory/ with another of their conversations (legacy chats);
- * `memoryScope: "owner"` keeps memory/ with the owner, shared by all their chats (session cells, `headlessSessionCells`).
+ * `memoryScope: "owner"` keeps memory/ with the owner, shared by all their chats (per-chat session cells).
  */
 export type RunnerSessionSettings = { owner?: string; ref?: string; timeZone?: string; autoTitle?: boolean; memoryOf?: string; memoryScope?: "owner" }
 
@@ -365,7 +365,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
 
     /**
      * Asks the runner to move this owner's older conversations into their own session cells, in the background
-     * (`headlessSessionCells`). Owner-scoped: needs the client's `owner`. Idempotent; `not_needed` on a runner without
+     * (per-chat session cells). Owner-scoped: needs the client's `owner`. Idempotent; `not_needed` on a runner without
      * cells. A runner from before session cells answers 404: reported as `unsupported`, never an error.
      */
     async splitOwner(): Promise<RunnerResult<{ split: string }>> {
@@ -406,7 +406,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
      * messageId never starts a second turn; it resumes an interrupted one.
      * `interrupt`: the conversation's answer in progress wraps up at its next safe point instead of this waiting behind
      * it (runners from before it refuse the field, so callers send it only where it is turned on).
-     * `execution: "steps"` (feature `headlessDurableTurns`): the runner runs the turn one step at a time, so a runner deploy
+     * `execution: "steps"` (saved step turns): the runner runs the turn one step at a time, so a runner deploy
      * switches between steps instead of cutting one off. Sent only when given; older runners refuse the field.
      */
     async sendTurn(
@@ -488,7 +488,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
         ...(input.attachments?.length ? { attachments: input.attachments } : {}),
         ...(input.interrupt ? { interrupt: true } : {}),
         ...(input.execution === "steps" ? { execution: "steps" } : {}),
-        // A grant is only minted where `headlessDurableTurns` is on, an index capability only where the session is known;
+        // A grant is minted for named turns, an index capability only where the session is known;
         // without them the body is exactly as before.
         credentials: {
           mcpToken: token,
@@ -630,7 +630,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
     },
 
     /**
-     * The session's live events over a WebSocket (feature `headlessDurableTurns`): on celld the socket is hibernatable,
+     * The session's live events over a WebSocket (saved step turns): on celld the socket is hibernatable,
      * so it keeps going while the runner's code is switched under it, and doesn't hold up that switch. Yields
      * `{ type: "ready" }`, then each event as `openEvents` carries it, until the socket closes or `signal` aborts.
      * Null when the runner doesn't upgrade (the Node runner, an older runner) or the socket can't open: use

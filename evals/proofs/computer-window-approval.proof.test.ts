@@ -32,6 +32,9 @@ test("enabled computer access continues without approval and preserves human han
     await world.followUp();
     await probe.eventually(world.snapshot, { within: 3000, until: value => value.session?.state === "paused", label: "the human handoff remains visible after technical cleanup" });
     await user.see({ role: "button", label: "Continue" });
+    const blockedBrowser = await world.browserWork();
+    expect(blockedBrowser.ok).toBe(false);
+    expect(blockedBrowser.error?.code).toBe("computer_paused");
     expect(world.inputs()).toBe(0);
     await user.screenshot();
     await user.click({ role: "button", label: "Continue" });

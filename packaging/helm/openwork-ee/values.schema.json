@@ -18,6 +18,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "nativeDictation": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Native dictation: Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition. Renders DEN_FEATURE_NATIVE_DICTATION."
+            },
             "organizationGrants": {
               "enum": [
                 "",
@@ -37,16 +47,6 @@
                 false
               ],
               "description": "Live provider sync: Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. Renders DEN_FEATURE_LIVE_PROVIDER_SYNC."
-            },
-            "offlineRecovery": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Connection failure presentation: Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations. Renders DEN_FEATURE_OFFLINE_RECOVERY."
             },
             "managedDeployments": {
               "enum": [
@@ -157,26 +157,6 @@
                 false
               ],
               "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
-            },
-            "headlessDurableTurns": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Cloud tasks survive restarts and updates: Workbot, Slack and Automations answers run one saved step at a time, keep going through OpenWork updates, and resume on their own after a restart or server failure, without waiting for someone to reopen the chat. Renders DEN_FEATURE_HEADLESS_DURABLE_TURNS."
-            },
-            "headlessSessionCells": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Workbot: each chat in its own space: Each Workbot chat is stored on its own, so long histories stay fast to open and move during updates. Renders DEN_FEATURE_HEADLESS_SESSION_CELLS."
             },
             "gatewayDashboard": {
               "enum": [
@@ -818,6 +798,26 @@
               ],
               "description": "Retired: no longer a feature switch. Ignored."
             },
+            "headlessDurableTurns": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "headlessSessionCells": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
             "workbotGuidedNavigation": {
               "enum": [
                 "",
@@ -879,6 +879,16 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "taskAnalyticsUi": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "offlineRecovery": {
               "enum": [
                 "",
                 "true",

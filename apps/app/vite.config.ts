@@ -102,6 +102,9 @@ export default defineConfig(({ command, isPreview }) => {
       "import.meta.env.VITE_OPENWORK_APP_VERSION": JSON.stringify(buildAppVersion),
       "import.meta.env.VITE_OPENWORK_BUILD_SHA": JSON.stringify(shortBuildSha),
     },
+    // The compiler injects this import after Vite's initial dependency scan.
+    // Prebundle it before the first navigation to avoid a startup-time reload.
+    optimizeDeps: { include: ["react/compiler-runtime"] },
     plugins: [
       {
         name: "openwork-dev-server-id",

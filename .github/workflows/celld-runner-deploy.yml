@@ -176,7 +176,7 @@ jobs:
               + { HEADLESS_RUNNER_VERSION: (.HEADLESS_RUNNER_VERSION // $version) }
           ' "$RUNNER_TEMP/vars.json" > "$RUNNER_TEMP/vars.merged.json"
           mv "$RUNNER_TEMP/vars.merged.json" "$RUNNER_TEMP/vars.json"
-          # Self-resume (headlessDurableTurns): the runner refuses a partial set, so merge all three or none.
+          # Self-resume (saved step turns): the runner refuses a partial set, so merge all three or none.
           if [ -n "${HEADLESS_DEN_API_URL:-}" ] && [ -n "${HEADLESS_DEN_CALLBACK_TOKEN:-}" ] && [ -n "${HEADLESS_GRANT_KEY:-}" ]; then
             jq --arg url "$HEADLESS_DEN_API_URL" --arg token "$HEADLESS_DEN_CALLBACK_TOKEN" --arg key "$HEADLESS_GRANT_KEY" \
               '. + { HEADLESS_DEN_API_URL: $url, HEADLESS_DEN_CALLBACK_TOKEN: $token, HEADLESS_GRANT_KEY: $key }' \

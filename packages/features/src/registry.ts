@@ -53,6 +53,13 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  nativeDictation: {
+    label: "Native dictation",
+    description: "Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   organizationGrants: {
     label: "Organization control panel and grants",
     description: "Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.",
@@ -63,13 +70,6 @@ export const FEATURES = defineFeatures({
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  offlineRecovery: {
-    label: "Connection failure presentation",
-    description: "Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -150,20 +150,6 @@ export const FEATURES = defineFeatures({
   remoteSessionSubagents: {
     label: "Desktop: tasks on other computers as sub-agents",
     description: "A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  headlessDurableTurns: {
-    label: "Cloud tasks survive restarts and updates",
-    description: "Workbot, Slack and Automations answers run one saved step at a time, keep going through OpenWork updates, and resume on their own after a restart or server failure, without waiting for someone to reopen the chat.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  headlessSessionCells: {
-    label: "Workbot: each chat in its own space",
-    description: "Each Workbot chat is stored on its own, so long histories stay fast to open and move during updates.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

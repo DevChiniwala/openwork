@@ -149,6 +149,16 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
   function invalidateObservation(current) {
     current.observationGeneration = (current.observationGeneration ?? 0) + 1;
   }
+  function humanPaused(grant) {
+    return Boolean(grant.handoff || lease?.grant === grant && lease.session?.state === "paused"
+      || [...grants.values()].some(owner => owner !== grant && owner.handoff && owner.handoffTarget === targetFor(grant).id));
+  }
+  function pausePrograms(grant, targetId) {
+    for (const [sessionId, program] of programs) {
+      const owner = grants.get(sessionId);
+      if (owner && (owner === grant || targetFor(owner).id === targetId)) program.controller.abort(new Error("The person took over. Continue is required before new work."));
+    }
+  }
   function advance(grant) {
     programs.get(grant.sessionId)?.controller.abort(new Error("Computer control stopped or changed."));
     grant.controller.abort(new Error("Computer use was turned off, revoked, or restarted."));
@@ -322,9 +332,11 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
       if (value.phase === "paused") {
         current.grant.handoff = { ...next, inputs: [] };
         current.grant.handoffTarget = current.adapter.id;
+        pausePrograms(current.grant, current.adapter.id);
       } else if (!current.grant.handoff || presentation?.phase === "paused") {
         // A working update already in flight before Take over is not Continue.
         current.grant.handoff = null; current.grant.handoffTarget = null;
+        if (presentation?.phase === "paused" && current.session) current.session = { ...current.session, state: "active", phase: "refreshing", reason: "" };
       }
       return;
     }
@@ -779,6 +791,11 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
         current.handoffGeneration++;
         current.grant.handoff = { ...presentation, phase: "paused", canContinue: true, inputs: [] };
         current.grant.handoffTarget = current.adapter.id;
+        pausePrograms(current.grant, current.adapter.id);
+        if (current.closing) {
+          if (!await cleanup(current)) throw new Error(COMPUTER_STOP_GUIDANCE);
+          return;
+        }
         if (presentation.phase === "paused") return;
         // Reducing authority must not wait on a pending resume.
         try { await current.transport.notifyUi({ id: input.id, action: "takeover" }); }
@@ -922,6 +939,7 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
       const generation = featureGeneration;
       const grant = await grantFor(input.sessionId);
       if (!grant.enabled) return { ok: false, error: { code: "computer_stopped", message: "Computer use stopped for this turn. Continue with the person's next message." } };
+      if (humanPaused(grant)) return { ok: false, error: { code: "computer_paused", message: "The person took over. They return control with Continue. No program was started." } };
       if (programs.has(grant.sessionId)) return { ok: false, error: { code: "program_busy", message: "A program is already running in this chat." } };
       const revision = grant.revision;
       const remote = input.surface === "computer" && targetFor(grant).placement === "remote";
@@ -931,6 +949,7 @@ export function createComputerControl({ adapters, runProgram, browserTask, readR
       const active = AbortSignal.any([signal, controller.signal, grant.controller.signal]);
       const check = () => {
         active.throwIfAborted();
+        if (humanPaused(grant)) throw new Error("The person took over. Continue is required; interrupted actions are not replayed.");
         if (!featureEnabled || generation !== featureGeneration || revision !== grant.revision || closed || resetting || remote && remoteRevision !== remoteGeneration) throw new Error("The computer program stopped or its target changed.");
       };
       programs.set(grant.sessionId, current);

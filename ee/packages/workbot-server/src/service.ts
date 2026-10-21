@@ -63,14 +63,14 @@ export type WorkbotDeps = {
   verifyModel?: boolean
   workspaceAssistant?: (organizationId: string) => Promise<boolean>
   /**
-   * Feature `headlessDurableTurns` (Den's session `stepTurns`): turns go to the runner with `execution: "steps"`, so a
-   * runner deploy switches between steps instead of cutting one off. Unset: turns are sent exactly as without it.
+   * Den's session `stepTurns` compatibility field: turns go to the runner with `execution: "steps"`, so a
+   * runner deploy switches between steps instead of cutting one off. Unset: preserve older Den's continuous turns.
    */
   stepTurns?: boolean
   /**
-   * Feature `headlessSessionCells` (Den's session `sessionCells`): new chats get their own session cell on the runner
+   * Den's session `sessionCells` compatibility field: new chats get their own session cell on the runner
    * (`hs_c_…` ids, memory kept with the owner) and the person's existing chats are split out once per process. Chats
-   * that already exist keep their ids. Unset: chats are created exactly as without it.
+   * that already exist keep their ids. Unset: preserve older Den's legacy chat placement.
    */
   sessionCells?: boolean
 }
@@ -102,7 +102,7 @@ function legacySessionOf(actor: WorkbotActor, chat: WorkbotChat) {
 export const WORKBOT_CELL_SESSION_ID = /^hs_c_[a-f0-9]{32}$/
 
 /**
- * A new chat's id in its own session cell (`headlessSessionCells`): derived from the person and the chat like the
+ * A new chat's id in its own session cell: derived from the person and the chat like the
  * legacy ids, so Workbot stores nothing to find it again, and the runner's cell only serves it to the same owner.
  */
 export function workbotCellSessionId(organizationId: string, memberId: string, chat: WorkbotChat) {
@@ -112,9 +112,9 @@ export function workbotCellSessionId(organizationId: string, memberId: string, c
 /**
  * Which runner session each of a person's chats lives under, for this process. Learned from the runner's list of the
  * person's chats (the owner cell merges its own chats with the directory of chats in session cells), read once per
- * process per person whatever `headlessSessionCells` says, and refreshed by every chat list the page asks for. A chat
- * that already lives in a session cell is preferred over its legacy id, so turning `headlessSessionCells` off never
- * makes a chat look empty or get replaced; only where *new* chats are created depends on the flag. Bounded: the
+ * process per person even with an older Den, and refreshed by every chat list the page asks for. A chat
+ * that already lives in a session cell is preferred over its legacy id, so older Dens never
+ * make a chat look empty or get replaced. Bounded: the
  * oldest entries go first.
  */
 const MAX_REMEMBERED = 50_000

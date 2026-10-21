@@ -94,6 +94,7 @@ export type LexicalPromptEditorHandle = {
   insertFileMentionAtSelection: (path: string) => string;
   /** Caret position in the serialized draft, so pasted chips land where the user pasted. */
   draftOffsetAtSelection: () => number | null;
+  draftSelectionRange: () => { start: number; end: number } | null;
 };
 
 type SerializedComposerMentionNode = Spread<
@@ -969,10 +970,12 @@ function serializePromptFromRoot(): string {
 
 // Caret position as an offset into serializePromptFromRoot(): paragraphs join
 // with one "\n", and a caret inside a chip counts as after it.
-function $draftOffsetAtSelection(): number | null {
+function $draftOffsetAtSelection(edge: "start" | "end" = "start"): number | null {
   const selection = $getSelection();
   if (!$isRangeSelection(selection)) return null;
-  const point = selection.isBackward() ? selection.focus : selection.anchor;
+  const point = edge === "start"
+    ? selection.isBackward() ? selection.focus : selection.anchor
+    : selection.isBackward() ? selection.anchor : selection.focus;
   const node = point.getNode();
   const paragraphs = $getRoot().getChildren();
   const before = (nodes: LexicalNode[]) => nodes.reduce((sum, child) => sum + child.getTextContentSize(), 0);
@@ -1495,6 +1498,13 @@ function ImperativeHandlePlugin(props: { editorRef: ForwardedRef<LexicalPromptEd
     },
     draftOffsetAtSelection() {
       return editor.getEditorState().read(() => $draftOffsetAtSelection());
+    },
+    draftSelectionRange() {
+      return editor.getEditorState().read(() => {
+        const start = $draftOffsetAtSelection();
+        const end = $draftOffsetAtSelection("end");
+        return start === null || end === null ? null : { start, end };
+      });
     },
   }), [editor]);
 

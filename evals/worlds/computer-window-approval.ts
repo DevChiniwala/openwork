@@ -17,7 +17,12 @@ export async function computerWindowApproval(_seed: Seed, { place }: { place: Pl
     screenshot: async () => ({ png: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=", "base64"), width: 1, height: 1 }),
     input: async steps => { inputs += steps.length; return { completed: steps.length }; },
   } });
-  const control = createComputerControl({ adapters: [adapter], readRemoteFeatureEnabled: async () => true });
+  // This journey checks admission while paused. The runner must never execute;
+  // the controller's colocated test exercises cancellation with the real runtime.
+  const control = createComputerControl({ adapters: [adapter], readRemoteFeatureEnabled: async () => true,
+    runProgram: async () => { throw new Error("A paused program must not execute"); },
+    browserTask: async () => { inputs++; return { ok: true, tabId: "owned" }; },
+  });
   resources.defer(() => control.reset(true));
   const sessionId = "fixture-chat";
   try {
@@ -64,6 +69,7 @@ export async function computerWindowApproval(_seed: Seed, { place }: { place: Pl
         return control.execute({ sessionId, name: "computer_observe", args: {} });
       },
       async snapshot() { return control.snapshot({ sessionId }); },
+      async browserWork() { return control.program({ sessionId, surface: "browser", code: 'return await tools.ui.open({url:"https://example.com"});' }); },
       async [Symbol.asyncDispose]() { await resources.disposeAsync(); } };
   } catch (error) { await resources.disposeAsync(); throw error; }
 }

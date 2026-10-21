@@ -27,6 +27,7 @@ import { registerUpdaterIpc, resolveAppVersion } from "./updater.mjs";
 import { createUiControlServer } from "./ui-control-server.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
 import { createNativeContextMenus } from "./context-menu.mjs";
+import { createNativeDictation } from "./native-dictation.mjs";
 import { applyBrandAppName } from "./brand-app-name.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createComputerControl } from "@openwork/computer-use/computer-control";
@@ -134,6 +135,9 @@ const {
   session,
   shell,
 } = require("electron");
+const startNativeDictation = createNativeDictation({
+  platform: process.platform, menu: Menu, processId: process.pid, systemRoot: process.env.SystemRoot,
+});
 const pty = require(["node", "pty"].join("-"));
 const NATIVE_DEEP_LINK_EVENT = "openwork:deep-link-native";
 const AUTOMATION_RUNNER_CREDENTIAL_REJECTED_EVENT = "openwork:automation-runner:credential-rejected";
@@ -1888,6 +1892,8 @@ function applyNativeTheme(mode) {
 // typecheck:electron`.
 /** @type {import("@openwork/types/desktop-ipc").DesktopCommandHandlers<import("electron").IpcMainInvokeEvent>} */
 const desktopCommandHandlers = {
+  "__startNativeDictation": async (event, requestId) => startNativeDictation.start(event, mainWindow, requestId),
+  "__cancelNativeDictationStart": async (event, requestId) => startNativeDictation.cancel(event, requestId),
   "workspaceBootstrap": async (event, ...args) => {
       return workspaceStore.readWorkspaceState();
   },

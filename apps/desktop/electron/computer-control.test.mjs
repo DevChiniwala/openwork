@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runComputerProgram } from "@openwork/computer-use/runtime";
 import { createComputerControl, COMPUTER_PROTOCOL } from "@openwork/computer-use/computer-control";
 
 const deferred = () => {
@@ -50,7 +51,7 @@ function fixture(options = {}) {
   };
   /** @type {import("@openwork/computer-use/computer-control").ComputerAdapter} */
   const remote = { ...adapter, id: "vm", label: "VM", placement: "remote" };
-  const control = createComputerControl({ adapters: options.remote ? [adapter, remote] : [adapter], readRemoteFeatureEnabled: options.authority, onRequest: (_sessionId, value) => { requests.push(value); }, idleMs: options.idleMs ?? 90_000 });
+  const control = createComputerControl({ adapters: options.remote ? [adapter, remote] : [adapter], readRemoteFeatureEnabled: options.authority, runProgram: options.runProgram, browserTask: options.browserTask, onRequest: (_sessionId, value) => { requests.push(value); }, idleMs: options.idleMs ?? 90_000 });
   return { control, calls, requests, selected, emit: value => emit(value), disconnect: () => disconnect() };
 }
 
@@ -229,4 +230,35 @@ test("Stop racing turn cleanup is not rearmed by its late completion", async t =
   const stopping = f.control.halt({ sessionId: "chat" }); finish.resolve();
   await ending; await stopping;
   assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} })).code, "not_allowed");
+});
+
+
+test("native takeover cancels browser programs and neither chat can bypass it with another surface", async t => {
+  const started = deferred(); let hold = true, calls = 0;
+  const f = fixture({ runProgram: runComputerProgram, browserTask: async (request, { signal }) => {
+    if (request.operation === "observe") return { ok: true, observationId: "fresh", viewport: { width: 800, height: 600 }, text: "Ready", elements: [] };
+    calls++;
+    if (hold) {
+      started.resolve();
+      await new Promise((_resolve, reject) => { signal.addEventListener("abort", () => reject(signal.reason), { once: true }); });
+    }
+    return { ok: true, tabId: "owned" };
+  } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit the draft" } });
+  /** @type {import("@openwork/computer-use/runtime").ProgramRequest & { sessionId: string }} */
+  const input = { sessionId: "chat", surface: "browser", code: 'return await tools.ui.open({url:"https://example.com"});' };
+  const program = f.control.program(input); await started.promise;
+  await f.control.interact({ sessionId: "chat", id: "view", action: "takeover" });
+  assert.equal((await program).ok, false);
+  await f.control.endTurn({ sessionId: "chat" });
+  for (const sessionId of ["chat", "another"]) {
+    assert.equal((await f.control.program({ ...input, sessionId })).error.code, "computer_paused");
+  }
+  assert.equal(calls, 1);
+  await f.control.interact({ sessionId: "chat", id: "view", action: "resume" });
+  hold = false;
+  assert.equal((await f.control.program(input)).ok, true);
+  assert.equal(calls, 2);
 });
