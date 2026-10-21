@@ -23,6 +23,7 @@ import { output, secret } from "../packages/world/src/outputs.ts";
 import type { WorldOutput } from "../packages/world/src/outputs.ts";
 import { targetFromEnv } from "../packages/world/src/target.ts";
 import { configureWorkshop } from "./lib/workshop-setup.ts";
+import { pagedSnapshotListExec } from "./lib/workshop-snapshot.ts";
 import { redactWorkshopDiagnostic } from "./lib/workshop-redaction.ts";
 import { unlockWorkshopDesktop } from "./lib/workshop-unlock.ts";
 import { linkWorkshopRuntime, selectWorkshopModel } from "./lib/workshop-models.ts";
@@ -247,7 +248,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
           // Spread the first wave out: ten simultaneous provider calls are throttled.
           await new Promise((resolve) => setTimeout(resolve, ((index - 1) % options.concurrency) * 1_500));
           const provisioned = await retryThrottled(() => provisionDesktopSandbox({ ref: base.ref, name: `workshop-${runId}-${key}`, private: true, secrets: false,
-            ...(options.snapshot ? { snapshot: options.snapshot } : {}),
+            // The org has more than one page of snapshots: look ours up across all pages.
+            ...(options.snapshot ? { snapshot: options.snapshot, exec: pagedSnapshotListExec(defaultDaytonaExec) } : {}),
             ttlMinutes: Math.floor(remaining() / 60), autoStopMinutes: 0, log: () => {},
             onCreated: async (sandbox) => {
               stack.defer(() => deleteSandboxes([sandbox], { log: () => {} }));
