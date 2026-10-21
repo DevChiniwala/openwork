@@ -6,7 +6,6 @@ import {
   type ServerEvent,
   type ServerEventBus,
 } from "@modelcontextprotocol/server"
-import { onInventoryChanged } from "../inventory-writes.js"
 
 /** The dual-era, sessionless HTTP entry used by the public agent MCP route. */
 export function createAgentMcpHttpHandler(
@@ -22,60 +21,32 @@ export function createAgentMcpHttpHandler(
   })
 }
 
-/** Whose catalog a request or subscription stream belongs to. */
-export type AgentMcpAudience = {
-  organizationId: string
-  userId: string
-  /** The stream lists Connect's full tool view (connect-tool-view.ts). */
-  fullTools: boolean
-}
-
-export type AgentMcpMember = Pick<AgentMcpAudience, "organizationId" | "userId">
-
 export type ScopedAgentMcpHttpHandlers = {
   /** Serve one request inside a stable, authenticated catalog audience. */
-  fetch: (audience: AgentMcpAudience, request: Request, server: McpServer) => Promise<Response>
+  fetch: (scopeKey: string, request: Request, server: McpServer) => Promise<Response>
   /** Publish only to subscription streams in the matching audience. */
   notify: {
-    toolsChanged: (member: AgentMcpMember) => void
-    resourcesChanged: (member: AgentMcpMember) => void
-    /** Every full-view stream in the organization: what its members may use changed. */
-    fullToolsChanged: (organizationId: string) => void
+    toolsChanged: (scopeKey: string) => void
+    resourcesChanged: (scopeKey: string) => void
   }
   close: () => Promise<void>
 }
 
-type Listener = { memberKey: string; organizationId: string; fullTools: boolean }
-type PublishTarget = { memberKey: string } | { organizationId: string; fullToolsOnly: true }
-
-function memberKey(member: AgentMcpMember): string {
-  return `${member.organizationId}\0${member.userId}`
-}
-
 class ScopedAgentMcpEventBus implements ServerEventBus {
-  private readonly audience = new AsyncLocalStorage<Listener>()
-  private readonly target = new AsyncLocalStorage<PublishTarget>()
-  private readonly listeners = new Map<(event: ServerEvent) => void, Listener>()
+  private readonly scope = new AsyncLocalStorage<string>()
+  private readonly listeners = new Map<(event: ServerEvent) => void, string>()
 
   constructor(private readonly onerror?: (error: Error) => void) {}
 
-  run<T>(audience: AgentMcpAudience, callback: () => T): T {
-    return this.audience.run({ memberKey: memberKey(audience), organizationId: audience.organizationId, fullTools: audience.fullTools }, callback)
-  }
-
-  publishTo<T>(target: PublishTarget, callback: () => T): T {
-    return this.target.run(target, callback)
+  run<T>(scopeKey: string, callback: () => T): T {
+    return this.scope.run(scopeKey, callback)
   }
 
   publish(event: ServerEvent): void {
-    const current = this.audience.getStore()
-    const target = this.target.getStore() ?? (current ? { memberKey: current.memberKey } : null)
-    if (!target) return
-    for (const [listener, audience] of this.listeners) {
-      const matches = "memberKey" in target
-        ? audience.memberKey === target.memberKey
-        : audience.organizationId === target.organizationId && audience.fullTools
-      if (!matches) continue
+    const scopeKey = this.scope.getStore()
+    if (!scopeKey) return
+    for (const [listener, listenerScope] of this.listeners) {
+      if (listenerScope !== scopeKey) continue
       try {
         listener(event)
       } catch (error) {
@@ -85,9 +56,9 @@ class ScopedAgentMcpEventBus implements ServerEventBus {
   }
 
   subscribe(listener: (event: ServerEvent) => void): () => void {
-    const audience = this.audience.getStore()
-    if (!audience) throw new Error("Agent MCP subscriptions require an authenticated catalog audience.")
-    this.listeners.set(listener, audience)
+    const scopeKey = this.scope.getStore()
+    if (!scopeKey) throw new Error("Agent MCP subscriptions require an authenticated catalog audience.")
+    this.listeners.set(listener, scopeKey)
     let live = true
     return () => {
       if (!live) return
@@ -111,13 +82,8 @@ class ScopedAgentMcpEventBus implements ServerEventBus {
  * One handler retains the SDK's global subscription bound and shutdown
  * semantics. Its event bus captures the authenticated audience when a listen
  * stream subscribes, then delivers a published catalog event only to listeners
- * captured in that same audience, or, for an organization-wide change, to the
- * organization's full-view listeners. Async-local scoping remains correct when
+ * captured in that same audience. Async-local scoping remains correct when
  * requests for different members execute concurrently.
- *
- * A request in this process that changed what an organization's members may
- * use (inventory-writes.ts) tells that organization's full-view streams their
- * tool list changed.
  */
 export function createScopedAgentMcpHttpHandlers(
   onerror?: (error: Error) => void,
@@ -134,29 +100,18 @@ export function createScopedAgentMcpHttpHandlers(
     bus,
   })
 
-  const notify: ScopedAgentMcpHttpHandlers["notify"] = {
-    toolsChanged(member) {
-      bus.publishTo({ memberKey: memberKey(member) }, () => handler.notify.toolsChanged())
-    },
-    resourcesChanged(member) {
-      bus.publishTo({ memberKey: memberKey(member) }, () => handler.notify.resourcesChanged())
-    },
-    fullToolsChanged(organizationId) {
-      bus.publishTo({ organizationId, fullToolsOnly: true }, () => handler.notify.toolsChanged())
-    },
-  }
-  const stopInventoryChanges = onInventoryChanged((organizationIds) => {
-    for (const organizationId of organizationIds) notify.fullToolsChanged(organizationId)
-  })
-
   return {
-    fetch(audience, request, server) {
-      return bus.run(audience, () => requestServer.run(server, () => handler.fetch(request)))
+    fetch(scopeKey, request, server) {
+      return bus.run(scopeKey, () => requestServer.run(server, () => handler.fetch(request)))
     },
-    notify,
-    async close() {
-      stopInventoryChanges()
-      await handler.close()
+    notify: {
+      toolsChanged(scopeKey) {
+        bus.run(scopeKey, () => handler.notify.toolsChanged())
+      },
+      resourcesChanged(scopeKey) {
+        bus.run(scopeKey, () => handler.notify.resourcesChanged())
+      },
     },
+    close: handler.close,
   }
 }

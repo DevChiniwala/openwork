@@ -4558,8 +4558,7 @@
               "browserDemonstrations",
               "browserFloatingView",
               "remoteComputers",
-              "remoteSessionSubagents",
-              "connectStandardTools"
+              "remoteSessionSubagents"
             ]
           },
           "label": {
@@ -4785,9 +4784,6 @@
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
-                    "connectStandardTools": {
-                      "type": "boolean"
-                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -4813,7 +4809,6 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectStandardTools",
                     "gatewayDashboard"
                   ]
                 },
@@ -5788,63 +5783,6 @@
                         "override",
                         "overrideApplies"
                       ]
-                    },
-                    "connectStandardTools": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
                     }
                   },
                   "required": [
@@ -5864,8 +5802,7 @@
                     "browserDemonstrations",
                     "browserFloatingView",
                     "remoteComputers",
-                    "remoteSessionSubagents",
-                    "connectStandardTools"
+                    "remoteSessionSubagents"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -6286,9 +6223,6 @@
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
-                    "connectStandardTools": {
-                      "type": "boolean"
-                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -6314,7 +6248,6 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectStandardTools",
                     "gatewayDashboard"
                   ]
                 },
@@ -7289,63 +7222,6 @@
                         "override",
                         "overrideApplies"
                       ]
-                    },
-                    "connectStandardTools": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
                     }
                   },
                   "required": [
@@ -7365,8 +7241,7 @@
                     "browserDemonstrations",
                     "browserFloatingView",
                     "remoteComputers",
-                    "remoteSessionSubagents",
-                    "connectStandardTools"
+                    "remoteSessionSubagents"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -33326,63 +33201,6 @@
                             "override",
                             "overrideApplies"
                           ]
-                        },
-                        "connectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
                         }
                       },
                       "required": [
@@ -33402,8 +33220,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
-                        "remoteSessionSubagents",
-                        "connectStandardTools"
+                        "remoteSessionSubagents"
                       ]
                     }
                   },
@@ -34468,63 +34285,6 @@
                             "override",
                             "overrideApplies"
                           ]
-                        },
-                        "connectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
                         }
                       },
                       "required": [
@@ -34544,8 +34304,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
-                        "remoteSessionSubagents",
-                        "connectStandardTools"
+                        "remoteSessionSubagents"
                       ]
                     }
                   },
@@ -34768,16 +34527,6 @@
                         ]
                       },
                       "remoteSessionSubagents": {
-                        "anyOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "connectStandardTools": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -37740,9 +37489,6 @@
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
-                        "connectStandardTools": {
-                          "type": "boolean"
-                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -37768,7 +37514,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectStandardTools",
                         "gatewayDashboard"
                       ]
                     },
@@ -38743,63 +38488,6 @@
                             "override",
                             "overrideApplies"
                           ]
-                        },
-                        "connectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
                         }
                       },
                       "required": [
@@ -38819,8 +38507,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
-                        "remoteSessionSubagents",
-                        "connectStandardTools"
+                        "remoteSessionSubagents"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }
@@ -38990,9 +38677,6 @@
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
-                        "connectStandardTools": {
-                          "type": "boolean"
-                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -39018,7 +38702,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectStandardTools",
                         "gatewayDashboard"
                       ]
                     },
@@ -39993,63 +39676,6 @@
                             "override",
                             "overrideApplies"
                           ]
-                        },
-                        "connectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
                         }
                       },
                       "required": [
@@ -40069,8 +39695,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
-                        "remoteSessionSubagents",
-                        "connectStandardTools"
+                        "remoteSessionSubagents"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }

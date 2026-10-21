@@ -692,12 +692,11 @@ export function externalMcpSearchCoverageHint(coverage: ExternalMcpSearchCoverag
 }
 
 /**
- * Where a search probe of this connection caches its tool list (the full tool
- * view reads the same entries). Personal keys can be replaced or revoked
- * independently of connection configuration, so a credential-dependent
- * catalog or failure is never reused.
+ * Where a search probe of this connection caches its tool list. Personal keys
+ * can be replaced or revoked independently of connection configuration, so a
+ * credential-dependent catalog or failure is never reused.
  */
-export function externalToolsSearchCacheKey(connection: ExternalMcpConnectionRow, member: McpMemberIdentity): ExternalToolsSearchCacheKey | undefined {
+function externalToolsSearchCacheKey(connection: ExternalMcpConnectionRow, member: McpMemberIdentity): ExternalToolsSearchCacheKey | undefined {
   if (usesMemberApiKey(connection)) return undefined
   return {
     organizationId: connection.organizationId,

@@ -26,10 +26,7 @@ import { AUDIT_UNAVAILABLE_TOOL_MESSAGE, AuditUnavailableError, auditUnavailable
 import { DEN_MCP_APP_HOST_SCOPE, DEN_MCP_WRITE_SCOPE } from "./scopes.js"
 import { getCatalog, protectedResourceMetadata, protectedResourceMetadataRoute } from "./index.js"
 import { preflightMcpJsonRpcRequest } from "./json-rpc-preflight.js"
-import { createScopedAgentMcpHttpHandlers, type AgentMcpAudience } from "./agent-http.js"
-import { connectToolView, connectToolViewOverride, requestClientInfo, type ConnectClientInfo } from "./connect-tool-view.js"
-import { CONNECTION_STATUS_TOOL_NAME, registerConnectFullTools, registerConnectionStatusTool, type CapabilityCall } from "./connect-full-tools.js"
-import { connectFullToolNamespace, loadConnectFullTools, type ConnectFullToolScope } from "./connect-full-tool-sources.js"
+import { createScopedAgentMcpHttpHandlers } from "./agent-http.js"
 import { rejectStandaloneSseResponse } from "./standalone-sse.js"
 import { appLogger } from "../observability/logger.js"
 import {
@@ -191,14 +188,8 @@ export const SEARCH_CAPABILITIES_OUTPUT_SCHEMA = z.object({
   hint: z.string().optional(),
 })
 
-async function mcpRequestInfo(request: Request): Promise<{
-  method: string | null
-  resourceUri: string | null
-  generatedCatalog: boolean
-  toolName: string | null
-  clientInfo: ConnectClientInfo | null
-}> {
-  if (request.method.toUpperCase() !== "POST") return { method: null, resourceUri: null, generatedCatalog: false, toolName: null, clientInfo: null }
+async function mcpRequestInfo(request: Request): Promise<{ method: string | null; resourceUri: string | null; generatedCatalog: boolean }> {
+  if (request.method.toUpperCase() !== "POST") return { method: null, resourceUri: null, generatedCatalog: false }
   const body: unknown = await request.clone().json().catch(() => null)
   const method = typeof body === "object"
     && body !== null
@@ -210,8 +201,7 @@ async function mcpRequestInfo(request: Request): Promise<{
     ? body.params
     : null
   const resourceUri = params && "uri" in params && typeof params.uri === "string" ? params.uri : null
-  const toolName = method === "tools/call" && params && "name" in params && typeof params.name === "string" ? params.name : null
-  return { method, resourceUri, generatedCatalog: needsGeneratedArtifactCatalog(method, params), toolName, clientInfo: requestClientInfo(params) }
+  return { method, resourceUri, generatedCatalog: needsGeneratedArtifactCatalog(method, params) }
 }
 
 export const AGENT_SKILL_INDEX_URI = "skill://index.json"
@@ -427,10 +417,6 @@ export function registerAgentSkillResources(input: {
  * remain discoverable and executable through the same capability-routing
  * tools instead of contributing separate contextual tools. The other ~127
  * operations are not individually callable on this endpoint.
- *
- * Clients that search large tool lists themselves can instead get the full
- * view (connect-tool-view.ts): every capability as its own tool, run by the
- * same executor, in place of search_capabilities and execute_capability.
  */
 export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables & Record<string, unknown> }>(app: Hono<T>) {
   const handlers = createScopedAgentMcpHttpHandlers(
@@ -474,16 +460,12 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       organizationId: principal.organizationId,
     })
     const memberIdentity = member?.identity ?? null
+    const notificationScope = `${principal.organizationId}\0${principal.userId}`
     const connectMcpAppHostSupported = supportsConnectMcpAppHost(
       c.req.header(CONNECT_MCP_APP_HOST_CAPABILITY_HEADER),
     ) && principal.scopes.has(DEN_MCP_APP_HOST_SCOPE)
     const requestInfo = await mcpRequestInfo(c.req.raw)
     const method = requestInfo.method
-    const toolView = connectToolView(requestInfo.clientInfo, {
-      enabled: organizationFeatures.connectStandardTools,
-      override: connectToolViewOverride(c.req.url),
-    })
-    const audience: AgentMcpAudience = { organizationId, userId: principal.userId, fullTools: toolView === "full" }
     const redirectUriBase = resolvePublicOrigin(c.req.raw, env.apiPublicUrl)
     // Direct service mutations below are audited for the verified token caller
     // (organization claim + active member), never for tool arguments.
@@ -570,54 +552,9 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       organizationId: principal.organizationId,
       member: memberIdentity,
     }))()
-    // execute_capability and every full-view tool run capabilities through this one executor.
-    const executeCapabilityTool = async ({ name, arguments: args, schemaDigest, path, query, body }: CapabilityCall & { schemaDigest?: string }) => {
-      // A built App opens through its own server; anything unavailable falls
-      // through to ordinary execution and its normal error.
-      const plugin = appServersEnabled ? parseMarketplaceCapabilityName(name) : null
-      const definition = plugin && await isActiveMcpApp({ organizationId: principal.organizationId, appId: plugin.configObjectId })
-        ? await loadMcpAppServerDefinition({ ...appAccess, appId: plugin.configObjectId }).catch(() => null)
-        : null
-      if (definition) {
-        const canOpen = (await loadOpenableApps()).some((app) => app.appId === definition.app.appId)
-        return mcpAppLaunchResult({ app: definition.app, publicOrigin: redirectUriBase, message: `Opened ${definition.app.title}.`, launchInput: args ?? body, canOpen })
-      }
-      const result = await executeCapabilityWithBudget({
-        capability: name,
-        invoke: async (): Promise<ExecuteCapabilityToolResult> => (
-          executeCapability(capabilityContext, { name, schemaDigest, path, query, body, ...(args === undefined ? {} : { arguments: args }) })
-        ),
-      })
-      // Only this direct call may hand off to the host's fixed Gmail upload
-      // action. Keep the explicit no-draft failure body; scripts stay errors.
-      const native = parseNativeCapabilityName(name)
-      if (result.isError === true
-        && native?.toolName === "postCapabilitiesGoogleWorkspaceGmailDrafts"
-        && (native.connectionId === "google-workspace" || /^emc_[0-9a-hjkmnp-tv-z]{26}$/.test(native.connectionId))
-        && result.content.length === 1) {
-        const part = result.content[0]
-        if (part?.type === "text") {
-          try {
-            if (gmailFileInputPreflightSchema.safeParse(JSON.parse(part.text)).success) {
-              return { ...result, isError: false }
-            }
-          } catch {
-            // Non-JSON and unrelated errors retain their original transport.
-          }
-        }
-      }
-      return result
-    }
-    const loadFullTools = (scope: ConnectFullToolScope) => loadConnectFullTools({
-      ctx: capabilityContext,
-      scope,
-      apps: () => appServersEnabled ? loadOpenableApps() : Promise.resolve([]),
-      execute: executeCapabilityTool,
-    })
     const advertisesInstructions = method === "initialize" || method === "server/discover"
     const server = createAgentMcpServer({
       appServers: appServersEnabled,
-      toolView,
       remoteSessionStatus: Boolean(memberIdentity && organizationFeatures.remoteSessionSubagents),
       skillsExtension,
       skillIndex: skillsExtension && advertisesInstructions ? skillIndexInstructions(await loadRemoteSkills()) : undefined,
@@ -648,14 +585,6 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
         }
       }
       const resolveTools = (tools: Parameters<typeof resolveMcpAppTools>[1]) => resolveMcpAppTools(capabilityContext, tools)
-      // In the full view an App's tools may name full-view tools; Apps store the capability.
-      const withCapabilities = async <Request extends { tools?: Parameters<typeof resolveMcpAppTools>[1] }>(request: Request): Promise<Request> => {
-        const declared = request.tools ?? []
-        const namespaces = new Set(declared.flatMap((tool) => connectFullToolNamespace(tool.capability) ?? []))
-        if (toolView !== "full" || namespaces.size === 0) return request
-        const capabilities = new Map((await loadFullTools({ namespaces })).tools.map((tool) => [tool.name, tool.capability]))
-        return { ...request, tools: declared.map((tool) => ({ ...tool, capability: capabilities.get(tool.capability) ?? tool.capability })) }
-      }
       registerAppBuilderTools({
         server,
         scopes: principal.scopes,
@@ -663,19 +592,17 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
         service: {
           prepare: (request) => appOperation(async () => {
             await appActor()
-            const tools = await resolveTools((await withCapabilities(request)).tools ?? [])
+            const tools = await resolveTools(request.tools ?? [])
             await appActor()
             return appAuthoringStarter(request, tools)
           }),
           create: (request) => appOperation(async () => {
             const context = await appActor()
-            const resolved = await withCapabilities(request)
-            return runMcpServiceAction("mcp_app.create", appAuditPrincipal(), null, () => createMcpApp({ ...resolved, context, resolveTools }))
+            return runMcpServiceAction("mcp_app.create", appAuditPrincipal(), null, () => createMcpApp({ ...request, context, resolveTools }))
           }),
           update: (request) => appOperation(async () => {
             const context = await appActor()
-            const resolved = await withCapabilities(request)
-            return runMcpServiceAction("mcp_app.update", appAuditPrincipal(), serviceAuditResourceId(request.appId), () => updateMcpApp({ ...resolved, context, resolveTools }))
+            return runMcpServiceAction("mcp_app.update", appAuditPrincipal(), serviceAuditResourceId(request.appId), () => updateMcpApp({ ...request, context, resolveTools }))
           }),
           read: (request) => appOperation(async () => readMcpApp({ ...request, context: await appActor() })),
         },
@@ -683,7 +610,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
         notifyCatalogChanged: () => {
           mcpAppsPromise = null
           openableAppsPromise = null
-          handlers.notify.resourcesChanged(audience)
+          handlers.notify.resourcesChanged(notificationScope)
         },
       })
     }
@@ -736,87 +663,108 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     }
 
     finishIndexTiming()
-    if (toolView === "search") {
-      server.registerTool(
-        SEARCH_CAPABILITIES_TOOL_NAME,
-        {
-          title: "Search capabilities",
-          description: [
-            "Search connection actions, saved Workflows, and skills by keyword.",
-            appServersEnabled
-              ? "Direct tools such as create_skill, get_skill, and the App builders prepare_app, create_app, read_app, and update_app are outside this search; call them directly."
-              : "Direct MCP tools such as create_skill and save_artifact_view are outside this search; call an available direct tool itself. For an app, dashboard, or artifact view of Workflow results, use save_artifact_view and follow its prerequisites.",
-            "Search covers native Google Workspace capabilities (Gmail, Calendar, Drive, Gmail drafts), org-connected external MCPs, and namespaced OpenWork Admin tools for allowlisted platform admins.",
-            "Accessible Workflows appear as marketplace matches with kind workflow and execute through execute_capability like every other exact search result.",
-            "Try 2-4 keyword variants before deciding a capability is unavailable.",
-            appServersEnabled
-              ? "A match with kind mcp_app is a standard MCP App launch capability, either an App built in OpenWork (also its own MCP server, named in its description) or an App from a connected MCP server; execute it normally and the OpenWork host will render its advertised ui:// resource."
-              : "A match with kind mcp_app is a standard MCP App launch capability from a connected MCP server; execute it normally and the OpenWork host will render its advertised ui:// resource.",
-            "Each match is an MCP tool (name, description, inputSchema, optional outputSchema and annotations) with its kind and connection status where available; call execute_capability with that name and arguments matching inputSchema. An optional hint explains coverage or next steps. connectionAction carries an explicit sign-in card; connectorCatalog contains setup suggestions, not executable tools. Built-in and marketplace skills return SKILL.md when executed; list_skills/get_skill reach them directly.",
-          ].join(" "),
-          annotations: SEARCH_CAPABILITIES_ANNOTATIONS,
-          _meta: { ui: { visibility: ["model", "app"] } },
-          inputSchema: z.object({
-            intent: z.enum(["discover", "connect"]).optional().describe("Use connect only when the user explicitly asks to connect, reconnect, or set up a service. Ordinary capability discovery must omit this or use discover; it will not show sign-in cards."),
-            query: z.string().min(1).describe("Keywords describing the capability you need, e.g. \"create organization\" or \"list workers\"."),
-            limit: z.number().int().min(1).max(20).optional().describe("Result budget for the highest-ranking capability matches."),
-            type: searchCapabilityTypeSchema.optional().describe("Source to search: API operations, platform-admin tools, connected MCPs, marketplace capabilities, or skills. connectors browses setup suggestions without probing tools; all combines accessible sources."),
-          }),
-          outputSchema: SEARCH_CAPABILITIES_OUTPUT_SCHEMA,
-        },
-        async ({ query, limit, type, intent }) => {
-          if (type === "connectors") return connectorSetupToolResult()
-          const boundedLimit = limit ?? 5
-          const includeApps = appServersEnabled && (type === undefined || type === "all" || type === "mcp" || type === "marketplace")
-          // Generic Marketplace search excludes authored Apps in every rollout state.
-          const result = await searchCapabilityRegistry(capabilityContext, { query, limit: boundedLimit, type })
-          const openable = includeApps ? await loadOpenableApps() : []
-          const matches = [...result.matches, ...searchMcpApps(openable, query, redirectUriBase)].sort(compareCapabilityMatches).slice(0, boundedLimit)
-          return capabilitySearchToolResult(matches, result.externalCoverageHint, intent === "connect" && (type === undefined || type === "all" || type === "mcp") && !matches.some(match => match.name.startsWith("mcp:")) ? connectorCatalogForQuery(query) : null, intent === "connect")
-        },
-      )
+    server.registerTool(
+      SEARCH_CAPABILITIES_TOOL_NAME,
+      {
+        title: "Search capabilities",
+        description: [
+          "Search connection actions, saved Workflows, and skills by keyword.",
+          appServersEnabled
+            ? "Direct tools such as create_skill, get_skill, and the App builders prepare_app, create_app, read_app, and update_app are outside this search; call them directly."
+            : "Direct MCP tools such as create_skill and save_artifact_view are outside this search; call an available direct tool itself. For an app, dashboard, or artifact view of Workflow results, use save_artifact_view and follow its prerequisites.",
+          "Search covers native Google Workspace capabilities (Gmail, Calendar, Drive, Gmail drafts), org-connected external MCPs, and namespaced OpenWork Admin tools for allowlisted platform admins.",
+          "Accessible Workflows appear as marketplace matches with kind workflow and execute through execute_capability like every other exact search result.",
+          "Try 2-4 keyword variants before deciding a capability is unavailable.",
+          appServersEnabled
+            ? "A match with kind mcp_app is a standard MCP App launch capability, either an App built in OpenWork (also its own MCP server, named in its description) or an App from a connected MCP server; execute it normally and the OpenWork host will render its advertised ui:// resource."
+            : "A match with kind mcp_app is a standard MCP App launch capability from a connected MCP server; execute it normally and the OpenWork host will render its advertised ui:// resource.",
+          "Each match is an MCP tool (name, description, inputSchema, optional outputSchema and annotations) with its kind and connection status where available; call execute_capability with that name and arguments matching inputSchema. An optional hint explains coverage or next steps. connectionAction carries an explicit sign-in card; connectorCatalog contains setup suggestions, not executable tools. Built-in and marketplace skills return SKILL.md when executed; list_skills/get_skill reach them directly.",
+        ].join(" "),
+        annotations: SEARCH_CAPABILITIES_ANNOTATIONS,
+        _meta: { ui: { visibility: ["model", "app"] } },
+        inputSchema: z.object({
+          intent: z.enum(["discover", "connect"]).optional().describe("Use connect only when the user explicitly asks to connect, reconnect, or set up a service. Ordinary capability discovery must omit this or use discover; it will not show sign-in cards."),
+          query: z.string().min(1).describe("Keywords describing the capability you need, e.g. \"create organization\" or \"list workers\"."),
+          limit: z.number().int().min(1).max(20).optional().describe("Result budget for the highest-ranking capability matches."),
+          type: searchCapabilityTypeSchema.optional().describe("Source to search: API operations, platform-admin tools, connected MCPs, marketplace capabilities, or skills. connectors browses setup suggestions without probing tools; all combines accessible sources."),
+        }),
+        outputSchema: SEARCH_CAPABILITIES_OUTPUT_SCHEMA,
+      },
+      async ({ query, limit, type, intent }) => {
+        if (type === "connectors") return connectorSetupToolResult()
+        const boundedLimit = limit ?? 5
+        const includeApps = appServersEnabled && (type === undefined || type === "all" || type === "mcp" || type === "marketplace")
+        // Generic Marketplace search excludes authored Apps in every rollout state.
+        const result = await searchCapabilityRegistry(capabilityContext, { query, limit: boundedLimit, type })
+        const openable = includeApps ? await loadOpenableApps() : []
+        const matches = [...result.matches, ...searchMcpApps(openable, query, redirectUriBase)].sort(compareCapabilityMatches).slice(0, boundedLimit)
+        return capabilitySearchToolResult(matches, result.externalCoverageHint, intent === "connect" && (type === undefined || type === "all" || type === "mcp") && !matches.some(match => match.name.startsWith("mcp:")) ? connectorCatalogForQuery(query) : null, intent === "connect")
+      },
+    )
 
-      server.registerTool(
-        EXECUTE_CAPABILITY_TOOL_NAME,
-        {
-          title: "Execute capability",
-          description: [
-            "Call a capability found via search_capabilities, by its exact name, with arguments matching that match's inputSchema.",
-            "For external MCP capabilities, provider-advertised schema mismatches are returned as advisory schemaGuidance alongside the provider result; they do not block the downstream call.",
-            "When the exact capability is a standard MCP App launch tool, this call preserves its originating tool and ui:// binding so compatible OpenWork hosts render it without requiring a generated direct-tool name.",
-            "For skill capabilities listed in the remote skill catalog, this returns their authorized SKILL.md content; get_skill reads the same content by skill name without a search.",
-            "Returns the capability's content and, when supplied, its structuredContent unchanged: provider fields, Workflow results, skill content, or an App launch reference. Connection failures can include a connectionAction card; schemaGuidance is advisory. Other failures return isError with the error as text and structuredContent; invalid_capability_arguments lists the issues to correct, and unknown_capability means search again.",
-          ].join(" "),
-          annotations: EXECUTE_CAPABILITY_ANNOTATIONS,
-          _meta: { ui: { visibility: ["model", "app"] } },
-          inputSchema: z.object({
-            name: z.string().min(1).describe("Capability identifier from a current search_capabilities match or authorized skill catalog entry."),
-            arguments: z.unknown().optional().describe(appServersEnabled
-              ? "One object matching the match's inputSchema. For an App (kind mcp_app), an optional launch input object the App receives."
-              : "One object matching the match's inputSchema."),
-            schemaDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional().describe("Optional schemaDigest from the match, to report schema drift since that search."),
-            // Older inputs, accepted for a while; capabilityCallInput explains why.
-            path: z.union([z.record(z.string(), z.unknown()), z.string()]).optional().describe("Older form of arguments.path; prefer arguments."),
-            query: z.union([z.record(z.string(), z.unknown()), z.string()]).optional().describe("Older form of arguments.query; prefer arguments."),
-            body: z.unknown().optional().describe("Older form of arguments (or arguments.body for an API operation); prefer arguments."),
-          }),
-        },
-        executeCapabilityTool,
-      )
-    } else if (method === "tools/list" || method === "tools/call") {
-      // The full view replaces search_capabilities and execute_capability. A
-      // tools/call loads only what it names; tools/list loads every tool.
-      const namespace = requestInfo.toolName ? connectFullToolNamespace(requestInfo.toolName) : null
-      const scope: ConnectFullToolScope | null = method === "tools/list" ? "list"
-        : requestInfo.toolName === CONNECTION_STATUS_TOOL_NAME ? "status"
-          : namespace ? { namespaces: new Set([namespace]) } : null
-      if (scope) {
-        const full = await loadFullTools(scope)
-        registerConnectFullTools({ server, tools: full.tools, execute: executeCapabilityTool })
-        // Only the list and its own call load what is not ready yet.
-        if (typeof scope !== "object") registerConnectionStatusTool({ server, pending: full.pending, show: full.showPending })
-      }
-    }
+    server.registerTool(
+      EXECUTE_CAPABILITY_TOOL_NAME,
+      {
+        title: "Execute capability",
+        description: [
+          "Call a capability found via search_capabilities, by its exact name, with arguments matching that match's inputSchema.",
+          "For external MCP capabilities, provider-advertised schema mismatches are returned as advisory schemaGuidance alongside the provider result; they do not block the downstream call.",
+          "When the exact capability is a standard MCP App launch tool, this call preserves its originating tool and ui:// binding so compatible OpenWork hosts render it without requiring a generated direct-tool name.",
+          "For skill capabilities listed in the remote skill catalog, this returns their authorized SKILL.md content; get_skill reads the same content by skill name without a search.",
+          "Returns the capability's content and, when supplied, its structuredContent unchanged: provider fields, Workflow results, skill content, or an App launch reference. Connection failures can include a connectionAction card; schemaGuidance is advisory. Other failures return isError with the error as text and structuredContent; invalid_capability_arguments lists the issues to correct, and unknown_capability means search again.",
+        ].join(" "),
+        annotations: EXECUTE_CAPABILITY_ANNOTATIONS,
+        _meta: { ui: { visibility: ["model", "app"] } },
+        inputSchema: z.object({
+          name: z.string().min(1).describe("Capability identifier from a current search_capabilities match or authorized skill catalog entry."),
+          arguments: z.unknown().optional().describe(appServersEnabled
+            ? "One object matching the match's inputSchema. For an App (kind mcp_app), an optional launch input object the App receives."
+            : "One object matching the match's inputSchema."),
+          schemaDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional().describe("Optional schemaDigest from the match, to report schema drift since that search."),
+          // Older inputs, accepted for a while; capabilityCallInput explains why.
+          path: z.union([z.record(z.string(), z.unknown()), z.string()]).optional().describe("Older form of arguments.path; prefer arguments."),
+          query: z.union([z.record(z.string(), z.unknown()), z.string()]).optional().describe("Older form of arguments.query; prefer arguments."),
+          body: z.unknown().optional().describe("Older form of arguments (or arguments.body for an API operation); prefer arguments."),
+        }),
+      },
+      async ({ name, arguments: args, schemaDigest, path, query, body }) => {
+        // A built App opens through its own server; anything unavailable falls
+        // through to ordinary execution and its normal error.
+        const plugin = appServersEnabled ? parseMarketplaceCapabilityName(name) : null
+        const definition = plugin && await isActiveMcpApp({ organizationId: principal.organizationId, appId: plugin.configObjectId })
+          ? await loadMcpAppServerDefinition({ ...appAccess, appId: plugin.configObjectId }).catch(() => null)
+          : null
+        if (definition) {
+          const canOpen = (await loadOpenableApps()).some((app) => app.appId === definition.app.appId)
+          return mcpAppLaunchResult({ app: definition.app, publicOrigin: redirectUriBase, message: `Opened ${definition.app.title}.`, launchInput: args ?? body, canOpen })
+        }
+        const result = await executeCapabilityWithBudget({
+          capability: name,
+          invoke: async (): Promise<ExecuteCapabilityToolResult> => (
+            executeCapability(capabilityContext, { name, schemaDigest, path, query, body, ...(args === undefined ? {} : { arguments: args }) })
+          ),
+        })
+        // Only this direct call may hand off to the host's fixed Gmail upload
+        // action. Keep the explicit no-draft failure body; scripts stay errors.
+        const native = parseNativeCapabilityName(name)
+        if (result.isError === true
+          && native?.toolName === "postCapabilitiesGoogleWorkspaceGmailDrafts"
+          && (native.connectionId === "google-workspace" || /^emc_[0-9a-hjkmnp-tv-z]{26}$/.test(native.connectionId))
+          && result.content.length === 1) {
+          const part = result.content[0]
+          if (part?.type === "text") {
+            try {
+              if (gmailFileInputPreflightSchema.safeParse(JSON.parse(part.text)).success) {
+                return { ...result, isError: false }
+              }
+            } catch {
+              // Non-JSON and unrelated errors retain their original transport.
+            }
+          }
+        }
+        return result
+      },
+    )
 
     registerAgentSkillCatalogTools({
       server,
@@ -1148,8 +1096,8 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
         retire: (request) => runMcpServiceAction("artifact_view.deactivate", artifactAuditPrincipal, serviceAuditResourceId(request.artifactViewId),
           () => retireArtifactView({ context: artifactContext, ...request }), { error: serviceErrorStatus }),
         notifyCatalogChanged: () => {
-          handlers.notify.toolsChanged(audience)
-          handlers.notify.resourcesChanged(audience)
+          handlers.notify.toolsChanged(notificationScope)
+          handlers.notify.resourcesChanged(notificationScope)
         },
         legacyViewsWritable: !appServersEnabled,
       })
@@ -1204,6 +1152,6 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       }),
     )
 
-    return await handlers.fetch(audience, c.req.raw, server)
+    return await handlers.fetch(notificationScope, c.req.raw, server)
   })
 }

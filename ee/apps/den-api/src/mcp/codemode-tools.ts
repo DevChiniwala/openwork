@@ -260,7 +260,7 @@ export async function buildNativeProviderToolTree(input: {
   }
 }
 
-export async function mapConcurrent<T, R>(items: readonly T[], limit: number, visit: (item: T) => Promise<R>): Promise<Array<R | undefined>> {
+async function mapConcurrent<T, R>(items: readonly T[], limit: number, visit: (item: T) => Promise<R>): Promise<Array<R | undefined>> {
   const results: Array<R | undefined> = Array.from({ length: items.length })
   let nextIndex = 0
   const worker = async () => {

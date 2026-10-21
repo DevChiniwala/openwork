@@ -25,24 +25,6 @@ output schema is registered. Advertising even an unconstrained object schema
 would break those existing calls; a checker should accept this optional-structured
 proxy case rather than require a fabricated result shape or runtime conversion.
 
-## Full tool view
-
-With `connectStandardTools` on, clients that search large tool lists themselves
-get every connection action, Workflow, App and remote session the member may use
-as its own tool instead of `search_capabilities` and `execute_capability`
-(`connect-tool-view.ts`). Claude Code is recognized by the request's
-`io.modelcontextprotocol/clientInfo`; `?tools=full` or `?tools=search` overrides
-that guess. Unknown, missing and 2025-era clients keep the search view.
-
-Tools are named like their Code Mode calls (`linear.list_issues`), at most 64
-characters, and run through the executor `execute_capability` uses. Only
-external MCP tools advertise an output schema: the provider promises structured
-results for them, while Den's own routes return text. OpenWork's role-gated API
-operations stay in the search view, except the key request a connection card
-names. `connection_status` shows the card for a connection that is not ready. A write that changes what an organization's
-members may use sends `notifications/tools/list_changed` to its full-view streams
-on the same replica; the `tools/list` cache hint (60 s, private) covers the rest.
-
 ## Allowed Tags
 
 Every tagged Den API product surface is allowed unless it is listed under blocked tags or blocked operation IDs:
