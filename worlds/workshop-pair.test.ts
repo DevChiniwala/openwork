@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { forEachSeat, isProviderThrottle, pairInfrastructureUsd, parsePairOptions, retryThrottled, seatKey } from "./workshop-pair.ts";
 import { capacityShortfall, assertDaytonaCapacity } from "./lib/workshop-capacity.ts";
-import { assertTrustedWorkshopRef } from "./lib/workshop-trust.ts";
+import { assertTrustedWorkshopRef, assertVerifiedWorkshopSnapshot, readSnapshotManifest, snapshotProvenanceMismatch } from "./lib/workshop-trust.ts";
 
 const out = "/private/var/workshop-pair-fixture";
 const repo = fileURLToPath(new URL("..", import.meta.url));
@@ -51,6 +51,28 @@ test("one failed seat never stops the others, and only provider throttling is re
   let calls = 0;
   await assert.rejects(retryThrottled(async () => { calls++; throw new Error("snapshot missing"); }, 5, 1), /snapshot missing/);
   assert.equal(calls, 1);
+});
+
+test("attendee desktops only start from a snapshot matching its reviewed provenance", async () => {
+  const manifest = await readSnapshotManifest(repo);
+  const [name, entry] = Object.entries(manifest)[0] ?? [];
+  assert.ok(name && entry, "the repository lists at least one reviewed snapshot");
+  const live = { id: entry.id, ref: entry.image, sourceSandboxId: entry.sourceSandboxId, state: "active" };
+  assert.equal(snapshotProvenanceMismatch(name, entry.appRef, entry, live), null);
+  assert.match(snapshotProvenanceMismatch("workshop-desktop-unknown", entry.appRef, undefined, live) ?? "", /no reviewed entry/);
+  assert.match(snapshotProvenanceMismatch(name, "0".repeat(40), entry, live) ?? "", /not the requested app commit/);
+  for (const field of ["id", "ref", "sourceSandboxId"] as const) {
+    assert.match(snapshotProvenanceMismatch(name, entry.appRef, entry, { ...live, [field]: "replaced" }) ?? "", new RegExp(`${field} differs`));
+  }
+  assert.match(snapshotProvenanceMismatch(name, entry.appRef, entry, { ...live, state: "building" }) ?? "", /not active/);
+  assert.match(snapshotProvenanceMismatch(name, entry.appRef, entry, null) ?? "", /no snapshot named/);
+  const previous = process.env.DAYTONA_API_KEY;
+  process.env.DAYTONA_API_KEY = "test-key";
+  try {
+    await assertVerifiedWorkshopSnapshot(name, entry.appRef, repo, async () => Response.json(live));
+    await assert.rejects(assertVerifiedWorkshopSnapshot(name, entry.appRef, repo, async () => Response.json({ ...live, id: "swapped" })), /id differs/);
+    await assert.rejects(assertVerifiedWorkshopSnapshot(name, entry.appRef, repo, async () => new Response("", { status: 404 })), /no snapshot named/);
+  } finally { if (previous === undefined) delete process.env.DAYTONA_API_KEY; else process.env.DAYTONA_API_KEY = previous; }
 });
 
 test("attendees are only signed in to source already merged into dev", async () => {

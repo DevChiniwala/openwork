@@ -12,7 +12,7 @@
  * `all` = base + clones + signin; `cleanup` (run explicitly) deletes every
  * recorded clone and the base, and keeps the snapshot, which holds no identity.
  */
-import { assertTrustedWorkshopRef } from "./lib/workshop-trust.ts";
+import { assertTrustedWorkshopRef, assertVerifiedWorkshopSnapshot } from "./lib/workshop-trust.ts";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -294,6 +294,8 @@ printf "WEB=%s\\n" "$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$web
 
   async function phaseClones() {
     assert.ok(report.snapshot?.name, "no snapshot recorded; run --phase base first");
+    // Clones are only made from a snapshot whose provenance has been reviewed.
+    await assertVerifiedWorkshopSnapshot(report.snapshot.name, pair.ref, REPO_ROOT);
     if (!report.snapshot.state) {
       const found = await api.getSnapshot(report.snapshot.name);
       assert.ok(found?.state === "active", `snapshot ${report.snapshot.name} is not active`);

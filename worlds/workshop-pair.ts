@@ -5,7 +5,7 @@
  * operator can inspect, fix and rerun checks. `pnpm world down` (or the
  * provider TTL) removes it. Checks run separately: worlds/workshop-pair-check.ts.
  */
-import { assertTrustedWorkshopRef } from "./lib/workshop-trust.ts";
+import { assertTrustedWorkshopRef, assertVerifiedWorkshopSnapshot } from "./lib/workshop-trust.ts";
 import { randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -159,6 +159,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const base = place.denBase();
   if (base.kind !== "daytona" || !/^[a-f0-9]{40}$/.test(base.ref)) throw new Error("Pin OPENWORK_EVAL_REF to a full pushed commit SHA.");
   await assertTrustedWorkshopRef(base.ref, REPO_ROOT);
+  if (options.snapshot) await assertVerifiedWorkshopSnapshot(options.snapshot, base.ref, REPO_ROOT);
 
   const startedAtMs = Date.now();
   const deadline = startedAtMs + options.lifetimeMinutes * 60_000;

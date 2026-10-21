@@ -48,6 +48,11 @@ approvals last about 8 hours. Desktops run in the attendee's time zone
   version). It holds no sign-in, cookies or keys. Never snapshot a signed-in
   desktop. Set it empty to build each desktop from source (about 3 minutes per
   seat instead of about 1).
+- A snapshot is only used when it matches its reviewed entry in
+  `scripts/workshop/snapshots.json` (Daytona ID, image digest, audited source
+  sandbox, app commit). A replaced or unknown snapshot is refused before any
+  desktop exists. To use a new snapshot, add its entry (from the clone report
+  and `GET /api/snapshots/<name>`) in a reviewed PR.
 
 ## Safety
 
