@@ -69,16 +69,16 @@ const egressCommand = (command, args) => new Promise((resolve, reject) => {
   execFile(command, args, { timeout: 5000, maxBuffer: 1024 * 1024 }, (error, stdout) => error ? reject(error) : resolve(stdout));
 });
 /** Authenticated helper diagnostics contain kernel policy metadata, never page contents. */
-export async function browserEgressStatus() {
+export async function browserEgressStatus(execute = egressCommand) {
   let backend = "unknown", stage = "detect";
   try {
-    const native = await egressCommand("/bin/sh", ["-c", "command -v nft"]).then(() => true, () => false);
+    const native = await execute("/bin/sh", ["-c", "command -v nft"]).then(() => true, () => false);
     backend = native ? "nft" : "iptables";
-    if (!native) { stage = "legacy"; await egressCommand("/bin/sh", ["-c", BROWSER_EGRESS_CHECK]); return { ok: true, backend }; }
+    if (!native) { stage = "legacy"; await execute("/bin/sh", ["-c", BROWSER_EGRESS_CHECK]); return { ok: true, backend }; }
     stage = "uid";
-    const uid = Number((await egressCommand("id", ["-u", "openwork-browser"])).trim());
+    const uid = Number((await execute("id", ["-u", "openwork-browser"])).trim());
     stage = "query";
-    const rules = JSON.parse(await egressCommand("nft", ["-n", "-j", "list", "table", "inet", "openwork_desktop"]));
+    const rules = JSON.parse(await execute("nft", ["-n", "-j", "list", "table", "inet", "openwork_desktop"]));
     stage = "validate";
     const entries = Array.isArray(rules?.nftables) ? rules.nftables.filter(entry => entry && typeof entry === "object") : [];
     return { ok: nativeBrowserEgress(rules, uid), backend, uid, stage,

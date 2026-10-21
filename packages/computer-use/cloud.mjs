@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { createComputerControl } from "./computer-control.mjs";
 import { createRemoteComputerAdapter } from "./computer-remote.mjs";
 import { createX11Driver } from "./computer-x11-driver.mjs";
-import { BROWSER_EGRESS_CHECK, createCloudBrowser } from "./chromium.mjs";
+import { browserEgressStatus, createCloudBrowser } from "./chromium.mjs";
 
 const execute = promisify(execFile);
 const failure = (code, error) => Object.assign(new Error(error), { code });
+const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
 
 /** One member-owned VM, one input lease, and the existing browser and computer contracts. */
 export async function createCloudComputer({ directory, display = ":99", enabled, machine, browserEndpoint, applications, onActivity = () => {}, privateBrowsing = false }) {
@@ -50,8 +51,12 @@ export async function createCloudComputer({ directory, display = ":99", enabled,
   const browser = createCloudBrowser({ statePath: join(directory, "browser-tabs.json"), endpoint: browserEndpoint, privateBrowsing,
     enabled: () => !closed && !paused, assertActive,
     verifyEgress: async () => {
-      const result = await localMachine.run(BROWSER_EGRESS_CHECK, 5000);
-      if (result.exitCode !== 0) throw failure("egress_unavailable", "The cloud browser's private-network filter is unavailable. Reconnect the computer.");
+      const result = await browserEgressStatus(async (command, args) => {
+        const result = await localMachine.run([command, ...args].map(quote).join(" "), 5000);
+        if (result.exitCode !== 0) throw new Error("Kernel policy query failed");
+        return result.stdout;
+      });
+      if (!result.ok) throw failure("egress_unavailable", "The cloud browser's private-network filter is unavailable. Reconnect the computer.");
     },
     // Browser input invalidates every native observation. Ending the native
     // lease leaves the browser alive; the next computer call opens a fresh one.
