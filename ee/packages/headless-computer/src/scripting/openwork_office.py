@@ -22,8 +22,9 @@ DESKTOP_PIPE = "openwork-office"
 OUTPUT_DIRECTORY = "/workspace/out"
 LIMIT = 200
 # Cell text often comes from untrusted pages and files. Formulas must be asked for explicitly,
-# and none may reach outside the workbook: the desktop can still reach public sites.
-OUTSIDE_WORKBOOK = re.compile(r"\b(WEBSERVICE|DDE|HYPERLINK|INDIRECT)\s*\(|://|file:|'#|#\$", re.IGNORECASE)
+# and none may reach outside the workbook. Saved files can also be opened later
+# outside the desktop's network isolation; URLs can be constructed from cell data.
+OUTSIDE_WORKBOOK = re.compile(r"\b(WEBSERVICE|DDE|HYPERLINK|INDIRECT|IMAGE)\s*\(|://|file:|'#|#\$", re.IGNORECASE)
 PDF_FILTERS = {
     "com.sun.star.text.TextDocument": "writer_pdf_Export",
     "com.sun.star.sheet.SpreadsheetDocument": "calc_pdf_Export",
@@ -139,7 +140,7 @@ def operate(document, args):
                     if set(value) != {"formula"} or not isinstance(formula, str) or not formula.startswith("=") or len(formula) > 2000:
                         raise Failure('A formula cell is {"formula": "=SUM(B2:B4)"}.')
                     if OUTSIDE_WORKBOOK.search(formula):
-                        raise Failure("Formulas cannot fetch or link outside this workbook (WEBSERVICE, DDE, HYPERLINK, INDIRECT or external references).")
+                        raise Failure("Formulas cannot fetch or link outside this workbook (WEBSERVICE, DDE, HYPERLINK, INDIRECT, IMAGE or external references).")
                 elif value is not None and (isinstance(value, bool) or not isinstance(value, (int, float, str))):
                     raise Failure('Cells are numbers, strings (always stored as text), {"formula": "=..."} or null to keep a cell.')
         before = values(cells)
