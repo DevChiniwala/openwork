@@ -246,7 +246,7 @@ export type RunnerRepeatLimits = { maxWaitingMs?: number; maxIdenticalFailures?:
  * the computer must be configured on the runner too), so a caller that never asks (Automations) never gets any of
  * them. Slack asks for reactions and tasks where `slackWorkbotReplies` is on.
  */
-export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?: boolean; reactions?: boolean; tasks?: boolean }
+export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?: boolean; reactions?: boolean; tasks?: boolean; documentNavigation?: boolean }
 
 /**
  * Who a conversation belongs to and how it is shown to the model: `owner` (the caller's key for one person) and `ref`
@@ -262,6 +262,7 @@ const capabilityFields = (input: RunnerCapabilities & RunnerSessionSettings) => 
   ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
   ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
   ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
+  ...(input.documentNavigation !== undefined ? { documentNavigation: input.documentNavigation } : {}),
   ...(input.owner ? { owner: input.owner } : {}),
   ...(input.ref ? { ref: input.ref } : {}),
   ...(input.timeZone ? { timeZone: input.timeZone } : {}),
@@ -351,10 +352,17 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       }
       const extras = { ...(input.repeats ? { repeats: input.repeats } : {}), ...capabilityFields(input) }
       let { status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...extras })
+      // An older runner has no document-navigation setting: the conversation keeps its other settings and offers links.
+      let compatible: Record<string, unknown> = extras
+      if (unknownSetting(status, payload) && input.documentNavigation !== undefined) {
+        const { documentNavigation: _navigation, ...rest } = compatible
+        compatible = rest
+        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
+      }
       // An older runner has no desktop setting. Omitting an explicit off value preserves side-chat settings.
       if (unknownSetting(status, payload) && input.desktop === false) {
-        const { desktop, ...compatible } = extras
-        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
+        const { desktop: _desktop, ...rest } = compatible
+        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...rest }))
       }
       // A runner older than per-session capabilities or settings rejects them: keep the conversation, without them.
       if (unknownSetting(status, payload) && Object.keys(extras).length && !input.strict) ({ status, payload } = await request(deps, "PUT", sessionPath(id), base))

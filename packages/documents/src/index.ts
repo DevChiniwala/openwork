@@ -23,6 +23,7 @@ export type DocumentsProvider = {
 export type DocumentsViewContext = { kind: "file"; item: DocumentItem; unsaved: boolean }
   | { kind: "files"; view: "recent" | "folder"; folderId: string; folderName: string; query: string }
 export type DocumentOpenRequest = { fileId: string; requestId: string }
+export type DocumentOpenOutcome = "opened" | "failed" | "superseded"
 export type DocumentsTransport = (path: string, signal?: AbortSignal) => Promise<{ response: Response; payload: unknown }>
 
 export class DocumentsError extends Error {
