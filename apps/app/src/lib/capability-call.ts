@@ -128,11 +128,11 @@ function extractQuery(input: unknown, max = 80): string | null {
   if (!isRecord(input)) return null
   const direct = input.query ?? input.q ?? input.search ?? input.prompt
   if (typeof direct === "string" && direct.trim()) return truncate(direct.trim(), max)
-  // Arguments and bodies arrive as objects or as a JSON string, depending on
-  // how the capability was invoked; an API operation nests its body.
-  const args = parseRecord(input.arguments)
-  for (const body of [args, parseRecord(args?.body), parseRecord(input.body)]) {
-    const nested = body?.query ?? body?.q ?? body?.search ?? body?.prompt ?? body?.question ?? body?.message ?? body?.text
+  // Bodies arrive as objects or as a JSON string, depending on how the
+  // capability was invoked.
+  const body = parseRecord(input.body)
+  if (body) {
+    const nested = body.query ?? body.q ?? body.search ?? body.prompt ?? body.question ?? body.message ?? body.text
     if (typeof nested === "string" && nested.trim()) return truncate(nested.trim(), max)
   }
   return null

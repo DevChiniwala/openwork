@@ -188,16 +188,6 @@
               ],
               "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
             },
-            "connectStandardTools": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Connect: standard tools for tool-search clients: Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first. Renders DEN_FEATURE_CONNECT_STANDARD_TOOLS."
-            },
             "gatewayDashboard": {
               "enum": [
                 "",

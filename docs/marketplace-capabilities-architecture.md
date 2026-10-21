@@ -101,8 +101,6 @@ export type CapabilityMatch = {
 }
 ```
 
-`search_capabilities` sends each match in MCP `Tool` shape (`name`, `description`, `inputSchema`, optional `outputSchema` and `annotations`, plus Den details such as `kind`) through `capabilitySearchMatch` in `capability-registry.ts`. The transport fields above build that `inputSchema` and are not sent. `execute_capability` takes `{ name, arguments }`; an OpenWork API operation's `arguments` hold `path`, `query`, and `body`.
-
 Marketplace match shape:
 
 ```ts
