@@ -163,3 +163,25 @@ test("retired headless GA locks cannot disable durable turns or session cells", 
     assert.equal(Object.hasOwn(resolveFeatures(base), key), false)
   }
 })
+
+
+test("member overrides inherit by default and take priority over organization and everyone", () => {
+  const key = "liveProviderSync"
+  const context: FeatureContext = { ...base, overrides: { [key]: false }, memberOverrides: { [key]: true } }
+  assert.equal(resolveFeature(key, context).enabled, true)
+  assert.equal(resolveFeature(key, context).source, "member")
+  assert.equal(resolveFeature(key, { ...context, memberOverrides: {} }).enabled, false)
+  assert.equal(resolveFeature(key, { ...base, overrides: { [key]: true }, memberOverrides: { [key]: false } }).enabled, false)
+  // Other features and organization-only reads are unaffected.
+  assert.equal(resolveFeature(key, { ...base, overrides: context.overrides }).enabled, false)
+  assert.equal(resolveFeature("managedDeployments", context).enabled, false)
+})
+
+test("member overrides cannot bypass deployment restrictions, operator locks or the kill switch", () => {
+  const key = "liveProviderSync"
+  const context: FeatureContext = { ...base, memberOverrides: { [key]: true } }
+  assert.equal(resolveFeature(key, { ...context, locks: { [key]: false } }).source, "lock")
+  assert.equal(resolveFeature(key, { ...context, locks: { [key]: false } }).enabled, false)
+  assert.equal(resolveFeature(key, { ...context, rollouts: { [key]: { enabled: true, killed: true } } }).enabled, false)
+  assert.equal(resolveFeature("managedDeployments", { ...base, deployment: "self_hosted", memberOverrides: { managedDeployments: true } }).enabled, false)
+})

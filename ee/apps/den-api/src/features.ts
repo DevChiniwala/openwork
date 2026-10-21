@@ -1,5 +1,6 @@
 import {
   readFeatures,
+  readMemberFeatureOverrides,
   readOrganizationFeatureOverridesForMany,
   setFeatureRollout,
   setOrganizationFeatureOverrides,
@@ -8,7 +9,7 @@ import {
 import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { eq } from "@openwork-ee/den-db/drizzle"
 import { OrganizationTable } from "@openwork-ee/den-db/schema"
-import { resolveFeature, resolveFeatures, type FeatureKey, type FeatureMap } from "@openwork/features"
+import { resolveFeatures, type FeatureKey, type FeatureMap } from "@openwork/features"
 import type { MiddlewareHandler } from "hono"
 import { cache } from "./cache.js"
 import { db } from "./db.js"
@@ -31,6 +32,8 @@ import type { OrganizationContextVariables } from "./middleware/organization-con
 export type { FeatureKey, FeatureMap }
 
 type ReadOptions = {
+  /** Authenticated user: overrides apply only to their active membership in this organization. */
+  userId?: string
   /** A transaction: always read from it, never from the cache. */
   database?: FeatureDatabase
   /** Locks the override rows until the transaction commits; never cached. */
@@ -52,18 +55,16 @@ export async function readOrganizationForAuthorization(organizationId: string) {
  */
 export async function getOrganizationFeatures(organizationId: string, options: ReadOptions = {}): Promise<FeatureMap> {
   if (options.database || options.lock) {
-    return readFeatures(options.database ?? db, organizationId, env.features, { lock: options.lock })
+    return readFeatures(options.database ?? db, organizationId, env.features, { lock: options.lock, userId: options.userId })
   }
   const id = normalizeDenTypeId("organization", organizationId)
   const { rollouts, overrides } = await cache.features.state(id)
-  return resolveFeatures({ ...env.features, rollouts, overrides })
+  const memberOverrides = options.userId ? await readMemberFeatureOverrides(db, id, options.userId) : {}
+  return resolveFeatures({ ...env.features, rollouts, overrides, memberOverrides })
 }
 
 export async function organizationFeatureEnabled(organizationId: string, key: FeatureKey, options: ReadOptions = {}): Promise<boolean> {
-  if (options.database || options.lock) return (await getOrganizationFeatures(organizationId, options))[key]
-  const id = normalizeDenTypeId("organization", organizationId)
-  const { rollouts, overrides } = await cache.features.state(id)
-  return resolveFeature(key, { ...env.features, rollouts, overrides }).enabled
+  return (await getOrganizationFeatures(organizationId, options))[key]
 }
 
 /**

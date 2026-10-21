@@ -4,7 +4,7 @@ import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import { runnerEnginePolicySchema } from "@openwork/types/automations"
-import { readOrganizationEnginePolicy } from "../engine-policy.js"
+import { organizationFeatureEnabled } from "../../features.js"
 import { attributeAuditRequest, auditServiceAttribution } from "../../audit/request-capture.js"
 import { db } from "../../db.js"
 import { jsonValidator, paramValidator, tokenRoute } from "../../middleware/index.js"
@@ -130,7 +130,7 @@ export function registerWorkerActivityRoutes<T extends { Variables: WorkerRouteV
       })
     }
 
-    const enginePolicy = await readOrganizationEnginePolicy(worker.org_id)
+    const enginePolicy = { upgrade: await organizationFeatureEnabled(worker.org_id, "engineV2ForceUpgrade", { userId: worker.created_by_user_id ?? undefined }) }
     c.header("Cache-Control", "no-store")
     return c.json({
       ok: true,

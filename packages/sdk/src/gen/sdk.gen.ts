@@ -217,6 +217,8 @@ import type {
   GetV1AdminOrganizationsByOrganizationIdErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsResponses,
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdResponses,
   GetV1AdminOrganizationsByOrganizationIdUsageErrors,
   GetV1AdminOrganizationsByOrganizationIdUsageResponses,
@@ -981,6 +983,8 @@ import type {
   PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
   PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors,
   PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses,
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessErrors,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessResponses,
   PutV1AgentPermissionsEveryoneErrors,
@@ -1214,6 +1218,96 @@ export class DenClient extends HeyApiClient {
       url: "/v1/admin/free-auto/conversions",
       ...options,
       ...params,
+    });
+  }
+
+  /**
+   * Get an organization member's feature overrides
+   *
+   * Returns effective features for one active organization member. override is the member's setting (null inherits); everyone is the inherited organization value. Deployment restrictions, kill switches and operator locks still win.
+   */
+  public getV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      memberId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "path", key: "memberId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
+      GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Set an organization member's feature overrides
+   *
+   * Sets true/false for one member or clears an override with null to inherit the organization setting. Only platform administrators can write. Membership and organization are revalidated under a transaction lock; pending and removed members cannot receive overrides.
+   */
+  public putV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      memberId: string;
+      capabilities: {
+        nativeDictation?: boolean | null;
+        organizationGrants?: boolean | null;
+        liveProviderSync?: boolean | null;
+        managedDeployments?: boolean | null;
+        workbotDocuments?: boolean | null;
+        workbotDocumentEditing?: boolean | null;
+        workbotWorkspaceAssistant?: boolean | null;
+        automationCalendar?: boolean | null;
+        engineV2ForceUpgrade?: boolean | null;
+        computerUse?: boolean | null;
+        browserDemonstrations?: boolean | null;
+        browserFloatingView?: boolean | null;
+        remoteComputers?: boolean | null;
+        remoteSessionSubagents?: boolean | null;
+      };
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "path", key: "memberId" },
+            { in: "body", key: "capabilities" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).put<
+      PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
+      PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 

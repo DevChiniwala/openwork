@@ -51,6 +51,7 @@ const sessionOptions = z.object({
   desktop: z.boolean().optional(),
   reactions: z.boolean().optional(),
   tasks: z.boolean().optional(),
+  documentNavigation: z.boolean().optional(),
   timeZone: z.string().optional(),
   autoTitle: z.boolean().optional(),
   memoryOf: z.string().optional(),
@@ -99,6 +100,8 @@ export type Session = {
   reactions: boolean
   /** Whether the conversation may hand work to background tasks (start_task) and keep talking meanwhile. */
   tasks: boolean
+  /** Whether the host opens a document beside this chat when the person explicitly asks (the `open_document` tool). */
+  documentNavigation: boolean
   /**
    * Who the conversation belongs to, in the caller's own terms (for example one person in one organization), and
    * the caller's id for it. A caller with several conversations per person lists them by owner (GET /v1/sessions).
@@ -126,6 +129,7 @@ export type SessionInput = {
   desktop?: boolean
   reactions?: boolean
   tasks?: boolean
+  documentNavigation?: boolean
   owner?: string
   ref?: string
   timeZone?: string
@@ -142,6 +146,7 @@ function optionsOf(input: {
   desktop?: boolean
   reactions?: boolean
   tasks?: boolean
+  documentNavigation?: boolean
   timeZone?: string | null
   autoTitle?: boolean
   memoryOf?: string | null
@@ -154,6 +159,7 @@ function optionsOf(input: {
     ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
     ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
     ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
+    ...(input.documentNavigation !== undefined ? { documentNavigation: input.documentNavigation } : {}),
     ...(input.timeZone ? { timeZone: input.timeZone } : {}),
     ...(input.autoTitle !== undefined ? { autoTitle: input.autoTitle } : {}),
     ...(input.memoryOf ? { memoryOf: input.memoryOf } : {}),
@@ -173,6 +179,7 @@ function serializeOptions(options: SessionOptions) {
     ...(options.desktop ? { desktop: true } : {}),
     ...(options.reactions ? { reactions: true } : {}),
     ...(options.tasks ? { tasks: true } : {}),
+    ...(options.documentNavigation ? { documentNavigation: true } : {}),
     ...(options.timeZone ? { timeZone: options.timeZone } : {}),
     ...(options.autoTitle ? { autoTitle: true } : {}),
     // Owner-scoped memory replaces another conversation's: never both.
@@ -535,6 +542,7 @@ export class Store {
       desktop: options.desktop ?? false,
       reactions: options.reactions ?? false,
       tasks: options.tasks ?? false,
+      documentNavigation: options.documentNavigation ?? false,
       owner: value.owner ?? null,
       ref: value.ref ?? null,
       timeZone: options.timeZone ?? null,

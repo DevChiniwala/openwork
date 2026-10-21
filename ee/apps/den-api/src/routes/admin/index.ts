@@ -57,6 +57,7 @@ import {
   readOrganizationFeatureOverridesForMany,
   type FeatureOverrideChanges,
 } from "@openwork-ee/den-db/organization-features"
+import { registerAdminMemberFeatureRoutes } from "./member-features.js"
 import { updateFeatureRollout, updateOrganizationFeatureOverrides } from "../../features.js"
 import {
   FEATURE_KEYS,
@@ -164,7 +165,7 @@ const adminOrganizationCapabilitiesSchema = z.object({
 
 const adminFeatureStateSchema = z.object({
   enabled: z.boolean(),
-  source: z.enum(["unavailable", "killed", "lock", "override", "everyone"]),
+  source: z.enum(["unavailable", "killed", "lock", "override", "member", "everyone"]),
   everyone: z.boolean(),
   killed: z.boolean(),
   lock: z.boolean().nullable(),
@@ -1402,6 +1403,7 @@ const adminRouteErrors = {
 export function registerAdminRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
   registerAdminFreeAutoUsageRoutes(app)
   registerAdminFreeAutoConversionsRoutes(app)
+  registerAdminMemberFeatureRoutes(app)
   registerAdminOrganizationDetailRoutes(app)
   registerAdminOrganizationControlPanelRoutes(app)
   registerAdminDashboardRoute(app)

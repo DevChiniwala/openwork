@@ -8,6 +8,7 @@ import { localMemory, MemoryUnavailableError, type MemoryAccess, type MemoryReso
 import type { McpConnector, ToolSession } from "./mcp.js"
 import { createModelAdapter, ModelError, normalizeTranscript, type ModelClient } from "./model.js"
 import type { Session, Store, StoredMessage, Turn } from "./store.js"
+import { DOCUMENT_NAVIGATION_TOOL, openDocument } from "./navigation.js"
 import { REACTION_TOOL_NAMES, REACTION_TOOLS, reactionEndsTurn, runReactionTool } from "./reactions.js"
 import { asAttachment, runSavedFileTool, SAVED_FILE_TOOL_NAMES, SAVED_FILE_TOOLS, type SavedFiles } from "./saved-files.js"
 import type { SelfResume, SweepResult } from "./self-resume.js"
@@ -854,7 +855,7 @@ export class Runner {
     ]
       .filter(Boolean)
       .join("\n\n")
-    const toolSpecs = kind === "report" ? [] : [...FILE_TOOLS.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name)), ...(files ? SAVED_FILE_TOOLS.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name)) : []), ...(computer?.tools ?? []), ...(session?.desktop ? computer?.desktopTools ?? [] : []), ...(reactions ? REACTION_TOOLS : []), ...(taskTools ? TASK_TOOLS : []), ...(tools?.tools ?? [])]
+    const toolSpecs = kind === "report" ? [] : [...FILE_TOOLS.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name)), ...(files ? SAVED_FILE_TOOLS.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name)) : []), ...(computer?.tools ?? []), ...(session?.desktop ? computer?.desktopTools ?? [] : []), ...(reactions ? REACTION_TOOLS : []), ...(taskTools ? TASK_TOOLS : []), ...(session?.documentNavigation && kind === "message" ? [DOCUMENT_NAVIGATION_TOOL] : []), ...(tools?.tools ?? [])]
     return { turn, session, repeatLimits, files, readOnly, computer, reactions, taskTools, memory, baseSystem, toolSpecs }
   }
 
@@ -937,6 +938,10 @@ export class Runner {
         ? { output: "report_only_turn: Report delivery cannot execute tools. The person must request any further action.", isError: true }
         : readOnly && (FILE_TOOL_NAMES.has(call.name) || SAVED_FILE_TOOL_NAMES.has(call.name) || TASK_TOOL_NAMES.has(call.name) || REACTION_TOOL_NAMES.has(call.name)) && !READ_ONLY_LOCAL_TOOLS.has(call.name)
         ? { output: "read_only_turn: This turn can only read; changing files, starting work and reacting are unavailable.", isError: true }
+        : call.name === DOCUMENT_NAVIGATION_TOOL.name
+          ? setup.session?.documentNavigation && kind === "message"
+            ? openDocument(call.input)
+            : { output: "Opening documents is unavailable in this conversation.", isError: true }
         : FILE_TOOL_NAMES.has(call.name)
         ? await runFileTool(store, sessionId, call.name, call.input, memory)
         : files && SAVED_FILE_TOOL_NAMES.has(call.name)

@@ -195,6 +195,11 @@ export type AdminFreeAutoConversions = {
   };
 };
 
+export type NotFoundError = {
+  error: string;
+  message?: string;
+};
+
 export type AdminOrganizationDetail = {
   organization: {
     id: string;
@@ -223,11 +228,6 @@ export type AdminOrganizationDetail = {
     durationMs: number;
   };
   generatedAt: string;
-};
-
-export type NotFoundError = {
-  error: string;
-  message?: string;
 };
 
 export type AdminOrganizationUsage = {
@@ -886,7 +886,7 @@ export type AdminOrganizationsPageResponse = {
     featureStates?: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -895,7 +895,7 @@ export type AdminOrganizationsPageResponse = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -904,7 +904,7 @@ export type AdminOrganizationsPageResponse = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -913,7 +913,7 @@ export type AdminOrganizationsPageResponse = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -922,7 +922,7 @@ export type AdminOrganizationsPageResponse = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -931,7 +931,7 @@ export type AdminOrganizationsPageResponse = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -940,7 +940,7 @@ export type AdminOrganizationsPageResponse = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -949,7 +949,7 @@ export type AdminOrganizationsPageResponse = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -958,7 +958,7 @@ export type AdminOrganizationsPageResponse = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -967,7 +967,7 @@ export type AdminOrganizationsPageResponse = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -976,7 +976,7 @@ export type AdminOrganizationsPageResponse = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -985,7 +985,7 @@ export type AdminOrganizationsPageResponse = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -994,7 +994,7 @@ export type AdminOrganizationsPageResponse = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1003,7 +1003,7 @@ export type AdminOrganizationsPageResponse = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1100,7 +1100,7 @@ export type AdminOverviewResponse = {
     featureStates: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1109,7 +1109,7 @@ export type AdminOverviewResponse = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1118,7 +1118,7 @@ export type AdminOverviewResponse = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1127,7 +1127,7 @@ export type AdminOverviewResponse = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1136,7 +1136,7 @@ export type AdminOverviewResponse = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1145,7 +1145,7 @@ export type AdminOverviewResponse = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1154,7 +1154,7 @@ export type AdminOverviewResponse = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1163,7 +1163,7 @@ export type AdminOverviewResponse = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1172,7 +1172,7 @@ export type AdminOverviewResponse = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1181,7 +1181,7 @@ export type AdminOverviewResponse = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1190,7 +1190,7 @@ export type AdminOverviewResponse = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1199,7 +1199,7 @@ export type AdminOverviewResponse = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1208,7 +1208,7 @@ export type AdminOverviewResponse = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1217,7 +1217,7 @@ export type AdminOverviewResponse = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -7012,6 +7012,365 @@ export type GetV1AdminFreeAutoConversionsResponses = {
 export type GetV1AdminFreeAutoConversionsResponse =
   GetV1AdminFreeAutoConversionsResponses[keyof GetV1AdminFreeAutoConversionsResponses];
 
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesData = {
+  body?: never;
+  path: {
+    organizationId: string;
+    memberId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities";
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors = {
+  /**
+   * Invalid organization, member or feature settings.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Active organization member not found.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesError =
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors[keyof GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors];
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses = {
+  /**
+   * Member feature settings returned.
+   */
+  200: {
+    featureStates: {
+      nativeDictation: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocuments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocumentEditing: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      automationCalendar: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      engineV2ForceUpgrade: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserDemonstrations: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteComputers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+    };
+  };
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponse =
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses[keyof GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses];
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesData = {
+  body: {
+    capabilities: {
+      nativeDictation?: boolean | null;
+      organizationGrants?: boolean | null;
+      liveProviderSync?: boolean | null;
+      managedDeployments?: boolean | null;
+      workbotDocuments?: boolean | null;
+      workbotDocumentEditing?: boolean | null;
+      workbotWorkspaceAssistant?: boolean | null;
+      automationCalendar?: boolean | null;
+      engineV2ForceUpgrade?: boolean | null;
+      computerUse?: boolean | null;
+      browserDemonstrations?: boolean | null;
+      browserFloatingView?: boolean | null;
+      remoteComputers?: boolean | null;
+      remoteSessionSubagents?: boolean | null;
+    };
+  };
+  path: {
+    organizationId: string;
+    memberId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities";
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors = {
+  /**
+   * Invalid organization, member or feature settings.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Active organization member not found.
+   */
+  404: NotFoundError;
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesError =
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors[keyof PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors];
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses = {
+  /**
+   * Member feature settings saved.
+   */
+  200: {
+    featureStates: {
+      nativeDictation: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocuments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocumentEditing: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      automationCalendar: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      engineV2ForceUpgrade: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserDemonstrations: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteComputers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+    };
+  };
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponse =
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses[keyof PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses];
+
 export type GetV1AdminOrganizationsByOrganizationIdData = {
   body?: never;
   path: {
@@ -8100,7 +8459,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     featureStates: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8109,7 +8468,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8118,7 +8477,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8127,7 +8486,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8136,7 +8495,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8145,7 +8504,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8154,7 +8513,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8163,7 +8522,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8172,7 +8531,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8181,7 +8540,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8190,7 +8549,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8199,7 +8558,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8208,7 +8567,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8217,7 +8576,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8302,7 +8661,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     featureStates: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8311,7 +8670,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8320,7 +8679,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8329,7 +8688,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8338,7 +8697,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8347,7 +8706,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8356,7 +8715,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8365,7 +8724,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8374,7 +8733,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8383,7 +8742,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8392,7 +8751,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8401,7 +8760,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8410,7 +8769,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8419,7 +8778,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
