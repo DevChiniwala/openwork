@@ -92,6 +92,7 @@ import { SidePanel } from "../panel/side-panel";
 import { getSidePanelSessionKey } from "../panel/side-panel-session";
 import { useCreateTab, useOpenBrowserRailPane } from "../panel/use-side-panel-tabs";
 import { useBrowserPresentationController } from "../panel/use-browser-presentation";
+import { useBrowserAgentTurns } from "../panel/agent-viewport";
 import { BrowserHeaderButton, BrowserPresentationSurfaces } from "../panel/browser-presentation";
 import { DebugRailProvider, DebugRailSlot } from "../panel/debug-rail-slot";
 import { FloatingSlotProvider, SessionFloatingLayer } from "../panel/floating-slot";
@@ -646,6 +647,7 @@ export function SessionPage(props: SessionPageProps) {
   // The button hides itself when this computer can't run it and no VM is connected.
   const computerUse = computerUseFeature && isElectronRuntime();
   useComputerBridge(props.sidebar.sessionStatusById, computerUse, remoteComputersFeature);
+  useBrowserAgentTurns(props.sidebar.sessionStatusById);
 
   // Open the side panel of the conversation that owns a browser event. For the
   // conversation on screen that is the visible panel; for a background

@@ -448,8 +448,10 @@ async function verifyFormAction(action) {
   if (!element.isConnected) throw new Error("stale_element");
   return { verified: false, control: registry.describe(element) };
 }
-async function captureObservation(webContents, viewport) {
+async function captureObservation(webContents, viewport, hostCapture = undefined) {
   if (typeof webContents.captureObservation === "function") return webContents.captureObservation(viewport);
+  const captured = await hostCapture?.(viewport);
+  if (captured) return captured;
   const capture = await webContents.capturePage();
   return capture.resize({ width: viewport.width, height: viewport.height }).toPNG({ scaleFactor: 1 });
 }
@@ -516,8 +518,14 @@ function relevantPassages(text, question, maxChars) {
   return passages.filter((passage) => (total += passage.length) <= maxChars || total === passage.length);
 }
 
+/**
+ * `prepare` runs before each operation on a tab and may settle its viewport.
+ * A host that draws the page scaled reports that scale in `inputScale`, since
+ * CDP input is in view pixels, and may `capture` the page at full resolution.
+ */
 export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isVisible, openTab, navigate,
-  allowed, enabled, changed, siteTools, runSiteTool, beforeInput = async (_tab) => {}, inFlight = (_tab, _since) => 0 }) {
+  allowed, enabled, changed, siteTools, runSiteTool, beforeInput = async (_tab) => {}, inFlight = (_tab, _since) => 0,
+  prepare = async (_tab) => {}, inputScale = (_tab) => 1, capture = (_tab, _viewport) => null }) {
   const states = new Map();
   // request_id -> first receipt, per conversation: a retried act never replays input.
   const receipts = new Map();
@@ -669,7 +677,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
     let image, digest;
     if (includeImage) {
       if (page.hasPasswordField) fail("sign_in_required", "This page contains protected sign-in or payment fields. Take over and complete them directly in the browser, then resume.");
-      const png = await captureObservation(tab.view.webContents, page.viewport);
+      const png = await captureObservation(tab.view.webContents, page.viewport, (viewport) => capture(tab, viewport));
       digest = imageDigest(png);
       image = { mimeType: "image/png", data: png.toString("base64"), width: page.viewport.width, height: page.viewport.height };
     }
@@ -801,6 +809,8 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
           if (url !== tab.view.webContents.getURL()) fail("page_changed", "The page changed while checking access. Observe again.");
         }
         requestSignal.throwIfAborted();
+        await prepare(tab);
+        requestSignal.throwIfAborted();
         publish(tab.tabId, "running", operation);
         if (operation === "observe") return observe(tab, args.includeImage === true, requestSignal, args.query, { mode: args.mode, limit: args.limit, includeText: args.includeText });
         if (operation === "site_tools") return siteTools({ tabId: tab.tabId, sessionId });
@@ -868,7 +878,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
         }
         if (!await allowed(observed.url) || state.observations.get(observed.id) !== observed || observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("page_changed", "The page changed or access was blocked while preparing the action. Observe again.");
         requestSignal.throwIfAborted();
-        if (actions[0].type === "click" && !actions[0].ref && imageDigest(await captureObservation(tab.view.webContents, observed.viewport)) !== observed.digest) fail("stale_observation", "The image changed. Observe again before choosing coordinates.");
+        if (actions[0].type === "click" && !actions[0].ref && imageDigest(await captureObservation(tab.view.webContents, observed.viewport, (viewport) => capture(tab, viewport))) !== observed.digest) fail("stale_observation", "The image changed. Observe again before choosing coordinates.");
         if (actions.some((action) => ["fill", "select", "reveal"].includes(action.type))) {
           // DOM-backed form edits must release the same native input lease as
           // keyboard and pointer events on the shared cloud desktop.
@@ -924,17 +934,20 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
           }
           if (action.type === "click" || action.type === "scroll" || (action.type === "set_checked" && !point.unchanged)) {
             // sendInputEvent targets the main widget, not an OOPIF's widget.
-            // Chromium's input router hit-tests these observed CSS pixels.
+            // Chromium's input router hit-tests these observed CSS pixels,
+            // converted to view pixels when the page is drawn scaled.
             const cdp = contents.debugger;
             const attached = !cdp.isAttached();
             if (attached) cdp.attach("1.3");
             try {
+              const scale = inputScale(tab);
+              const x = point.x * scale, y = point.y * scale;
               if (action.type === "scroll") {
-                await cdp.sendCommand("Input.dispatchMouseEvent", { type: "mouseWheel", x: point.x, y: point.y, deltaX: 0, deltaY: action.deltaY });
+                await cdp.sendCommand("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY: action.deltaY * scale });
               } else {
-                await cdp.sendCommand("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+                await cdp.sendCommand("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
                 requestSignal.throwIfAborted();
-                await cdp.sendCommand("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
+                await cdp.sendCommand("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
               }
             } finally {
               if (attached && cdp.isAttached()) cdp.detach();
