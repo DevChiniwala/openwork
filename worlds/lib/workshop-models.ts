@@ -6,6 +6,11 @@ import { denFetch } from "../../evals/packages/behaviors/src/den.ts";
 import { control, evalIn, fill, waitFor } from "../../evals/packages/behaviors/src/desktop.ts";
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+export function workshopSessionIdFromRoute(route: string): string {
+  const id = /\/session\/([^/?#]+)/.exec(route)?.[1];
+  assert.ok(id, "Select an existing workshop session before binding its model");
+  return id;
+}
 export function availableWorkshopModel(value: unknown, modelId: string) {
   const models = record(value) && Array.isArray(value.models) ? value.models.filter(record) : [];
   const matches = models.filter((model) => model.modelId === modelId && model.available === true && typeof model.providerId === "string");
@@ -59,8 +64,10 @@ export async function selectWorkshopModel(surface: Surface, modelId: string) {
     if (!row) throw new Error("Managed model row disappeared before selection"); row.click(); return true;
   }, [key]));
   await waitFor(surface, browserScript((selector) => !document.querySelector(selector), [selector]), { timeoutMs: 30_000, label: "native picker selection applied" });
-  const transcript = await control(surface, "session.read_transcript", { count: 1 }); assert.ok(record(transcript) && typeof transcript.sessionId === "string");
-  const binding = await control(surface, "session.set_model", { workspaceId: app.workspaceId, sessionId: transcript.sessionId, providerId: model.providerId, modelId: model.modelId, variant: "low" });
+  // An empty session legitimately has no transcript yet. Its actual route
+  // identifies it without inventing a first message just to obtain an id.
+  const sessionId = workshopSessionIdFromRoute(app.route);
+  const binding = await control(surface, "session.set_model", { workspaceId: app.workspaceId, sessionId, providerId: model.providerId, modelId: model.modelId, variant: "low" });
   assert.ok(record(binding) && binding.ok === true, "Managed model/low-effort binding did not verify");
   return model;
 }

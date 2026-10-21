@@ -29,6 +29,8 @@ test("registered secrets, bearer credentials and private URLs remain protected",
 
 test("bare signed preview hostnames in UI dumps are also capabilities, not public diagnostics", () => {
   assert.equal(redactWorkshopDiagnostic("Account 3005-example-cap.daytonaproxy01.net", []), "Account [private host]");
+  const json = redactWorkshopDiagnostic(JSON.stringify({ body: "Attendee\n3005-example-cap.daytonaproxy01.net" }), []);
+  assert.equal(JSON.parse(json).body, "Attendee\n[private host]");
 });
 
 test("account provisioning and sign-in errors do not interpolate authentication response bodies", async () => {

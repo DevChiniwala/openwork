@@ -4,9 +4,9 @@
 
 ## Safety and cost
 
-- Each attendee is an ordinary Den member with a unique desktop, Chromium profile, filesystem and fictional workplace guest. Never clone an authenticated profile or share an owner account.
+- Each attendee is an ordinary Den member with a unique desktop, Chromium profile, filesystem and fictional workplace guest. Never clone an authenticated profile or share an owner account. Only the new disposable fictional workspace opts into full tool approval; this does not elevate Den membership or mount real accounts.
 - Five hosted workplace connections use per-member OAuth. The automatic guest identity belongs to the browser profile; attendees sharing a viewer link share that entire workstation. The fictional service now removes attendance/registration quotas in favor of explicit reset controls; use its `WORKSHOP.md` for the deployed reset procedure. Whole-service reset preserves identities and OAuth but does not erase VM files or OpenWork chat history.
-- The controller installs the real upstream credential in Den's encrypted provider storage. Attendee environments do not receive that credential or the shared evaluation secrets volume.
+- The controller installs the real upstream credential in Den's encrypted provider storage. Attendee environments do not receive that credential or the shared evaluation secrets volume. The ordinary member's own Den session is delivered through the supported owned-runtime broker handoff; its member-scoped MCP token reuses the five real OAuth grants.
 - Den starts without demo users and with development email routes disabled. Secrets for authentication, encryption and Gateway webhooks are generated per run. Production-mode cohosting uses the sandbox's actual private interface. A loopback-only SMTP discard sink accepts synthetic `workshop.test` invitations; it does not send real email or expose an HTTP inbox.
 - All sandboxes must be provider-confirmed private. Only signed noVNC capabilities appear on individual attendee cards. Do not post the host sheet publicly.
 - Current maintained snapshots allocate 4 CPU / 8 GiB / 10 GiB each. Daytona does not accept CPU/memory overrides when creating from a snapshot. Twenty desktops plus one backend estimate about $167 for 24 hours, plus disk, against the approved $180 infrastructure ceiling. Check current prices and quota again for a future event.

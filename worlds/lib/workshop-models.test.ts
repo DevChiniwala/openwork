@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { availableWorkshopModel } from "./workshop-models.ts";
+import { availableWorkshopModel, workshopSessionIdFromRoute } from "./workshop-models.ts";
+
+test("a fresh session gets its id from the actual route without requiring an impossible non-empty transcript", () => {
+  assert.equal(workshopSessionIdFromRoute("#/workspace/workshop/session/ses_fixture"), "ses_fixture");
+  assert.equal(workshopSessionIdFromRoute("/workspace/workshop/session/ses_fixture?tab=chat"), "ses_fixture");
+  assert.throws(() => workshopSessionIdFromRoute("/workspace/workshop/session"));
+});
 
 test("only the exact available managed alias is accepted; free fallback and duplicate aliases fail closed", () => {
   const model = { modelId: "workshop-alias", providerId: "openwork_gateway_fixture", displayName: "Workshop Sol", available: true };
