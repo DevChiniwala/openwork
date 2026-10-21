@@ -1,3 +1,5 @@
+"use client"
+
 import { useEffect, useRef, useState } from "react"
 
 // Two offset crests make a quiet, recognizable signal at composer size.

@@ -1,3 +1,5 @@
+"use client"
+
 import { useEffect, useRef, useState } from "react"
 import { browserSpeechConstructor, createBrowserDictation } from "./browser-dictation"
 
