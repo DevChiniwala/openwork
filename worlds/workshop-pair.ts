@@ -32,7 +32,6 @@ import { freshComposer, verifyMember, verifySandbox, verifyViewer, workshopAccou
 export const summary = "One private Den/Gateway with the workshop model and five OAuth connectors, plus one ordinary member's Daytona desktop; holds on failure for inspection.";
 export const supportedTargets = ["daytona/linux"];
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const MEMBER = "attendee01";
 
 export interface PairStage { name: string; startedAt: string; endedAt?: string; seconds?: number; ok?: boolean; error?: string }
 
@@ -40,6 +39,9 @@ export function parsePairOptions(argv: readonly string[]) {
   let lifetimeMinutes = 240;
   let outputDir = "";
   let timezone = "America/Los_Angeles";
+  let seats = 1;
+  let concurrency = 10;
+  let snapshot: string | undefined;
   const seen = new Set<string>();
   for (let i = 0; i < argv.length; i += 2) {
     const flag = argv[i];
@@ -49,12 +51,34 @@ export function parsePairOptions(argv: readonly string[]) {
     if (flag === "--lifetime" && /^\d+$/.test(value) && Number(value) >= 30 && Number(value) <= 1440) lifetimeMinutes = Number(value);
     else if (flag === "--output-dir" && isAbsolute(value)) outputDir = resolve(value);
     else if (flag === "--timezone" && /^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value) && Intl.supportedValuesOf("timeZone").includes(value)) timezone = value;
-    else throw new Error("Use --output-dir <private absolute path outside git>, optional --lifetime 30..1440 (minutes, default 240) and --timezone <IANA zone, default America/Los_Angeles>.");
+    else if (flag === "--seats" && /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 20) seats = Number(value);
+    else if (flag === "--concurrency" && /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 20) concurrency = Number(value);
+    else if (flag === "--snapshot" && /^workshop-desktop-[a-z0-9-]{1,80}$/.test(value)) snapshot = value;
+    else throw new Error("Use --output-dir <private absolute path outside git>, optional --seats 1..20 (default 1), --snapshot workshop-desktop-<name> (clean, signed-out), --concurrency 1..20 (default 10), --lifetime 30..1440 (minutes, default 240) and --timezone <IANA zone, default America/Los_Angeles>.");
   }
   if (!outputDir) throw new Error("Pair requires --output-dir outside git (it holds a member test login and a private viewer link).");
   const rel = relative(REPO_ROOT, outputDir);
   if (rel !== ".." && !rel.startsWith(`..${sep}`)) throw new Error("Pair output directory must be outside this checkout.");
-  return { lifetimeMinutes, outputDir, timezone };
+  return { lifetimeMinutes, outputDir, timezone, seats, concurrency, snapshot };
+}
+
+export function seatKey(index: number): string {
+  if (!Number.isSafeInteger(index) || index < 1 || index > 20) throw new Error("Seat index must be 1..20.");
+  return `attendee${String(index).padStart(2, "0")}`;
+}
+
+/** Run every seat; one seat failing never stops or tears down the others. */
+export async function forEachSeat<T>(count: number, concurrency: number, run: (index: number) => Promise<T>): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(count);
+  let next = 1;
+  await Promise.all(Array.from({ length: Math.min(concurrency, count) }, async () => {
+    while (next <= count) {
+      const index = next++;
+      try { results[index - 1] = { status: "fulfilled", value: await run(index) }; }
+      catch (reason) { results[index - 1] = { status: "rejected", reason }; }
+    }
+  }));
+  return results;
 }
 
 /** The attendee's local clock: "today"/"tomorrow" must not be UTC dates. */
@@ -68,9 +92,10 @@ test "$(date +%Z)" != UTC || test "${timezone}" = Etc/UTC
 `;
 }
 
-/** Two 4 CPU / 8 GiB snapshot sandboxes at list price, plus disk. */
-export function pairInfrastructureUsd(lifetimeMinutes: number): number {
-  return 2 * 4 * 0.083 * lifetimeMinutes / 60 + 2 * 12 / 21 * lifetimeMinutes / 1440;
+/** One Den plus one desktop per seat, 4 CPU / 8 GiB each at list price, plus disk. */
+export function pairInfrastructureUsd(lifetimeMinutes: number, seats = 1): number {
+  const sandboxes = seats + 1;
+  return sandboxes * 4 * 0.083 * lifetimeMinutes / 60 + sandboxes * 12 / 21 * lifetimeMinutes / 1440;
 }
 
 async function privateDirectory(path: string) {
@@ -101,7 +126,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   if (target.provider !== "daytona" || target.os !== "linux") throw new Error("Workshop pair supports only --place daytona --os linux.");
   const upstreamKey = process.env.OPENAI_API_KEY;
   if (!upstreamKey?.trim()) throw new Error("Fetch OPENAI_API_KEY into the controller environment before starting.");
-  if (pairInfrastructureUsd(options.lifetimeMinutes) > 180) throw new Error("Pair exceeds the approved infrastructure ceiling.");
+  if (pairInfrastructureUsd(options.lifetimeMinutes, options.seats) > 180) throw new Error("Workshop exceeds the approved $180 infrastructure ceiling; shorten --lifetime or use fewer --seats.");
   await privateDirectory(options.outputDir);
   const place = resolvePlace();
   const base = place.denBase();
@@ -113,31 +138,35 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   const runId = randomBytes(6).toString("hex");
   const hostEmail = `host-${runId}@workshop.test`;
   const hostPassword = workshopAccountPassword();
-  const memberPassword = workshopAccountPassword();
-  const privateValues = [upstreamKey, hostPassword, memberPassword];
+  const keys = Array.from({ length: options.seats }, (_, index) => seatKey(index + 1));
+  const passwords = Object.fromEntries(keys.map((key) => [key, workshopAccountPassword()]));
+  const privateValues = [upstreamKey, hostPassword, ...Object.values(passwords)];
   const redact = (text: string) => redactWorkshopDiagnostic(text, privateValues);
   const stages: PairStage[] = [];
-  const status: Record<string, unknown> = { runId, ref: base.ref, timezone: options.timezone, startedAt: new Date(startedAtMs).toISOString(), expiresAt: new Date(deadline).toISOString(), ready: false, stages };
+  const seats: Record<string, { ready: boolean; stages: PairStage[]; readySeconds?: number; failure?: string }> = Object.fromEntries(keys.map((key) => [key, { ready: false, stages: [] }]));
+  const status: Record<string, unknown> = { runId, ref: base.ref, timezone: options.timezone, snapshot: options.snapshot ?? null, seatCount: options.seats,
+    startedAt: new Date(startedAtMs).toISOString(), expiresAt: new Date(deadline).toISOString(), ready: false, readySeats: 0, stages, seats };
   const statusPath = join(options.outputDir, "status.json");
-  const control: Record<string, unknown> = { runId, ref: base.ref, member: MEMBER, expiresAt: status.expiresAt };
-  const controlPath = join(options.outputDir, "control.json");
-  const outputs: Record<string, WorldOutput> = { ref: output(base.ref), status: output(statusPath), control: output(controlPath, { note: "Private: member test login, sandbox ids, viewer link" }) };
-  let diagnostic: Surface | undefined;
-  async function stage<T>(name: string, run: () => Promise<T>): Promise<T> {
+  const shared: Record<string, unknown> = { runId, ref: base.ref, expiresAt: status.expiresAt };
+  const outputs: Record<string, WorldOutput> = { ref: output(base.ref), status: output(statusPath), hostSheet: output(join(options.outputDir, "host-sheet.html"), { note: "Private: every attendee link" }) };
+  let writing = Promise.resolve();
+  const saveStatus = () => { writing = writing.then(() => privateJson(statusPath, status)).catch(() => {}); return writing; };
+  async function stage<T>(list: PairStage[], label: string, name: string, run: () => Promise<T>, diagnostic?: () => Surface | undefined, shotDir = options.outputDir): Promise<T> {
     const entry: PairStage = { name, startedAt: new Date().toISOString() };
-    stages.push(entry); await privateJson(statusPath, status);
-    console.log(`Workshop pair: ${name}…`);
+    list.push(entry); await saveStatus();
+    console.log(`Workshop ${label}: ${name}…`);
     const t0 = Date.now();
     try {
       const value = await run();
       Object.assign(entry, { ok: true, endedAt: new Date().toISOString(), seconds: Math.round((Date.now() - t0) / 1000) });
-      console.log(`Workshop pair: ${name} ok (${entry.seconds}s).`);
+      console.log(`Workshop ${label}: ${name} ok (${entry.seconds}s).`);
       return value;
     } catch (error) {
       Object.assign(entry, { ok: false, endedAt: new Date().toISOString(), seconds: Math.round((Date.now() - t0) / 1000), error: redact(error instanceof Error ? error.message : String(error)).slice(0, 4000) });
-      if (diagnostic) await screenshot(diagnostic, join(options.outputDir, `failed-${name}.png`)).catch(() => {});
+      const surface = diagnostic?.();
+      if (surface) await screenshot(surface, join(shotDir, `failed-${name}.png`)).catch(() => {});
       throw error;
-    } finally { await privateJson(statusPath, status); }
+    } finally { await saveStatus(); }
   }
 
   await using stack = new AsyncDisposableStack();
@@ -146,12 +175,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     const { server } = await import("../evals/packages/env/src/den.ts");
     const { app } = await import("../evals/packages/env/src/desktop-app.ts");
     let den!: Den;
-    await stage("den", async () => {
+    await stage(stages, "den", "den", async () => {
       const oldEmail = process.env.OPENWORK_EVAL_DEMO_EMAIL, oldPassword = process.env.OPENWORK_EVAL_DEMO_PASSWORD;
       process.env.OPENWORK_EVAL_DEMO_EMAIL = hostEmail; process.env.OPENWORK_EVAL_DEMO_PASSWORD = hostPassword;
       try {
         den = stack.use(await server({ place, org: { name: `Workshop ${runId}`, admin: { email: hostEmail, password: hostPassword, name: "Workshop host" },
-          members: { [MEMBER]: { email: `${MEMBER}-${runId}@workshop.test`, name: "Attendee 01", password: memberPassword } } },
+          members: Object.fromEntries(keys.map((key, index) => [key, { email: `${key}-${runId}@workshop.test`, name: `Attendee ${String(index + 1).padStart(2, "0")}`, password: passwords[key] }])) },
           daytonaPrivate: true, daytonaSeedDemo: false, daytonaTtlMinutes: Math.floor(remaining() / 60), daytonaAutoStopMinutes: 0, daytonaPreviewExpirySeconds: remaining(),
           env: { OPENWORK_DEV_MODE: "0", OPENWORK_WORKSHOP_PRIVATE_COHOST: "1", DEN_REQUIRE_EMAIL_VERIFICATION: "false", GATEWAY_ENABLED: "true", GATEWAY_PORT: "8791",
             GATEWAY_EGRESS_ALLOWED_ORIGINS: "https://api.openai.com", DEN_DB_ENCRYPTION_KEY: randomBytes(32).toString("hex"), BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
@@ -169,89 +198,134 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         const response = await fetch(`${den.ref.apiUrl}${path}`, { signal: AbortSignal.timeout(15_000) });
         if (response.status !== 404) throw new Error("Den exposed development email routes.");
       }
-      Object.assign(control, { denSandbox: backend.id, denApiUrl: den.ref.apiUrl, denWebUrl: den.ref.webUrl });
+      Object.assign(shared, { denSandbox: backend.id, denApiUrl: den.ref.apiUrl, denWebUrl: den.ref.webUrl });
     });
-    const member = den.members[MEMBER];
-    if (!member) throw new Error("Member was not provisioned.");
-    const setup = await stage("models-and-connectors", () => configureWorkshop(den, { upstreamKey, allowanceUsd: 5, attendees: 1 }));
-    const seat = setup.members.find((entry) => entry.key === MEMBER);
-    if (!seat) throw new Error("Member allowance/model setup missing.");
-    Object.assign(control, { orgId: setup.orgId, memberId: seat.memberId, modelId: seat.modelId, connections: setup.connections,
-      memberLogin: { email: member.email, password: memberPassword, token: member.token, apiUrl: member.apiUrl, webUrl: member.webUrl } });
-    await privateJson(controlPath, control);
-    await stage("member-budget", () => verifyMember(member, setup.orgId, seat.memberId));
+    const setup = await stage(stages, "den", "models-and-connectors", () => configureWorkshop(den, { upstreamKey, allowanceUsd: 5, attendees: options.seats }));
+    Object.assign(shared, { orgId: setup.orgId, connections: setup.connections });
 
-    const desktopId = await stage("desktop-sandbox", async () => {
-      const provisioned = await provisionDesktopSandbox({ ref: base.ref, name: `workshop-pair-${runId}`, private: true, secrets: false,
-        ttlMinutes: Math.floor(remaining() / 60), autoStopMinutes: 0, log: () => {},
-        onCreated: async (sandbox) => {
-          stack.defer(() => deleteSandboxes([sandbox], { log: () => {} }));
-          await trackResource({ kind: "daytona", id: sandbox, label: "workshop-pair-desktop" });
-        } });
-      if (!provisioned.created) throw new Error("Pair only owns newly created desktop sandboxes.");
-      const id = await privateSandboxId(provisioned.sandbox);
-      await verifySandbox(id);
-      control.desktopSandbox = id; await privateJson(controlPath, control);
-      return id;
-    });
-    const host = stack.use(createDaytonaHost({ sandboxId: desktopId, repoRoot: REPO_ROOT, previewExpirySeconds: remaining(), log: () => {} }));
-    const browser = await stage("browser-and-five-oauth", async () => {
-      await installWorkshopBrowser(desktopId);
-      await unlockWorkshopDesktop(desktopId);
-      await execInSandbox(defaultDaytonaExec, desktopId, workshopRemoteScript(workshopTimezoneScript(options.timezone)), { timeoutMs: 30_000, context: "set the attendee's local timezone" });
-      const surface = stack.use(await chrome({ name: "workshop-pair", host, profileDir: WORKSHOP_BROWSER_PROFILE, headless: false, startUrl: "about:blank" }));
-      diagnostic = surface;
-      const oauth = await connectWorkshopBrowser(surface, member, setup.orgId, setup.connections);
-      control.guest = oauth.guest; await privateJson(controlPath, control);
-      return surface;
-    });
-    const desktop = await stage("desktop-signed-in", async () => {
-      const surface = stack.use(await app({ den, place, host, as: MEMBER, enterpriseActivated: true, workspacePath: "/home/daytona/workshop/workspace",
-        env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER, TZ: options.timezone } }));
-      diagnostic = surface;
-      return surface;
-    });
-    await stage("workshop-model-visible", async () => {
-      // Record whether the plain signed-in desktop already sees the managed
-      // model, before the test's runtime link + reload. If it needs them,
-      // attendees signing in themselves would hit the same gap.
-      // A fresh desktop opens a draft with no session id; binding needs a task.
-      await runControl(desktop, "session.create_task");
-      control.modelVisibleWithoutRuntimeLink = await selectWorkshopModel(desktop, seat.modelId).then(() => true, () => false);
-      if (!control.modelVisibleWithoutRuntimeLink) {
-        await linkWorkshopRuntime(desktop, member, setup.orgId, desktop.workspaceId);
-        await desktop.client.send("Page.reload", { ignoreCache: true });
-        await waitUntilInteractive(desktop, { timeoutMs: 90_000 });
-        await selectWorkshopModel(desktop, seat.modelId);
+    const results = await forEachSeat(options.seats, options.concurrency, async (index) => {
+      const key = seatKey(index);
+      const seatState = seats[key];
+      const member = den.members[key];
+      const seatSetup = setup.members.find((entry) => entry.key === key);
+      if (!seatState || !member || !seatSetup) throw new Error(`Seat ${key} was not provisioned.`);
+      const seatDir = join(options.outputDir, key);
+      await privateDirectory(seatDir);
+      const control: Record<string, unknown> = { ...shared, member: key, memberId: seatSetup.memberId, modelId: seatSetup.modelId,
+        memberLogin: { email: member.email, password: passwords[key], token: member.token, apiUrl: member.apiUrl, webUrl: member.webUrl } };
+      const controlPath = join(seatDir, "control.json");
+      const save = async () => {
+        await privateJson(controlPath, control);
+        // A single-seat run keeps the original pair layout for existing checks.
+        if (options.seats === 1) await privateJson(join(options.outputDir, "control.json"), control);
+      };
+      await save();
+      const seatStarted = Date.now();
+      let diagnostic: Surface | undefined;
+      const seatStage = <T>(name: string, run: () => Promise<T>) => stage(seatState.stages, key, name, run, () => diagnostic, seatDir);
+      try {
+        await seatStage("member-budget", () => verifyMember(member, setup.orgId, seatSetup.memberId));
+        const desktopId = await seatStage("desktop-sandbox", async () => {
+          const provisioned = await provisionDesktopSandbox({ ref: base.ref, name: `workshop-${runId}-${key}`, private: true, secrets: false,
+            ...(options.snapshot ? { snapshot: options.snapshot } : {}),
+            ttlMinutes: Math.floor(remaining() / 60), autoStopMinutes: 0, log: () => {},
+            onCreated: async (sandbox) => {
+              stack.defer(() => deleteSandboxes([sandbox], { log: () => {} }));
+              await trackResource({ kind: "daytona", id: sandbox, label: `workshop-${key}` });
+            } });
+          if (!provisioned.created) throw new Error("Only newly created desktop sandboxes are owned.");
+          const id = await privateSandboxId(provisioned.sandbox);
+          await verifySandbox(id);
+          control.desktopSandbox = id; await save();
+          return id;
+        });
+        const host = stack.use(createDaytonaHost({ sandboxId: desktopId, repoRoot: REPO_ROOT, previewExpirySeconds: remaining(), log: () => {} }));
+        const browser = await seatStage("browser-and-five-oauth", async () => {
+          // A clean snapshot already carries the browser launcher (no profile).
+          if (!options.snapshot) await installWorkshopBrowser(desktopId);
+          await unlockWorkshopDesktop(desktopId);
+          await execInSandbox(defaultDaytonaExec, desktopId, workshopRemoteScript(workshopTimezoneScript(options.timezone)), { timeoutMs: 30_000, context: "set the attendee's local timezone" });
+          const surface = stack.use(await chrome({ name: `workshop-${key}`, host, profileDir: WORKSHOP_BROWSER_PROFILE, headless: false, startUrl: "about:blank" }));
+          diagnostic = surface;
+          const oauth = await connectWorkshopBrowser(surface, member, setup.orgId, setup.connections);
+          control.guest = oauth.guest; await save();
+          return surface;
+        });
+        const desktop = await seatStage("desktop-signed-in", async () => {
+          const surface = stack.use(await app({ den, place, host, as: key, enterpriseActivated: true, workspacePath: "/home/daytona/workshop/workspace",
+            env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER, TZ: options.timezone } }));
+          diagnostic = surface;
+          return surface;
+        });
+        await seatStage("workshop-model-visible", async () => {
+          // A fresh desktop opens a draft with no session id; binding needs a task.
+          await runControl(desktop, "session.create_task");
+          control.modelVisibleWithoutRuntimeLink = await selectWorkshopModel(desktop, seatSetup.modelId).then(() => true, () => false);
+          if (!control.modelVisibleWithoutRuntimeLink) {
+            await linkWorkshopRuntime(desktop, member, setup.orgId, desktop.workspaceId);
+            await desktop.client.send("Page.reload", { ignoreCache: true });
+            await waitUntilInteractive(desktop, { timeoutMs: 90_000 });
+            await selectWorkshopModel(desktop, seatSetup.modelId);
+          }
+          await save();
+          await foregroundWorkshopDesktop(browser, desktop);
+          await freshComposer(desktop, seatSetup.modelId);
+          await screenshot(desktop, join(seatDir, "ready.png"));
+        });
+        await seatStage("private-interactive-viewer", async () => {
+          const signed = await defaultDaytonaExec(["preview-url", desktopId, "-p", "6080", "--expires", String(remaining())], { timeoutMs: 30_000 });
+          if (signed.code !== 0) throw new Error("Could not mint the private viewer link.");
+          const origin = parsePrivatePreview(signed.stdout, desktopId, 6080).browserOrigin;
+          const viewer = `${origin}/vnc.html?autoconnect=1&resize=scale&view_only=0&reconnect=1&reconnect_delay=2000`;
+          await verifyViewer(viewer, desktopId);
+          control.viewer = viewer; await save();
+          await writeFile(join(options.outputDir, `${key}.html`), attendeeCard(key, viewer, String(status.expiresAt)), { mode: 0o600 });
+          outputs[key] = secret(viewer, { group: "Attendee desktops", note: "Interactive private desktop; give only to this attendee" });
+        });
+        seatState.ready = true;
+        seatState.readySeconds = Math.round((Date.now() - seatStarted) / 1000);
+        status.readySeats = Object.values(seats).filter((seat) => seat.ready).length;
+        await saveStatus();
+      } catch (error) {
+        seatState.failure = redact(error instanceof Error ? error.message : String(error)).slice(0, 2000);
+        await saveStatus();
+        throw error;
       }
-      await privateJson(controlPath, control);
-      await foregroundWorkshopDesktop(browser, desktop);
-      await freshComposer(desktop, seat.modelId);
-      await screenshot(desktop, join(options.outputDir, "ready.png"));
     });
-    await stage("private-interactive-viewer", async () => {
-      const signed = await defaultDaytonaExec(["preview-url", desktopId, "-p", "6080", "--expires", String(remaining())], { timeoutMs: 30_000 });
-      if (signed.code !== 0) throw new Error("Could not mint the private viewer link.");
-      const origin = parsePrivatePreview(signed.stdout, desktopId, 6080).browserOrigin;
-      const viewer = `${origin}/vnc.html?autoconnect=1&resize=scale&view_only=0&reconnect=1&reconnect_delay=2000`;
-      await verifyViewer(viewer, desktopId);
-      control.viewer = viewer; await privateJson(controlPath, control);
-      outputs.viewer = secret(viewer, { note: "Interactive private desktop; share only with the tester" });
-    });
-    status.ready = true;
+    status.readySeats = Object.values(seats).filter((seat) => seat.ready).length;
+    status.ready = results.every((result) => result.status === "fulfilled");
     status.readySeconds = Math.round((Date.now() - startedAtMs) / 1000);
-    console.log(`Workshop pair: ready in ${status.readySeconds}s.`);
+    console.log(`Workshop: ${status.readySeats}/${options.seats} seats ready in ${status.readySeconds}s.`);
   } catch (error) {
     failure = error;
     status.failure = redact(error instanceof Error ? error.message : String(error)).slice(0, 4000);
-    console.error(`Workshop pair: stage failed; holding for inspection. ${status.failure}`);
+    console.error(`Workshop: shared stage failed; holding for inspection. ${status.failure}`);
   }
-  await privateJson(statusPath, status);
-  await privateJson(controlPath, control);
-  outputs.ready = output(String(status.ready));
-  // Hold whether or not every stage passed. Teardown: pnpm world down workshop-pair.
+  await saveStatus();
+  await writeFile(join(options.outputDir, "host-sheet.html"), hostSheet(seats, String(status.expiresAt)), { mode: 0o600 });
+  outputs.ready = output(`${String(status.readySeats)}/${options.seats}`);
+  // Hold whether or not every seat passed. Teardown: pnpm world down workshop-pair --stage <stage>.
   await hold({ name: "workshop-pair", outputs });
-  if (failure) process.exitCode = 1;
+  if (failure || status.ready !== true) process.exitCode = 1;
+}
+
+function escapeHtml(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+function attendeeCard(key: string, viewer: string, expiresAt: string): string {
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>${key} · OpenWork workshop</title>
+<body style="font:16px/1.5 system-ui;max-width:640px;margin:40px auto;padding:0 16px">
+<h1>Your OpenWork workshop desktop</h1>
+<p><a href="${escapeHtml(viewer)}" rel="noreferrer" style="font-size:20px">Open my desktop</a></p>
+<p>This link is yours alone: anyone with it controls your desktop. Don't forward it. It works until ${escapeHtml(new Date(expiresAt).toLocaleString("en-US", { timeZone: "America/Los_Angeles", dateStyle: "medium", timeStyle: "short" }))} Pacific.</p>
+<p>OpenWork is already signed in, and your fictional Outlook, Calendar, OneDrive, Jira and Confluence are connected. Everything here is fictional sample data.</p>
+<p>If the screen looks frozen, reload this page. If something goes wrong, raise your hand.</p></body></html>`;
+}
+function hostSheet(seats: Record<string, { ready: boolean; failure?: string }>, expiresAt: string): string {
+  const rows = Object.entries(seats).map(([key, seat]) => `<tr><td><a href="${key}.html">${key}</a></td><td>${seat.ready ? "ready" : `<b>not ready</b> ${escapeHtml(seat.failure ?? "")}`}</td></tr>`).join("");
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Private workshop host sheet</title>
+<body style="font:15px/1.5 system-ui;margin:32px"><h1>Private host sheet</h1><p>Give each person only their own card. Never share this page. Expires ${escapeHtml(expiresAt)}.</p>
+<table border="1" cellpadding="6" style="border-collapse:collapse">${rows}</table></body></html>`;
 }
 
 if (import.meta.main) await main();
