@@ -765,7 +765,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
           createBrowserTab(request.url, { ownerSessionId: request.ownerSessionId, initializeBlank: false });
         } else {
           const result = await openExternalUrl(request.url);
-          if (!result.ok) throw new Error(result.error);
+          // A slow browser is still opening the link; only a real failure needs a dialog.
+          if (!result.ok && !result.pending) throw new Error(result.error);
         }
       } catch (error) {
         if (isCurrent()) {
