@@ -26,7 +26,7 @@
     }
   },
   "api": {
-    "openapi": "openapi.json"
+    "openapi": "https://api.openworklabs.com/openapi.json?public=1"
   },
   "markdown": {
     "instructions": [
@@ -318,7 +318,7 @@
       },
       {
         "tab": "API",
-        "openapi": "/openapi.json"
+        "openapi": "https://api.openworklabs.com/openapi.json?public=1"
       },
       {
         "tab": "Roadmap",

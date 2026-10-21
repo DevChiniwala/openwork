@@ -6,8 +6,8 @@
     "node": ">=24.22.1 <25"
   },
   "scripts": {
-    "sdk:generate": "pnpm --filter @openwork/sdk generate",
-    "sdk:check": "pnpm --filter @openwork/sdk generate:check && pnpm --filter @openwork/sdk typecheck",
+    "sdk:generate": "pnpm den:contract",
+    "sdk:check": "pnpm den:contract && pnpm --filter @openwork/sdk typecheck",
     "sdk:build": "pnpm --filter @openwork/sdk build",
     "den:contract": "node scripts/den-contract.mjs",
     "hooks:install": "node scripts/install-git-hooks.mjs",
