@@ -13,7 +13,7 @@ import { server } from "../evals/packages/env/src/den.ts";
 import type { Den } from "../evals/packages/env/src/den.ts";
 import { resolvePlace } from "../evals/packages/env/src/place.ts";
 import type { Place } from "../evals/packages/env/src/place.ts";
-import { daytonaSandbox } from "../evals/packages/hosts/src/resolve.ts";
+import { defaultDaytonaExec } from "../evals/packages/hosts/src/index.ts";
 import { progress } from "../packages/world/src/events.ts";
 import { hold } from "../packages/world/src/hold.ts";
 import { resolveStage } from "../packages/world/src/stage.ts";
@@ -21,7 +21,7 @@ import { targetFromEnv } from "../packages/world/src/target.ts";
 import { ACME_ENCRYPTION_KEY, startAcmeGateway } from "./lib/acme-gateway.ts";
 import { waitForNoVnc } from "./lib/preview.ts";
 import {
-  createWorkshopConnections, probeAutomaticJoin, probeGatewayHealth, startDaytonaGateway, startLocalGateway, verifyWorkshopConnections,
+  createWorkshopConnections, parseSignedPreviewOrigin, probeAutomaticJoin, probeGatewayHealth, startDaytonaGateway, startLocalGateway, verifyWorkshopConnections,
 } from "./lib/workshop-gateway.ts";
 import type { WorkplaceGateway, WorkshopConnection } from "./lib/workshop-gateway.ts";
 import { provisionWorkshopModel } from "./lib/workshop-model.ts";
@@ -93,14 +93,17 @@ async function orgIdFor(den: Den, name: string): Promise<string> {
   return org.id;
 }
 
-async function attendeeViewer(place: Place, desktop: App): Promise<{ viewerUrl?: string; sandbox?: string }> {
+async function attendeeViewer(place: Place, desktop: App, expiresInSeconds: number): Promise<{ viewerUrl?: string; sandbox?: string }> {
   if (place.kind === "local") return {};
   const sandbox = desktop.handle.sandboxId;
   if (!sandbox) throw new Error("Attendee desktop did not report its Daytona sandbox.");
-  const host = daytonaSandbox(sandbox);
-  if (!host.previewUrl) throw new Error("Daytona host cannot expose the attendee viewer.");
-  const url = new URL(await host.previewUrl(6080));
-  url.search = "autoconnect=1&resize=scale&reconnect=1&reconnect_delay=2000";
+  const expiry = Math.max(60, Math.min(86_400, Math.floor(expiresInSeconds)));
+  const preview = await defaultDaytonaExec(["preview-url", sandbox, "-p", "6080", "--expires", String(expiry)], { timeoutMs: 60_000 });
+  if (preview.code !== 0) throw new Error("Could not create the protected attendee viewer.");
+  // Fail closed on path/query authentication: noVNC's WebSocket needs the same
+  // port-bound signed hostname, not an accidentally stripped access token.
+  const url = new URL(parseSignedPreviewOrigin(preview.stdout, 6080));
+  for (const [key, value] of Object.entries({ autoconnect: "1", resize: "scale", reconnect: "1", reconnect_delay: "2000" })) url.searchParams.set(key, value);
   await waitForNoVnc(url.href);
   return { viewerUrl: url.href, sandbox };
 }
@@ -190,7 +193,7 @@ export async function boot(stack: AsyncDisposableStack, place: Place, options: W
   const results = await allocateDesktops(keys, async (key) => {
     const desktop = await app({ den, place, as: key, env: ATTENDEE_APP_ENV, enterpriseActivated: true });
     try {
-      const viewer = await attendeeViewer(place, desktop);
+      const viewer = await attendeeViewer(place, desktop, context.expires ? (context.expires.getTime() - Date.now()) / 1000 + 600 : 86_400);
       stack.use(desktop);
       return viewer;
     } catch (error) {
@@ -230,6 +233,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     console.error(`workshop  Den and desktops build ${ref}`);
     // Desktop sandboxes must not idle-stop mid-workshop; this world's lifetime owns teardown.
     process.env.OPENWORK_WORLD_PREVIEW_DAYTONA = "1";
+    // All attendee control surfaces require signed, port-bound preview access.
+    process.env.OPENWORK_EVAL_DAYTONA_PRIVATE = "1";
   }
   const place = resolvePlace();
   const stage = resolveStage(process.env);

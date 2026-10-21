@@ -196,6 +196,7 @@ class DaytonaPlacementHost implements Host {
       ref: this.#ref,
       name,
       ...(process.env.OPENWORK_WORLD_PREVIEW_DAYTONA === "1" ? { autoStopMinutes: 0 } : {}),
+      ...(process.env.OPENWORK_EVAL_DAYTONA_PRIVATE === "1" ? { private: true } : {}),
       log: (line: string) => console.error(`[openwork/testkit] ${line}`),
     };
     const provisioned: DesktopSandbox = surface === "web"

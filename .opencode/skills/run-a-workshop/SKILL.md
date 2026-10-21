@@ -18,10 +18,14 @@ One command builds a private, disposable workshop on Daytona:
 Everything lives in the world and disappears with `world down`. Nothing is
 shared across events, so test runs cannot pollute or exhaust the real event.
 
-**Status:** the backend (`--count 0`) is verified locally. The Daytona path
-(preview URLs, OAuth through them, attendee desktops, live model allowance)
-has not been run end to end yet. Do the smoke run and the pilot below before
-promising anything to attendees.
+**Status (2026-10-20):** one self-contained Daytona backend + ordinary attendee
+passed five real OAuth consents, a paid GPT-6.1 Sol task reading all five services,
+a local/Drive write, Ctrl+Enter steering, exact data reset, and the same paid task
+again without reconnecting. Source was `7d381c9d0f42c37a5537ede6019b7225c1ffc7d0`.
+This is **not** a 20-seat or full-workshop-exercise verdict. The canonical exercises
+are a separate queue and can expose missing fixtures/capabilities. Never clone an
+authenticated pilot; use a separately audited software-only base and fresh profiles.
+See `research/workshop-pilot-validation.md` and the template/fanout gates.
 
 ## Before the event (do this first, 5 minutes)
 
@@ -137,11 +141,14 @@ by provider TTL; don't rely on that alone.
   *before* the first desktop is allocated.
 - **Pilot, then fan out** with low concurrency (2). Don't hand out cards from a
   partial run; a later failure tears the fleet down.
-- **Daytona defaults are not workshop defaults.** Sandboxes and preview ports
-  are public unless requested private, and preview links may expire after an
-  hour unless an expiry is set. Memory is given in GiB to the CLI. Desktop
-  viewer links are currently unsigned public-sandbox URLs: anyone with one
-  controls that desktop until `world down`, so treat each as a secret.
+- **Daytona defaults are not workshop defaults.** The workshop requests private
+  Den/desktop sandboxes (`OPENWORK_EVAL_DAYTONA_PRIVATE=1`) and explicitly signs
+  viewers through the event lifetime plus reserve. Verify actual API privacy,
+  unauthenticated denial, authorized HTTP **and** RFB/WebSocket before handout.
+  The pilot's live check denied the unsigned viewer with HTTP 401 while the signed
+  viewer worked. Viewer URLs are bearer credentials: anyone with one controls that
+  desktop. Path/query-auth preview shapes fail closed; never strip their token.
+  Memory is given in GiB to the CLI.
 - **One venue IP.** All attendees reach the workplace through the Daytona
   proxy, so they share its per-IP limits on OAuth client registration and
   pre-join authorization (600/min). Fine for 20 people; watch it for larger

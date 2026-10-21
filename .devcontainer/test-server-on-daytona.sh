@@ -103,7 +103,10 @@ snapshot_id() {
 }
 
 SNAPSHOT_ID="$(snapshot_id "$DAYTONA_SERVER_SNAPSHOT")"
-CREATE_ARGS=(--name "$SANDBOX" --auto-stop "$DAYTONA_AUTO_STOP_MINUTES" --public --target "$DAYTONA_TARGET")
+CREATE_ARGS=(--name "$SANDBOX" --auto-stop "$DAYTONA_AUTO_STOP_MINUTES" --target "$DAYTONA_TARGET")
+if [ "${OPENWORK_EVAL_DAYTONA_PRIVATE:-0}" != "1" ]; then
+  CREATE_ARGS+=(--public)
+fi
 if [ -n "$SNAPSHOT_ID" ]; then
   echo "==> Using Daytona server snapshot: $DAYTONA_SERVER_SNAPSHOT"
   CREATE_ARGS+=(--snapshot "$SNAPSHOT_ID")
