@@ -10,7 +10,8 @@ FROM ${OPENWORK_COMPUTER_BASE_IMAGE} AS desktop-bridge-builder
 WORKDIR /src
 COPY . .
 RUN corepack enable && corepack pnpm install --frozen-lockfile --ignore-scripts --filter @openwork-ee/headless-computer...
-RUN corepack pnpm --filter @openwork/computer-use build \
+RUN corepack pnpm --filter @openwork/types build \
+    && corepack pnpm --filter @openwork/computer-use build \
     && corepack pnpm --filter @openwork-ee/headless-computer exec node scripts/build-desktop.mjs
 
 FROM ${OPENWORK_COMPUTER_BASE_IMAGE}
