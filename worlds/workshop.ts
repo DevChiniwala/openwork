@@ -165,8 +165,26 @@ export async function boot(stack: AsyncDisposableStack, place: Place, options: W
 
   const modelStep = steps.step("workshop-model", "Model provider");
   const model = await provisionWorkshopModel({ admin: den.admin, orgId, model: options.model, allowanceUsd: options.allowanceUsd, gatewayEnabled: Boolean(aiGatewayUrl) });
-  await modelStep.ok(model.state);
-  if (model.state !== "provisioned") console.error(`workshop  model ${model.state}: ${model.note}`);
+  if (model.state === "failed") {
+    await modelStep.fail(model.note);
+    throw new Error(model.note);
+  }
+  if (model.state === "skipped") await modelStep.note(`Skipped: ${model.note}`);
+  else {
+    if (firstMember) {
+      const usable = await denFetch(firstMember, "/v1/inference-providers?scope=usable", {
+        headers: { authorization: `Bearer ${firstMember.token}`, "x-openwork-org-id": orgId },
+      });
+      const providers = record(usable.body) && Array.isArray(usable.body.inferenceProviders) ? usable.body.inferenceProviders : [];
+      const visible = providers.some((provider) => record(provider) && provider.id === model.providerId && provider.credentialStatus === "ready"
+        && Array.isArray(provider.models) && provider.models.some((entry) => record(entry) && entry.upstreamModelId === options.model && typeof entry.id === "string" && entry.id.startsWith("gwm_")));
+      if (!usable.response.ok || !visible) {
+        await modelStep.fail("The ordinary attendee has no ready Gateway model in usable inventory.");
+        throw new Error("Workshop model provisioning is incomplete: the ordinary attendee cannot use the configured model.");
+      }
+    }
+    await modelStep.ok("Provider and allowance configured; attendee inventory checked (paid inference still unverified)");
+  }
 
   const desktopStep = steps.step("workshop-desktops", keys.length === 0 ? "No attendee desktops (--count 0)" : `${keys.length} attendee desktop(s), pilot first`);
   const results = await allocateDesktops(keys, async (key) => {
