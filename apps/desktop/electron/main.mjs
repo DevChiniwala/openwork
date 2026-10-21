@@ -27,8 +27,13 @@ import { registerUpdaterIpc, resolveAppVersion } from "./updater.mjs";
 import { createUiControlServer } from "./ui-control-server.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
 import { createNativeContextMenus } from "./context-menu.mjs";
+import { createNativeDictation } from "./native-dictation.mjs";
 import { applyBrandAppName } from "./brand-app-name.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
+import { createComputerControl } from "@openwork/computer-use/computer-control";
+import { createLocalComputerAdapter } from "./computer-local.mjs";
+import { remoteComputerAdapters } from "./computer-targets.mjs";
+import { resetPermissionEntry, resolvePermissionEntry } from "./computer-permission-entry.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import {
   buildNukeManifest,
@@ -89,6 +94,25 @@ import {
 } from "./process-resilience.mjs";
 import { createQuitSequencer } from "./quit-sequence.mjs";
 
+// Startup milestones (epoch ms) for the renderer's one-per-launch startup
+// report to Den. The OS process creation time includes module loading; the
+// time this module started evaluating is the fallback.
+const MAIN_MODULE_STARTED_AT = Date.now();
+function resolveProcessStartedAt() {
+  const getCreationTime = Reflect.get(process, "getCreationTime");
+  const creationTime = typeof getCreationTime === "function" ? getCreationTime.call(process) : null;
+  return typeof creationTime === "number" && Number.isFinite(creationTime) && creationTime > 0 && creationTime <= MAIN_MODULE_STARTED_AT
+    ? Math.round(creationTime)
+    : MAIN_MODULE_STARTED_AT;
+}
+/** @type {import("@openwork/types/desktop-ipc").DesktopStartupTimings} */
+const startupTimings = {
+  processStartedAt: resolveProcessStartedAt(),
+  windowShownAt: null,
+  engineSettledAt: null,
+  engine: null,
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, "../../..");
 const require = createRequire(import.meta.url);
@@ -111,6 +135,9 @@ const {
   session,
   shell,
 } = require("electron");
+const startNativeDictation = createNativeDictation({
+  platform: process.platform, menu: Menu, processId: process.pid, systemRoot: process.env.SystemRoot,
+});
 const pty = require(["node", "pty"].join("-"));
 const NATIVE_DEEP_LINK_EVENT = "openwork:deep-link-native";
 const AUTOMATION_RUNNER_CREDENTIAL_REJECTED_EVENT = "openwork:automation-runner:credential-rejected";
@@ -169,12 +196,79 @@ const applicationMenu = createApplicationMenu({
 
 let browserPanel = null;
 
+// Keep each chat's chosen computer in app data outside the workspace.
+const computerTargetsPath = () => path.join(app.getPath("userData"), "computer-use-targets.json");
+// The System Settings entry macOS lists for computer use: OpenWork when
+// packaged, or the terminal/editor that started a development build.
+let computerPermissionEntry = null;
+const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ fallbackName: APP_NAME })
+  .catch(() => ({ name: APP_NAME, bundleId: null, ours: false })));
+const computerControl = createComputerControl({
+  runProgram: async (request, host, signal) => (await import("@openwork/computer-use/runtime")).runComputerProgram(request, host, signal),
+  browserTask: (request, options) => browserPanel?.browserTask(request, options) ?? Promise.resolve({ ok: false, code: "browser_unavailable" }),
+  readRemoteFeatureEnabled: async () => {
+    const server = await runtimeManager.openworkServerInfo();
+    if (!server.baseUrl || !(server.clientToken ?? server.ownerToken)) return false;
+    // loopback-fetch: the local policy service verifies the signed-in Den identity.
+    const response = await fetch(`${server.baseUrl}/managed-policy/remote-computers`, {
+      headers: { Authorization: `Bearer ${server.clientToken ?? server.ownerToken}` }, signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return false;
+    return (await response.json())?.enabled === true;
+  },
+  // This computer first, then any configured VM (see computer-targets.mjs).
+  adapters: [createLocalComputerAdapter({
+    resourcesPath: process.resourcesPath,
+    appRoot: path.resolve(__dirname, ".."),
+    permissionEntry: async () => (await readComputerPermissionEntry()).name,
+    onSetupReturn: async () => {
+      const window = await createMainWindow();
+      if (window.isMinimized()) window.restore();
+      window.show();
+      window.focus();
+      app.focus({ steal: true });
+    },
+  }), ...remoteComputerAdapters()],
+  standing: {
+    read: async () => {
+      try {
+        const saved = JSON.parse(await readFile(computerTargetsPath(), "utf8"));
+        return {
+          targets: saved?.targets && typeof saved.targets === "object" ? saved.targets : {},
+        };
+      } catch { return { targets: {} }; }
+    },
+    write: async (state) => {
+      const target = computerTargetsPath();
+      const temporary = `${target}.${process.pid}.tmp`;
+      await writeFile(temporary, JSON.stringify(state), "utf8");
+      await rename(temporary, target);
+    },
+  },
+  permissionEntry: async () => {
+    const entry = await readComputerPermissionEntry();
+    return { name: entry.name, ours: entry.ours };
+  },
+  // The chat asks the person when the agent needs computer use it does not have yet.
+  onRequest: (sessionId, request) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("openwork:computer:request", { sessionId, request });
+  },
+});
+/** Computer use changes app consent; only the main OpenWork window may ask. */
+function assertComputerSender(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) {
+    throw new Error("Computer use controls require the main OpenWork window.");
+  }
+}
+
 const uiControlServer = createUiControlServer({
   app,
   appName: APP_NAME,
   appIdentifier: APP_IDENTIFIER,
   getWindow: () => createMainWindow(),
   browserTask: (args, options) => browserPanel?.browserTask(args, options) ?? { ok: false, code: "browser_unavailable" },
+  computerTask: (args, options) => computerControl.execute(args, options),
+  computerProgram: (args, options) => computerControl.program(args, options),
   listWebMcpTools: (args, options) => browserPanel?.listWebMcpTools(args, options) ?? {
     ok: false,
     error: "The built-in browser is not ready.",
@@ -1450,6 +1544,7 @@ const quitSequencer = createQuitSequencer({
     await Promise.all([
       disposeRuntimeBeforeQuit(),
       uiControlServer.stop(),
+      computerControl.reset(true),
     ]);
   },
   quit: () => {
@@ -1539,7 +1634,15 @@ function startRuntimeBootstrap() {
     ok: false,
     error: error instanceof Error ? error.message : String(error),
   }));
+  void runtimeBootstrapPromise.then(recordStartupEngineSettled);
   return runtimeBootstrapPromise;
+}
+
+// Only the launch's first boot counts; a Reload after a failure is a retry.
+function recordStartupEngineSettled(result) {
+  if (startupTimings.engineSettledAt !== null) return;
+  startupTimings.engineSettledAt = Date.now();
+  startupTimings.engine = result?.ok === false ? "failed" : result?.skipped ? "skipped" : "ready";
 }
 
 function ensureRuntimeBootstrap() {
@@ -1789,6 +1892,8 @@ function applyNativeTheme(mode) {
 // typecheck:electron`.
 /** @type {import("@openwork/types/desktop-ipc").DesktopCommandHandlers<import("electron").IpcMainInvokeEvent>} */
 const desktopCommandHandlers = {
+  "__startNativeDictation": async (event, requestId) => startNativeDictation.start(event, mainWindow, requestId),
+  "__cancelNativeDictationStart": async (event, requestId) => startNativeDictation.cancel(event, requestId),
   "workspaceBootstrap": async (event, ...args) => {
       return workspaceStore.readWorkspaceState();
   },
@@ -1841,6 +1946,9 @@ const desktopCommandHandlers = {
         openworkDevMode: process.env.OPENWORK_DEV_MODE === "1",
       };
   },
+  "startupTimings": async (event, ...args) => {
+      return { ...startupTimings };
+  },
   "desktopNotificationShow": async (event, ...args) => {
       return showDesktopNotification(args[0] ?? {});
   },
@@ -1885,6 +1993,63 @@ const desktopCommandHandlers = {
       return {
         OPENWORK_UI_CONTROL_DISCOVERY: path.join(app.getPath("userData"), "openwork-ui-control.json"),
       };
+  },
+  "computerSnapshot": async (event, sessionId) => {
+      assertComputerSender(event);
+      return computerControl.snapshot({ sessionId: String(sessionId ?? "") });
+  },
+  "computerPresentation": async (event, sessionId, visible) => {
+      assertComputerSender(event);
+      return computerControl.presentation({ sessionId: String(sessionId ?? ""), visible: visible === true });
+  },
+  "computerInteract": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.interact({
+        sessionId: String(input?.sessionId ?? ""),
+        id: String(input?.id ?? ""),
+        action: input?.action,
+        ...(input?.windowId !== undefined ? { windowId: input.windowId } : {}),
+      });
+  },
+  "computerSetup": async (event, permission) => {
+      assertComputerSender(event);
+      return computerControl.setup({ permission });
+  },
+  "computerDismissSetup": async (event, setupId) => {
+      assertComputerSender(event);
+      await computerControl.dismissSetup({ setupId });
+  },
+  "computerChoose": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.choose({ sessionId: String(input?.sessionId ?? ""), targetId: String(input?.targetId ?? "") });
+  },
+  "computerHalt": async (event, sessionId) => {
+      assertComputerSender(event);
+      return computerControl.halt({ sessionId: String(sessionId ?? "") });
+  },
+  "computerAnswerRequest": async (event, input) => {
+      assertComputerSender(event);
+      return computerControl.answerRequest({ sessionId: String(input?.sessionId ?? ""), answer: input?.answer });
+  },
+  "computerSetFeatureEnabled": async (event, enabled) => {
+      assertComputerSender(event);
+      return computerControl.setFeatureEnabled(enabled === true);
+  },
+  "computerSetRemoteEnabled": async (event, enabled) => {
+      assertComputerSender(event);
+      return computerControl.setRemoteEnabled(enabled === true);
+  },
+  "computerResetPermission": async (event, permission) => {
+      assertComputerSender(event);
+      if (permission !== "accessibility" && permission !== "screenRecording") throw new Error("Choose Accessibility or Screen Recording.");
+      // Clear only OpenWork's own stale entry, then ask macOS again with a fresh guide.
+      await resetPermissionEntry(await readComputerPermissionEntry(), permission);
+      await computerControl.dismissSetup({});
+      return computerControl.setup({ permission });
+  },
+  "computerEndTurn": async (event, sessionId) => {
+      assertComputerSender(event);
+      return computerControl.endTurn({ sessionId: String(sessionId ?? "") });
   },
   "getDesktopBootstrapConfig": async (event, ...args) => {
       return workspaceStore.getDesktopBootstrapConfig();
@@ -2513,6 +2678,7 @@ async function createMainWindow() {
   mainWindow.setTitle(currentDisplayAppName);
 
   mainWindow.once("ready-to-show", () => {
+    if (startupTimings.windowShownAt === null) startupTimings.windowShownAt = Date.now();
     mainWindow?.setTitle(currentDisplayAppName);
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
     mainWindow?.show();

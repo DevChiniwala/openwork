@@ -15,9 +15,9 @@ import { LEGACY_ORG_PROXY_HEADER } from "../../middleware/user-organizations.js"
 import type { OrgRouteVariables } from "./shared.js"
 import { registerOrgCoreRoutes } from "./core.js"
 import { registerOrgServiceReadinessRoutes } from "./service-readiness.js"
-import { registerOrgDeploymentServiceRoutes } from "./deployment-services.js"
 import { registerOrgMcpAppCatalogRoutes } from "./mcp-app-catalog.js"
 import { registerDeleteOrganizationRoutes } from "./delete-organization.js"
+import { registerOrgDiagnosticsRoutes } from "./diagnostics.js"
 import { registerOrgDesktopPolicyRoutes } from "./desktop-policies.js"
 import { registerOrgEgressDiagnosticRoutes } from "./egress-diagnostics.js"
 import { registerOrgInventoryRevisionRoutes } from "./inventory-revision.js"
@@ -28,7 +28,7 @@ import { registerOrgInferenceProviderRoutes } from "./inference-providers.js"
 import { registerOrgInferenceRoutes } from "./inference.js"
 import { registerModelsAnalyticsRoutes } from "./models-analytics.js"
 import { registerLibraryUsageRoutes } from "./library-usage.js"
-import { registerModelsAnalyticsExportRoutes } from "../../models-analytics-export.js"
+import { registerOrgHeadlessSessionRoutes } from "./headless-sessions.js"
 import { registerOrgLlmProviderRoutes } from "./llm-providers.js"
 import { registerOrgMemberRoutes } from "./members.js"
 import { registerOrgPermissionRoutes } from "./permissions.js"
@@ -41,6 +41,7 @@ import { registerOrgSsoRoutes } from "./sso.js"
 import { registerOrgResourceRoutes } from "./resources.js"
 import { registerOrgTeamRoutes } from "./teams.js"
 import { registerOrgWebOriginRoutes } from "./web-origins.js"
+import { registerOrgWorkbotReadinessRoutes } from "./workbot-readiness.js"
 import { registerOrgWorkbotSettingsRoutes } from "./workbot-settings.js"
 
 const LEGACY_ORG_PATH_PREFIX = "/v1/orgs/"
@@ -72,7 +73,7 @@ function extractLegacyOrgProxyTarget(pathname: string) {
 export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & RequestIdVariables }>(app: Hono<T>) {
   registerOrgCoreRoutes(app)
   registerOrgServiceReadinessRoutes(app)
-  registerOrgDeploymentServiceRoutes(app)
+  registerOrgDiagnosticsRoutes(app)
   registerOrgActivityRoutes(app)
   registerOrgInventoryRevisionRoutes(app)
   registerManagedDeploymentRoutes(app)
@@ -90,7 +91,7 @@ export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & Req
   registerOrgInferenceRoutes(app)
   registerModelsAnalyticsRoutes(app)
   registerLibraryUsageRoutes(app)
-  registerModelsAnalyticsExportRoutes(app)
+  registerOrgHeadlessSessionRoutes(app)
   registerOrgScimRoutes(app)
   registerOrgSsoRoutes(app)
   registerOrgInvitationRoutes(app)
@@ -108,6 +109,7 @@ export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & Req
   registerOrgTeamRoutes(app)
   registerOrgWebOriginRoutes(app)
   registerOrgWorkbotSettingsRoutes(app)
+  registerOrgWorkbotReadinessRoutes(app)
   registerOrgDefaultModelRoutes(app)
 
   app.all("/v1/orgs/:orgId/*", delegatedRoute, async (c) => {

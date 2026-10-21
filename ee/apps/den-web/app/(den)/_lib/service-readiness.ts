@@ -21,8 +21,8 @@ function needsAttention(service: OrganizationService): boolean {
 }
 
 /** Advisory only: readiness never grants access or disables model settings or conversations. */
-export function workbotDeploymentNotice(capabilities: DeploymentCapabilities | undefined, enabled: boolean): WorkbotDeploymentNotice | null {
-  const readiness = enabled ? capabilities?.serviceReadiness : undefined;
+export function workbotDeploymentNotice(capabilities: DeploymentCapabilities | undefined): WorkbotDeploymentNotice | null {
+  const readiness = capabilities?.serviceReadiness;
   if (!readiness) return null;
   const relevant = readiness.services.filter((service) => service.id === "headlessRunner" || service.id === "workbot");
   const service = relevant.find((entry) => !entry.configured || entry.state === "misconfigured") ?? relevant.find(needsAttention);

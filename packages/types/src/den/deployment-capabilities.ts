@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { organizationServiceReadinessSchema } from "./service-readiness"
+import { organizationServiceReadinessSchema } from "@openwork/types/den/service-readiness"
 
 export const deploymentCapabilitiesSchema = z.object({
   version: z.literal(1),

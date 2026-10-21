@@ -67,12 +67,13 @@ export type HeadlessRunnerDeps = {
   fetch: typeof fetch
   /**
    * `sessionId` and `messageId` are the turn the token is minted for, so a caller can remember which run it belongs
-   * to. `resumeGrant` (feature `headlessDurableTurns`): a credential the runner can exchange with Den for a fresh token
-   * for this turn, so it can continue the turn on its own after a restart.
+   * to. `resumeGrant` (saved step turns): a credential the runner can exchange with Den for a fresh token
+   * for this turn, so it can continue the turn on its own after a restart. `indexCapability`: what the runner presents
+   * to report the session's content-free totals and state to Den's session index.
    */
   mintToken: (
     input: HeadlessRunnerActor & { ttlMs?: number; sessionId?: string; messageId?: string; readOnly?: boolean; model?: string; modelAccessRequired?: boolean },
-  ) => Promise<{ token: string; resumeGrant?: string; modelAccess?: HeadlessModelAccess }>
+  ) => Promise<{ token: string; resumeGrant?: string; modelAccess?: HeadlessModelAccess; indexCapability?: string }>
   /** Resolve scoped turns' persisted model before minting, even when today's default is no longer accessible. */
   modelAccessRequired?: (actor: HeadlessRunnerActor) => Promise<boolean> | boolean
   /** Optional trusted caller hook for member-scoped turns when mintToken does not supply access. */
@@ -213,12 +214,12 @@ export type RunnerResult<T> = { ok: true; value: T } | { ok: false; status: numb
 
 const REQUEST_TIMEOUT_MS = 15_000
 
-async function request(deps: HeadlessRunnerDeps, method: string, path: string, body?: unknown) {
+async function request(deps: HeadlessRunnerDeps, method: string, path: string, body?: unknown, timeoutMs = REQUEST_TIMEOUT_MS) {
   const response = await deps.fetch(`${deps.config.url}${path}`, {
     method,
     headers: runnerHeaders(deps.config, { "content-type": "application/json" }),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   const payload: unknown = await response.json().catch(() => ({}))
   return { status: response.status, payload }
@@ -244,18 +245,20 @@ export type RunnerRepeatLimits = { maxWaitingMs?: number; maxIdenticalFailures?:
  * the computer must be configured on the runner too), so a caller that never asks (Automations) never gets any of
  * them. Slack asks for reactions and tasks where `slackWorkbotReplies` is on.
  */
-export type RunnerCapabilities = { files?: boolean; computer?: boolean; reactions?: boolean; tasks?: boolean }
+export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?: boolean; reactions?: boolean; tasks?: boolean }
 
 /**
  * Who a conversation belongs to and how it is shown to the model: `owner` (the caller's key for one person) and `ref`
  * (the caller's id for the conversation) list a person's conversations; `timeZone` dates their messages; `autoTitle`
- * names it after its first answer; `memoryOf` shares memory/ with another of their conversations.
+ * names it after its first answer; `memoryOf` shares memory/ with another of their conversations (legacy chats);
+ * `memoryScope: "owner"` keeps memory/ with the owner, shared by all their chats (per-chat session cells).
  */
-export type RunnerSessionSettings = { owner?: string; ref?: string; timeZone?: string; autoTitle?: boolean; memoryOf?: string }
+export type RunnerSessionSettings = { owner?: string; ref?: string; timeZone?: string; autoTitle?: boolean; memoryOf?: string; memoryScope?: "owner" }
 
 const capabilityFields = (input: RunnerCapabilities & RunnerSessionSettings) => ({
   ...(input.files !== undefined ? { files: input.files } : {}),
   ...(input.computer !== undefined ? { computer: input.computer } : {}),
+  ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
   ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
   ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
   ...(input.owner ? { owner: input.owner } : {}),
@@ -263,6 +266,7 @@ const capabilityFields = (input: RunnerCapabilities & RunnerSessionSettings) => 
   ...(input.timeZone ? { timeZone: input.timeZone } : {}),
   ...(input.autoTitle !== undefined ? { autoTitle: input.autoTitle } : {}),
   ...(input.memoryOf ? { memoryOf: input.memoryOf } : {}),
+  ...(input.memoryScope ? { memoryScope: input.memoryScope } : {}),
 })
 
 /** A runner older than a setting refuses it as an invalid request; any other refusal is real. */
@@ -293,8 +297,18 @@ const SOCKET_MAX_QUEUED = 10_000
 
 export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
   return {
+    async desktopViewer(sessionId: string, input: { view: "browser" | "computer"; control: boolean; origin: string }) {
+      const { status, payload } = await request(deps, "POST", `${sessionPath(sessionId)}/desktop/viewer`, input, 180_000)
+      const parsed = z.union([z.object({ state: z.literal("paused") }), z.object({ state: z.literal("connected"), url: z.string().url(), expiresAt: z.number(), paused: z.boolean() })]).safeParse(payload)
+      if (status !== 200 || !parsed.success) return { ok: false as const, status, error: errorCode(payload, "desktop_unavailable") }
+      return { ok: true as const, value: parsed.data }
+    },
+    async desktopAction(sessionId: string, action: "continue" | "pause" | "resume") {
+      const { status, payload } = await request(deps, "POST", `${sessionPath(sessionId)}/desktop/action`, { action }, 180_000)
+      return { ok: status === 200, error: errorCode(payload, "desktop_unavailable") }
+    },
     async createSession(
-      input: { title?: string; instructions?: string; repeats?: RunnerRepeatLimits } & RunnerCapabilities = {},
+      input: { title?: string; instructions?: string; repeats?: RunnerRepeatLimits; memoryScope?: "owner" } & RunnerCapabilities = {},
     ): Promise<RunnerResult<{ id: string }>> {
       const base = {
         ...(input.title ? { title: input.title.slice(0, 200) } : {}),
@@ -330,11 +344,29 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       }
       const extras = { ...(input.repeats ? { repeats: input.repeats } : {}), ...capabilityFields(input) }
       let { status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...extras })
+      // An older runner has no desktop setting. Omitting an explicit off value preserves side-chat settings.
+      if (unknownSetting(status, payload) && input.desktop === false) {
+        const { desktop, ...compatible } = extras
+        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
+      }
       // A runner older than per-session capabilities or settings rejects them: keep the conversation, without them.
       if (unknownSetting(status, payload) && Object.keys(extras).length && !input.strict) ({ status, payload } = await request(deps, "PUT", sessionPath(id), base))
       const saved = z.object({ id: z.string() }).safeParse(payload)
       if ((status !== 200 && status !== 201) || !saved.success) return { ok: false, status, error: errorCode(payload, `headless_put_${status}`) }
       return { ok: true, value: { id: saved.data.id, created: status === 201 } }
+    },
+
+    /**
+     * Asks the runner to move this owner's older conversations into their own session cells, in the background
+     * (per-chat session cells). Owner-scoped: needs the client's `owner`. Idempotent; `not_needed` on a runner without
+     * cells. A runner from before session cells answers 404: reported as `unsupported`, never an error.
+     */
+    async splitOwner(): Promise<RunnerResult<{ split: string }>> {
+      const { status, payload } = await request(deps, "POST", "/v1/owner/split", {})
+      if (status === 404 || status === 405) return { ok: true, value: { split: "unsupported" } }
+      const parsed = z.object({ split: z.string() }).safeParse(payload)
+      if ((status !== 200 && status !== 202) || !parsed.success) return { ok: false, status, error: errorCode(payload, `headless_split_${status}`) }
+      return { ok: true, value: parsed.data }
     },
 
     /** One owner's conversations that have messages, most recently used first. */
@@ -367,7 +399,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
      * messageId never starts a second turn; it resumes an interrupted one.
      * `interrupt`: the conversation's answer in progress wraps up at its next safe point instead of this waiting behind
      * it (runners from before it refuse the field, so callers send it only where it is turned on).
-     * `execution: "steps"` (feature `headlessStepTurns`): the runner runs the turn one step at a time, so a runner deploy
+     * `execution: "steps"` (saved step turns): the runner runs the turn one step at a time, so a runner deploy
      * switches between steps instead of cutting one off. Sent only when given; older runners refuse the field.
      */
     async sendTurn(
@@ -441,7 +473,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
           if (!issued.modelAccess) return { ok: false, status: 503, error: "headless_model_access_unavailable" }
         }
       }
-      const { token, resumeGrant, modelAccess } = issued
+      const { token, resumeGrant, modelAccess, indexCapability } = issued
       const { status, payload } = await request(deps, "POST", `${sessionPath(input.sessionId)}/turns`, {
         messageId: input.messageId,
         prompt: input.prompt,
@@ -449,8 +481,15 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
         ...(input.attachments?.length ? { attachments: input.attachments } : {}),
         ...(input.interrupt ? { interrupt: true } : {}),
         ...(input.execution === "steps" ? { execution: "steps" } : {}),
-        // A grant is only minted where `headlessDurableTurns` is on; without one the body is exactly as before.
-        credentials: { mcpToken: token, ...(input.readOnly ? { readOnly: true } : {}), ...(resumeGrant ? { resumeGrant } : {}), ...(modelAccess ? { modelAccess } : {}) },
+        // A grant is minted for named turns, an index capability only where the session is known;
+        // without them the body is exactly as before.
+        credentials: {
+          mcpToken: token,
+          ...(input.readOnly ? { readOnly: true } : {}),
+          ...(resumeGrant ? { resumeGrant } : {}),
+          ...(modelAccess ? { modelAccess } : {}),
+          ...(indexCapability ? { indexCapability } : {}),
+        },
       })
       if (status !== 202) return { ok: false, status, error: errorCode(payload, `headless_send_${status}`) }
       const accepted = z.object({ state: z.string() }).safeParse(payload)
@@ -584,7 +623,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
     },
 
     /**
-     * The session's live events over a WebSocket (feature `headlessStepTurns`): on celld the socket is hibernatable,
+     * The session's live events over a WebSocket (saved step turns): on celld the socket is hibernatable,
      * so it keeps going while the runner's code is switched under it, and doesn't hold up that switch. Yields
      * `{ type: "ready" }`, then each event as `openEvents` carries it, until the socket closes or `signal` aborts.
      * Null when the runner doesn't upgrade (the Node runner, an older runner) or the socket can't open: use

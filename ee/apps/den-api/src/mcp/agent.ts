@@ -21,16 +21,12 @@ import { connectorCatalogForQuery } from "./connector-catalog.js"
 import { registerAgentConnectionActionApp } from "./connection-action-app.js"
 import { publicRoute, tokenRoute } from "../middleware/index.js"
 import { db } from "../db.js"
-import { getMcpResourceContext, mcpPrincipalCredentialId, verifyMcpRequest, verifyMcpSubscriptionRequest } from "./auth.js"
+import { getMcpResourceContext, mcpPrincipalCredentialId, verifyMcpRequest } from "./auth.js"
 import { AUDIT_UNAVAILABLE_TOOL_MESSAGE, AuditUnavailableError, auditUnavailableToolResult, mcpAuditPrincipal, runMcpServiceAction, serviceAuditResourceId, serviceErrorStatus, toolResultStatus } from "../audit/mcp-service-audit.js"
 import { DEN_MCP_APP_HOST_SCOPE, DEN_MCP_WRITE_SCOPE } from "./scopes.js"
 import { getCatalog, protectedResourceMetadata, protectedResourceMetadataRoute } from "./index.js"
 import { preflightMcpJsonRpcRequest } from "./json-rpc-preflight.js"
 import { createScopedAgentMcpHttpHandlers } from "./agent-http.js"
-import { createRemoteSessionReceiptSubscriptions } from "./remote-session-receipt-watch.js"
-import { readRemoteSessionReceipt, registerRemoteSessionReceiptResources } from "./remote-session-resources.js"
-import { databaseRemoteSessionCommandStore } from "../remote-sessions/commands.js"
-import { databaseRemoteSessionRequestStore } from "../remote-sessions/requests.js"
 import { rejectStandaloneSseResponse } from "./standalone-sse.js"
 import { appLogger } from "../observability/logger.js"
 import {
@@ -428,7 +424,6 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
   const handlers = createScopedAgentMcpHttpHandlers(
     (error) => agentMcpLogger.warn("Agent MCP transport error", { error }),
   )
-  const receiptSubscriptions = createRemoteSessionReceiptSubscriptions()
 
   app.get("/.well-known/oauth-protected-resource/mcp/agent", protectedResourceMetadataRoute("agent"), publicRoute, (c) =>
     c.json(protectedResourceMetadata(c.req.raw, "agent")))
@@ -548,9 +543,6 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       // Without the connection count, offer every App rather than call them all past the limit.
       return connections ? apps.slice(0, connectMcpServerIndexAppCapacity(connections.length)) : apps
     })()
-    const receiptScope = { organizationId, createdByUserId: normalizeDenTypeId("user", principal.userId) }
-    const receiptStores = { commandStore: databaseRemoteSessionCommandStore, requestStore: databaseRemoteSessionRequestStore }
-    const remoteSessionEventsEnabled = Boolean(memberIdentity && organizationFeatures.remoteSessionEvents)
     // Member skill indexes carry digests for OpenWork's native delivery.
     // The MCP Skills Extension is served and session
     // instructions list the member's skills, for every MCP client.
@@ -565,13 +557,11 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const advertisesInstructions = method === "initialize" || method === "server/discover"
     const server = createAgentMcpServer({
       appServers: appServersEnabled,
-      remoteSessionEvents: remoteSessionEventsEnabled,
       remoteSessionStatus: Boolean(memberIdentity && organizationFeatures.remoteSessionSubagents),
       skillsExtension,
       skillIndex: skillsExtension && advertisesInstructions ? skillIndexInstructions(await loadRemoteSkills()) : undefined,
     })
     if (skillsExtension) registerSkillsExtension(server, loadResolvedSkills)
-    if (remoteSessionEventsEnabled) registerRemoteSessionReceiptResources({ server, ...receiptStores, ...receiptScope })
     registerAgentConnectionActionApp(server, { organizationId: principal.organizationId, member: memberIdentity })
     if (appServersEnabled) {
       const appActor = async (): Promise<PluginArchActorContext> => {
@@ -1163,22 +1153,6 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       }),
     )
 
-    const receiptStreamKey = Symbol("remote-session-receipt-stream")
-    return await receiptSubscriptions.fetch({
-      request: c.req.raw,
-      method,
-      scopeKey: notificationScope,
-      enabled: remoteSessionEventsEnabled,
-      expiresAt: typeof principal.payload.exp === "number" ? principal.payload.exp * 1_000 : 0,
-      read: (uri) => readRemoteSessionReceipt({ ...receiptStores, ...receiptScope, uri }),
-      revalidate: async (hasReceipts, signal) => {
-        const current = await verifyMcpSubscriptionRequest(c.req.raw.headers, getMcpResourceContext(c.req.raw, "agent", requestId), signal)
-        signal.throwIfAborted()
-        if (!current || current.userId !== principal.userId || current.organizationId !== principal.organizationId) return false
-        return !hasReceipts || (await getOrganizationFeatures(organizationId)).remoteSessionEvents
-      },
-      notify: (uri) => handlers.notify.resourceUpdated(notificationScope, uri, receiptStreamKey),
-      serve: (request) => handlers.fetch(notificationScope, request, server, receiptStreamKey),
-    })
+    return await handlers.fetch(notificationScope, c.req.raw, server)
   })
 }

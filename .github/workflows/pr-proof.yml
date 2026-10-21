@@ -201,6 +201,9 @@ jobs:
       github.actor != 'dependabot[bot]' &&
       github.triggering_actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -217,10 +220,33 @@ jobs:
       - uses: pnpm/action-setup@v4
       - name: Install trusted judge dependencies
         run: pnpm --dir evals --filter @openwork/test-evidence... install --frozen-lockfile --ignore-scripts
+      - name: Select proof records from this workflow run
+        id: records
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PROOF_KEY: ${{ matrix.key }}
+        with:
+          script: |
+            const key = process.env.PROOF_KEY;
+            const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+            if (!/^[a-f0-9]{64}$/.test(key ?? '') || !Number.isSafeInteger(attempt) || attempt < 1) throw new Error('Invalid proof identity');
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, { ...context.repo, run_id: context.runId, per_page: 100 });
+            const matches = artifacts.flatMap(artifact => {
+              const match = /^pr-proof-([1-9]\d{0,3})-([a-f0-9]{64})$/.exec(artifact.name);
+              if (!match || match[2] !== key) return [];
+              const from = Number(match[1]);
+              if (from > attempt) throw new Error('Unexpected future proof artifact');
+              return [{ artifact, from }];
+            });
+            const latest = Math.max(...matches.map(item => item.from));
+            const newest = matches.filter(item => item.from === latest);
+            if (newest.length !== 1 || newest[0].artifact.expired) throw new Error('Required proof artifact is missing, duplicated or expired');
+            // Every attempt of this workflow run tests the same immutable head.
+            core.setOutput('name', newest[0].artifact.name);
       - name: Restore the proof records
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: pr-proof-${{ github.run_attempt }}-${{ matrix.key }}
+          name: ${{ steps.records.outputs.name }}
           path: evals/results
       - name: Judge deferred vision claims
         env:

@@ -86,7 +86,6 @@ import {
   type SearchCapabilityType,
 } from "./search.js"
 import { externalToolContent } from "./tool-content.js"
-import { withRemoteSessionReceiptUri } from "./remote-session-resources.js"
 
 export const CAPABILITY_SOURCE_KINDS = ["catalog", "native", "externalMcp", "marketplace", "builtinSkill", "remoteSession", "admin"] as const
 export type CapabilitySourceKind = (typeof CAPABILITY_SOURCE_KINDS)[number]
@@ -130,9 +129,6 @@ export type CapabilityRegistryContext = {
   generatedArtifactViewsEnabled: boolean
   /** Managed deployment planning, launch preparation and status (managed deployments enabled). */
   managedDeploymentsEnabled: boolean
-  /** Secure keys in chat: provider creation is offered to agents, never keys. */
-  secureSecretFieldsEnabled: boolean
-  remoteSessionEventsEnabled: boolean
   /** `remote-session:status`, rolled out with the desktop's remote sub-agents. */
   remoteSessionStatusEnabled: boolean
   resolvePlatformAdmin: () => Promise<boolean>
@@ -153,7 +149,7 @@ export type CapabilityRegistryContextInput = {
   redirectUriBase: string
   generatedArtifactViewsEnabled: boolean
   /** Effective features of the organization (see features.ts). */
-  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionEvents" | "remoteSessionSubagents" | "managedDeployments" | "secureSecretFields">>
+  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionSubagents" | "managedDeployments">>
   /** MCP transports pass the verified caller; route and Automation contexts omit it (their route records the request). */
   audit?: McpAuditPrincipal | null
   /**
@@ -190,8 +186,6 @@ export function createCapabilityRegistryContext(input: CapabilityRegistryContext
     redirectUriBase: input.redirectUriBase,
     generatedArtifactViewsEnabled: input.generatedArtifactViewsEnabled,
     managedDeploymentsEnabled: input.organizationFeatures.managedDeployments === true,
-    secureSecretFieldsEnabled: input.organizationFeatures.secureSecretFields === true,
-    remoteSessionEventsEnabled: input.organizationFeatures.remoteSessionEvents === true,
     remoteSessionStatusEnabled: input.organizationFeatures.remoteSessionSubagents === true,
     resolvePlatformAdmin,
     resolveNamespaceContext,
@@ -763,14 +757,14 @@ const remoteSessionSource: CapabilitySource = {
         })),
       }
     }
-    const run = async () => withRemoteSessionReceiptUri(await executeRemoteSessionCapability({
+    const run = () => executeRemoteSessionCapability({
       action: parsed.action,
       organizationId: ctx.organizationId,
       userId: ctx.principal.userId,
       hasWriteScope: ctx.principal.scopes.has(DEN_MCP_WRITE_SCOPE),
       body: input.body,
       headlessRunTokenId: headlessRunTokenId(ctx.principal.payload),
-    }), ctx.remoteSessionEventsEnabled)
+    })
     const auditAction = remoteSessionAuditActions[parsed.action]
     if (!auditAction || !ctx.audit) return run()
     try {

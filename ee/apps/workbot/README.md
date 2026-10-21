@@ -53,7 +53,7 @@ An authenticated `X-OpenWork-Den-Origin` header asks it to compare the expected 
 origin with its configuration, without returning either URL. The versioned
 response contains configuration facts only; it does not test sign-in, a model
 completion or delivery. It has no effect on public `/healthz` liveness checks.
-See [deployment service readiness](../../../docs/deployment-service-readiness.md).
+See [diagnostics](../../../docs/diagnostics.md).
 
 ## Run
 

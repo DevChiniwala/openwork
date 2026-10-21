@@ -6,7 +6,6 @@ import { ensureAdminAllowlistSeeded } from "../admin-allowlist.js"
 import { beginAuditRequest } from "../audit/request-capture.js"
 import { db } from "../db.js"
 import { env } from "../env.js"
-import { deploymentFeatureEnabled } from "../features.js"
 import type { AuthContextVariables } from "../session.js"
 
 function normalizeEmail(value: string | null | undefined) {
@@ -60,7 +59,7 @@ export async function isLocalDeploymentOperatorUserId(userId: string): Promise<b
   return isPlatformAdminUserId(userId)
 }
 
-/** Authority only; route feature guards separately enforce both rollout scopes. */
+/** A genuine Better Auth user session (not an API key or MCP token) of an allowlisted local operator. */
 export async function hasLocalDeploymentOperatorSessionAuthority(principal: AuthContextVariables): Promise<boolean> {
   if (principal.apiKey || !principal.user?.id || !principal.session?.id || !principal.session.token) return false
   try {
@@ -72,22 +71,40 @@ export async function hasLocalDeploymentOperatorSessionAuthority(principal: Auth
 }
 
 /**
- * Full caller-specific capability for GET /v1/org only. Mirrors the routes'
- * session/operator authority + organization requireFeature snapshot + current
- * deploymentServicesEnabled rollout check. Advisory failures must not block core.
+ * Installation operator authority on self-hosted Den: an allowlisted operator's
+ * genuine user session, or an API key whose owning user is that operator. An
+ * API key acts for the user who created it, so only the owner's allowlist entry
+ * counts; organization roles, permissions and ownership never do. Always false
+ * on hosted Den, before any lookup.
  */
-export async function canManageDeploymentServices(principal: AuthContextVariables, organizationServiceReadinessEnabled: boolean): Promise<boolean> {
-  if (env.features.deployment !== "self_hosted" || !organizationServiceReadinessEnabled) return false
+export async function isLocalDeploymentOperator(principal: AuthContextVariables): Promise<boolean> {
+  if (env.features.deployment !== "self_hosted") return false
+  const apiKey = principal.apiKey
+  if (!apiKey) return hasLocalDeploymentOperatorSessionAuthority(principal)
+  const userId = principal.user?.id
+  if (!userId) return false
   try {
-    if (!await hasLocalDeploymentOperatorSessionAuthority(principal)) return false
-    return await deploymentFeatureEnabled("serviceReadiness")
+    if (normalizeDenTypeId("user", apiKey.referenceId) !== normalizeDenTypeId("user", userId)) return false
+  } catch {
+    return false
+  }
+  return isLocalDeploymentOperatorUserId(userId)
+}
+
+/**
+ * Caller-specific hint for GET /v1/org: the same authority the installation
+ * diagnostics enforce. Advisory: lookup failures answer false, never block core.
+ */
+export async function canManageDeploymentServices(principal: AuthContextVariables): Promise<boolean> {
+  try {
+    return await isLocalDeploymentOperator(principal)
   } catch {
     return false
   }
 }
 
 export const requireLocalDeploymentOperatorMiddleware: MiddlewareHandler<{ Variables: AuthContextVariables }> = async (c, next) => {
-  if (!await hasLocalDeploymentOperatorSessionAuthority({ user: c.get("user"), session: c.get("session"), apiKey: c.get("apiKey") })) {
+  if (!await isLocalDeploymentOperator({ user: c.get("user"), session: c.get("session"), apiKey: c.get("apiKey") })) {
     return c.json({ error: "forbidden" }, 403)
   }
   await next()

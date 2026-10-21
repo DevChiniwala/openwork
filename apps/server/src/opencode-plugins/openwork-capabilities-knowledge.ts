@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { appendAgentInstructions, createInstructionSection } from "./agent-instruction-compose.js";
+import { correctWorkspaceRoot, workspaceFileGuidance, workspaceFileHooks } from "./workspace-file-destinations.js";
 
 /**
  * OpenWork Capabilities Knowledge Plugin
@@ -204,9 +205,13 @@ function excerpt(content: string, query: string): string {
   return content.slice(from, from + 500).replace(/\s+/g, " ").trim();
 }
 
-export const OpenWorkCapabilitiesKnowledge = async () => ({
+export const OpenWorkCapabilitiesKnowledge = async (context?: Parameters<typeof workspaceFileHooks>[0]) => ({
+  ...workspaceFileHooks(context),
   "experimental.chat.system.transform": async (_input: unknown, output: { system: string[] }) => {
-    appendAgentInstructions(output.system, createInstructionSection("capabilities-knowledge", OPENWORK_CAPABILITIES_KNOWLEDGE));
+    if (context?.directory) correctWorkspaceRoot(output.system, context.directory);
+    appendAgentInstructions(output.system,
+      createInstructionSection("capabilities-knowledge", OPENWORK_CAPABILITIES_KNOWLEDGE),
+      ...(context?.directory ? [createInstructionSection("workspace-files", workspaceFileGuidance(context.directory))] : []));
   },
   tool: {
     openwork_docs_search: {

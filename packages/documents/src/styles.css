@@ -184,3 +184,21 @@
 .ow-editor-colors input { width: 28px; height: 28px; padding: 2px; border: 1px solid var(--doc-line); border-radius: 6px; background: transparent; cursor: pointer; }
 .ow-editor-colors input:focus-visible { outline: 2px solid var(--doc-muted); outline-offset: 2px; }
 @media (max-width: 800px) { .ow-document-commandbar { gap: 2px; padding-inline: 8px; } .ow-editor-tools-label { display: none; } }
+
+/* Keep the file visible while the requested Office session starts. */
+.ow-document-mode, .ow-document-preview-owner { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.ow-document-mode[hidden], .ow-document-preview-owner[hidden] { display: none; }
+.ow-office-opening { position: absolute; inset: 0; pointer-events: none; min-height: 0; }
+.ow-office-opening > .ow-editor-message { pointer-events: auto; background: var(--doc-bg); }
+.ow-office-opening .ow-office-canvas { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.ow-editor-starting { display: flex; gap: 8px; align-items: center; }
+.ow-editor-starting-indicator { width: 16px; height: 16px; border: 2px solid var(--doc-line); border-top-color: currentColor; border-radius: 50%; animation: ow-editor-starting 1s linear infinite; }
+@keyframes ow-editor-starting { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ow-editor-starting-indicator { animation: none; } }
+
+.ow-editor-toolbar .ow-document-information { display: inline-flex; align-items: center; justify-content: center; }
+.ow-document-information-positioner { z-index: 60; }
+.ow-document-information-tooltip { box-sizing: border-box; max-width: min(320px, var(--available-width)); max-height: var(--available-height); overflow: auto; padding: 8px 12px; border-radius: 6px; background: var(--doc-bg); color: var(--doc-text); box-shadow: 0 0 0 1px var(--doc-line); font: 12px/1.5 system-ui, sans-serif; }
+
+.ow-editor-binary { position: relative; display: flex; flex: 1; min-height: 0; }
+.ow-editor-preview-loading { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--doc-bg); color: var(--doc-muted); pointer-events: none; }

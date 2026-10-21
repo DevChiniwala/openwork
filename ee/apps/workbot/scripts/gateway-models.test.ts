@@ -95,6 +95,9 @@ test("gateway routes skip the runner catalog and keep model credentials only in 
       return { body: { token: "mcp-token", modelAccess } }
     }
     if (path === "/v1/models") { catalogReads++; return { status: 503, body: {} } }
+    // Workbot lists the person's chats (none yet) and, before creating the main chat, checks it isn't in a cell.
+    if (method === "GET" && path.startsWith("/v1/sessions?")) return { body: { sessions: [] } }
+    if (method === "GET" && path.startsWith("/v1/sessions/hs_c_")) return { status: 404, body: { error: "unknown_session" } }
     if (method === "GET" && path.startsWith("/v1/sessions/")) {
       const url = new URL(path, "http://runner")
       assert.equal(url.searchParams.get("messageId"), "wb_message_001")

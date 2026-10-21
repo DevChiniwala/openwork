@@ -2,7 +2,7 @@ import { boolean, index, int, mysqlTable, primaryKey, timestamp, uniqueIndex, va
 import { denTypeIdColumn } from "../columns"
 
 /**
- * A resume grant for one headless runner turn (feature `headlessDurableTurns`). The runner keeps the grant and
+ * A resume grant for one headless runner turn (saved step turns). The runner keeps the grant and
  * exchanges it at `POST /v1/headless/resume-token` for a fresh member-scoped MCP token for that turn, its background
  * tasks (`<messageId>.tN`) and their reports, so the turn can continue after a restart without its caller re-sending
  * it. Den keeps only the SHA-256 hash of the grant. Rows are revoked when the member leaves the organization or the

@@ -31,13 +31,15 @@ import { documentLinks, WorkbotMarkdown } from "./markdown";
 import { OpenFileContext } from "./open-file";
 import { PreviewPanel } from "./preview";
 import { Welcome } from "./welcome";
-import { TeamControls } from "./team-controls";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
+import { WorkbotComputer } from "./computer";
 import { readWorkbotCorrectionPrompt, workbotCorrectionPrompt, workbotViewContextSchema, type WorkbotViewContext } from "@openwork/types/workbot-context";
 import type { DocumentOpenRequest } from "@openwork/documents";
-import { DocumentOffers, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
+import { ComputerNavigationContext, ComputerOffer, DocumentOffers, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNativeDictation } from "@openwork/ui/react";
+import { WorkbotDictation } from "./native-dictation";
 
 /**
  * Workbot: one thread, instant. Layout and values follow the Paper file "WorkBot — one chat, set up once",
@@ -132,7 +134,8 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
   useEffect(() => { if (tab === "documents") setDocumentsVisited(true); if (tab === "calendar") setCalendarVisited(true); }, [tab]);
   const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : null;
-  const guided = host.workspaceAssistant === true && host.guidedNavigation === true && host.documents === true;
+  // Den reports guidedNavigation only with the workspace assistant; each destination keeps its own switch.
+  const guided = host.workspaceAssistant === true && host.guidedNavigation === true;
   const [revealChat, setRevealChat] = useState(0);
   const navigateDocument = (fileId: string) => {
     if (!host.workspaceAssistant || !host.documents) return;
@@ -146,6 +149,10 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     setIncludeContext(true);
     setRevealChat(count => count + 1);
   };
+  // The same move for Workbot's computer: open it and keep the conversation beside it. Null while it is on screen.
+  const navigateComputerFromChat = guided && host.computer === true && tab !== "computer"
+    ? () => { setTab("computer"); setRevealChat(count => count + 1); }
+    : null;
   const [preview, setPreview] = useState<WorkbotAttachment | null>(null);
   // The welcome shows once, while there's no conversation yet; leaving it, Workbot starts the conversation itself.
   // "pending" until the conversation is first read: then it shows (no conversation yet) or never does. Side chats
@@ -241,7 +248,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
     /> : null;
-    const composer = <Composer text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled}
+    const composer = <Composer text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
       onSend={text => submit(text)} onStop={() => stop.mutate()} autoFocus={false} disabled={!data} />;
     const firstName = user?.name?.trim().split(/\s+/)[0] ?? null;
@@ -254,6 +261,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     return <OpenFileContext.Provider value={setPreview}>
       <OpenDocumentContext.Provider value={tab === "documents" && documentContext?.kind === "document" ? documentContext.fileId : null}>
       <WorkspaceNavigationContext.Provider value={host.workspaceAssistant && host.documents ? navigateFromChat : null}>
+      <ComputerNavigationContext.Provider value={navigateComputerFromChat}>
         <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased" data-workbot-workspace>
           <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null}
             files={filesEnabled ? <FilesButton open={filesOpen} onOpen={() => setFilesOpen(true)} /> : null}
@@ -271,19 +279,21 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           <div className="flex min-h-0 min-w-0 flex-1 border-t border-[var(--wb-hairline)]" style={{ display: tab === "calendar" ? undefined : "none" }} hidden={tab !== "calendar"}>
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
+          {tab === "computer" && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} />}
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
           </div>
           <div hidden={!host.workspaceAssistant || tab === "home"}><WorkspaceAssistant name={name} context={currentContext} includeContext={includeContext} onIncludeContext={setIncludeContext}
-            composer={composer} conversation={conversation} onDocument={navigateFromChat} unavailable={!data} active={host.workspaceAssistant === true && tab !== "home"}
+            composer={composer} conversation={conversation} onDocument={navigateFromChat} onComputer={navigateComputerFromChat} unavailable={!data} active={host.workspaceAssistant === true && tab !== "home"}
             reveal={revealChat} stayOpen={guided} /></div>
           {filesEnabled && <FilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
         </div>
+      </ComputerNavigationContext.Provider>
       </WorkspaceNavigationContext.Provider>
       </OpenDocumentContext.Provider>
     </OpenFileContext.Provider>;
   }
-  if ((tab === "calendar" && host.calendar) || tab === "documents") {
+  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && host.computer)) {
     return (
       <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased">
         <WorkbotHeader
@@ -295,7 +305,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );
@@ -345,6 +355,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const starting = empty && (start.isPending || (greetingAwaited && start.data?.started === true));
   const composer = (
     <Composer
+      nativeDictation={host.nativeDictation}
       text={draft.text}
       onText={composerState.setText}
       name={data.name}
@@ -525,11 +536,11 @@ function useConnectedApps() {
   return workbotHost().useConnectedApps();
 }
 
-type WorkbotTab = "home" | "calendar" | "documents";
+type WorkbotTab = "home" | "calendar" | "documents" | "computer";
 
 function tabFromLocation(): WorkbotTab {
   const path = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") : "";
-  return path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
+  return path === "/computer" ? "computer" : path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
 }
 
 /** Home (the conversation) and Calendar, as paths so a reload or a shared link opens the same tab. */
@@ -537,6 +548,10 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
   const beforeLeaveRef = useRef(beforeLeave);
   beforeLeaveRef.current = beforeLeave;
   const [tab, setTabState] = useState<WorkbotTab>(tabFromLocation);
+  const computerEnabled = workbotHost().computer === true;
+  useEffect(() => {
+    if (!computerEnabled && tab === "computer") { window.history.replaceState(null, "", `/${preserveSearch ? window.location.search : ""}`); setTabState("home"); }
+  }, [computerEnabled, tab, preserveSearch]);
   useEffect(() => {
     const sync = () => {
       const next = tabFromLocation();
@@ -559,7 +574,7 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
 function WorkbotNav({ tab, onTab }: { tab: WorkbotTab; onTab: (tab: WorkbotTab) => void }) {
   return (
     <nav className="ml-4 flex items-center gap-0.5" aria-label="Workbot">
-      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : [])] as const).map((entry) => (
+      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : []), ...(workbotHost().computer ? ["computer" as const] : [])] as const).map((entry) => (
         <button
           key={entry}
           type="button"
@@ -567,7 +582,7 @@ function WorkbotNav({ tab, onTab }: { tab: WorkbotTab; onTab: (tab: WorkbotTab) 
           onClick={() => onTab(entry)}
           className={`flex h-8 items-center rounded-lg px-3 text-[13px] leading-4 transition-colors duration-150 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)] ${tab === entry ? "bg-[#EDF0F2] font-semibold text-[#11181C]" : "font-medium text-[#687076] hover:text-[#11181C]"}`}
         >
-          {entry === "home" ? "Home" : entry === "calendar" ? "Calendar" : "Documents"}
+          {entry === "home" ? "Home" : entry === "calendar" ? "Calendar" : entry === "documents" ? "Documents" : "Computer"}
         </button>
       ))}
     </nav>
@@ -603,7 +618,6 @@ function WorkbotHeader(props: {
       )}
       <div className="flex shrink-0 items-center gap-2.5 sm:gap-3.5">
         {props.remove}
-        <TeamControls />
         {files}
         {apps.length > 0 ? (
           <span className="flex h-7 items-center gap-[7px] rounded-full bg-[var(--wb-chip)] pl-2 pr-2.5" title={names.join(", ")} aria-label={`Connected: ${names.join(", ")}`}>
@@ -1505,6 +1519,8 @@ function TurnView(props: {
   const slot = answering && !liveText && (dots || held || running);
   const copyText = parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n\n");
   const offers = useMemo(() => (turn.status === "done" ? documentLinks(copyText) : []), [turn.status, copyText]);
+  // One computer, so only the newest reply that used it offers to open it, already while it works.
+  const usedComputer = props.latest && (Boolean(startingCard) || parts.some((part) => part.kind === "steps" && part.steps.some((step) => step.icon === "computer")));
   return (
     <>
       <SentAttachments attachments={turn.attachments} localUrls={props.previews} />
@@ -1530,6 +1546,7 @@ function TurnView(props: {
         {slot ? <WaitingSlot>{runningApps ? <StepsSegment steps={runningApps.steps} live /> : dots ? <TypingDots /> : null}</WaitingSlot> : null}
       </div>
       <DocumentOffers links={offers} />
+      {usedComputer ? <ComputerOffer /> : null}
       {turn.outputs.length ? <OutputFiles files={turn.outputs} /> : null}
       {turn.tasks.length ? <TaskCards tasks={turn.tasks} canRetry={props.canChange} onRetry={(task) => props.onSuggestion(`Try the "${task.title}" background task again.`)} /> : null}
       {/* Workbot's hello offers what to ask next, only while it is still the latest message. */}
@@ -1710,6 +1727,7 @@ function OutputFiles({ files }: { files: WorkbotAttachment[] }) {
 }
 
 function Composer(props: {
+  nativeDictation?: boolean;
   text: string;
   onText: (text: string) => void;
   name: string;
@@ -1727,23 +1745,38 @@ function Composer(props: {
 }) {
   const { text } = props;
   const input = useRef<HTMLTextAreaElement>(null);
+  const dictation = useNativeDictation({ enabled: props.nativeDictation === true, text, onText: props.onText,
+    selection: () => ({ start: input.current?.selectionStart ?? text.length, end: input.current?.selectionEnd ?? text.length }),
+    focusInput: () => input.current?.focus() });
   const hasFiles = props.uploads.length > 0;
   const canSend = text.trim().length > 0 || (hasFiles && props.uploads.every((upload) => upload.status !== "failed"));
 
   useLayoutEffect(() => {
     const node = input.current;
     if (!node) return;
-    node.style.height = "auto";
-    node.style.height = `${Math.min(node.scrollHeight, 200)}px`;
+    const fit = () => {
+      node.style.height = "auto";
+      node.style.height = `${Math.min(node.scrollHeight, 200)}px`;
+    };
+    fit();
+    let width = node.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const next = node.getBoundingClientRect().width;
+      if (next === width) return;
+      width = next;
+      fit();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [text]);
 
   const sendNow = () => {
     if (!canSend || props.disabled) return;
-    props.onSend(text);
+    props.onSend(props.nativeDictation === true ? dictation.commit() : text);
     input.current?.focus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
       event.preventDefault();
       sendNow();
     } else if (event.key === "Escape" && props.busy) {
@@ -1767,7 +1800,7 @@ function Composer(props: {
       }`}
     >
       {hasFiles ? <UploadTray uploads={props.uploads} onRemove={props.onRemoveUpload} onRetry={props.onRetryUpload} /> : null}
-      <div className={hasFiles ? "flex min-w-0 flex-1 items-end gap-1" : "contents"}>
+      <div className={hasFiles ? "flex w-full min-w-0 flex-1 items-end gap-1" : "contents"}>
         <AttachButton enabled={props.filesEnabled} onFiles={props.onFiles} />
         <textarea
           ref={input}
@@ -1775,13 +1808,14 @@ function Composer(props: {
           rows={1}
           autoFocus={props.autoFocus ?? true}
           disabled={props.disabled}
-          onChange={(event) => props.onText(event.target.value)}
+          onChange={(event) => dictation.edit(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={`Message ${props.name}`}
           aria-label={`Message ${props.name}`}
           className="max-h-[200px] min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[7px] text-[16px] leading-[22px] text-[var(--wb-text)] outline-none placeholder:text-[var(--wb-faint)] sm:py-[9px] sm:text-[14px] sm:leading-[18px]"
         />
+        {props.nativeDictation === true ? <WorkbotDictation dictation={dictation} disabled={props.disabled} text={text} /> : null}
         <button
           type="button"
           onClick={showStop ? props.onStop : sendNow}

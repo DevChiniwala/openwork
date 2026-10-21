@@ -10,7 +10,7 @@ process.env.OPENWORK_DEV_MODE = "1"
 process.env.DATABASE_REDIS_URL = ""
 const { cache, setCacheDependenciesForTest } = await import("../src/cache.js")
 const namespace = readinessConfigurationFingerprint(process.env, "https://den.example.test")
-const cacheKey = `cache:service-readiness:v1:${namespace}`
+const cacheKey = `cache:service-readiness:v2:${namespace}`
 
 test("readiness cache is optional and reuses the existing Redis client with a bounded lifetime", async () => {
   const values = new Map<string, string>()
@@ -30,6 +30,17 @@ test("readiness cache is optional and reuses the existing Redis client with a bo
     assert.deepEqual(await cache.serviceReadiness.load(namespace), snapshot)
     values.set(cacheKey, JSON.stringify({ ...snapshot, secret: "never-return-unknown-fields" }))
     assert.equal(await cache.serviceReadiness.load(namespace), null)
+    // A replica still writing version 1 (Slack, resumable answers, no notes) is ignored, not mis-read.
+    values.set(cacheKey, JSON.stringify({ version: 1, checkedAt: null, checking: false, services: [] }))
+    assert.equal(await cache.serviceReadiness.load(namespace), null)
+    values.set(`cache:service-readiness:v1:${namespace}`, JSON.stringify(snapshot))
+    values.delete(cacheKey)
+    assert.equal(await cache.serviceReadiness.load(namespace), null, "the version-1 namespace is never read")
+    // Server facts belong to the answering replica and are never shared.
+    await cache.serviceReadiness.save(namespace, { ...snapshot, server: { version: "commit abc1234", startedAt: "2026-10-19T00:00:00.000Z", startupMs: 900 } })
+    assert.equal(JSON.parse(values.get(cacheKey) ?? "{}").server, null)
+    values.set(cacheKey, JSON.stringify({ ...snapshot, server: { version: "other replica", startedAt: "2026-10-19T00:00:00.000Z", startupMs: 1 } }))
+    assert.equal((await cache.serviceReadiness.load(namespace))?.server, null)
     values.set(cacheKey, "not-json")
     assert.equal(await cache.serviceReadiness.load(namespace), null)
     values.set(cacheKey, "x".repeat(32_769))
@@ -73,14 +84,14 @@ test("shared Ready facts are isolated across rotated operator configuration; a r
     const firstNamespace = readinessConfigurationFingerprint(firstConfig, "https://den.example.test")
     const rotatedNamespace = readinessConfigurationFingerprint(rotatedConfig, "https://den.example.test")
     const now = () => Date.parse("2026-10-19T00:00:00Z")
-    const first = createReadinessController({ now, enabled: async () => true, admit: async () => null,
+    const first = createReadinessController({ now, admit: async () => null,
       probe: () => probeDeploymentServices({ env: {}, database: async () => undefined, fetch: async () => { throw new Error("no network expected") } }),
       load: () => cache.serviceReadiness.load(firstNamespace), save: (snapshot) => cache.serviceReadiness.save(firstNamespace, snapshot),
     })
     await first.refresh()
     await first.idle()
     assert.equal(first.snapshot().services[0].state, "ready")
-    const matching = createReadinessController({ now, enabled: async () => true,
+    const matching = createReadinessController({ now,
       admit: async () => { assert.fail("a recent matching result must not consume global admission") },
       probe: async () => { assert.fail("a recent matching result must not launch another probe") }, load: () => cache.serviceReadiness.load(firstNamespace),
     })
@@ -88,7 +99,7 @@ test("shared Ready facts are isolated across rotated operator configuration; a r
     assert.deepEqual(matching.snapshot(), first.snapshot(), "coalescing must not reset checkedAt or lastSuccessAt")
     // Even legacy fixed-key data cannot leak a previous configuration into a new replica.
     values.set("cache:service-readiness:v1", JSON.stringify(first.snapshot()))
-    const rotated = createReadinessController({ now, enabled: async () => true, admit: async () => 30,
+    const rotated = createReadinessController({ now, admit: async () => 30,
       probe: async () => { assert.fail("global admission must still limit a replica without a matching result") }, load: () => cache.serviceReadiness.load(rotatedNamespace),
     })
     assert.equal(await rotated.refresh(), 30)

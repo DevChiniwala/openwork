@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
 export { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
 import type { HeadlessRunnerClient, RunnerSavedFile } from "@openwork-ee/headless-protocol"
@@ -49,6 +50,7 @@ export type WorkbotFile = RunnerSavedFile
 export type WorkbotDeps = {
   /** The headless runner, or null when this deployment has none. */
   client: HeadlessRunnerClient | null
+  desktop?: boolean
   /** Whether Workbot may set up recurring work (Automations on the headless runner) for this organization. */
   canSchedule: (organizationId: string) => Promise<boolean>
   /**
@@ -60,10 +62,16 @@ export type WorkbotDeps = {
   verifyModel?: boolean
   workspaceAssistant?: (organizationId: string) => Promise<boolean>
   /**
-   * Feature `headlessStepTurns` (Den's session `stepTurns`): turns go to the runner with `execution: "steps"`, so a
-   * runner deploy switches between steps instead of cutting one off. Unset: turns are sent exactly as without it.
+   * Den's session `stepTurns` compatibility field: turns go to the runner with `execution: "steps"`, so a
+   * runner deploy switches between steps instead of cutting one off. Unset: preserve older Den's continuous turns.
    */
   stepTurns?: boolean
+  /**
+   * Den's session `sessionCells` compatibility field: new chats get their own session cell on the runner
+   * (`hs_c_…` ids, memory kept with the owner) and the person's existing chats are split out once per process. Chats
+   * that already exist keep their ids. Unset: preserve older Den's legacy chat placement.
+   */
+  sessionCells?: boolean
 }
 
 /** How a turn runs on the runner, as `sendTurn` takes it: nothing means continuous, as before step turns. */
@@ -84,8 +92,155 @@ async function modelFor(actor: WorkbotActor, deps: WorkbotDeps): Promise<{ model
 /** The runner's ref for the main chat in the person's list; side chats use their own id. */
 const MAIN_CHAT_REF = "main"
 
-function sessionOf(actor: WorkbotActor, chat: WorkbotChat) {
+/** A chat's legacy id: derived from the person (and the side chat's id), in the person's owner cell. */
+function legacySessionOf(actor: WorkbotActor, chat: WorkbotChat) {
   return chat ? workbotSideChatSessionId(actor.organizationId, actor.memberId, chat) : workbotSessionId(actor.organizationId, actor.memberId)
+}
+
+/** A session in its own cell under an owner (the runner's placement rule). */
+export const WORKBOT_CELL_SESSION_ID = /^hs_c_[a-f0-9]{32}$/
+
+/**
+ * A new chat's id in its own session cell: derived from the person and the chat like the
+ * legacy ids, so Workbot stores nothing to find it again, and the runner's cell only serves it to the same owner.
+ */
+export function workbotCellSessionId(organizationId: string, memberId: string, chat: WorkbotChat) {
+  return `hs_c_${createHash("sha256").update(`workbot-cell:${organizationId}:${memberId}:${chat ?? MAIN_CHAT_REF}`).digest("hex").slice(0, 32)}`
+}
+
+/**
+ * Which runner session each of a person's chats lives under, for this process. Learned from the runner's list of the
+ * person's chats (the owner cell merges its own chats with the directory of chats in session cells), read once per
+ * process per person even with an older Den, and refreshed by every chat list the page asks for. A chat
+ * that already lives in a session cell is preferred over its legacy id, so older Dens never
+ * make a chat look empty or get replaced. Bounded: the
+ * oldest entries go first.
+ */
+const MAX_REMEMBERED = 50_000
+const chatSessions = new Map<string, string>()
+/** Owners whose chat list was read in this process. */
+const listedOwners = new Map<string, true>()
+/** The list read in flight per owner, shared by concurrent requests. */
+const listings = new Map<string, Promise<boolean>>()
+/** When an owner's list last failed; read again after LIST_RETRY_MS. */
+const listFailedAt = new Map<string, number>()
+const LIST_RETRY_MS = 30_000
+/** Owners asked once in this process to split their existing chats into session cells. */
+const splitOwners = new Set<string>()
+
+function remember<K, V>(map: Map<K, V>, key: K, value: V) {
+  map.delete(key)
+  if (map.size >= MAX_REMEMBERED) {
+    const oldest = map.keys().next()
+    if (!oldest.done) map.delete(oldest.value)
+  }
+  map.set(key, value)
+}
+
+const chatKey = (owner: string, chat: WorkbotChat) => `${owner}\n${chat ?? ""}`
+
+/**
+ * Records the ids the runner listed for an owner's chats (the main chat by its ref, side chats by theirs). For a chat
+ * listed under both its legacy id and a session cell (during a split), the cell wins; a chat already known to be in a
+ * cell is never moved back to a legacy id.
+ */
+function rememberListed(owner: string, sessions: ReadonlyArray<{ id: string; ref: string | null }>) {
+  const found = new Map<string, string>()
+  for (const session of sessions) {
+    const chat: WorkbotChat | undefined = session.ref === MAIN_CHAT_REF ? null : session.ref && WORKBOT_CHAT_ID.test(session.ref) ? session.ref : undefined
+    if (chat === undefined) continue
+    const key = chatKey(owner, chat)
+    const current = found.get(key)
+    if (!current || (!WORKBOT_CELL_SESSION_ID.test(current) && WORKBOT_CELL_SESSION_ID.test(session.id))) found.set(key, session.id)
+  }
+  for (const [key, id] of found) {
+    const known = chatSessions.get(key)
+    if (known && WORKBOT_CELL_SESSION_ID.test(known) && !WORKBOT_CELL_SESSION_ID.test(id)) continue
+    remember(chatSessions, key, id)
+  }
+  remember(listedOwners, owner, true)
+  listFailedAt.delete(owner)
+}
+
+/** Tests only: forget every chat id, listing and split request this process remembers. */
+export function resetWorkbotSessionCells() {
+  chatSessions.clear()
+  listedOwners.clear()
+  listings.clear()
+  listFailedAt.clear()
+  splitOwners.clear()
+}
+
+/** Reads the person's chat list once per process (again 30 s after a failure). False while it can't be read. */
+function ensureListed(owner: string, deps: WorkbotDeps): Promise<boolean> {
+  if (listedOwners.has(owner)) return Promise.resolve(true)
+  const failed = listFailedAt.get(owner)
+  if (failed !== undefined && Date.now() - failed < LIST_RETRY_MS) return Promise.resolve(false)
+  let pending = listings.get(owner)
+  if (!pending) {
+    pending = clientOf(deps)
+      .listSessions(owner, { limit: 200 })
+      .then((listed) => {
+        if (!listed.ok) return false
+        rememberListed(owner, listed.value.sessions)
+        return true
+      }, () => false)
+      .then((ok) => {
+        listings.delete(owner)
+        if (!ok) remember(listFailedAt, owner, Date.now())
+        return ok
+      })
+    listings.set(owner, pending)
+  }
+  return pending
+}
+
+/**
+ * The runner session a chat lives under.
+ * 1. The id learned for it in this process (from the person's chat list, or settled when it was created).
+ * 2. Otherwise the person's chats are listed (once per process): a listed chat keeps its id, a cell id preferred.
+ * 3. A chat not listed (it has no message yet), or any chat while the list can't be read: reads use where a new chat
+ *    goes (a session cell with `sessionCells` once the list was read, else the legacy id, as before session cells).
+ *    `create` (the chat is about to be created or updated) first looks in the other place for a chat that already
+ *    exists, so a new empty chat never replaces one: the legacy id with `sessionCells`, the cell id without (for the
+ *    main chat only when the list was read: a new side chat's id is new). That choice is remembered.
+ * Fail safe: a list that can't be read is read again after 30 s; if the check before creating can't be made either,
+ * creating refuses (`workbot_runner_unavailable`) rather than guess.
+ */
+async function sessionOf(actor: WorkbotActor, chat: WorkbotChat, deps: WorkbotDeps, options: { create?: boolean } = {}): Promise<string> {
+  const owner = workbotOwner(actor.organizationId, actor.memberId)
+  const key = chatKey(owner, chat)
+  const known = chatSessions.get(key)
+  if (known) return known
+  const listedAll = await ensureListed(owner, deps)
+  const listed = chatSessions.get(key)
+  if (listed) return listed
+  const legacy = legacySessionOf(actor, chat)
+  const cell = workbotCellSessionId(actor.organizationId, actor.memberId, chat)
+  const preferred = deps.sessionCells ? cell : legacy
+  if (!options.create) return listedAll ? preferred : legacy
+  const other = deps.sessionCells ? legacy : chat === null || !listedAll ? cell : null
+  let chosen = preferred
+  if (other) {
+    const probe = await clientOf(deps).readSession(other, { turns: 1, limit: 1, outputs: "none" }).catch(() => null)
+    if (!probe || (!probe.ok && probe.status !== 404)) throw new WorkbotUnavailableError("workbot_runner_unavailable")
+    if (probe.ok) chosen = other
+  }
+  remember(chatSessions, key, chosen)
+  return chosen
+}
+
+/**
+ * Once per process per person while `sessionCells` is on: asks the runner to move their existing chats into session
+ * cells, in the background. Never awaited and never fails the page; older runners answer 404, which is fine.
+ */
+function splitOnce(actor: WorkbotActor, deps: WorkbotDeps) {
+  if (!deps.sessionCells || !deps.client) return
+  const owner = workbotOwner(actor.organizationId, actor.memberId)
+  if (splitOwners.has(owner)) return
+  if (splitOwners.size >= MAX_REMEMBERED) splitOwners.clear()
+  splitOwners.add(owner)
+  void deps.client.splitOwner().catch(() => undefined)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -180,12 +335,14 @@ async function ensureSession(actor: WorkbotActor, timeZone: string, deps: Workbo
   const name = workbotName(actor.organizationMetadata)
   const canSchedule = await deps.canSchedule(actor.organizationId).catch(() => false)
   const workspaceAssistant = await deps.workspaceAssistant?.(actor.organizationId).catch(() => false) ?? false
-  const main = workbotSessionId(actor.organizationId, actor.memberId)
+  const main = await sessionOf(actor, null, deps, { create: true })
+  const mainInCell = WORKBOT_CELL_SESSION_ID.test(main)
   const common = {
     // Workbot keeps the person's files, works on its own computer, reacts to messages with an emoji and hands longer
     // work to background tasks; the runner offers each only on request.
     files: true,
     computer: true,
+    desktop: deps.desktop === true,
     reactions: true,
     tasks: true,
     owner: workbotOwner(actor.organizationId, actor.memberId),
@@ -196,17 +353,21 @@ async function ensureSession(actor: WorkbotActor, timeZone: string, deps: Workbo
     instructions: workbotInstructions({ name, organizationName: actor.organizationName, firstName: actor.firstName, timeZone, canSchedule, workspaceAssistant }),
     ...common,
     ref: MAIN_CHAT_REF,
+    // A chat in its own cell keeps memory with the owner, and is never kept without these settings.
+    ...(mainInCell ? { memoryScope: "owner" as const, strict: true } : {}),
   })
   if (!savedMain.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
   if (!chat) return savedMain.value.id
   // Named by the runner after its first answer; never sent a title, so that name stays. Strict: a side chat is only
   // found again through its owner and ref, so it is never kept without them (the main chat's id is derived).
-  const saved = await client.putSession(sessionOf(actor, chat), {
+  const sessionId = await sessionOf(actor, chat, deps, { create: true })
+  const saved = await client.putSession(sessionId, {
     instructions: workbotInstructions({ name, organizationName: actor.organizationName, firstName: actor.firstName, timeZone, canSchedule, workspaceAssistant, side: true }),
     ...common,
     ref: chat,
     autoTitle: true,
-    memoryOf: main,
+    // A legacy side chat shares the legacy main chat's memory, exactly as before; a chat in its own cell, the owner's.
+    ...(WORKBOT_CELL_SESSION_ID.test(sessionId) ? { memoryScope: "owner" as const } : { memoryOf: workbotSessionId(actor.organizationId, actor.memberId) }),
     strict: true,
   })
   if (!saved.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
@@ -245,7 +406,8 @@ export function greetingPrompt(input: { firstName: string | null; timeZone: stri
  */
 export async function startWorkbotGreeting(actor: WorkbotActor, input: { timeZone?: string }, deps: WorkbotDeps) {
   const client = clientOf(deps)
-  const sessionId = workbotSessionId(actor.organizationId, actor.memberId)
+  // Starting the main chat creates it: its place is settled first, so an existing one is never replaced.
+  const sessionId = await sessionOf(actor, null, deps, { create: true })
   const read = await client.readSession(sessionId, { turns: 1, limit: 1, outputs: "none" })
   if (read.ok && read.value.turns.length > 0) {
     const greeting = read.value.turns[0]
@@ -270,7 +432,8 @@ export async function readWorkbotThread(
   deps: WorkbotDeps,
 ): Promise<WorkbotThread> {
   const client = clientOf(deps)
-  const sessionId = sessionOf(actor, input.chat ?? null)
+  splitOnce(actor, deps)
+  const sessionId = await sessionOf(actor, input.chat ?? null, deps)
   const name = workbotName(actor.organizationMetadata)
   // Windowed: reading a year-long thread costs the same as reading a new one.
   const read = await client.readSession(sessionId, { turns: input.turns ?? WORKBOT_PAGE_TURNS, limit: 2_000, outputs: "none" })
@@ -306,8 +469,11 @@ export async function readWorkbotThread(
 
 /** The person's chats: the main chat (once it exists) and their side chats, most recently used first. */
 export async function listWorkbotChats(actor: WorkbotActor, deps: WorkbotDeps): Promise<{ main: { updatedAt: number } | null; side: WorkbotChatSummary[] }> {
-  const listed = await clientOf(deps).listSessions(workbotOwner(actor.organizationId, actor.memberId), { limit: 100 })
+  splitOnce(actor, deps)
+  const owner = workbotOwner(actor.organizationId, actor.memberId)
+  const listed = await clientOf(deps).listSessions(owner, { limit: 100 })
   if (!listed.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
+  rememberListed(owner, listed.value.sessions)
   const main = listed.value.sessions.find((session) => session.ref === MAIN_CHAT_REF)
   return {
     main: main ? { updatedAt: main.updatedAt } : null,
@@ -320,7 +486,7 @@ export async function listWorkbotChats(actor: WorkbotActor, deps: WorkbotDeps): 
 /** Removes a side chat with everything in it; refused while it is answering. The main chat can't be removed. */
 export async function removeWorkbotChat(actor: WorkbotActor, chatId: string, deps: WorkbotDeps) {
   if (!WORKBOT_CHAT_ID.test(chatId)) return { ok: false as const, code: "unknown_chat" as const }
-  const removed = await clientOf(deps).deleteSession(sessionOf(actor, chatId))
+  const removed = await clientOf(deps).deleteSession(await sessionOf(actor, chatId, deps))
   if (!removed.ok && removed.status === 409) return { ok: false as const, code: "busy" as const }
   if (!removed.ok && removed.status === 404) return { ok: false as const, code: "unknown_chat" as const }
   if (!removed.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
@@ -359,7 +525,7 @@ export async function retryWorkbotMessage(actor: WorkbotActor, input: { id: stri
   if (!MESSAGE_ID.test(input.id)) return { ok: false as const, code: "unknown_message" as const }
   const client = clientOf(deps)
   const chat = input.chat ?? null
-  const sessionId = sessionOf(actor, chat)
+  const sessionId = await sessionOf(actor, chat, deps)
   const messageId = `${WORKBOT_MESSAGE_PREFIX}${input.id}`
   const read = await client.readSession(sessionId, { messageId, limit: 200, outputs: "none" })
   if (!read.ok && read.status === 404) return { ok: false as const, code: "unknown_message" as const }
@@ -385,7 +551,7 @@ export async function retryWorkbotMessage(actor: WorkbotActor, input: { id: stri
  */
 export async function deleteWorkbotMessage(actor: WorkbotActor, id: string, deps: WorkbotDeps, chat: WorkbotChat = null) {
   if (!MESSAGE_ID.test(id)) return { ok: false as const, code: "unknown_message" as const }
-  const removed = await clientOf(deps).deleteTurns(sessionOf(actor, chat), `${WORKBOT_MESSAGE_PREFIX}${id}`)
+  const removed = await clientOf(deps).deleteTurns(await sessionOf(actor, chat, deps), `${WORKBOT_MESSAGE_PREFIX}${id}`)
   if (!removed.ok && removed.status === 409) return { ok: false as const, code: "busy" as const }
   if (!removed.ok && removed.status === 404) return { ok: false as const, code: "unknown_message" as const }
   if (!removed.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
@@ -403,7 +569,7 @@ export async function editWorkbotMessage(
 ) {
   if (!MESSAGE_ID.test(input.id) || !MESSAGE_ID.test(input.newId)) return { ok: false as const, code: "unknown_message" as const }
   const messageId = `${WORKBOT_MESSAGE_PREFIX}${input.id}`
-  const read = await clientOf(deps).readSession(sessionOf(actor, input.chat ?? null), { messageId, limit: 2_000, outputs: "none" })
+  const read = await clientOf(deps).readSession(await sessionOf(actor, input.chat ?? null, deps), { messageId, limit: 2_000, outputs: "none" })
   if (!read.ok && read.status === 404) return { ok: false as const, code: "unknown_message" as const }
   if (!read.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
   const original = read.value.turns.find(turn => turn.messageId === messageId)
@@ -421,19 +587,21 @@ const TASK_ID = /^[A-Za-z0-9_:-]{1,100}\.t\d{1,3}$/
 /** Stops one background task, from its card on the page. It won't report back. */
 export async function stopWorkbotTask(actor: WorkbotActor, taskId: string, deps: WorkbotDeps, chat: WorkbotChat = null) {
   if (!TASK_ID.test(taskId)) return { stopped: false }
-  const stopped = await clientOf(deps).abort(sessionOf(actor, chat), `${WORKBOT_MESSAGE_PREFIX}${taskId}`)
+  const stopped = await clientOf(deps).abort(await sessionOf(actor, chat, deps), `${WORKBOT_MESSAGE_PREFIX}${taskId}`)
   return { stopped: stopped.stopped }
 }
 
 /** Stops the answer in progress and anything queued behind it; background tasks keep going (Workbot stops one when asked). */
 export async function stopWorkbot(actor: WorkbotActor, deps: WorkbotDeps, chat: WorkbotChat = null) {
-  const stopped = await clientOf(deps).abort(sessionOf(actor, chat))
+  const stopped = await clientOf(deps).abort(await sessionOf(actor, chat, deps))
   return { stopped: stopped.stopped }
 }
 
 /** The chat's live event stream from the runner, or null when it can't be opened. */
 export async function openWorkbotEvents(actor: WorkbotActor, signal: AbortSignal, deps: WorkbotDeps, chat: WorkbotChat = null) {
-  return clientOf(deps).openEvents(sessionOf(actor, chat), signal).catch(() => null)
+  const client = clientOf(deps)
+  const sessionId = await sessionOf(actor, chat, deps).catch(() => null)
+  return sessionId ? client.openEvents(sessionId, signal).catch(() => null) : null
 }
 
 export class WorkbotFilesUnavailableError extends Error {
@@ -461,32 +629,35 @@ export async function uploadWorkbotFile(
 export async function listWorkbotFiles(actor: WorkbotActor, deps: WorkbotDeps, chat: WorkbotChat = null): Promise<{ enabled: boolean; files: WorkbotFile[] }> {
   const client = clientOf(deps)
   if (!(await client.filesEnabled())) return { enabled: false, files: [] }
-  const listed = await client.listFiles(sessionOf(actor, chat))
+  const listed = await client.listFiles(await sessionOf(actor, chat, deps))
   if (!listed.ok && listed.status === 404) return { enabled: true, files: [] }
   if (!listed.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
   return { enabled: true, files: listed.value }
 }
 
 export async function downloadWorkbotFile(actor: WorkbotActor, fileId: string, deps: WorkbotDeps, chat: WorkbotChat = null) {
-  return clientOf(deps).downloadFile(sessionOf(actor, chat), fileId)
+  return clientOf(deps).downloadFile(await sessionOf(actor, chat, deps), fileId)
 }
 
 export async function readWorkbotPreview(actor: WorkbotActor, fileId: string, deps: WorkbotDeps, chat: WorkbotChat = null) {
-  return clientOf(deps).previewManifest(sessionOf(actor, chat), fileId)
+  return clientOf(deps).previewManifest(await sessionOf(actor, chat, deps), fileId)
 }
 
 export async function downloadWorkbotPreviewPage(actor: WorkbotActor, fileId: string, page: number, deps: WorkbotDeps, chat: WorkbotChat = null) {
-  return clientOf(deps).previewPage(sessionOf(actor, chat), fileId, page)
+  return clientOf(deps).previewPage(await sessionOf(actor, chat, deps), fileId, page)
 }
 
 export async function deleteWorkbotFile(actor: WorkbotActor, fileId: string, deps: WorkbotDeps, chat: WorkbotChat = null) {
-  return clientOf(deps).deleteFile(sessionOf(actor, chat), fileId)
+  return clientOf(deps).deleteFile(await sessionOf(actor, chat, deps), fileId)
 }
 
 /** Workbot for one host: every operation, bound to its runner and scheduling check. `chat` null is the main chat. */
 export function createWorkbot(deps: WorkbotDeps) {
   return {
+    ensureComputer: (actor: WorkbotActor) => ensureSession(actor, "UTC", deps),
     readThread: (actor: WorkbotActor, input: { turns?: number; chat?: WorkbotChat } = {}) => readWorkbotThread(actor, input, deps),
+    /** The runner session a chat lives under (for a host that talks to the runner directly, e.g. live sockets). */
+    sessionIdOf: (actor: WorkbotActor, chat: WorkbotChat = null) => sessionOf(actor, chat, deps),
     hello: (actor: WorkbotActor, input: { timeZone?: string }) => startWorkbotGreeting(actor, input, deps),
     send: (actor: WorkbotActor, input: { id: string; text: string; timeZone?: string; attachments?: string[]; chat?: WorkbotChat; context?: WorkbotViewContext }) =>
       sendWorkbotMessage(actor, input, deps),

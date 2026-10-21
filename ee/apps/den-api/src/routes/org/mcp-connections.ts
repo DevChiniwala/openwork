@@ -86,7 +86,6 @@ import {
 } from "../../capability-sources/external-mcp-connections.js"
 import { evaluateToolPolicy } from "../../capability-sources/external-mcp-tool-policy.js"
 import { credentialPromptResponseFields, mcpConnectionKeyPrompt } from "../../credential-prompt.js"
-import { organizationFeatureEnabled, requireFeature } from "../../features.js"
 import { memberApiKeyUsable, usesMemberApiKey, validMemberApiKey } from "../../capability-sources/member-api-key.js"
 import { externalMcpAppResourceUri } from "../../mcp/external-capabilities.js"
 import { EXECUTE_CAPABILITY_TOOL_NAME, SEARCH_CAPABILITIES_TOOL_NAME } from "../../mcp/search.js"
@@ -699,10 +698,6 @@ function memberConnectLinks(connection: ExternalMcpConnectionRow) {
 function nativeProviderCallbackUrl(nativeProviderKey: string) {
   const baseUrl = env.apiPublicUrl ?? env.betterAuthUrl
   return new URL(`/v1/oauth-providers/${encodeURIComponent(nativeProviderKey)}/connect/callback`, baseUrl).toString()
-}
-
-export function isAgentApiKeyConnection(input: { authType: string; sessionId?: string | null }) {
-  return input.authType === "apikey" && input.sessionId === "mcp_internal"
 }
 
 export function isAgentOAuthClientConnection(input: { oauthClient?: unknown; sessionId?: string | null }) {
@@ -1744,17 +1739,13 @@ async function createExternalConnectionResponse(
   if (isAgentOAuthClientConnection({ oauthClient: body.oauthClient, sessionId })) {
     return c.json({ error: "invalid_request", message: "OAuth client credentials cannot be set from the agent. Add them in the OpenWork Cloud dashboard under Extensions." }, 400)
   }
-  // With secure keys in chat, entering a key is human-only for agents and API
-  // keys alike: they create the connection without it and a person adds it.
-  const secureEntry = await organizationFeatureEnabled(payload.organization.id, "secureSecretFields")
-  const machineCaller = sessionId === "mcp_internal" || (secureEntry && apiKeyCaller)
-  if (secureEntry && machineCaller && body.apiKey !== undefined) {
+  // Entering a key is human-only for agents and API keys alike: they create
+  // the connection without it and a person adds it.
+  const machineCaller = sessionId === "mcp_internal" || apiKeyCaller
+  if (machineCaller && body.apiKey !== undefined) {
     return c.json({ error: "secure_entry_required", message: "Do not send keys through the agent or an API key. Create the connection without apiKey; the person adds it in a private field in OpenWork." }, 400)
   }
-  if (!secureEntry && isAgentApiKeyConnection({ authType: body.authType, sessionId })) {
-    return c.json({ error: "invalid_request", message: "API-key connections cannot be created from the agent. Add them in the OpenWork Cloud dashboard under Extensions." }, 400)
-  }
-  const awaitingSharedKey = secureEntry && body.authType === "apikey" && body.credentialMode === "shared" && !body.apiKey
+  const awaitingSharedKey = body.authType === "apikey" && body.credentialMode === "shared" && !body.apiKey
   if (body.oauthClient && body.authType !== "oauth") {
     return c.json({ error: "invalid_request", message: "oauthClient is only allowed when authType is oauth." }, 400)
   }
@@ -1768,9 +1759,6 @@ async function createExternalConnectionResponse(
   if (orgWideDenied) return orgWideDenied
   if (body.authType !== "oauth" && (body.authorizationServerIssuer !== undefined || (body.requestedScopes?.length ?? 0) > 0)) {
     return c.json({ error: "invalid_request", message: "OAuth issuer and scopes are only allowed when authType is oauth." }, 400)
-  }
-  if (body.authType === "apikey" && body.credentialMode === "shared" && !body.apiKey && !secureEntry) {
-    return c.json({ error: "invalid_request", message: "apiKey is required when authType is apikey." }, 400)
   }
   if (body.credentialMode === "per_member" && (body.authType === "none" || body.apiKey !== undefined)) {
     return c.json({ error: "invalid_request", message: "Individual accounts require OAuth or a personal API key enrolled by each member. Do not supply a shared key." }, 400)
@@ -3363,7 +3351,6 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
     "/v1/mcp-connections/:connectionId/shared-credential",
     describeRoute({ hide: true }),
     orgPermissionRoute("connections.manage"),
-    requireFeature("secureSecretFields"),
     paramValidator(connectionParamsSchema),
     bodyLimit({ maxSize: 16_384, onError: (c) => c.json({ error: "invalid_request", message: "Enter only the API key." }, 400) }),
     async (c) => {

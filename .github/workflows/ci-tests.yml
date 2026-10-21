@@ -93,6 +93,7 @@ jobs:
           pnpm --filter @openwork-ee/headless-computer build
           pnpm --filter @openwork-ee/headless-computer test
           pnpm --filter @openwork-ee/headless-runner test:computer-config
+          pnpm --filter @openwork-ee/workbot exec tsx --conditions=development --test scripts/computer.test.ts
       - name: Test headless conversations (follow-ups, read-only lookups, waiting messages, bounded reads, moving to Node)
         run: |
           pnpm --filter @openwork-ee/headless-runner test:conversation
@@ -108,10 +109,15 @@ jobs:
           pnpm --filter @openwork-ee/headless-runner test:service-health
           pnpm --filter @openwork-ee/workbot test:service-readiness
           # Den web does not install tsx in CI; keep its JSX config with the API-owned loader.
-          TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/admin/services/*.test.ts' '../den-web/components/admin/services/*.test.tsx' '../den-web/components/services/*.test.ts' '../den-web/app/(den)/dashboard/_lib/deployment-services-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts'
+          TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/diagnostics/*.test.ts' '../den-web/components/diagnostics/*.test.tsx' '../den-web/components/admin/services/*.test.ts' '../den-web/components/services/*.test.tsx' '../den-web/app/(den)/dashboard/_lib/diagnostics-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts'
           bun test apps/app/tests/deployment-service-readiness.test.ts
       - name: Boot the app provider tree
         run: pnpm test:boot
+      - name: Test native dictation focus and draft boundaries
+        run: |
+          node --test apps/desktop/test/native-dictation.test.mjs
+          # Load Lexical's synchronous development exports for the DOM editor tests.
+          pnpm --filter @openwork/app exec bun --conditions=development test --isolate ./tests/native-dictation.test.tsx ./tests/browser-dictation.test.ts ./tests/composer-caret-refocus.test.tsx
       - name: Check desktop links open real Den pages
         run: pnpm --filter @openwork/app test:den-links
       - name: Test the shared Calendar logic
@@ -119,12 +125,24 @@ jobs:
       - name: Test fork authorization and free screening policy
         run: node --test .github/scripts/contributor-pr.test.mjs .github/scripts/contributor-screen.test.mjs .github/scripts/warden-check.test.mjs .github/scripts/warden-report.test.mjs .github/scripts/warden-fast.test.mjs .github/scripts/setup-browser.test.mjs
       - name: Test on-demand PR proof review builds
-        run: node --test .github/scripts/pr-proof-review-build.test.mjs
+        run: node --test .github/scripts/pr-proof-review-build.test.mjs .github/scripts/pr-proof-artifacts.test.mjs evals/scripts/engine-parity-binaries.test.mjs evals/scripts/run-parity-proof.test.mjs
+      - name: Test desktop and cloud computer access and interruption
+        run: |
+          pnpm --filter @openwork/computer-use build
+          node --test ee/packages/headless-computer/src/viewer-tickets.test.mjs
+          node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs
+          python3 ee/packages/headless-computer/scripts/desktop-bridge.test.py
+          python3 ee/packages/headless-computer/scripts/configure-desktop-files.test.py
+          python3 ee/packages/headless-computer/scripts/cloud-desktop.test.py
+          python3 ee/packages/headless-computer/scripts/vnc-stdio.test.py
+          python3 packages/computer-use/computer-x11-worker.test.py
+          pnpm --dir evals exec vitest run --config vitest.config.ts --project pr ../apps/server/test/computer-use-tools.vitest.test.ts ../apps/server/test/cloud-computer-lifecycle.vitest.test.ts
       - name: Test default-setup CodeQL coverage accounting
         run: node --test scripts/ci/check-codeql-results.test.mjs
       - name: Test packaged smoke engine diagnosis and kept logs
         run: |
-          node --test apps/desktop/test/engine-diagnosis.test.mjs
+          bun test apps/server/test/opencode-plugin-deps.test.ts
+          node --test apps/desktop/test/engine-diagnosis.test.mjs apps/server/scripts/build-opencode-plugin-deps.test.mjs apps/desktop/scripts/electron-after-sign.test.cjs
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr packages/hosts/src/local-surface-log.test.ts
       - name: Test the OpenCode engine new installs start on
         run: |
@@ -145,7 +163,7 @@ jobs:
           pnpm --filter @openwork-ee/utils test
           pnpm --filter @openwork/automations test
           pnpm --filter @openwork-ee/den-api test
-          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts"
+          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts" "../den-web/app/(den)/dashboard/_lib/workbot-entry.test.ts"
           pnpm --filter @openwork-ee/workbot test:model
       # Security rules (roles, tenants, keys, OAuth, audit) against the real
       # den-api app and a throwaway database on MySQL (root:password).
@@ -567,7 +585,7 @@ jobs:
       - name: Prepare the CI database for audit route introspection
         run: pnpm --filter @openwork-ee/den-db exec node --import tsx ./node_modules/drizzle-kit/bin.cjs push --force
       # Every den-api route and better-auth endpoint must carry an audit
-      # declaration (src/audit/routes) and src/audit/COVERAGE.md must be current.
+      # declaration (src/audit/routes); validate it without a generated report.
       - name: Check audit route coverage
         run: pnpm --filter @openwork-ee/den-api audit:coverage
       - name: Lint the contract and typecheck the SDK

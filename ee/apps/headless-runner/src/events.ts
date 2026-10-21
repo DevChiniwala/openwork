@@ -36,6 +36,7 @@ export type EventSockets = {
 
 export class SessionEvents {
   private readonly listeners = new Map<string, Set<Listener>>()
+  private readonly enders = new Map<string, Set<() => void>>()
   private sockets: EventSockets | null = null
 
   /** Publishes every event to the host's WebSockets too; set again each time the host starts (a cell wakes). */
@@ -48,13 +49,32 @@ export class SessionEvents {
     return this.sockets?.accept(sessionId) ?? null
   }
 
-  subscribe(sessionId: string, listener: Listener) {
+  /** `onEnd` runs when the session's events stop here for good (it moved to its own cell): the reader reconnects. */
+  subscribe(sessionId: string, listener: Listener, onEnd?: () => void) {
     const set = this.listeners.get(sessionId) ?? new Set()
     set.add(listener)
     this.listeners.set(sessionId, set)
+    const ends = this.enders.get(sessionId) ?? new Set()
+    if (onEnd) {
+      ends.add(onEnd)
+      this.enders.set(sessionId, ends)
+    }
     return () => {
       set.delete(listener)
       if (set.size === 0) this.listeners.delete(sessionId)
+      if (onEnd) ends.delete(onEnd)
+      if (ends.size === 0) this.enders.delete(sessionId)
+    }
+  }
+
+  /** Ends every reader of the session here (see subscribe's `onEnd`). */
+  end(sessionId: string) {
+    for (const onEnd of [...(this.enders.get(sessionId) ?? [])]) {
+      try {
+        onEnd()
+      } catch {
+        // A broken reader never affects the others.
+      }
     }
   }
 
