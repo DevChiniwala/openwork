@@ -22,10 +22,13 @@ shared across events, so test runs cannot pollute or exhaust the real event.
 passed five real OAuth consents, a paid GPT-6.1 Sol task reading all five services,
 a local/Drive write, Ctrl+Enter steering, exact data reset, and the same paid task
 again without reconnecting. Source was `7d381c9d0f42c37a5537ede6019b7225c1ffc7d0`.
-This is **not** a 20-seat or full-workshop-exercise verdict. The canonical exercises
-are a separate queue and can expose missing fixtures/capabilities. Never clone an
-authenticated pilot; use a separately audited software-only base and fresh profiles.
-See `research/workshop-pilot-validation.md` and the template/fanout gates.
+A cold software-only snapshot and a second, freshly signed-in ordinary-member
+canary subsequently passed five consents, paid inference and cross-member file
+isolation. The remaining 18 seats were **not allocated**: the existing event's
+remaining-lifetime gate required explicit renewal. The Linux canonical queue
+finished with **8 passed / 3 incomplete or blocked**, not an all-green workshop.
+Never clone an authenticated pilot. See `research/workshop-pilot-validation.md`
+for exact software/operator SHAs, outcomes, limitations and reproducible HOW.
 
 ## Before the event (do this first, 5 minutes)
 
@@ -63,8 +66,8 @@ pnpm world up workshop --place daytona --stage <event> --detach -- --count 0
 pnpm world outputs workshop --stage <event> --json
 pnpm world down workshop --stage <event>
 
-# 2. The event: one pilot desktop is verified before the rest start.
-pnpm world up workshop --place daytona --stage <event> --detach -- --count 20
+# 2. One real attendee pilot. Startup alone is not the full acceptance gate.
+pnpm world up workshop --place daytona --stage <event> --detach -- --count 1
 pnpm world outputs workshop --stage <event> --reveal
 ```
 
@@ -78,10 +81,18 @@ Script options (after `--`):
 | `--model <id>` | Model added to the Gateway, default `gpt-6.1-sol`. |
 | `--concurrency <1-4>` | Desktops started at once after the pilot, default 2. |
 
-`--count` is part of the world's identity: run `world down` before changing it.
-A non-pilot desktop that fails twice is listed as `failed`; the rest keep
-running. There is no single-desktop replace yet: give that attendee a spare
-seat (provision one or two extra) or rebuild the world.
+`--count` is part of the world's identity. Do not turn the approved one-seat
+world into a 20-seat world by restarting it: that replaces its backend, signs in
+every attendee, and only gates on desktop startup—not completed exercises.
+
+For a signed-out fleet, preserve the shared backend and use the isolated
+`worlds/lib/workshop-replicate.mjs <private-receipt.json> <fixed-deadline-ISO>`
+controller after the functional pilot passes. It validates one fresh canary from
+an audited software-only snapshot, then explicitly gates the remaining 18 seats
+(20 total including the original pilot and canary), concurrency two. No automatic
+fanout or deadline extension; no per-seat snapshots/volumes. Follow the report's
+HOW and use measured receipt facts, not hand-filled readiness booleans. A failed
+owned canary is retained/repaired by its ID, not replaced by a restart loop.
 
 ## Hand out
 
@@ -139,8 +150,9 @@ by provider TTL; don't rely on that alone.
 - **Preflight before spend.** Check Den health, the workplace's `/health`,
   that a brand-new browser can join, and that all five connections exist
   *before* the first desktop is allocated.
-- **Pilot, then fan out** with low concurrency (2). Don't hand out cards from a
-  partial run; a later failure tears the fleet down.
+- **Full pilot acceptance, then fan out** with low concurrency (2). Desktop
+  startup alone is not acceptance. Don't hand out a partial fleet; retain the
+  exact failed owned seat for diagnosis and report incomplete counts honestly.
 - **Daytona defaults are not workshop defaults.** The workshop requests private
   Den/desktop sandboxes (`OPENWORK_EVAL_DAYTONA_PRIVATE=1`) and explicitly signs
   viewers through the event lifetime plus reserve. Verify actual API privacy,
