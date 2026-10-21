@@ -131,6 +131,8 @@ function observePage(id, options = {}) {
     const safe = privatePattern ? (value || "").replace(privatePattern, "[withheld]") : value || "";
     return safe.trim().slice(0, limit);
   };
+  // browser_extract reads page text, which includes editable content and can echo field values.
+  if (mode === "extract") return { title: text(document.title, 300), text: text(document.body?.innerText, 500_000) };
   const describe = (element, reveal = false) => {
     const referenced = (attribute) => (element.getAttribute(attribute) || "").split(/\s+/)
       .map(id => document.getElementById(id)?.textContent || "").join(" ").trim();
@@ -709,8 +711,8 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
     const maxChars = Number.isInteger(args.maxChars) ? Math.min(8000, Math.max(200, args.maxChars)) : 2000;
     const revision = tab.webMcpRevision;
     const url = tab.view.webContents.getURL();
-    // innerText never includes form field values, so withheld fields stay withheld.
-    const page = await isolated(tab.view.webContents, () => ({ title: document.title.slice(0, 300), text: (document.body?.innerText || "").slice(0, 500_000) }));
+    // Withheld field values are redacted exactly as observations redact them.
+    const page = await isolated(tab.view.webContents, observePage, null, { mode: "extract" });
     if (!await allowed(url)) fail("website_blocked", "Your organization does not allow this website.");
     if (revision !== tab.webMcpRevision || url !== tab.view.webContents.getURL()) fail("page_changed", "The page changed while reading it. Try again.");
     signal.throwIfAborted();
