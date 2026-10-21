@@ -88,9 +88,16 @@ struct AppIdentity {
         let protected: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable",
             "com.mitchellh.ghostty", "com.apple.ScriptEditor2", "com.apple.systempreferences",
             "com.apple.SecurityAgent", "com.apple.loginwindow", "com.apple.keychainaccess",
-            "com.apple.Passwords", "com.1password.1password", "com.agilebits.onepassword7"]
-        // Never the host apps either: an agent must not grant itself access or approve its own requests.
-        return !protected.contains(id) && !id.hasPrefix("com.differentai.openwork") && !id.hasPrefix("com.differentai.opencoworker")
+            "com.apple.Passwords", "com.1password.1password", "com.agilebits.onepassword7",
+            // Other terminals, and editors and automation apps that run shell commands or scripts.
+            "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm", "co.zeit.hyper", "org.tabby",
+            "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium", "com.visualstudio.code.oss",
+            "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "dev.zed.Zed", "dev.zed.Zed-Preview",
+            "com.panic.Nova", "com.apple.dt.Xcode", "com.apple.Automator", "com.apple.shortcuts"]
+        // Every JetBrains IDE has a terminal. Never the host apps either: an agent must not grant
+        // itself access or approve its own requests.
+        return !protected.contains(id) && !id.hasPrefix("com.jetbrains.") && !id.hasPrefix("com.google.android.studio")
+            && !id.hasPrefix("com.differentai.openwork") && !id.hasPrefix("com.differentai.opencoworker")
             && !id.hasPrefix("com.openwork") && !id.hasPrefix("com.openai")
     }
 }
