@@ -175,6 +175,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  connectStandardTools: {
+    label: "Connect: standard tools for tool-search clients",
+    description: "Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES
