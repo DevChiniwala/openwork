@@ -131,7 +131,7 @@ test("gateway probes pass against the real automatic-join gateway and leave no w
   t.after(() => workshop.close());
   assert.match(await probeGatewayHealth(workshop.origin), /memory storage/);
   assert.match(await probeAutomaticJoin(workshop.origin), /join/);
-  const assigned = await startWorkshop({ joinMode: "assigned", port: 0, participants: [{ id: "p", name: "P", token: newResetToken() }] });
+  const assigned = await startWorkshop({ joinMode: "assigned", port: 0, participants: [{ id: "p", name: "P", token: newResetToken() }] as never });
   t.after(() => assigned.close());
   await assert.rejects(probeGatewayHealth(assigned.origin), /expected automatic/);
 });
