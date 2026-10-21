@@ -62,4 +62,6 @@ Approve each version from OpenWork, then run its new Cloud Shell command.
 The runner applies a saved, inspected Terraform plan, runs database migrations
 before releasing new service revisions, and refuses plans that delete or
 replace data-bearing resources. Back up and test restores before an upgrade.
+Updates and retries remove Cloud Run revision tags on the OpenWork services;
+recreate any you need afterwards on the new API-only revisions.
 Reverting a service revision does not revert database schema migrations.

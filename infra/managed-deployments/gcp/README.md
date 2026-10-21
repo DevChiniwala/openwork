@@ -204,6 +204,9 @@ controllers/deployers and manual rollback are unsupported while this installer
 owns the schema. The fence's real metric emission and disabled-revision readiness
 behavior are explicit live-test gates, not certified by mocks.
 
+Updates and retries remove Cloud Run revision tags on the OpenWork services;
+recreate any you need afterwards on the new API-only revisions.
+
 Before merging/rollout, the managed-deployments owners must review the grant and
 maintenance behavior, and an isolated Den must exercise a published legacy
 install → genuinely newer test installer Update → fresh install → destroy.
