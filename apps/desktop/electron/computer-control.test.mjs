@@ -103,6 +103,11 @@ test("human takeover survives end-of-turn and idle cleanup until Continue", asyn
   await new Promise(resolve => setTimeout(resolve, 35));
   assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Follow up" } })).code, "session_paused");
   assert.equal((await f.control.presentation({ sessionId: "chat", visible: true })).phase, "paused");
+  assert.equal((await f.control.snapshot({ sessionId: "chat" })).session.state, "paused");
+  const count = f.calls.length;
+  assert.equal(payload(await f.control.execute({ sessionId: "another", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Other work" } })).code, "computer_busy");
+  assert.equal(f.calls.length, count);
+  assert.equal((await f.control.snapshot({ sessionId: "another" })).busyElsewhere, true);
   await assert.rejects(f.control.interact({ sessionId: "another", id: "view", action: "resume" }), /does not own/);
   await f.control.interact({ sessionId: "chat", id: "view", action: "resume" });
   assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_observe", args: {} })).ok, true);
