@@ -33,6 +33,8 @@ const desktopVersion = createHash("sha256").update(await readFile(new URL("dist/
 const base = process.env.FREESTYLE_DESKTOP_BASE ?? "freestyle/ubuntu"
 // Chromium for Testing through Playwright: Ubuntu ships Chromium only as a snap.
 const playwright = "1.56.1"
+// A fixed Node release, checked against its published SHA-256 (nodejs.org/dist/v24.22.1/SHASUMS256.txt.asc).
+const node = { version: "24.22.1", sha256: "6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6" }
 const slug = process.env.HEADLESS_COMPUTER_SNAPSHOT ?? `workbot-desktop-freestyle-${guestVersion.trim().slice(0, 16)}`
 const api = new Freestyle({ apiKey })
 
@@ -75,12 +77,10 @@ apt-get install -y -qq --no-install-recommends \\
   openbox xdotool util-linux dbus-x11 iptables nftables
 # The bridge runs the guest with /usr/local/bin/node, as the Daytona image's Node base provides.
 cd /tmp
-curl -fsSLO https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt
-node_tarball=$(grep -oE 'node-v24\\.[0-9]+\\.[0-9]+-linux-x64\\.tar\\.xz' SHASUMS256.txt | head -n 1)
-curl -fsSLO "https://nodejs.org/dist/latest-v24.x/$node_tarball"
-grep " $node_tarball\\$" SHASUMS256.txt | sha256sum -c -
-tar -xJf "$node_tarball" -C /usr/local --strip-components=1 --exclude CHANGELOG.md --exclude LICENSE --exclude README.md
-rm -f "$node_tarball" SHASUMS256.txt
+curl -fsSLO https://nodejs.org/dist/v${node.version}/node-v${node.version}-linux-x64.tar.xz
+echo "${node.sha256}  node-v${node.version}-linux-x64.tar.xz" | sha256sum -c -
+tar -xJf node-v${node.version}-linux-x64.tar.xz -C /usr/local --strip-components=1 --exclude CHANGELOG.md --exclude LICENSE --exclude README.md
+rm -f node-v${node.version}-linux-x64.tar.xz
 id ubuntu >/dev/null 2>&1 || useradd --create-home --shell /bin/bash ubuntu
 for user in openwork-browser openwork-app; do id "$user" >/dev/null 2>&1 || useradd --create-home --shell /bin/sh "$user"; done
 id openwork-command >/dev/null 2>&1 || useradd --create-home --shell /bin/bash openwork-command
