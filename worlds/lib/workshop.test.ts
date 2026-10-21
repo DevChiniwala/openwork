@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { startWorkshop } from "../../evals/packages/open-workplace/src/workshop.mjs";
-import { newResetToken, nodeSupportsGateway, parseSignedPreviewOrigin, probeAutomaticJoin, probeGatewayHealth } from "./workshop-gateway.ts";
+import { newResetToken, nodeSupportsGateway, parseSignedPreviewOrigin, probeAutomaticJoin, probeGatewayHealth, startDaytonaGateway } from "./workshop-gateway.ts";
 import { provisionWorkshopModel } from "./workshop-model.ts";
 import {
   allocateDesktops, attendeeKeys, DAYTONA_MAX_LIFETIME_MINUTES, parseWorkshopArgs, PreflightError, redact, resetCommand, runPreflight, workshopOutputs,
@@ -134,6 +134,45 @@ test("gateway probes pass against the real automatic-join gateway and leave no w
   const assigned = await startWorkshop({ joinMode: "assigned", port: 0, participants: [{ id: "p", name: "P", token: newResetToken() }] });
   t.after(() => assigned.close());
   await assert.rejects(probeGatewayHealth(assigned.origin), /expected automatic/);
+});
+
+test("Daytona gateway path: upload, unpack, detach and probes work through a sandbox-shaped exec", { timeout: 120_000, skip: process.platform === "win32" }, async () => {
+  const { allocateFreePort } = await import("../../evals/packages/cdp/src/index.ts");
+  const { spawn } = await import("node:child_process");
+  const port = await allocateFreePort();
+  const fakeOrigin = `https://${port}-fake-sandbox.proxy.test`;
+  const commands: string[] = [];
+  // Runs the exact remote command locally: `daytona exec <sandbox> -- "bash -lc '...'"`.
+  const exec = async (args: string[]) => {
+    if (args[0] === "preview-url") return { stdout: `time="x" level=info\n${fakeOrigin}\n`, stderr: "", code: 0 };
+    assert.equal(args[0], "exec");
+    const command = args[3] ?? "";
+    commands.push(command);
+    return new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
+      const child = spawn("bash", ["-c", command], { stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = ""; let stderr = "";
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+      child.on("close", (code) => resolve({ stdout, stderr, code: code ?? 1 }));
+    });
+  };
+  const fetcher: typeof fetch = (input, init) => fetch(String(input).replace(fakeOrigin, `http://127.0.0.1:${port}`), init);
+  const den = { placement: { kind: "daytona", sandboxId: "fake-sandbox" } } as unknown as Parameters<typeof startDaytonaGateway>[1];
+  let resetToken = "";
+  {
+    await using stack = new AsyncDisposableStack();
+    const gateway = await startDaytonaGateway(stack, den, { expiresInSeconds: 3600, exec, fetcher, port, log: () => undefined });
+    resetToken = gateway.resetToken;
+    assert.equal(gateway.origin, fakeOrigin);
+    assert.match(await probeGatewayHealth(gateway.origin, fetcher), /sqlite storage/);
+    assert.match(await probeAutomaticJoin(gateway.origin, fetcher), /join/);
+    const reset = await fetcher(`${gateway.origin}/_workshop/reset-all`, { method: "POST", headers: { authorization: `Bearer ${gateway.resetToken}`, "content-type": "application/json" }, body: JSON.stringify({ confirm: "RESET ALL SAMPLE DATA" }) });
+    assert.equal(reset.status, 200);
+  }
+  // Disposal stopped the detached gateway, and no remote command line carried the reset key in clear text.
+  await assert.rejects(fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2000) }));
+  assert.ok(commands.length > 3);
+  for (const command of commands) assert.ok(!command.includes(resetToken));
 });
 
 test("model: skipped with a clear note without a key; with a key the policy is org-wide and the key never surfaces", async () => {

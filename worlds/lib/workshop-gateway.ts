@@ -143,17 +143,19 @@ export function nodeSupportsGateway(version: string): boolean {
 export async function startDaytonaGateway(
   stack: AsyncDisposableStack,
   den: Den,
-  options: { expiresInSeconds: number; exec?: DaytonaExec; log?: (line: string) => void },
+  options: { expiresInSeconds: number; exec?: DaytonaExec; log?: (line: string) => void; fetcher?: typeof fetch; port?: number },
 ): Promise<WorkplaceGateway> {
   if (den.placement?.kind !== "daytona") throw new Error("startDaytonaGateway needs a Daytona Den.");
   const sandbox = den.placement.sandboxId;
   const exec = options.exec ?? defaultDaytonaExec;
   const log = options.log ?? ((line: string) => console.error(`[workshop-gateway] ${line}`));
+  const fetcher = options.fetcher ?? fetch;
+  const port = options.port ?? DAYTONA_GATEWAY_PORT;
   const resetToken = newResetToken();
   const expires = Math.max(60, Math.min(86_400, Math.floor(options.expiresInSeconds)));
-  const preview = await exec(["preview-url", sandbox, "-p", String(DAYTONA_GATEWAY_PORT), "--expires", String(expires)], { timeoutMs: 60_000 });
+  const preview = await exec(["preview-url", sandbox, "-p", String(port), "--expires", String(expires)], { timeoutMs: 60_000 });
   if (preview.code !== 0) throw new Error("Could not create the workplace gateway preview URL.");
-  const origin = parseSignedPreviewOrigin(preview.stdout, DAYTONA_GATEWAY_PORT);
+  const origin = parseSignedPreviewOrigin(preview.stdout, port);
 
   const version = (await sandboxRun(exec, sandbox, "node -p process.version", "workplace gateway Node check")).trim().split("\n").at(-1) ?? "";
   if (!nodeSupportsGateway(version)) throw new Error(`The Den sandbox has Node ${version || "(unknown)"}; the workplace gateway needs Node 22.13+ for node:sqlite.`);
@@ -177,7 +179,7 @@ export async function startDaytonaGateway(
 
   // Values travel base64-encoded so the remote command line never carries the reset key in clear text,
   // and the gateway gets a minimal environment: none of the sandbox's Den configuration.
-  const env = Object.fromEntries(Object.entries(gatewayEnv(origin, dataDir, resetToken, "0.0.0.0", DAYTONA_GATEWAY_PORT))
+  const env = Object.fromEntries(Object.entries(gatewayEnv(origin, dataDir, resetToken, "0.0.0.0", port))
     .map(([key, value]) => [key, Buffer.from(value, "utf8").toString("base64")]));
   const detach = `cd ${dir}; python3 - <<PYEOF
 import base64, os, subprocess
@@ -185,7 +187,8 @@ encoded = ${JSON.stringify(env)}
 env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": os.environ.get("HOME", "/tmp")}
 env.update({key: base64.b64decode(value).decode("utf-8") for key, value in encoded.items()})
 log = open("${dir}/gateway.log", "ab", buffering=0)
-child = subprocess.Popen(["node", "${dir}/src/workshop.mjs"], cwd="${dir}", env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+# workshop.mjs only starts when argv[1] equals its real path (/tmp may be a symlink).
+child = subprocess.Popen(["node", os.path.realpath("${dir}/src/workshop.mjs")], cwd="${dir}", env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
 open("${REMOTE_PID}", "w").write(str(child.pid))
 PYEOF
 echo detached`;
@@ -202,7 +205,7 @@ echo detached`;
   let last = "not attempted";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${origin}/health`, { headers: PROBE_HEADERS, signal: AbortSignal.timeout(5000) });
+      const response = await fetcher(`${origin}/health`, { headers: PROBE_HEADERS, signal: AbortSignal.timeout(5000) });
       if (response.ok) return { origin, resetToken, placement: "daytona" };
       last = `HTTP ${response.status}`;
     } catch (error) {
