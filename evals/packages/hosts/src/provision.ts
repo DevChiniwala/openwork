@@ -127,6 +127,10 @@ export interface DesktopSandboxOptions {
   onCreated?: (sandbox: string) => Promise<void>;
   /** Test-only override for the sandbox exec-readiness budget. */
   sandboxReadyTimeoutMs?: number;
+  /** Defer the throwaway Electron boot until a caller binds its private Den. */
+  skipDesktopWarmup?: boolean;
+  /** Diagnostic owner must record the sandbox and enforce a provider TTL. */
+  retainOnFailure?: boolean;
   log?: (line: string) => void;
 }
 
@@ -837,7 +841,7 @@ echo detached`;
       return { sandbox, created, release: installedRelease };
     }
 
-    await timedStep(log, "first boot gate", async () => {
+    if (!options.skipDesktopWarmup) await timedStep(log, "first boot gate", async () => {
     // A sandbox's first Electron boot pays sidecar prepare, the
     // openwork-server tsc build, and the engine cold start. Paid INSIDE a
     // spec, that bill starved the tool-call phase past its window while every
@@ -935,7 +939,9 @@ echo detached`;
 
     return { sandbox, created, source };
   } catch (error) {
-    if (ownedSandbox) {
+    if (ownedSandbox && options.retainOnFailure) {
+      log(`==> Failed ${surface} sandbox retained for its diagnostic owner: ${ownedSandbox}`);
+    } else if (ownedSandbox) {
       await deleteSandboxes([ownedSandbox], { exec, log }).catch((cleanupError: unknown) => {
         log(`==> ${surface} sandbox cleanup failed: ${messageText(cleanupError)}`);
       });
