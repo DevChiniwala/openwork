@@ -21,6 +21,8 @@ export interface WorkshopSetupOptions {
   modelId?: string;
   /** Positive USD amount, at most the approved $5 per attendee, with at most six decimal places. */
   allowanceUsd: number;
+  /** Ordinary attendee sessions expected in the organization: 1..20 (default 20). */
+  attendees?: number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -69,10 +71,12 @@ export async function configureWorkshop(den: Den, options: WorkshopSetupOptions)
     throw new Error("Workshop allowance must be positive, at most $5, and have at most six decimal places.");
   }
   if (!den.gateway?.publicUrl) throw new Error("Boot the shared Den with its real co-located Gateway before configuring the workshop.");
+  const expected = options.attendees ?? WORKSHOP_ATTENDEES;
+  if (!Number.isSafeInteger(expected) || expected < 1 || expected > WORKSHOP_ATTENDEES) throw new Error("Workshop attendee count must be 1..20.");
   const sessions = Object.entries(den.members);
-  if (sessions.length !== WORKSHOP_ATTENDEES) throw new Error("Workshop requires exactly 20 approved ordinary member sessions.");
+  if (sessions.length !== expected) throw new Error(`Workshop requires exactly ${expected} approved ordinary member sessions.`);
   const emails = sessions.map(([, session]) => session.email.trim().toLowerCase());
-  if (new Set(emails).size !== WORKSHOP_ATTENDEES || emails.includes("") || emails.includes(den.admin.email.trim().toLowerCase())
+  if (new Set(emails).size !== expected || emails.includes("") || emails.includes(den.admin.email.trim().toLowerCase())
     || sessions.some(([, session]) => !session.token || session.token === den.admin.token
       || session.apiUrl !== den.ref.apiUrl || session.webUrl !== den.ref.webUrl)) {
     throw new Error("Workshop attendees must be unique ordinary members of the shared Den, never the owner/admin session.");

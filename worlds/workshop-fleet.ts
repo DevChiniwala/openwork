@@ -115,7 +115,7 @@ export function validateSandboxInfo(info: unknown) {
   }
   return { id: info.id, cpu: info.cpu, memoryGiB: info.memory, diskGiB: info.disk, public: false, organizationId: info.organizationId };
 }
-async function verifySandbox(sandbox: string) {
+export async function verifySandbox(sandbox: string) {
   const result = await defaultDaytonaExec(["info", sandbox, "-f", "json"], { timeoutMs: 30_000 });
   if (result.code !== 0) throw new Error("Could not read owned workshop sandbox information.");
   return validateSandboxInfo(JSON.parse(result.stdout));
@@ -153,7 +153,7 @@ async function memberGet(member: DenSession, orgId: string, path: string): Promi
   if (!result.response.ok) throw new Error(`Workshop member verification failed: HTTP ${result.response.status}.`);
   return result.body;
 }
-async function verifyMember(member: DenSession, orgId: string, memberId: string) {
+export async function verifyMember(member: DenSession, orgId: string, memberId: string) {
   const context = await memberGet(member, orgId, "/v1/org");
   const current = record(context) ? context.currentMember : undefined;
   if (!record(current) || current.id !== memberId || current.role !== "member" || current.isOwner !== false) throw new Error("Workshop desktop is not an ordinary member.");
