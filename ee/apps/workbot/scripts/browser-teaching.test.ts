@@ -42,6 +42,9 @@ test("compilation preserves taught parameters, extraction, verification, and nav
   assert.doesNotMatch(compileBrowserDemonstration(recovered, "Lookup", "Search"), /opaque-bearer-token|unobserved-reset-token/)
   assert.doesNotMatch(browserTeachingPrompt("Keep the workflow private", recovered.steps), /opaque-bearer-token|unobserved-reset-token/)
   assert.match(source, /start_url/)
+  const reservedInput = structuredClone(demonstration)
+  reservedInput.steps[1]!.parameter = "start_url"
+  assert.throws(() => compileBrowserDemonstration(reservedInput, "Lookup", "Search"), /reserved for the starting page/)
   const unlabelled = structuredClone(demonstration)
   unlabelled.steps[4]!.target!.name = ""
   unlabelled.steps[4]!.explanation = ""

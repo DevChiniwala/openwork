@@ -128,6 +128,7 @@ export function compileBrowserDemonstration(value: BrowserDemonstration, title: 
   const demo = demonstrationSchema.parse(value)
   if (demo.phase !== "draft" || demo.steps.length === 0) throw new Error("Finish the demonstration before saving it.")
   if (demo.steps.some(step => step.kind === "extract" && !step.target?.name && !step.explanation.trim())) throw new Error("Explain how to locate each unlabeled selected field before saving.")
+  if (demo.steps.some(step => step.parameter === "start_url")) throw new Error("Start URL is reserved for the starting page. Choose another name for the taught input.")
   const name = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64)
   if (!name || !purpose.trim()) throw new Error("Give the skill a name and a purpose.")
   const firstNavigation = demo.steps.find(step => step.kind === "navigate")?.id
