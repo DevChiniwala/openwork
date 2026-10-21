@@ -145,8 +145,11 @@ teardown with other active lanes.
   lifetime counters). A 200-guest ceiling, filled by our own test runs,
   blocked a 20-person fleet at attendee 15.
 - **Don't run Den in production mode for a workshop.** It rejects localhost
-  service addresses, enforces a 32-character password limit, and requires real
-  invitation email. Dev-mode Den inside a private world avoids all three.
+  service addresses and requires real invitation email. Use development mode
+  inside a private world. **Development mode still rejected a password longer
+  than 32 characters in the live canary**: generate a valid password and validate
+  its length before creating the invitation; do not assume dev mode removes that
+  auth schema limit.
 - **Nothing shared and long-lived.** Don't point workshops at a shared hosted
   workplace (e.g. a Render service). Every rehearsal leaves state there and
   someone eventually hits its limits or can't manage the account it lives in.
