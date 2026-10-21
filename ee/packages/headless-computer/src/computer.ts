@@ -14,8 +14,12 @@ export type ComputerOptions = {
   scope?: string
   idlePauseMs: number
   keepDays: number
+  /** Keep each conversation's computer until it is removed instead of deleting it after keepDays unused. */
+  persistent?: boolean
   desktop?: boolean
 }
+/** The desktop guest's viewer port (desktop-guest.mjs). */
+const DESKTOP_VIEWER_PORT = 6080
 
 const WORKSPACE = "/workspace"
 const FILES_DIR = `${WORKSPACE}/files`
@@ -201,14 +205,14 @@ export class Computers {
     return {
       idempotencyKey: this.slug(sessionId), image: this.provider.currentImage(),
       labels: { kind: "headless-computer", ...(this.options.scope ? { [SCOPE_LABEL]: this.options.scope } : {}) },
-      env: {}, storage: [], exposePorts: [],
+      env: {}, storage: [], exposePorts: this.desktop ? [DESKTOP_VIEWER_PORT] : [],
       // Give the local background-job probe a minute of grace before provider
       // auto-pause. The backstop still bounds cost if the runner disappears.
       lifecycle: {
         ...(this.provider.id === "daytona" && this.provider.blocks?.pause
           ? { autoPauseMinutes: Math.max(1, Math.ceil(this.options.idlePauseMs / 60_000)) + 1, autoStopMinutes: 0 }
           : { autoStopMinutes: 60 }),
-        autoDeleteMinutes: this.options.keepDays * 1440,
+        autoDeleteMinutes: this.options.persistent ? -1 : this.options.keepDays * 1440,
       },
     }
   }
