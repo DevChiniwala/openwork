@@ -192,6 +192,34 @@ test("an admin replaces personal keys with one shared key only by saving a worki
   assert.deepEqual([...(field(after, "access", "memberIds") as string[])].sort(), [owner.memberId, riley.memberId].sort())
 })
 
+test("the agent finds the private key request by search and from a connection that needs a key", async () => {
+  for (const query of ["add API key to connection", "fix rejected connection key", "replace connector API key"]) {
+    const found = await den.callMcpTool(ownerToken, "search_capabilities", { query, limit: 5 })
+    assert.equal(field(list(field(found.body, "matches"))[0], "name"), "postMcpConnectionsCredentialPrompt", `${query}: ${found.text}`)
+  }
+
+  const shared = await den.as(owner, orgId)("POST", "/v1/mcp-connections", { name: "Ledger keyhole", url: `${service.url}/ledger/mcp`, authType: "apikey", credentialMode: "shared", access: { orgWide: true, memberIds: [], teamIds: [] } })
+  const personal = await den.as(owner, orgId)("POST", "/v1/mcp-connections", { name: "Roster keyhole", url: `${service.url}/roster/mcp`, authType: "apikey", credentialMode: "per_member", access: { orgWide: true, memberIds: [], teamIds: [] } })
+  for (const [created, token, name, scope, type] of [
+    [shared, ownerToken, "Ledger keyhole", "shared", "mcp_connection_key"],
+    [personal, rileyToken, "Roster keyhole", "personal", "mcp_connection_member_key"],
+  ] as const) {
+    assert.equal(created.status, 200, summary(created))
+    const id = text(field(created.body, "id"), "connection id")
+    const found = await den.callMcpTool(token, "search_capabilities", { query: name, limit: 5 })
+    const status = list(field(found.body, "matches")).find((match) => field(match, "connectionStatus", "connectionId") === id)
+    assert.ok(status, found.text)
+    assert.match(String(status.hint), /connectionStatus\.action\.askForKey/)
+    const askForKey = field(status, "connectionStatus", "action", "askForKey")
+    assert.deepEqual(askForKey, { capability: "postMcpConnectionsCredentialPrompt", path: { connectionId: id }, body: { scope } })
+
+    // Executed exactly as given, it shows the person the private field.
+    const asked = await den.callMcpTool(token, "execute_capability", { name: field(askForKey, "capability"), path: field(askForKey, "path"), body: field(askForKey, "body") })
+    assert.equal(asked.isError, false, asked.raw)
+    assert.deepEqual(field(prompt(asked.body), "target"), { type, connectionId: id })
+  }
+})
+
 test("Den ends the sessions it opens, and a service without DELETE support keeps working", () => {
   const deletes = service.wire.filter((entry) => entry.rpcMethod === "DELETE")
   assert.ok(deletes.length > 0, "no session was released")

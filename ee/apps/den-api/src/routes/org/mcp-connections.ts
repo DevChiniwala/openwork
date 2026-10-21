@@ -3415,6 +3415,7 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
     describeRoute({
       tags: ["Capability Sources"],
       summary: "Ask a person to enter the API key of an existing MCP connection",
+      ...{ "x-mcp-search-aliases": ["add API key to connection", "enter connection key privately", "fix rejected connection key", "replace connector API key", "finish connector setup key", "switch connection to one shared key"] },
       description: "Shows the person a private field in OpenWork for an existing API-key connection, so the key never passes through you. Use it to finish a connection still waiting for its shared key, to let the caller add or replace their own key (scope personal), or to let an owner or admin replace each person's own key with one shared key (scope shared on a personal-key connection; its ID and access stay, and nothing changes until they save a key that works). Changes nothing by itself.",
       responses: {
         200: jsonResponse("A private field is shown to the person.", credentialPromptRequestResponseSchema),

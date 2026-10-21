@@ -220,6 +220,26 @@ export type ExternalConnectionStatus = {
     surface: "openwork_your_connections" | "openwork_organization_connections" | "provider_admin_console" | "network_infrastructure" | "openwork_support"
     retry: "search_capabilities"
     url?: string
+    /** For a missing or rejected API key: the capability that shows the person a private key field in OpenWork. */
+    askForKey?: ConnectionKeyRequest
+  }
+}
+
+type ConnectionKeyRequest = {
+  capability: typeof CONNECTION_KEY_REQUEST_CAPABILITY
+  path: { connectionId: string }
+  body: { scope: "shared" | "personal" }
+}
+
+/** Den's own operation (POST /v1/mcp-connections/:connectionId/credential-prompt) as agents call it. */
+export const CONNECTION_KEY_REQUEST_CAPABILITY = "postMcpConnectionsCredentialPrompt"
+const ASK_FOR_KEY_HINT = "Ask the person for the key privately: execute connectionStatus.action.askForKey (its capability, path and body), then end your turn; OpenWork continues once the key is saved. Never request a key in chat or tool arguments."
+
+function connectionKeyRequest(connection: ConnectionStatusIdentity): ConnectionKeyRequest {
+  return {
+    capability: CONNECTION_KEY_REQUEST_CAPABILITY,
+    path: { connectionId: connection.id },
+    body: { scope: usesMemberApiKey(connection) ? "personal" : "shared" },
   }
 }
 
@@ -583,6 +603,8 @@ export function buildExternalConnectionStatus(input: {
           label: `${actionVerb} ${connectionName}`,
           surface,
           retry: "search_capabilities",
+          // A missing or rejected key can be entered privately in chat.
+          ...(input.connection.authType === "apikey" ? { askForKey: connectionKeyRequest(input.connection) } : {}),
         },
       }),
   }
@@ -763,7 +785,7 @@ async function probeExternalMcpConnection(input: {
           summary: `[${connection.name}] ${gap.message}`,
           status: "needs_connection",
           hint: usesMemberApiKey(connection)
-            ? "Ask the user to open the member settings link in connectionStatus.action.url and add or replace their own key in Your Connections, then search again. Never request a key in chat or tool arguments. This is not an OAuth sign-in flow."
+            ? `${ASK_FOR_KEY_HINT} Clients that cannot show the field: give the person connectionStatus.action.url. This is not an OAuth sign-in flow.`
             : `Ask the user to click Connect on the "${connection.name}" card in OpenWork desktop, then search again. In clients without inline connection controls, use OpenWork Cloud -> Your Connections. ${CONNECTION_CARD_HINT}`,
           connectionStatus: gap.status,
         }))
@@ -780,7 +802,9 @@ async function probeExternalMcpConnection(input: {
         score,
         summary: `[${connection.name}] Available to your organization, but an admin hasn't connected it yet.`,
         status: "needs_connection",
-        hint: `Ask an org admin to open the OpenWork Cloud dashboard -> Connections and connect "${connection.name}", then search again. ${CONNECTION_CARD_HINT}`,
+        hint: connection.authType === "apikey"
+          ? `${ASK_FOR_KEY_HINT} Only owners and admins can enter the shared key; anyone else asks one to open connectionStatus.action.url.`
+          : `Ask an org admin to open the OpenWork Cloud dashboard -> Connections and connect "${connection.name}", then search again. ${CONNECTION_CARD_HINT}`,
         connectionStatus: buildExternalConnectionStatus({ connection, state: "needs_connection", errorCode: "not_connected", message }),
       }))
     }
@@ -837,7 +861,9 @@ async function probeExternalMcpConnection(input: {
         score,
         summary: `[${connection.name}] This connection is set up but returned an error (${message}).`,
         status: "error",
-        hint: `${externalConnectionErrorHint(connection.name, error, message, connection.credentialMode)} ${CONNECTION_CARD_HINT}`,
+        hint: connection.authType === "apikey" && externalMcpAuthErrorCode(error, message)
+          ? `The saved key for "${connection.name}" was rejected. ${ASK_FOR_KEY_HINT}`
+          : `${externalConnectionErrorHint(connection.name, error, message, connection.credentialMode)} ${CONNECTION_CARD_HINT}`,
         connectionStatus: toolDiscoveryFailureStatus(connection, error),
       }))
     }
@@ -1252,7 +1278,7 @@ async function prepareExternalCapability(input: {
         ok: false,
         error: "needs_connection",
         message: usesMemberApiKey(connection)
-          ? gap.message
+          ? `${gap.message} ${ASK_FOR_KEY_HINT}`
           : `${gap.message} Open OpenWork Cloud -> Your Connections and click Connect on "${connection.name}".`,
         connectionStatus: gap.status,
       }
@@ -1263,7 +1289,7 @@ async function prepareExternalCapability(input: {
     return {
       ok: false,
       error: "connection_not_connected",
-      message,
+      message: connection.authType === "apikey" ? `${message} ${ASK_FOR_KEY_HINT}` : message,
       connectionStatus: buildExternalConnectionStatus({ connection, state: "needs_connection", errorCode: "not_connected", message }),
     }
   }
@@ -1598,7 +1624,9 @@ export async function executeExternalCapability(input: {
         error: diagnostic.phase === "PROVIDER_EXECUTION" || diagnostic.phase === "PROVIDER_AUTHORIZATION"
           ? "provider_error"
           : "connection_failed",
-        message: diagnosticAgentMessage(diagnostic),
+        message: authErrorCode && connection.authType === "apikey"
+          ? `${diagnosticAgentMessage(diagnostic)} ${ASK_FOR_KEY_HINT}`
+          : diagnosticAgentMessage(diagnostic),
         ...diagnosticAgentFields(diagnostic),
         ...(schemaGuidance ? { schemaGuidance } : {}),
         ...(authErrorCode
@@ -1618,7 +1646,7 @@ export async function executeExternalCapability(input: {
       return {
         ok: false,
         error: "connection_failed",
-        message,
+        message: connection.authType === "apikey" ? `${message} ${ASK_FOR_KEY_HINT}` : message,
         ...(schemaGuidance ? { schemaGuidance } : {}),
         connectionStatus: buildExternalConnectionStatus({
           connection,
