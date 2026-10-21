@@ -42,7 +42,6 @@ final class SessionRuntime {
         self.policy = policy; self.clock = clock
         controls.onPause = { [weak self] reason in self?.pause(reason) }
         controls.onAvailability = { [weak self] available in self?.desktopAvailability(available) }
-        controls.onUserInteraction = { [weak self] in self?.personInteracted() }
         controls.onResume = { [weak self] in Task { await self?.resume() } }
         controls.onStop = { [weak self] in self?.close(stoppedByPerson: true) }
         controls.onTick = { [weak self] in self?.expire() }
@@ -522,17 +521,6 @@ final class SessionRuntime {
         // Sleep/idle availability is technical, not the person's Take over.
         // Preserve any real pause, and require fresh validated reads on return.
         if session?.paused != true { controls.update(available ? "Refreshing the selected window…" : "Waiting for the desktop…", paused: false) }
-    }
-    private func personInteracted() {
-        guard session != nil else { return }
-        // Person input always hands control back; only an explicit Continue resumes.
-        // Embedded Continue lives in another process: its click must not renew
-        // the interruption delay of an already manually paused session.
-        if SessionControls.embedded && session?.paused == true && resumingSessionID != session?.id { return }
-        // Retain the next human action, not the temporary interaction message.
-        pause("You have control. Click Continue when you are ready.")
-        session?.interactionDeadline = now + 1
-        controls.update("You have control. Waiting for your input to finish…", paused: true, canContinue: false)
     }
     func pause(_ reason: String, announce: Bool = true) {
         guard let current = session, !current.paused || resumingSessionID == current.id else { return }

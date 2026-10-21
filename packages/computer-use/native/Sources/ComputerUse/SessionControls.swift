@@ -107,7 +107,6 @@ final class SessionControls: NSObject {
     private var status: NSTextField?
     private var toggle: NSButton?
     private var expiry: NSTextField?
-    private var monitor: Any?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var stopObserver: NSObjectProtocol?
     private var timer: Timer?
@@ -115,7 +114,6 @@ final class SessionControls: NSObject {
     var isVisible: Bool { panel?.isVisible == true }
     private var desktopAvailable = true
     var onAvailability: ((Bool) -> Void)?
-    var onUserInteraction: (() -> Void)?
     var onPause: ((String) -> Void)?
     var onResume: (() -> Void)?
     var onStop: (() -> Void)?
@@ -193,19 +191,8 @@ final class SessionControls: NSObject {
         item.button?.action = #selector(showPanel)
         statusItem = item
         }
-        // Passive pointer motion (including activation-generated motion) is not takeover.
-        // Clicks, typing, scrolling and dragging on the selected app stop agent input.
-        // Using another app (such as the conversation while the agent works) does not:
-        // the agent brings the selected window back when it next acts.
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown,
-            .keyDown, .scrollWheel, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            guard let self else { return }
-            // Our own postToPid events cannot be mistaken for a person taking over.
-            if event.cgEvent?.getIntegerValueField(.eventSourceUnixProcessID) == Int64(ProcessInfo.processInfo.processIdentifier) { return }
-            let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.pid
-            let counts = event.type == .keyDown ? frontmost : mode == .control ? Self.pointerOnApp(app.pid, frontmost: frontmost) : frontmost
-            if counts { self.onUserInteraction?() }
-        }
+        // The person's own clicks, typing and app switches never pause the agent: it brings the
+        // selected window back before it acts. Only Take over or Stop hands control back.
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
             workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -226,27 +213,6 @@ final class SessionControls: NSObject {
         // Keep expiry and screenshot age current while the menu-bar controls are open.
         if Self.embedded, let timer { RunLoop.main.add(timer, forMode: .common) }
     }
-    /// Whether the pointer is over one of the selected app's windows (or the menu bar
-    /// while it is frontmost). Unknown geometry counts, so a missed read never hides a takeover.
-    private static func pointerOnApp(_ pid: pid_t, frontmost: Bool) -> Bool {
-        let mouse = NSEvent.mouseLocation
-        let point = CGPoint(x: mouse.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - mouse.y)
-        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return true }
-        let own = ProcessInfo.processInfo.processIdentifier
-        let menuLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
-        // Front to back: the first window under the pointer receives the input.
-        for window in windows {
-            guard let bounds = (window[kCGWindowBounds as String] as? [String: Any]).flatMap({ CGRect(dictionaryRepresentation: $0 as CFDictionary) }),
-                  bounds.contains(point) else { continue }
-            let owner = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
-            if owner == own { continue }
-            if owner == pid { return true }
-            if (window[kCGWindowLayer as String] as? NSNumber)?.intValue == menuLevel { return frontmost }
-            return false
-        }
-        return false
-    }
-
     func update(_ message: String, paused: Bool, canContinue: Bool = true) {
         publish(["phase": paused ? "paused" : "working", "status": message, "canContinue": canContinue])
         self.canContinue = canContinue
@@ -268,7 +234,6 @@ final class SessionControls: NSObject {
         status = nil; toggle = nil; expiry = nil; isPaused = false
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }; statusItem = nil
         panel?.close(); panel = nil; timer?.invalidate(); timer = nil
-        if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil
         for observer in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         workspaceObservers.removeAll()
         if let stopObserver { DistributedNotificationCenter.default().removeObserver(stopObserver) }; stopObserver = nil
