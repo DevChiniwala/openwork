@@ -26,27 +26,20 @@ config:
   #   "false" off for everyone; /admin shows "Set by deployment config"
   # The /admin kill switch still turns a feature off, even when locked on.
   features:
-    cloudAgentGateway: ""         # default off · Choose and run cloud-agent models through the organization's AI Gateway access instead of the runner's shared model credentials.
+    nativeDictation: ""           # default off · Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.
+    organizationGrants: ""        # default off · Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.
     liveProviderSync: ""          # default off · Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.
-    offlineRecovery: ""           # default off · Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations.
-    secureSecretFields: ""        # default off · When an agent sets up a connection, plugin or AI Gateway provider that needs keys, people enter them in private fields in the chat and the agent continues once they are saved. Key fields across OpenWork and OpenWork Cloud can be shown while typing and show saved keys as Replace rows.
-    modelsAnalyticsUi: ""         # default off · Organization admins can view Models & usage analytics and shared model usage limits. Deprecated 2026-10-14: UI hidden behind modelsAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it.
-    taskAnalyticsUi: ""           # default off · Members with analytics access can view task activity and consumption, and admins can configure analytics integrations. Deprecated 2026-10-14: UI hidden behind taskAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it.
     managedDeployments: ""        # default off (cloud only) · Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments.
-    slackAssistant: ""            # default off · Answers Slack mentions and DMs for the organization after the Slack connector is set up.
-    workbotTeamLinks: ""          # default off · Members with team management access can open their organization's Workbot settings and app connections from Workbot.
-    workbotFirstRun: ""           # default off · People signing in to Workbot choose or create their workspace without leaving sign-in, with a clear next action when Workbot is unavailable.
-    workbotInlineConnect: ""      # default off · Members connect their assigned apps directly from Workbot and return to the same view after consent.
     workbotDocuments: ""          # default off · Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive.
-    workbotWorkspaceAssistant: "" # default off · Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar.
-    workbotGuidedNavigation: ""   # default off · Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Needs the workspace assistant.
+    workbotDocumentEditing: ""    # default off · Members choose Edit from a document preview. Full Office editing starts their Cloud workspace only when requested. Requires Workbot Documents.
+    workbotWorkspaceAssistant: "" # default off · Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document.
     automationCalendar: ""        # default off · Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.
-    engineV2ForceUpgrade: ""      # default off · Desktop and web instances copy chats with a backup and switch to OpenCode v2 automatically when idle, without asking for consent.
-    engineV2Upgrade: ""           # default off · Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines.
-    remoteSessionEvents: ""       # default off · MCP clients can subscribe to changes in their remote session receipts and read the current state after reconnecting.
+    engineV2ForceUpgrade: ""      # default off · Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle.
+    computerUse: ""               # default off · Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.
+    browserDemonstrations: ""     # default off · Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.
+    browserFloatingView: ""       # default off · The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.
+    remoteComputers: ""           # default off · Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Configured and conversation-owned desktops open directly when enabled, including follow-ups and internal session renewal. Take over and Stop stay available.
     remoteSessionSubagents: ""    # default off · A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.
-    headlessDurableTurns: ""      # default off · Workbot, Slack and Automations answers keep going after a restart, deploy or server failure, without waiting for someone to reopen the chat.
-    headlessStepTurns: ""         # default off · Workbot, Slack and Automations answers keep going through OpenWork updates instead of restarting their current step.
   # END GENERATED features
   tenancy:
     mode: single_org

@@ -78,6 +78,15 @@ const configSchema = z.object({
   HEADLESS_FILES_MAX_BYTES: z.coerce.number().int().min(1024).default(100 * 1024 * 1024),
   /** How much one conversation may keep in total. */
   HEADLESS_FILES_MAX_SESSION_BYTES: z.coerce.number().int().min(1024).default(5 * 1024 * 1024 * 1024),
+  /**
+   * Session storage (README "Long conversations"): seal old turns into segments and move large tool outputs to the
+   * files bucket, so the hot database stays small. Off by default; reading sealed history and large outputs always
+   * works whatever this says. Needs HEADLESS_FILES (s3 on cells).
+   */
+  HEADLESS_SEGMENTS: z.enum(["on", "off"]).default("off"),
+  HEADLESS_HOT_LIMIT_BYTES: z.coerce.number().int().min(65_536).default(32 * 1024 * 1024),
+  HEADLESS_SEGMENT_TARGET_BYTES: z.coerce.number().int().min(1024).default(8 * 1024 * 1024),
+  HEADLESS_LARGE_BODY_BYTES: z.coerce.number().int().min(1024).default(8192),
   HEADLESS_S3_ENDPOINT: safeUrl.optional(),
   HEADLESS_S3_REGION: z.string().min(1).default("auto"),
   HEADLESS_S3_BUCKET: z.string().min(1).optional(),
@@ -89,6 +98,8 @@ const configSchema = z.object({
   DAYTONA_API_KEY: z.string().min(1).optional(),
   DAYTONA_API_URL: safeUrl.default("https://app.daytona.io/api"),
   DAYTONA_TARGET: z.string().min(1).optional(),
+  HEADLESS_COMPUTER_CLASS: z.enum(["container", "linux-vm"]).default("container"),
+  HEADLESS_COMPUTER_DESKTOP: z.enum(["true", "false"]).default("false"),
   HEADLESS_COMPUTER_SCOPE: z.string().min(1).optional(),
   FREESTYLE_API_KEY: z
     .string()
@@ -143,6 +154,8 @@ export type Config = {
     | { kind: "disk"; directory: string }
     | { kind: "s3"; endpoint: string; region: string; bucket: string; accessKeyId: string; secretAccessKey: string; forcePathStyle: boolean }
   fileLimits: { maxFileBytes: number; maxSessionBytes: number }
+  /** Sealing and large bodies (storage/); `segments` false is the default and the kill switch. */
+  storage: { segments: boolean; hotLimitBytes: number; segmentTargetBytes: number; largeBodyBytes: number }
   computer?: ComputerProviderConfig & { scope?: string; idlePauseMs: number; keepDays: number }
   /** Where error reports go; unset (no DSN) sends none. */
   errorReporting?: ErrorReportingConfig
@@ -186,6 +199,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     systemPrompt: value.HEADLESS_SYSTEM_PROMPT,
     files: filesConfig(value),
     fileLimits: { maxFileBytes: value.HEADLESS_FILES_MAX_BYTES, maxSessionBytes: value.HEADLESS_FILES_MAX_SESSION_BYTES },
+    storage: storageConfig(value),
     computer: computerConfig(value),
     errorReporting: errorReportingConfig(value),
     selfResume: selfResumeConfig(value),
@@ -201,6 +215,18 @@ function selfResumeConfig(value: z.infer<typeof configSchema>): Config["selfResu
     throw new Error(`Invalid headless-runner configuration:\nself-resume needs HEADLESS_DEN_API_URL, HEADLESS_DEN_CALLBACK_TOKEN and HEADLESS_GRANT_KEY together; missing ${missing.join(", ")}`)
   }
   return { denApiUrl, callbackToken, grantKey }
+}
+
+function storageConfig(value: z.infer<typeof configSchema>): Config["storage"] {
+  if (value.HEADLESS_SEGMENTS === "on" && value.HEADLESS_FILES === "off") {
+    throw new Error("Invalid headless-runner configuration:\nHEADLESS_SEGMENTS=on needs HEADLESS_FILES=s3 or disk (sealed history and large outputs live there)")
+  }
+  return {
+    segments: value.HEADLESS_SEGMENTS === "on",
+    hotLimitBytes: value.HEADLESS_HOT_LIMIT_BYTES,
+    segmentTargetBytes: value.HEADLESS_SEGMENT_TARGET_BYTES,
+    largeBodyBytes: value.HEADLESS_LARGE_BODY_BYTES,
+  }
 }
 
 function errorReportingConfig(value: z.infer<typeof configSchema>): Config["errorReporting"] {
@@ -219,11 +245,14 @@ function computerConfig(value: z.infer<typeof configSchema>): Config["computer"]
   const apiKey = value.HEADLESS_COMPUTER === "daytona" ? value.DAYTONA_API_KEY : value.FREESTYLE_API_KEY
   if (!apiKey) throw new Error(`Invalid headless-runner configuration: HEADLESS_COMPUTER=${value.HEADLESS_COMPUTER} needs ${value.HEADLESS_COMPUTER === "daytona" ? "DAYTONA_API_KEY" : "FREESTYLE_API_KEY"}`)
   if (value.HEADLESS_COMPUTER === "daytona" && !value.HEADLESS_COMPUTER_SNAPSHOT) throw new Error("Daytona computers need HEADLESS_COMPUTER_SNAPSHOT (snapshot:build:daytona)")
+  if (value.HEADLESS_COMPUTER === "daytona" && value.HEADLESS_COMPUTER_DESKTOP === "true" && value.HEADLESS_COMPUTER_CLASS !== "linux-vm") throw new Error("Daytona desktop computers require HEADLESS_COMPUTER_CLASS=linux-vm for memory-preserving pause and snapshots")
   return {
     kind: value.HEADLESS_COMPUTER,
     apiKey,
     apiUrl: value.DAYTONA_API_URL,
     target: value.DAYTONA_TARGET,
+    sandboxClass: value.HEADLESS_COMPUTER_CLASS,
+    desktop: value.HEADLESS_COMPUTER_DESKTOP === "true",
     scope: value.HEADLESS_COMPUTER_SCOPE,
     snapshot: value.HEADLESS_COMPUTER_SNAPSHOT,
     idlePauseMs: value.HEADLESS_COMPUTER_PAUSE_SECONDS * 1000,

@@ -6,6 +6,7 @@ This folder owns admin-only Den API surfaces.
 
 - `index.ts`: registers the admin routes
 - `free-auto-usage.ts`: free Auto usage across all organizations (`GET /v1/admin/free-auto/usage`)
+- `opportunities.ts`: recent organization adoption, verified non-personal email signals, and active Cloud skill/MCP counts (`GET /v1/admin/opportunities`)
 
 ## Current routes
 

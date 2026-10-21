@@ -56,4 +56,25 @@ test("Workbot offers a document it mentions and the conversation stays open besi
     evidence.recordAssertionEvidence("Den still decides access when a linked document is chosen", world.opened().join(","), !world.opened().includes("file_private"));
     await user.screenshot();
   });
+  await step("before: a reply that used Workbot's computer offers nothing without guided navigation", async () => {
+    await user.navigate(`${world.url}?computer=on`);
+    await user.type({ role: "textbox", label: "Message Workbot" }, "Check the budget site on your computer");
+    await user.press("Enter");
+    await user.see({ text: "I checked the budget site on my computer." });
+    await user.notSee({ role: "button", label: "Open Computer" });
+    await user.screenshot();
+  });
+  await step("after: the latest reply that used the computer opens it with the same conversation beside it", async () => {
+    await user.navigate(`${world.url}?guided=on&computer=on`);
+    await user.see({ role: "button", label: "Open Computer" });
+    evidence.recordAssertionEvidence("Only the newest reply that used the computer offers it", "One Open Computer action", (await probe.dom("[data-workbot-computer-offer]")).elements.length === 1);
+    await user.screenshot();
+    await user.click({ role: "button", label: "Open Computer" });
+    const chat = await probe.eventually(() => probe.dom("[data-workbot-workspace-chat]"), { within: 3000, label: "the conversation opens beside the computer", until: layout => layout.elements.length === 1 });
+    await user.see({ text: "Check the budget site on your computer" });
+    await user.notSee({ role: "button", label: "Open Computer" });
+    expect(await probe.url()).toContain("/computer");
+    evidence.recordAssertionEvidence("The same conversation is open beside Workbot's computer", "Earlier question visible in the floating chat on /computer", chat.elements.length === 1);
+    await user.screenshot();
+  });
 });

@@ -415,8 +415,9 @@ async function prepareSharedElectronResources(repoRoot: string, log: (message: s
     prepareSharedResourcesPromise = (async () => {
       const desktopRoot = join(repoRoot, "apps", "desktop");
       const scriptsRoot = join(desktopRoot, "scripts");
-      log("Preparing shared Electron sidecars once for local eval surfaces...");
+      log("Preparing shared Electron sidecars/helpers once for local eval surfaces...");
       await runPrepareScript(join(scriptsRoot, "prepare-sidecar.mjs"), join(desktopRoot, "resources", "sidecars"), desktopRoot);
+      await runPrepareScript(join(scriptsRoot, "prepare-computer-use-helper.mjs"), join(desktopRoot, "resources", "helpers"), desktopRoot);
     })();
   }
   await prepareSharedResourcesPromise;
@@ -537,6 +538,9 @@ export function electronSurfaceEnv(
     OPENWORK_DEV_MODE: "1",
     OPENWORK_ENV_STORE: paths.envStorePath,
     OPENCODE_CONFIG_DIR: paths.opencodeConfigDir,
+    // The bundled engine resolves its discovery home separately from HOME.
+    // Do not read/install into the runner's or developer's real ~/.opencode.
+    OPENCODE_TEST_HOME: paths.homeDir,
     VITE_DISABLE_OPENWORK_MODELS: "1",
     OPENWORK_ELECTRON_APP_IDENTIFIER: options.appIdentifier,
     OPENWORK_ELECTRON_APP_NAME: options.appName,

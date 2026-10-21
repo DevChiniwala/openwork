@@ -17,6 +17,7 @@ test("a member asks about an open document and calendar without losing a draft",
     await user.click({ role: "button", label: "Open workspace navigation" });
     await user.click({ role: "button", label: "Open Project brief.txt" });
     await user.see({ role: "textbox", label: "Document text" });
+    await user.click({ role: "button", label: /^Edit$/ });
     await user.type({ role: "textbox", label: "Document text" }, "Private unsaved draft", { replace: true });
     await user.see({ testId: "workbot-view-context", text: /Unsaved edits excluded/ });
     await user.type({ role: "textbox", label: "Message Workbot" }, "Summarize this");

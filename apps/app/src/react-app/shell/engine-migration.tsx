@@ -27,8 +27,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "@/components/ui/sonner";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { resolveExtensionIconSrc } from "@/react-app/design-system/extension-icon-src";
-import { useOrgFeature, useOrgFeatureState } from "@/react-app/domains/cloud/use-org-feature";
+import { useOrgFeatureState } from "@/react-app/domains/cloud/use-org-feature";
 import { resolveOpenworkConnection } from "./openwork-connection";
 
 /**
@@ -215,8 +214,8 @@ export async function confirmEngineMigration() {
   try {
     const status = await consent.client.migrateOpencodeHistory({ allowActiveSessions: consent.runningTasks > 0 });
     useEngineMigrationStore.setState({ consent: null });
-    // Only the flag-gated invitation uses upgrade mode. Manual migrations and
-    // reload discovery retain their dialog and explicit engine-switch decision.
+    // Upgrade mode comes from a switch to v2 that first needs chats copied. Manual
+    // migrations and reload discovery retain their dialog and explicit engine-switch decision.
     presentMigration(consent.client, status, consent.mode === "upgrade" ? "banner" : "dialog", consent.mode === "upgrade");
   } catch (cause) {
     const running = refusedForRunningTasks(cause);
@@ -715,36 +714,8 @@ function useRunningMigrationDiscovery(enabled: boolean) {
   }, [enabled]);
 }
 
-const UPGRADE_SNOOZE_KEY = "openwork.engineUpgrade.snoozedUntil";
-const UPGRADE_SNOOZE_MS = 3 * 24 * 60 * 60_000;
-
-function readUpgradeSnooze(): number {
-  try {
-    const value = Number(window.localStorage.getItem(UPGRADE_SNOOZE_KEY));
-    return Number.isFinite(value) ? value : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function snoozeUpgrade(now = Date.now()) {
-  try { window.localStorage.setItem(UPGRADE_SNOOZE_KEY, String(now + UPGRADE_SNOOZE_MS)); } catch { /* best effort */ }
-}
-
-/** Offer the upgrade only to people still chatting on v1 who have v1 chats to bring along. */
-export function shouldOfferEngineUpgrade(
-  status: Pick<EngineV2PreviewStatus, "enabled" | "chatRouting" | "v1HistoryAvailable" | "migration">,
-  options: { now: number; snoozedUntil: number },
-): boolean {
-  return selectedChatEngine(status) === "v1"
-    && status.v1HistoryAvailable === true
-    && status.migration?.state !== "running"
-    && options.snoozedUntil <= options.now;
-}
-
 type EngineUpgradeFeatures = {
   ready: boolean;
-  offer: boolean;
   upgrade: boolean;
 };
 
@@ -812,63 +783,6 @@ function useDesktopEngineForcePolicy(features: EngineUpgradeFeatures) {
   }, [ready, upgrade]);
 }
 
-type UpgradeCandidate = { client: EngineMigrationClient; status: EngineV2PreviewStatus };
-
-/** Reads engine status once the feature is on, and again whenever the engine changes. */
-function useEngineUpgradeCandidate(enabled: boolean): UpgradeCandidate | null {
-  const [candidate, setCandidate] = useState<UpgradeCandidate | null>(null);
-  useEffect(() => {
-    if (!enabled) {
-      setCandidate(null);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const connection = await resolveOpenworkConnection();
-        if (cancelled || !connection.normalizedBaseUrl || !connection.resolvedToken) return;
-        const client = createOpenworkServerClient({
-          baseUrl: connection.normalizedBaseUrl,
-          token: connection.resolvedToken,
-          hostToken: connection.resolvedHostToken,
-        });
-        const status = await client.getEngineV2PreviewStatus();
-        if (!cancelled) setCandidate({ client, status });
-      } catch {
-        // No notice when the local server can't be read; Advanced settings still works.
-      }
-    };
-    void load();
-    const reload = () => { void load(); };
-    window.addEventListener("openwork-engine-changed", reload);
-    return () => { cancelled = true; window.removeEventListener("openwork-engine-changed", reload); };
-  }, [enabled]);
-  return candidate;
-}
-
-function EngineUpgradeNotice(props: { candidate: UpgradeCandidate; onLater: () => void }) {
-  return (
-    <MigrationFloatingRegion>
-      <div
-        role="status"
-        data-testid="engine-upgrade-notice"
-        className="pointer-events-auto flex max-w-xl items-center gap-3 rounded-2xl bg-popover px-4 py-3 text-popover-foreground shadow-[var(--dls-card-shadow)] ring-1 ring-foreground/5"
-      >
-        <img src={resolveExtensionIconSrc("/openwork-mark.svg")} alt="" className="size-4 shrink-0 opacity-80 dark:invert" />
-        <p className="min-w-0 flex-1 text-sm">{t("engine_migration.upgrade_notice")}</p>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button type="button" size="xs" variant="ghost" onClick={props.onLater}>
-            {t("engine_migration.upgrade_later")}
-          </Button>
-          <Button type="button" size="xs" onClick={() => requestEngineMigration(props.candidate.client, "upgrade")}>
-            {t("engine_migration.upgrade")}
-          </Button>
-        </div>
-      </div>
-    </MigrationFloatingRegion>
-  );
-}
-
 export function EngineMigrationOverlay(props: { discoverRunningMigration?: boolean }) {
   const desktop = isDesktopRuntime();
   const consent = useEngineMigrationStore((state) => state.consent);
@@ -878,26 +792,14 @@ export function EngineMigrationOverlay(props: { discoverRunningMigration?: boole
   const forceUpgrade = useOrgFeatureState("engineV2ForceUpgrade", { desktopOnly: true });
   const features = {
     ready: forceUpgrade.resolved,
-    offer: useOrgFeature("engineV2Upgrade", { desktopOnly: true }),
     upgrade: forceUpgrade.enabled,
   };
   useDesktopEngineForcePolicy(features);
   useRunningMigrationDiscovery(desktop && props.discoverRunningMigration !== false);
-  const candidate = useEngineUpgradeCandidate(features.offer && !features.upgrade);
-  const [snoozedUntil, setSnoozedUntil] = useState(readUpgradeSnooze);
   // Local-engine consent and progress never apply to the web runtime, even if the store is populated.
   if (!desktop) return null;
-  const offerUpgrade = features.offer && !features.upgrade
-    && candidate !== null && !consent && !progress && !switchPrompt
-    && shouldOfferEngineUpgrade(candidate.status, { now: Date.now(), snoozedUntil });
   return (
     <>
-      {offerUpgrade ? (
-        <EngineUpgradeNotice
-          candidate={candidate}
-          onLater={() => { snoozeUpgrade(); setSnoozedUntil(readUpgradeSnooze()); }}
-        />
-      ) : null}
       {consent && !(consent.mode === "upgrade" && features.upgrade)
         ? <MigrationConsentDialog consent={consent} /> : null}
       {progress?.view === "dialog" ? <MigrationProgressDialog progress={progress} /> : null}
