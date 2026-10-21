@@ -9,6 +9,11 @@ const unauthorized = spec.world(workbotLunaDefaultWorld(true, true, "unauthorize
 const payment = spec.world(workbotLunaDefaultWorld(true, true, "payment_required"), { timeout: 600_000, needs: { placement: "local" }, resources: { surfaces: ["web"], services: ["den"] } });
 const unavailableProvider = spec.world(workbotLunaDefaultWorld(true, true, "unavailable"), { timeout: 600_000, needs: { placement: "local" }, resources: { surfaces: ["web"], services: ["den"] } });
 
+function modelLabel(name: string): RegExp {
+  // Provider marks contribute a leading letter to the option's accessible name.
+  return new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+}
+
 available("an owner gets the Luna default without a feature override and keeps their saved model", async ({ world, user, probe, step, evidence }) => {
   await step("after: the owner sees GPT-6 Luna as the available default without enabling a rollout", async () => {
     await user.navigate(world.settingsUrl);
@@ -32,29 +37,28 @@ available("an owner gets the Luna default without a feature override and keeps t
   });
   await step("the owner keeps an explicit organization model instead of Luna", async () => {
     await user.click({ role: "combobox", label: "Default model" });
-    await user.click({ role: "option", label: /Another model$/ });
+    await user.click({ role: "option", label: modelLabel(world.otherName) });
     await user.click({ role: "button", label: "Save model" });
-    await user.see({ text: "Saved. New messages use Another model." });
+    await user.see({ text: `Saved. New messages use ${world.otherName}.` });
     await user.reload();
-    await user.see({ role: "combobox", label: "Default model" }, { value: "Another model" });
-    evidence.recordAssertionEvidence("An explicit model survives reload", "Another model remains selected", (await probe.dom('[data-testid="workbot-model-picker"] input[value="Another model"]')).elements.length === 1);
+    await user.see({ role: "combobox", label: "Default model" }, { value: world.otherName });
+    evidence.recordAssertionEvidence("An explicit model survives reload", "Another model remains selected", (await probe.dom(`[data-testid="workbot-model-picker"] input[value="${world.otherName}"]`)).elements.length === 1);
     await user.screenshot();
   });
   await step("reopening settings keeps the organization's saved model and readiness information", async () => {
-    await user.navigate(world.settingsUrl);
     await user.reload();
-    await user.see({ role: "combobox", label: "Default model" }, { value: "Another model" });
+    await user.see({ role: "combobox", label: "Default model" }, { value: world.otherName });
     await user.see({ testId: "workbot-default-readiness" }, { text: "Available" });
-    evidence.recordAssertionEvidence("General availability preserves the saved choice", "Another model remains selected and available", (await probe.dom('[data-testid="workbot-model-picker"] input[value="Another model"]')).elements.length === 1);
+    evidence.recordAssertionEvidence("General availability preserves the saved choice", "Another model remains selected and available", (await probe.dom(`[data-testid="workbot-model-picker"] input[value="${world.otherName}"]`)).elements.length === 1);
     await user.screenshot();
   });
 });
 
-unavailable("an owner sees unavailable Luna without a silent fallback", async ({ user, probe, step, evidence }) => {
+unavailable("an owner sees unavailable Luna without a silent fallback", async ({ world, user, probe, step, evidence }) => {
   await step("an unavailable Luna stays named as the default", async () => {
     await user.see({ role: "combobox", label: "Default model" }, { value: "GPT-6 Luna" });
     await user.see({ testId: "workbot-default-readiness" }, { text: "Unavailable" });
-    await user.see({ text: "Workbot can't use GPT-6 Luna right now." });
+    await user.see({ text: /Workbot can't use GPT-6 Luna right now/ });
     evidence.recordAssertionEvidence("The default is unavailable, not replaced", "GPT-6 Luna stays selected and is marked Unavailable", (await probe.dom('[data-testid="workbot-default-readiness"]')).elements.length === 1);
     await user.screenshot();
   });
@@ -67,12 +71,12 @@ unavailable("an owner sees unavailable Luna without a silent fallback", async ({
   });
   await step("the owner explicitly chooses an available model to recover", async () => {
     await user.click({ role: "combobox", label: "Default model" });
-    await user.click({ role: "option", label: /Another model$/ });
+    await user.click({ role: "option", label: modelLabel(world.otherName) });
     await user.click({ role: "button", label: "Save model" });
-    await user.see({ text: "Saved. New messages use Another model." });
-    await user.notSee({ text: "Workbot can't use GPT-6 Luna right now." });
+    await user.see({ text: `Saved. New messages use ${world.otherName}.` });
+    await user.notSee({ text: /Workbot can't use GPT-6 Luna right now/ });
     await user.see({ testId: "workbot-default-readiness" }, { text: "Available" });
-    evidence.recordAssertionEvidence("Recovery is the owner's choice", "Another model was saved explicitly and is available", (await probe.dom('[data-testid="workbot-model-picker"] input[value="Another model"]')).elements.length === 1);
+    evidence.recordAssertionEvidence("Recovery is the owner's choice", "Another model was saved explicitly and is available", (await probe.dom(`[data-testid="workbot-model-picker"] input[value="${world.otherName}"]`)).elements.length === 1);
     await user.screenshot();
   });
 });
