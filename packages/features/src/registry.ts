@@ -175,6 +175,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  connectCapabilityToolShapes: {
+    label: "Connect: MCP-shaped capability search",
+    description: "Capability search returns standard MCP tool schemas and calls use one arguments object. Off keeps the legacy search fields and path/query/body guidance for older Desktop clients.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   connectStandardTools: {
     label: "Connect: standard tools for tool-search clients",
     description: "Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.",

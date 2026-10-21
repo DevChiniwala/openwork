@@ -25,6 +25,18 @@ output schema is registered. Advertising even an unconstrained object schema
 would break those existing calls; a checker should accept this optional-structured
 proxy case rather than require a fabricated result shape or runtime conversion.
 
+## Capability search format rollout
+
+`connectCapabilityToolShapes` is off by default on cloud and self-hosted. Off,
+`search_capabilities` keeps the legacy `summary`, `argumentsSchema`,
+`invocation`, and API `pathParams`/`queryParams`/`bodySchema` fields. Tool schemas,
+initialization instructions, and the guidance resource describe `path/query/body`
+calls. On, matches use MCP `description`/`inputSchema`/`annotations` and guidance
+uses `execute_capability({ name, arguments })`. The same member-aware flag applies
+to bounded connection proxies. Both call forms remain accepted in either state,
+so turning the rollout off does not invalidate calls from cached tool lists.
+The separate `connectStandardTools` full view is unchanged.
+
 ## Full tool view
 
 With `connectStandardTools` on, clients that search large tool lists themselves

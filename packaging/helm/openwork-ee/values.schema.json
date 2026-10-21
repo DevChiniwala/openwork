@@ -188,6 +188,16 @@
               ],
               "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
             },
+            "connectCapabilityToolShapes": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: MCP-shaped capability search: Capability search returns standard MCP tool schemas and calls use one arguments object. Off keeps the legacy search fields and path/query/body guidance for older Desktop clients. Renders DEN_FEATURE_CONNECT_CAPABILITY_TOOL_SHAPES."
+            },
             "connectStandardTools": {
               "enum": [
                 "",

@@ -102,6 +102,46 @@ test("with the flag off, neither the override nor a known client changes Connect
   }
 })
 
+test("capability tool shapes are opt-in and turning them off preserves cached execution calls", async () => {
+  // A released Desktop has no new client metadata: the default response must
+  // still describe arguments in body, not require the newly shipped format.
+  for (const enabled of [undefined, true, false]) {
+    if (enabled !== undefined) {
+      const rollout = await den.setFeature(orgId, "connectCapabilityToolShapes", enabled)
+      assert.ok(rollout.status < 300, summary(rollout))
+    }
+    const listed = await rpc(rileyToken, "tools/list", {})
+    const search = list(field(listed.result, "tools")).find((tool) => tool.name === "search_capabilities")
+    const execute = list(field(listed.result, "tools")).find((tool) => tool.name === "execute_capability")
+    const modern = enabled === true
+    const properties = field(search, "outputSchema", "properties", "matches", "items", "properties")
+    assert.equal(field(properties, modern ? "inputSchema" : "argumentsSchema") !== undefined, true)
+    assert.equal(field(properties, modern ? "argumentsSchema" : "inputSchema"), undefined)
+    assert.match(String(execute?.description), modern ? /inputSchema/ : /argumentsSchema/)
+
+    const found = await rpc(rileyToken, "tools/call", {
+      name: "search_capabilities", arguments: { query: "status page", type: "mcp" },
+    })
+    const match = list(field(found.result, "structuredContent", "matches"))
+      .find((entry) => entry.name === `mcp:${connectionId}:read_status`)
+    assert.ok(match, JSON.stringify(found))
+    assert.equal(typeof match[modern ? "description" : "summary"], "string")
+    assert.equal(match[modern ? "inputSchema" : "argumentsSchema"] !== undefined, true)
+    assert.equal(match[modern ? "argumentsSchema" : "inputSchema"], undefined)
+    if (!modern) assert.deepEqual(match.invocation, { argumentsField: "body" })
+    assert.deepEqual(JSON.parse(resultText(found.result)), field(found.result, "structuredContent"))
+
+    // Both directions survive a rollback or a tools/list cached before rollout.
+    for (const input of [{ body: {} }, { arguments: {} }]) {
+      const executed = await rpc(rileyToken, "tools/call", {
+        name: "execute_capability", arguments: { name: match.name, ...input },
+      })
+      assert.notEqual(field(executed.result, "isError"), true, JSON.stringify(executed))
+      assert.equal(resultText(executed.result), PROOF)
+    }
+  }
+})
+
 test("with the flag on, the full view lists only granted, enabled tools and runs them like execute_capability", async () => {
   const enabled = await den.setFeature(orgId, "connectStandardTools", true)
   assert.ok(enabled.status < 300, summary(enabled))

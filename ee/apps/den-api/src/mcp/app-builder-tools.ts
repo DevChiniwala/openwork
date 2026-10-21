@@ -145,7 +145,7 @@ export function searchMcpApps(apps: McpAppEntry[], query: string, publicOrigin: 
     method: "MCP",
     path: app.serverPath,
     score: scoreText(tokenize(app.title), tokenize(app.description ?? ""), tokens, ["app", "apps", "dashboard"]),
-    summary: `${app.description || app.title} Execute this exact name to open the App; optional arguments become its launch input. It is also its own MCP server at ${mcpUrl(publicOrigin, app.serverPath)}. Its appId for read_app and update_app is ${app.appId}.`,
+    summary: `${app.description || app.title} Execute this exact name to open the App; an optional launch input object is passed to the App. It is also its own MCP server at ${mcpUrl(publicOrigin, app.serverPath)}. Its appId for read_app and update_app is ${app.appId}.`,
     pathParams: [],
     queryParams: [],
     hasBody: true,

@@ -79,21 +79,21 @@ test("a brand-new person signs up through their agent, names a workspace inline,
     expect(names).toContain("postMcpConnections");
     const matches = isRecord(found.json) && Array.isArray(found.json.matches) ? found.json.matches : [];
     const register = matches.find((match) => isRecord(match) && match.name === "postMcpConnections");
-    const inputSchema = isRecord(register) && isRecord(register.inputSchema) ? register.inputSchema : {};
-    const properties = isRecord(inputSchema.properties) ? inputSchema.properties : {};
-    expect(isRecord(register) && typeof register.description === "string").toBe(true);
-    expect(Object.keys(properties)).toContain("body");
+    expect(isRecord(register) && typeof register.summary === "string").toBe(true);
+    expect(isRecord(register) && register.hasBody).toBe(true);
+    expect(isRecord(register) && isRecord(register.bodySchema)).toBe(true);
+    expect(isRecord(register) && "inputSchema" in register).toBe(false);
     evidence.recordAssertionEvidence(
-      "search_capabilities answers for the new workspace with MCP tool shapes",
-      `matches include ${names.slice(0, 6).join(", ")}; postMcpConnections takes ${Object.keys(properties).join(", ")} in its inputSchema`,
-      names.includes("postMcpConnections") && "body" in properties,
+      "search_capabilities keeps the legacy contract for a workspace without rollout overrides",
+      `matches include ${names.slice(0, 6).join(", ")}; postMcpConnections still advertises summary, hasBody and bodySchema without requiring an updated client`,
+      names.includes("postMcpConnections") && isRecord(register) && register.hasBody === true && isRecord(register.bodySchema) && !("inputSchema" in register),
     );
   });
 
   await step("the agent adds a no-sign-in MCP server and hands the person a browser link for it", async () => {
     const created = await world.callTool("execute_capability", {
       name: "postMcpConnections",
-      arguments: { body: { name: "Team tools", url: world.toolsMcpUrl, authType: "none", credentialMode: "shared", access: { orgWide: true } } },
+      body: { name: "Team tools", url: world.toolsMcpUrl, authType: "none", credentialMode: "shared", access: { orgWide: true } },
     });
     const body = created.json;
     const links = isRecord(body) && isRecord(body.links) ? body.links : {};
@@ -113,7 +113,7 @@ test("a brand-new person signs up through their agent, names a workspace inline,
     const found = await world.callTool("search_capabilities", { query: "download desktop app install OpenWork", limit: 20 });
     const installLinks = matchNames(found.json).find((name) => /InstallLinks$/i.test(name));
     expect(installLinks, `matches: ${matchNames(found.json).join(", ")}`).toBeTruthy();
-    const resolved = await world.callTool("execute_capability", { name: installLinks, arguments: { path: { organizationId }, body: {} } });
+    const resolved = await world.callTool("execute_capability", { name: installLinks, path: { organizationId }, body: {} });
     const body = isRecord(resolved.json) ? resolved.json : {};
     installPageUrl = typeof body.installPageUrl === "string" ? body.installPageUrl : "";
     const page = new URL(installPageUrl);
