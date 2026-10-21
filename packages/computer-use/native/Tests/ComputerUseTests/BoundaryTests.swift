@@ -282,7 +282,8 @@ final class BoundaryTests: XCTestCase {
     }
 
     func testHostAppsAndPermissionSurfacesCannotBeControlled() {
-        for id in ["com.differentai.opencoworker", "com.differentai.openwork", "com.apple.systempreferences", "com.apple.Terminal", "com.1password.1password"] {
+        for id in ["com.differentai.opencoworker", "com.differentai.openwork", "com.apple.systempreferences", "com.apple.Terminal", "com.1password.1password",
+                   "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.jetbrains.intellij", "dev.zed.Zed", "com.apple.Automator"] {
             XCTAssertFalse(AppIdentity.isAllowed(bundleID: id), id)
         }
         XCTAssertTrue(AppIdentity.isAllowed(bundleID: "com.apple.TextEdit"))
