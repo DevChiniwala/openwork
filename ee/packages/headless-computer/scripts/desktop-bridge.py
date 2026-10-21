@@ -17,7 +17,7 @@ ROOT = Path('/usr/local/share/openwork-desktop')
 STATE = Path('/var/lib/openwork-desktop')
 ROUTES = {'/health', '/viewer', '/continue', '/stop', '/browser/task', '/computer/task', '/computer/program', '/browser/demonstration'}
 ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root',
-       'LANG': 'C.UTF-8', 'DISPLAY': ':99', 'XAUTHORITY': str(STATE / 'cloud-desktop/.Xauthority')}
+       'LANG': 'C.UTF-8', 'DISPLAY': ':99', 'XAUTHORITY': '/run/openwork-desktop/99/.Xauthority'}
 
 
 def arguments(argv):

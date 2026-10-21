@@ -115,6 +115,24 @@ test("Stop ends the current task and the next turn works without asking again", 
   assert.deepEqual(f.requests, []);
 });
 
+test("changing computers preserves Stop until the next turn", async (t) => {
+  const f = fixture({ remote: true, authority: async () => true });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.setRemoteEnabled(true);
+  await f.control.choose({ sessionId: "chat", targetId: "local" });
+  await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} });
+  await f.control.halt({ sessionId: "chat" });
+  const count = f.calls.length;
+  for (const targetId of ["vm", "local"]) {
+    assert.equal((await f.control.choose({ sessionId: "chat", targetId })).enabled, false);
+    assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} })).code, "not_allowed");
+    assert.equal(f.calls.length, count);
+  }
+  await f.control.endTurn({ sessionId: "chat" });
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} })).ok, true);
+});
+
 test("disable then re-enable during readiness cannot revive an old request", async (t) => {
   const probing = deferred(); const gate = deferred();
   const f = fixture({ readiness: async () => { probing.resolve(); await gate.promise; return { readiness: "ready", detail: "Ready" }; } });
