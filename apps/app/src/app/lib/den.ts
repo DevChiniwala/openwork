@@ -3553,8 +3553,8 @@ export function createDenClient(options: {
     },
 
     /** Deployment switches for people without an organization; missing keys are off. */
-    async getDeploymentFeatures(): Promise<Record<string, boolean>> {
-      const payload = await requestJson<unknown>(baseUrls, "/v1/features", { method: "GET" });
+    async getDeploymentFeatures(options: { cache?: RequestCache } = {}): Promise<Record<string, boolean>> {
+      const payload = await requestJson<unknown>(baseUrls, "/v1/features", { method: "GET", ...(options.cache ? { cache: options.cache } : {}) });
       const features = isRecord(payload) && isRecord(payload.features) ? payload.features : {};
       return Object.fromEntries(Object.entries(features).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"));
     },

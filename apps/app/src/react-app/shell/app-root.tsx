@@ -55,6 +55,8 @@ import { SettingsRoute } from "./settings-route";
 import { ShellConfigProvider } from "./shell-config";
 import { WelcomeRoute } from "./welcome-route";
 import { readOrgSelectionPending } from "../../app/lib/den-sign-in-intent";
+import { readSignInReturnTarget, resolvePostHandoffRoute } from "../../app/lib/den-sign-in-return";
+import { completeSignInReturn } from "../domains/cloud/sign-in-return";
 import {
   resolveDenSigninRedirect,
   shouldRenderPreparedRedirect,
@@ -172,12 +174,21 @@ function DenSigninGate({ children }: DenSigninGateProps) {
         ) return;
         attempts++;
         const settings = readDenSettings();
-        if (settings.authToken?.trim() && readOrgSelectionPending().pending) {
-          // Desktop-initiated sign-in: the org chooser decides — do not race
-          // it to /session while the choice is deliberately open.
-          navigate("/onboarding", { replace: true });
-        } else if (settings.authToken?.trim() && settings.activeOrgId?.trim()) {
-          navigate("/session", { replace: true });
+        // Desktop-initiated sign-in with the choice deliberately open: the org
+        // chooser decides (and returns to the recorded route when it
+        // finishes) — do not race it to /session. With an organization
+        // active, chat opens where sign-in started (`desktopSignInReturn`),
+        // otherwise on the session root.
+        const route = resolvePostHandoffRoute({
+          hasToken: Boolean(settings.authToken?.trim()),
+          activeOrgId: settings.activeOrgId,
+          orgSelectionPending: readOrgSelectionPending().pending,
+          target: readSignInReturnTarget(),
+        });
+        if (route) {
+          if (route.kind !== "return" || !completeSignInReturn(navigate)) {
+            navigate(route.kind === "return" ? "/session" : route.path, { replace: true });
+          }
         } else if (attempts < 10) {
           // Session persistence should already be done, but retry briefly in
           // case another consumer is still applying the handoff result.

@@ -40,6 +40,7 @@ import {
 import { denSettingsChangedEvent } from "@/app/lib/den-session-events";
 import { parseManualAuthInput } from "@/app/lib/manual-auth-input";
 import { clearOrgSelectionPending, readOrgSelectionPending } from "@/app/lib/den-sign-in-intent";
+import { completeSignInReturn } from "./sign-in-return";
 import { usePlatform } from "../../kernel/platform";
 import { useBootState } from "../../shell/boot-state";
 import { resolveModelDisplayName, resolveProviderDisplayName } from "@/app/utils";
@@ -658,7 +659,8 @@ export function ResourceSelectionPage({ autoContinue = false }: { autoContinue?:
         window.localStorage.setItem(RELOAD_AFTER_ONBOARDING_KEY, "1");
       } catch {}
     }
-    navigate("/session", { replace: true });
+    // A sign-in started from a conversation returns there (`desktopSignInReturn`).
+    if (!completeSignInReturn(navigate)) navigate("/session", { replace: true });
   }, [gatewayProviders, navigate, providers, selectedDefault]);
 
   const handleContinue = useCallback(async (optionsArg?: { requestReload?: boolean }) => {
