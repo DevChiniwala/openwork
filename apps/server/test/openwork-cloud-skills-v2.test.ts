@@ -46,67 +46,96 @@ describe("registerCloudSkillDiscovery", () => {
   let server: ReturnType<typeof Bun.serve> | undefined;
   afterEach(async () => { await stop?.(); server?.stop(true); });
 
-  test("registers native bodies and named skills without rollout metadata", async () => {
-    const reads: string[] = [];
+  type Read = { urls: string[]; use?: boolean };
+  type Prompt = { prompt: { text: string; skills?: Array<{ id: string }> } };
+
+  /** A plugin host whose refresh timer the test drives, and a bridge that serves `served` and records body reads. */
+  async function start(served: () => typeof catalog, body: (url: string) => string) {
+    const reads: Read[] = [];
     server = Bun.serve({ port: 0, async fetch(request) {
-      const body: { name: string; input: { url?: string } } = await request.json();
-      if (body.name === "openwork_skills") return Response.json(catalog);
-      reads.push(body.input.url ?? "");
-      return Response.json({ ok: true, content: body.input.url?.startsWith("skill://crm") ? crmBody : "tampered body" });
+      const call: { name: string; input: Read } = await request.json();
+      if (call.name === "openwork_skills") return Response.json(served());
+      reads.push(call.input);
+      return Response.json({ ok: true, contents: Object.fromEntries(call.input.urls.map(url => [url, body(url)])) });
     } });
-    const registered: Array<{ id: string; content: string }> = [];
-    let promptHook: ((event: { prompt: { text: string; skills?: Array<{ id: string }> } }) => void) | undefined;
-    const context: CloudSkillContext = {
-      options: { url: `http://127.0.0.1:${server.port}/read`, token: "t" },
-      skill: {
-        async transform(callback) {
-          callback({ get: () => undefined, add: skill => registered.push(skill) });
-          return { dispose: async () => {} };
-        },
-        async reload() {},
-      },
-      session: { async hook(_name, callback) { promptHook = callback; return { dispose: async () => {} }; } },
+    const registry = new Map<string, string>();
+    let promptHook: ((event: Prompt) => void | Promise<void>) | undefined;
+    let tick: (() => void) | undefined;
+    const realSetInterval = globalThis.setInterval;
+    globalThis.setInterval = ((callback: () => void) => {
+      tick = callback;
+      return { unref() {} };
+    }) as unknown as typeof setInterval;
+    let transforms: Array<(editor: { get(id: string): unknown; add(skill: { id: string; content: string }): void }) => void> = [];
+    const apply = () => {
+      registry.clear();
+      for (const transform of transforms) transform({ get: id => registry.get(id), add: skill => registry.set(skill.id, skill.content) });
     };
-    stop = await registerCloudSkillDiscovery(context);
-    for (let attempt = 0; attempt < 50 && registered.length === 0; attempt++) await Bun.sleep(20);
+    try {
+      stop = await registerCloudSkillDiscovery({
+        options: { url: `http://127.0.0.1:${server.port}/read`, token: "t" },
+        skill: {
+          async transform(callback) {
+            transforms.push(callback);
+            apply();
+            return { dispose: async () => { transforms = transforms.filter(entry => entry !== callback); } };
+          },
+          async reload() { apply(); },
+        },
+        session: { async hook(_name, callback) { promptHook = callback; return { dispose: async () => {} }; } },
+      });
+    } finally {
+      globalThis.setInterval = realSetInterval;
+    }
+    for (let attempt = 0; attempt < 100 && registry.size === 0; attempt++) await Bun.sleep(10);
+    const refresh = async () => {
+      const before = JSON.stringify([...registry]);
+      tick?.();
+      for (let attempt = 0; attempt < 20 && JSON.stringify([...registry]) === before; attempt++) await Bun.sleep(10);
+    };
+    return { reads, registry, refresh, prompt: async (event: Prompt) => { await promptHook?.(event); return event; } };
+  }
 
-    expect(registered.find(skill => skill.id === "openwork-cloud-crm-pipeline-sync-7y86nr3j")?.content).toBe(crmBody);
-    expect(registered.find(skill => skill.id === "openwork-cloud-release")?.content).toContain("discovery metadata");
-    // Withheld skills are never read; mismatched bodies are read but not used.
-    expect(reads.sort()).toEqual(["skill://crm-pipeline-sync-7y86nr3j/SKILL.md", "skill://release/SKILL.md"]);
+  test("registers metadata only and loads a named skill's body when a message uses it", async () => {
+    const host = await start(() => catalog, url => url.startsWith("skill://crm") ? crmBody : "tampered body");
 
-    const event = { prompt: { text: "run crm-pipeline-sync now", skills: [] } };
-    promptHook?.(event);
+    expect(host.registry.get("openwork-cloud-crm-pipeline-sync-7y86nr3j")).toContain("discovery metadata");
+    expect(host.registry.get("openwork-cloud-salesforce-notes-ab12cd34")).toContain("Connect Salesforce from Your Connections.");
+    // Discovery reads no bodies at all.
+    expect(host.reads).toEqual([]);
+
+    const event = await host.prompt({ prompt: { text: "run crm-pipeline-sync now", skills: [] } });
     expect(event.prompt.skills).toEqual([{ id: "openwork-cloud-crm-pipeline-sync-7y86nr3j" }]);
+    // One read, for that skill only, counted as a use; the registry has its verified body before the model runs.
+    expect(host.reads).toEqual([{ urls: ["skill://crm-pipeline-sync-7y86nr3j/SKILL.md"], use: true }]);
+    expect(host.registry.get("openwork-cloud-crm-pipeline-sync-7y86nr3j")).toBe(crmBody);
+
+    // A body that fails its digest is not used; the skill keeps the discovery note.
+    await host.prompt({ prompt: { text: "/release v1.2", skills: [] } });
+    expect(host.registry.get("openwork-cloud-release")).toContain("discovery metadata");
   });
 
-  test("reads bodies only for the skills it registers", async () => {
-    const body = (index: number) => `---\nname: skill-${index}\n---\n\nStep ${index}.`;
-    const large = { skills: Array.from({ length: 400 }, (_, index) => ({
-      name: `skill-${index}`, description: "Short.", url: `skill://skill-${index}/SKILL.md`,
-      capability: `skill:skill-${index}`, digest: sha256Digest(body(index)),
-    })) };
-    const reads: string[] = [];
-    server = Bun.serve({ port: 0, async fetch(request) {
-      const call: { name: string; input: { url?: string } } = await request.json();
-      if (call.name === "openwork_skills") return Response.json(large);
-      reads.push(call.input.url ?? "");
-      return Response.json({ ok: true, content: body(Number(call.input.url?.match(/skill-(\d+)/)?.[1])) });
-    } });
-    const registered: string[] = [];
-    stop = await registerCloudSkillDiscovery({
-      options: { url: `http://127.0.0.1:${server.port}/read`, token: "t" },
-      skill: {
-        async transform(callback) {
-          callback({ get: () => undefined, add: skill => registered.push(skill.id) });
-          return { dispose: async () => {} };
-        },
-        async reload() {},
-      },
-    });
-    for (let attempt = 0; attempt < 100 && registered.length === 0; attempt++) await Bun.sleep(20);
+  test("a 400-skill catalog: idle refreshes read no bodies; a changed warm skill re-reads only its own", async () => {
+    let version = 1;
+    const body = (url: string) => `---\nname: ${url}\n---\n\nVersion ${url.includes("skill-1/") ? version : 1}.`;
+    const served = () => ({ skills: Array.from({ length: 400 }, (_, index) => {
+      const url = `skill://skill-${index}/SKILL.md`;
+      return { name: `skill-${index}`, description: "Short.", url, capability: `skill:skill-${index}`, digest: sha256Digest(body(url)) };
+    }) });
+    const host = await start(served, body);
+    await host.refresh();
+    await host.refresh();
+    expect(host.reads).toEqual([]);
 
-    expect(registered.length).toBe(150);
-    expect(reads.length).toBe(150);
+    await host.prompt({ prompt: { text: "", skills: [{ id: "openwork-cloud-skill-1" }, { id: "openwork-cloud-skill-10" }] } });
+    // Two bodies, one request.
+    expect(host.reads).toEqual([{ urls: ["skill://skill-1/SKILL.md", "skill://skill-10/SKILL.md"], use: true }]);
+    await host.refresh();
+    expect(host.reads.length).toBe(1);
+
+    version = 2;
+    await host.refresh();
+    expect(host.reads.slice(1)).toEqual([{ urls: ["skill://skill-1/SKILL.md"] }]);
+    expect(host.registry.get("openwork-cloud-skill-1")).toContain("Version 2.");
   });
 });
