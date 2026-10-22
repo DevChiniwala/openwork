@@ -93,6 +93,30 @@ test("challenge, deployment, run, origin and exact health body are cryptographic
   await assert.rejects(verify(healthToken, healthAudience, email))
 })
 
+test("distinct valid heartbeat proofs can share an iat second; replay ordering stays strict", async () => {
+  const healthEmail = serviceAccountEmail(deploymentId, target.projectId, "health")
+  async function measured(nonce: string, iat: number, at = now) {
+    const raw = JSON.stringify({ nonce, checks: [{ id: "api_health", status: "ok" }] })
+    const aud = heartbeatAudience(origin, deploymentId, createHash("sha256").update(raw).digest("hex"))
+    const idToken = await token({ aud, email: healthEmail, iat, exp: iat + 3600 })
+    const signedAt = await verifyGcpIdentity({ idToken, audience: aud, email: healthEmail, now: at, keyResolver })
+    return { idToken, aud, signedAt }
+  }
+  const first = await measured("a".repeat(32), issued)
+  const simultaneous = await measured("b".repeat(32), issued)
+  assert.notEqual(first.idToken, simultaneous.idToken)
+  assert.notEqual(first.aud, simultaneous.aud)
+  assert.equal(first.signedAt.getTime(), simultaneous.signedAt.getTime())
+  // The server transaction deliberately rejects >=, including identical proof
+  // replays and genuinely distinct same-second measurements. Do not weaken it.
+  const stale = (incoming: Date) => first.signedAt >= incoming
+  assert.equal(stale(simultaneous.signedAt), true)
+  assert.equal(stale(first.signedAt), true)
+  assert.equal(stale((await measured("c".repeat(32), issued - 1)).signedAt), true)
+  const fresh = await measured("d".repeat(32), issued + 1, new Date(now.getTime() + 1000))
+  assert.equal(stale(fresh.signedAt), false)
+})
+
 test("health nonce is optional for AWS compatibility but bounded to exactly 32 lowercase hex characters", () => {
   const report = { checks: [{ id: "api_health", status: "ok" }] }
   assert.equal(healthReportSchema.safeParse(report).success, true)

@@ -67,11 +67,11 @@ def request(url, data=None, headers=None, limit=MAX_BUNDLE, same_origin_redirect
         return body
 
 
-def cloud(*args, project, impersonate=None):
+def cloud(*args, project, impersonate=None, timeout=None):
     command = ["gcloud", *args, "--project=" + project, "--format=json", "--quiet"]
     if impersonate:
         command.append("--impersonate-service-account=" + impersonate)
-    output = subprocess.run(command, check=True, capture_output=True, text=True).stdout
+    output = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout).stdout
     return json.loads(output) if output.strip() else {}
 
 

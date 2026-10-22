@@ -286,18 +286,18 @@ class RunnerTests(unittest.TestCase):
                 patch.object(runner, "orchestration_mutex", side_effect=contextlib.nullcontext), \
                 patch.object(runner, "report") as report, patch.object(runner, "verify_target"), \
                 patch.object(runner, "mirror_images", return_value={}), patch.object(runner, "apply", return_value=outputs), \
-                patch.object(runner, "verify_services"), patch.object(runner, "verify_health"), patch.object(runner, "gcloud") as cloud:
+                patch.object(runner, "verify_services"), patch.object(runner, "verify_health"), patch.object(runner, "verify_health_job") as health_job:
             runner.main()
             self.assertEqual([c.args[1:3] for c in report.call_args_list], [(1, "runner_connected"), (2, "release_verified"),
                 (3, "account_verified"), (4, "infrastructure_applied"), (5, "services_ready"), (6, "health_verified")])
-            self.assertIn("--wait", cloud.call_args.args)
+            health_job.assert_called_once_with(outputs)
 
     def test_first_health_rejection_does_not_mark_ready(self):
         with patch.dict(os.environ, ENV, clear=True), patch.object(runner, "enroll", return_value="run-token"), \
                 patch.object(runner, "orchestration_mutex", side_effect=contextlib.nullcontext), \
                 patch.object(runner, "report") as report, patch.object(runner, "verify_target"), \
                 patch.object(runner, "mirror_images", return_value={}), patch.object(runner, "apply", return_value={"health_agent": "job"}), \
-                patch.object(runner, "verify_services"), patch.object(runner, "verify_health"), patch.object(runner, "gcloud", side_effect=ValueError("rejected")):
+                patch.object(runner, "verify_services"), patch.object(runner, "verify_health"), patch.object(runner, "verify_health_job", side_effect=ValueError("rejected")):
             with self.assertRaises(ValueError):
                 runner.main()
             self.assertEqual(report.call_args.args, ("run-token", 6, "health_verified", "failed", "health_check_failed"))

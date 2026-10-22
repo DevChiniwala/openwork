@@ -24,8 +24,8 @@ PROTECTED_TYPES = {"google_sql_database_instance", "google_sql_database", "googl
                    "google_compute_target_https_proxy", "google_compute_global_forwarding_rule"}
 
 
-def gcloud(*args):
-    return cloud(*args, project=os.environ["PROJECT_ID"], impersonate=os.environ["RUNNER_SERVICE_ACCOUNT"])
+def gcloud(*args, timeout=None):
+    return cloud(*args, project=os.environ["PROJECT_ID"], impersonate=os.environ["RUNNER_SERVICE_ACCOUNT"], timeout=timeout)
 
 
 def id_token(audience):
@@ -473,6 +473,77 @@ def verify_services(outputs, timeout=600):
     wait_for_completion(ready, "latest service revision not ready before deadline", timeout)
 
 
+def verify_health_job(outputs, timeout=300):
+    deadline = time.monotonic() + timeout
+    job = name(os.environ["DEPLOYMENT_ID"]) + "-health"
+    if outputs.get("health_agent") != job:
+        raise ValueError("unexpected health job; not executed")
+    execution_name = None
+    def diagnostic(code, http_status=None):
+        print(json.dumps({"healthExecution": {"execution": execution_name, "errorCode": code, "httpStatus": http_status}}))
+    def call(*args):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            diagnostic("execution_deadline")
+            raise ValueError("owned health execution deadline exceeded")
+        try:
+            return gcloud(*args, timeout=min(30, remaining))
+        except subprocess.TimeoutExpired:
+            diagnostic("execution_command_deadline")
+            raise ValueError("health execution command deadline exceeded") from None
+        except subprocess.CalledProcessError as error:
+            # Parse only fixed diagnostic tokens; never echo stderr/stdout,
+            # command arguments, credentials or arbitrary provider messages.
+            stderr = error.stderr if isinstance(error.stderr, str) else ""
+            code = next((candidate for candidate in ("PERMISSION_DENIED", "UNAUTHENTICATED", "RESOURCE_EXHAUSTED", "NOT_FOUND", "DEADLINE_EXCEEDED")
+                         if re.search(r"\b" + candidate + r"\b", stderr)), "gcloud_failed")
+            status = re.search(r"\b(?:HTTPError|HTTP Error|HTTP|status code)\s*[:=]?\s*([1-5][0-9]{2})\b", stderr)
+            diagnostic(code, int(status.group(1)) if status else None)
+            raise ValueError("health execution command failed; see safe diagnostic") from None
+    def owned(execution):
+        metadata = execution.get("metadata", {})
+        labels = metadata.get("labels", {})
+        return (metadata.get("namespace") in (os.environ["PROJECT_ID"], os.environ["PROJECT_NUMBER"])
+                and labels.get("run.googleapis.com/job") == job
+                and labels.get("cloud.googleapis.com/location") == os.environ["REGION"])
+    # A failed/uncertain start is NEVER replayed. Retain the one creation receipt
+    # before polling; Scheduler's separate success cannot satisfy this wait.
+    receipt = call("run", "jobs", "execute", job, "--region=" + os.environ["REGION"], "--async")
+    candidate = receipt.get("metadata", {}).get("name")
+    if (not isinstance(candidate, str) or len(candidate) > 128
+            or not re.fullmatch(re.escape(job) + r"-[a-z0-9-]+", candidate) or not owned(receipt)):
+        diagnostic("unknown_execution_receipt")
+        raise ValueError("health execution ownership unknown; inspect before retry")
+    execution_name = candidate
+    diagnostic("started")
+    def completed():
+        execution = call("run", "jobs", "executions", "describe", execution_name, "--region=" + os.environ["REGION"])
+        if execution.get("metadata", {}).get("name") != execution_name or not owned(execution):
+            diagnostic("execution_mismatch")
+            raise ValueError("health execution ownership changed")
+        status = execution.get("status", {})
+        conditions = status.get("conditions", [])
+        if any(condition.get("type") == "Completed" and condition.get("status") == "False" for condition in conditions):
+            diagnostic("execution_failed")
+            raise ValueError("owned health execution failed")
+        if not status.get("completionTime"):
+            return False
+        if (not any(condition.get("type") == "Completed" and condition.get("status") == "True" for condition in conditions)
+                or type(execution.get("spec", {}).get("taskCount")) is not int or execution["spec"]["taskCount"] != 1
+                or type(status.get("succeededCount")) is not int or status["succeededCount"] != 1
+                or type(status.get("failedCount", 0)) is not int or status.get("failedCount", 0) != 0
+                or type(status.get("cancelledCount", 0)) is not int or status.get("cancelledCount", 0) != 0):
+            diagnostic("execution_failed")
+            raise ValueError("owned health execution did not succeed")
+        return True
+    try:
+        wait_for_completion(completed, "owned health execution deadline exceeded", max(0, deadline - time.monotonic()))
+    except ValueError:
+        diagnostic("not_completed")
+        raise
+    diagnostic("succeeded")
+
+
 def verify_health(outputs, attempts=120, delay=30):
     web, api = "https://" + os.environ["DOMAIN_NAME"], "https://api." + os.environ["DOMAIN_NAME"]
     if outputs["web_url"] != web or outputs["api_url"] != api:
@@ -518,7 +589,7 @@ def main():
             verify_health(outputs)
             # First report must be accepted, not just queued. The health job exits
             # nonzero when the control plane rejects its signed report.
-            gcloud("run", "jobs", "execute", outputs["health_agent"], "--region=" + os.environ["REGION"], "--wait")
+            verify_health_job(outputs)
         report(token, 6, "health_verified")
         print("OpenWork is ready. Retrieve the administrator setup code from this deployment's Secret Manager bootstrap secret.")
     except Exception:
