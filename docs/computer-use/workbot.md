@@ -7,13 +7,18 @@ branch also includes Documents; its `workbotDocuments` rollout remains independe
 
 The two views use one conversation computer:
 
-- **Browser** streams the Chromium window, including its tabs and address bar.
-- **Computer** streams the entire Linux desktop.
+- **Browser** (`/browser`) streams the Chromium window, including its tabs and address bar.
+- **Computer** (`/computer`) streams the entire Linux desktop.
 - **Take control** interrupts Workbot's current turn, pauses both browser and
   computer tools, and enables native mouse/keyboard input through noVNC.
 - **Return to Workbot** ends the manual connection and releases the tools.
 - **Pause** suspends the VM; reopening the tab leaves it paused until **Resume**.
   Memory, browser tabs and unsaved applications survive VM pause/resume.
+- **Rebuild computer** appears when the computer won't connect. After the person
+  confirms, Workbot stops the current turn and the runner deletes the VM and
+  creates a fresh one from the configured snapshot. The VM's disk, open apps and
+  browser tabs are erased; the chat and its kept Files stay. This is also how a
+  person moves an existing computer onto a rebuilt snapshot.
 
 The main Workbot conversation's existing `hc-…` computer owns both views. The
 viewer does not create a second computer or accept a sandbox/session id from the
@@ -67,11 +72,53 @@ HEADLESS_COMPUTER_SNAPSHOT=workbot-desktop
 DAYTONA_TARGET=<the snapshot's region>
 ```
 
-Keep `DAYTONA_API_KEY` in the runner's existing secret configuration. Build the
-runner normally; the headless computer build bundles the guest bridge and copies
-its startup helper. On first desktop use they are installed into the member's
-existing computer. Older computers need the desktop packages and Node 22+ before
-they can open a stream; this change does not replace an existing VM or its files.
+Keep `DAYTONA_API_KEY` in the runner's existing secret configuration and set
+`DAYTONA_API_URL=https://app.daytona.io/api`. On celld, these settings must also
+be in the `CELLD_RUNNER_VARS` secret of the `celld-production` GitHub environment:
+Render service variables alone are not Worker bindings. Deploy with the existing
+runner workflow and wait for every node to adopt the bundle. Keep its compatibility
+and real-turn checks enabled.
+
+The headless computer build embeds the same guest identity in the image and
+runner bundle, so celld needs no local package asset files. The identity covers
+the files esbuild bundles into the guest, the versions of the packages it
+bundles, and the files the image installs (`scripts/desktop-identity.mjs`). The
+rest of the lockfile, Mac-only code and tests do not change it. The root-owned
+bridge is already installed in the snapshot; it rejects incompatible runners.
+The runner then logs the bridge's reason and Workbot tells the person their
+computer needs an update (`desktop_outdated`) instead of asking them to
+reconnect. Existing computers and their files are not replaced automatically:
+after a snapshot upgrade, each person can use **Rebuild computer**, which erases
+that computer's disk, so tell people to keep anything they need in Files first.
+
+### Freestyle instead of Daytona
+
+Freestyle runs the same desktop from a snapshot captured while the desktop is
+already up, so a new computer resumes in seconds instead of booting it. Build it
+from a checkout whose guest matches the runner you deploy, then point the runner
+at the printed slug:
+
+```bash
+pnpm --filter @openwork-ee/headless-computer build
+FREESTYLE_API_KEY=... pnpm --filter @openwork-ee/headless-computer snapshot:build:freestyle-desktop
+```
+
+```dotenv
+HEADLESS_COMPUTER=freestyle
+HEADLESS_COMPUTER_DESKTOP=true
+HEADLESS_COMPUTER_SNAPSHOT=<printed workbot-desktop-freestyle-… slug>
+# Optional: keep each conversation's computer until removed (default: delete after KEEP_DAYS unused).
+HEADLESS_COMPUTER_PERSISTENT=true
+# Optional: publish the viewer under a domain verified on the Freestyle account (default style.dev).
+HEADLESS_COMPUTER_DOMAIN=computers.example.com
+```
+
+Keep `FREESTYLE_API_KEY` in the runner's secrets. Each desktop computer
+publishes only its viewer port, at a random host under that domain; the guest's
+single-use, origin-bound viewer tickets still gate every connection. Freestyle
+pauses a computer with its memory after the runner's idle period, and resumes it
+for the next turn. The builder installs the desktop on Freestyle's Ubuntu base,
+with Chromium for Testing in place of Debian's package.
 
 ## Transport and rollout
 
@@ -89,10 +136,14 @@ mode; noVNC's `viewOnly` setting also disables accidental input. Both manual
 streams and structured tools operate the same broad desktop. Browser processes
 run as an unprivileged account with Chromium's sandbox and a protected X cookie.
 Workbot's model and connected-app tokens are not passed to the desktop.
-The member's VM has broad browser, native and shell access, including local
-web apps. This slice does not enforce the desktop app's organization website
-rules or a private-network egress policy. Deploy it on an isolated VM network;
-an organization requiring restricted egress needs enforcement at that boundary.
+The browser can reach public websites; its desktop egress guard blocks private
+and loopback destinations, with DNS exceptions restricted to the configured
+resolvers on port 53. Native apps cannot open network connections. The command
+account cannot reach the reserved desktop control ports; authenticated viewer
+and helper transports remain separate. The desktop image uses native nftables
+UID rules on microVM kernels without `xt_owner`, and startup fails if rule
+installation fails. Hosts without nftables retain the existing iptables guard.
+Organization website allowlists still need enforcement at the VM network boundary.
 
 ## Teach browser tasks
 
@@ -197,7 +248,8 @@ a renewable provider TTL so paused disks can eventually expire too; Daytona's
 auto-delete setting alone applies to stopped computers. Commands, file access,
 and viewer access renew the lease, at most once a minute. Inventory and idle
 maintenance probes do not renew it. Export deliverables to kept Files before
-retention expires. The existing container/Freestyle behavior stays unchanged.
+retention expires. `HEADLESS_COMPUTER_PERSISTENT=true` disables that deletion on
+both providers: computers stay paused with their memory until removed.
 
 The shared Daytona provider exposes `blocks.snapshots` for explicit hot
 checkpoints using `{includeMemory:true}`, matching upstream's world API. A

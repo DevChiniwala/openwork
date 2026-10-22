@@ -1734,7 +1734,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
                   if (!unreachable || !isDesktopRuntime()) {
                     throw error;
                   }
-                  await engineRestart({});
+                  await engineRestart({ diagnosticsCause: "provider-auth" });
                 }
                 reloaded = true;
               }
@@ -2829,7 +2829,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
               // Explicit desktop sign-out must replace that process so an
               // account-scoped provider cannot remain connected in the UI.
               if (isDesktopRuntime()) {
-                await engineRestart({}).catch(() => undefined);
+                await engineRestart({ diagnosticsCause: "provider-auth" }).catch(() => undefined);
               }
               if (!cleared) return;
               const providers = await refreshProviders({ force: true }, isCurrent);

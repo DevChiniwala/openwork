@@ -10,3 +10,10 @@ test("the agent can discover computer tools on every desktop platform, including
   expect(plugin.tool.computer_close).toBeDefined();
   expect(plugin.tool.computer_discover.description).toContain("selected computer");
 });
+
+test("app scripts are offered on this Mac and approved in OpenWork, not by an engine prompt", async () => {
+  const plugin = await server();
+  expect(plugin.tool.computer_script).toBeDefined();
+  expect(plugin.tool.computer_script.description).toContain("full script");
+  expect(Object.keys(plugin.tool.computer_script.args)).toEqual(["app", "code", "timeoutMs"]);
+});

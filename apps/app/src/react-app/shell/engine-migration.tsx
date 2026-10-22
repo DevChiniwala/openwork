@@ -28,6 +28,8 @@ import { toast } from "@/components/ui/sonner";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { useOrgFeatureState } from "@/react-app/domains/cloud/use-org-feature";
+import { useQuery } from "@tanstack/react-query";
+import { createDenClient, readDenSettings } from "@/app/lib/den";
 import { resolveOpenworkConnection } from "./openwork-connection";
 
 /**
@@ -783,6 +785,25 @@ function useDesktopEngineForcePolicy(features: EngineUpgradeFeatures) {
   }, [ready, upgrade]);
 }
 
+/**
+ * Signed out there is no organization: the deployment's switch
+ * (`GET /v1/features`) decides. New desktops move to v2 on their own, so this
+ * only matters as the off switch. Unreachable sends nothing.
+ */
+function useSignedOutEngineUpgrade(active: boolean) {
+  const baseUrl = readDenSettings().baseUrl;
+  const query = useQuery({
+    queryKey: ["den", "deployment-features", baseUrl],
+    queryFn: () => createDenClient({ baseUrl }).getDeploymentFeatures(),
+    enabled: active,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: false,
+    select: (features: Record<string, boolean>) => features.engineV2ForceUpgrade === true,
+  });
+  return { resolved: active && query.isSuccess, enabled: query.data === true };
+}
+
 export function EngineMigrationOverlay(props: { discoverRunningMigration?: boolean }) {
   const desktop = isDesktopRuntime();
   const consent = useEngineMigrationStore((state) => state.consent);
@@ -790,10 +811,12 @@ export function EngineMigrationOverlay(props: { discoverRunningMigration?: boole
   const switchPrompt = useEngineMigrationStore((state) => state.switchPrompt);
   useMigrationLifecycle(desktop ? progress : null);
   const forceUpgrade = useOrgFeatureState("engineV2ForceUpgrade", { desktopOnly: true });
-  const features = {
-    ready: forceUpgrade.resolved,
-    upgrade: forceUpgrade.enabled,
-  };
+  const signedOut = desktop && !forceUpgrade.resolved && !readDenSettings().authToken?.trim();
+  const deploymentUpgrade = useSignedOutEngineUpgrade(signedOut);
+  // An organization decides whenever there is one; signed out, the deployment.
+  const features = forceUpgrade.resolved
+    ? { ready: true, upgrade: forceUpgrade.enabled }
+    : { ready: deploymentUpgrade.resolved, upgrade: deploymentUpgrade.enabled };
   useDesktopEngineForcePolicy(features);
   useRunningMigrationDiscovery(desktop && props.discoverRunningMigration !== false);
   // Local-engine consent and progress never apply to the web runtime, even if the store is populated.

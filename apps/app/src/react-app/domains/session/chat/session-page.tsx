@@ -92,7 +92,10 @@ import { SidePanel } from "../panel/side-panel";
 import { getSidePanelSessionKey } from "../panel/side-panel-session";
 import { useCreateTab, useOpenBrowserRailPane } from "../panel/use-side-panel-tabs";
 import { useBrowserPresentationController } from "../panel/use-browser-presentation";
+import { useBrowserAgentTurns } from "../panel/agent-viewport";
 import { BrowserHeaderButton, BrowserPresentationSurfaces } from "../panel/browser-presentation";
+import { DebugRailProvider, DebugRailSlot } from "../panel/debug-rail-slot";
+import { SessionDebugPanel } from "../surface/debug-panel";
 import { FloatingSlotProvider, SessionFloatingLayer } from "../panel/floating-slot";
 import { useDesktopFeature } from "../status/use-desktop-feature";
 import { CloudComputerControl } from "../computer/cloud-computer-control";
@@ -645,6 +648,7 @@ export function SessionPage(props: SessionPageProps) {
   // The button hides itself when this computer can't run it and no VM is connected.
   const computerUse = computerUseFeature && isElectronRuntime();
   useComputerBridge(props.sidebar.sessionStatusById, computerUse, remoteComputersFeature);
+  useBrowserAgentTurns(props.sidebar.sessionStatusById);
 
   // Open the side panel of the conversation that owns a browser event. For the
   // conversation on screen that is the visible panel; for a background
@@ -1487,6 +1491,7 @@ export function SessionPage(props: SessionPageProps) {
         <SidebarInset
           className="min-h-0 min-w-0 overflow-hidden bg-sidebar mac:bg-transparent"
         >
+          <DebugRailProvider>
           <FloatingSlotProvider>
           {sidebarOnlyChrome ? <MobileChatNavigation /> : <header
             data-session-header
@@ -2007,7 +2012,7 @@ export function SessionPage(props: SessionPageProps) {
               </>
             ) : null}
           </ResizablePanelGroup>
-          <aside className={cn("hidden w-10 shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground mac:titlebar-no-drag", props.primarySurface !== "flat" && "lg:flex")}>
+          <aside className={cn("w-10 shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground mac:titlebar-no-drag", props.developerMode ? "flex" : "hidden", props.primarySurface !== "flat" && "lg:flex")}>
             {isElectronRuntime() ? (
               <Button
                 variant="ghost"
@@ -2043,10 +2048,18 @@ export function SessionPage(props: SessionPageProps) {
                 </span>
               ) : null}
             </Button>
+            <DebugRailSlot />
           </aside>
           </div>
           <BrowserPresentationSurfaces sessionId={sidePanelSessionKey} controller={browserPresentation} />
+          {/* With a thread open, the session surface owns the debug panel. */}
+          {props.developerMode && !canRenderReactSurface ? <SessionDebugPanel
+            client={props.openworkServerClient} workspaceId={props.runtimeWorkspaceId ?? ""} workspaceRoot={props.selectedWorkspaceRoot}
+            opencodeBaseUrl={reactSessionBaseUrl} openworkToken={reactSessionToken} thread={null}
+            workspace={{ name: workspaceName, startupPhase: props.startupPhase, providersConnected: props.providerConnectedIds.length, mcpConnected: props.mcpConnectedCount }}
+          /> : null}
           </FloatingSlotProvider>
+          </DebugRailProvider>
         </SidebarInset>
       </SidebarProvider>
 

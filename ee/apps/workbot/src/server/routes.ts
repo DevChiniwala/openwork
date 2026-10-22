@@ -121,6 +121,8 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       // Gateway access is validated for this actor and model by Den when minting each turn, not by the runner catalog.
       verifyModel: !member.den.gatewayModels && member.den.verifyModel,
       workspaceAssistant: async () => member.den.workspaceAssistant,
+      // Opening a document on request needs Documents too; Den still checks the member's Drive access on open.
+      guidedNavigation: async () => member.den.guidedNavigation && member.den.documents === true,
       // Saved steps are GA; older Dens may omit stepTurns, so preserve their continuous-turn protocol.
       stepTurns: member.den.stepTurns,
       // Per-chat cells are GA; older Dens may omit sessionCells, so preserve their legacy placement.
@@ -215,11 +217,19 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       nativeDictation: who.enabled && who.nativeDictation,
       workspaceAssistant: who.enabled && who.workspaceAssistant,
       guidedNavigation: who.enabled && who.workspaceAssistant && who.guidedNavigation,
+      usageRecovery: who.enabled && who.usageRecovery,
       canSchedule: who.enabled && who.canSchedule,
       sideChats: who.enabled && who.sideChats,
       denUrl: config.denWebUrl ?? (await den.webUrl().catch(() => null)),
     })
   })
+
+  /** The runner's desktop codes in the person's words; anything else reads as a reconnectable outage. */
+  const desktopFailure = (c: Context<AppEnv>, operation: string, code: string) => {
+    console.error("[workbot] desktop unavailable", { operation, code })
+    if (code === "desktop_outdated") return c.json({ error: code, message: "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." }, 409)
+    return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
+  }
 
   // No sandbox ids or preview credentials are accepted from the page: the member determines the computer.
   app.post("/v1/workbot/computer/:operation", async (c) => {
@@ -230,7 +240,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     if (operation !== "viewer" && operation !== "action") return c.json({ error: "not_found" }, 404)
     const raw: unknown = await c.req.json().catch(() => null)
     const viewer = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean().default(false) }).strict().safeParse(raw)
-    const action = z.object({ action: z.enum(["continue", "pause", "resume"]) }).strict().safeParse(raw)
+    const action = z.object({ action: z.enum(["continue", "pause", "resume", "rebuild"]) }).strict().safeParse(raw)
     if (operation === "viewer" ? !viewer.success : !action.success) return c.json({ error: "invalid_request" }, 400)
     const workbot = workbotFor(member)
     const client = runnerClientFor(member)
@@ -244,16 +254,16 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       const existing = await client.readSession(sessionId, { turns: 1, limit: 1, outputs: "none" })
       if (!existing.ok && existing.status === 404) sessionId = await workbot.ensureComputer(actorOf(member))
       else {
-        if (!existing.ok) return c.json({ error: "desktop_unavailable" }, 409)
+        if (!existing.ok) return desktopFailure(c, operation, existing.error)
         const updated = await client.putSession(sessionId, { computer: true, desktop: true })
-        if (!updated.ok) return c.json({ error: "desktop_unavailable" }, 409)
+        if (!updated.ok) return desktopFailure(c, operation, updated.error)
       }
       if (operation === "viewer") {
         const body = viewer
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         if (body.data.control) await workbot.stop(actorOf(member))
         const result = await client.desktopViewer(sessionId, { ...body.data, origin: new URL(config.publicUrl).origin })
-        if (!result.ok) return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
+        if (!result.ok) return desktopFailure(c, operation, result.error)
         // A cold VM may take longer than the membership cache: verify again before sharing its stream.
         if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
         return c.json(result.value)
@@ -261,10 +271,21 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       const body = action
       if (!body.success) return c.json({ error: "invalid_request" }, 400)
       if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
-      if (body.data.action === "pause") await workbot.stop(actorOf(member))
+      // Rebuilding deletes the VM under any running turn, so stop the turn first, as pausing does.
+      if (body.data.action === "pause" || body.data.action === "rebuild") await workbot.stop(actorOf(member))
       const result = await client.desktopAction(sessionId, body.data.action)
-      return result.ok ? c.json({ ok: true }) : c.json({ error: "desktop_unavailable" }, 409)
-    } catch { return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409) }
+      return result.ok ? c.json({ ok: true }) : desktopFailure(c, operation, result.error)
+    } catch (error) {
+      console.error("[workbot] desktop request failed", { operation, error: error instanceof Error ? error.message : "unknown" })
+      return desktopFailure(c, operation, "desktop_unavailable")
+    }
+  })
+
+  app.get("/v1/workbot/model-recovery", async (c) => {
+    const member = c.get("member")
+    if (!member.den.enabled || !member.den.usageRecovery) return c.json({ error: "feature_disabled" }, 404)
+    const result = await den.modelRecovery(member.accessToken)
+    return new Response(JSON.stringify(result.payload), { status: result.status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } })
   })
 
   /**

@@ -1,6 +1,35 @@
 # Missing CodeQL results despite successful jobs
 
-OpenWork uses GitHub's CodeQL **default setup**, not a checked-in analysis workflow.
+## Advanced setup and Swift
+
+OpenWork analyzes code with the checked-in `.github/workflows/codeql.yml`
+(advanced setup). It replaced GitHub's default setup, which built Swift with
+autobuild on every PR: about 14 minutes waiting for a macOS runner, then about
+8 minutes of build discovery before a 5-minute compile.
+
+* `actions`, `javascript-typescript` and `python` are analyzed without a build
+  on every PR, every push to `dev`, and weekly.
+* `swift` is built directly with `swift build` for the `ComputerUse` product.
+  On PRs it builds only when `packages/computer-use/native/` or the workflow
+  changes. Otherwise its matrix leg uploads an empty Swift result from Linux
+  in seconds. Pushes to `dev` and the weekly schedule always analyze Swift.
+* All analyses keep the `/language:<language>` categories default setup used,
+  and load `.github/codeql/codeql-config.yml` directly.
+
+**Activation.** GitHub rejects advanced-setup uploads while default setup is
+enabled, so a repository admin must disable it before this workflow's results
+count: Settings → Code security → CodeQL analysis → ⋯ → Switch to advanced, or
+`gh api -X PATCH repos/different-ai/openwork/code-scanning/default-setup -f state=not-configured`.
+Re-enable default setup the same way (`-f state=configured`) to revert.
+
+The `code_scanning` rule on `dev` waits for every category `dev` has. Without
+a Swift upload, PRs would be blocked with "Code scanning is still expecting 1
+result from CodeQL" and need an admin bypass; the empty result prevents that.
+This hides nothing: those PRs do not change Swift code, and `dev` pushes
+always run the real Swift scan.
+
+## Missing results after configuration changes
+
 GitHub can add a language automatically when repository contents change. Existing
 PRs may have successful scans from before that change and still lack the newly
 required result. The code-scanning merge rule checks uploaded analyses, not just
@@ -23,8 +52,9 @@ directories are scoped to workspace package roots and `src/test/`: a blanket
 their names (for example `latest-assistant-tool-parts.ts` and `model-test.ts`)
 remain scanned.
 
-**Committing the file alone does not activate it.** Keep default setup and enable
-its supported custom-configuration repository property:
+`.github/workflows/codeql.yml` loads this file directly. The steps below applied
+only while default setup was in use; under default setup, committing the file
+alone did not activate it:
 
 1. In the organization settings, create the **Text** custom repository property
    `github-codeql-config-file` if it does not exist. Do not set an organization-wide
@@ -65,10 +95,12 @@ node scripts/ci/check-codeql-results.mjs
 
 API failures and missing baselines fail the audit; they are not interpreted as zero required results.
 GitHub has used both `dynamic/github-code-scanning/codeql:upload` and
-`dynamic/github-code-scanning/codeql:analyze` for default setup. The monitor
+`dynamic/github-code-scanning/codeql:analyze` for default setup; the advanced
+workflow uploads as `.github/workflows/codeql.yml:analyze`. The monitor
 recognizes those exact keys, keeps the baseline to one commit and run key, and
-fails on an unsupported latest default-setup key rather than silently using an
-older baseline. Custom-workflow uploads do not stand in for default setup.
+fails on an unsupported latest key rather than silently using an older
+baseline. Uploads from other workflows do not count. Every PR needs a Swift
+upload, real or empty.
 `node --test scripts/ci/check-codeql-results.test.mjs` covers this accounting
 without requesting scans or changing security settings.
 
@@ -77,8 +109,7 @@ Administration permission, which the workflow token does not have. Newly enabled
 languages become expected once their baseline uploads succeed. Results are read
 from the latest 100 baseline analyses; old PR history is paginated in full.
 This verifies coverage, not absence of vulnerabilities. The existing CodeQL rule
-continues to enforce alert thresholds. If switching to advanced setup, update this
-audit to use that workflow's categories; it expects the default-setup analysis key.
+continues to enforce alert thresholds.
 
 ## Recover
 

@@ -11,9 +11,10 @@ const run = promisify(execFile);
 const OPENWORK_BUNDLE_PREFIX = "com.differentai.openwork";
 
 /** @typedef {{ name: string, bundleId: string | null, ours: boolean }} PermissionEntry */
+/** @typedef {(file: string, args: string[], options: { timeout: number }) => Promise<{ stdout: string }>} Exec */
 
-async function processInfo(pid) {
-  const { stdout } = await run("/bin/ps", ["-o", "ppid=", "-o", "comm=", "-p", String(pid)], { timeout: 2_000 });
+async function processInfo(pid, exec) {
+  const { stdout } = await exec("/bin/ps", ["-o", "ppid=", "-o", "comm=", "-p", String(pid)], { timeout: 2_000 });
   const match = stdout.trim().match(/^(\d+)\s+(.+)$/);
   return match ? { parent: Number(match[1]), command: match[2] } : null;
 }
@@ -23,22 +24,24 @@ function bundleOf(command) {
   return marker === -1 ? null : command.slice(0, marker + ".app".length);
 }
 
-async function plistValue(bundle, key) {
+async function plistValue(bundle, key, exec) {
   try {
-    const { stdout } = await run("/usr/bin/plutil", ["-extract", key, "raw", "-o", "-", path.join(bundle, "Contents", "Info.plist")], { timeout: 2_000 });
+    const { stdout } = await exec("/usr/bin/plutil", ["-extract", key, "raw", "-o", "-", path.join(bundle, "Contents", "Info.plist")], { timeout: 2_000 });
     return stdout.trim() || null;
   } catch { return null; }
 }
 
 /**
- * @param {{ pid?: number, fallbackName?: string }} [options]
+ * @param {{ pid?: number, execPath?: string, fallbackName?: string, exec?: Exec }} [options]
  * @returns {Promise<PermissionEntry>}
  */
-export async function resolvePermissionEntry({ pid = process.pid, fallbackName = "OpenWork" } = {}) {
-  let outermost = null;
+export async function resolvePermissionEntry({ pid = process.pid, execPath = pid === process.pid ? process.execPath : "", fallbackName = "OpenWork", exec = run } = {}) {
+  // ps names a packaged Electron app's own process without its path
+  // ("OpenWork"), so start from the executable path this process knows.
+  let outermost = bundleOf(execPath);
   try {
     for (let current = pid, hops = 0; current > 1 && hops < 32; hops++) {
-      const info = await processInfo(current);
+      const info = await processInfo(current, exec);
       if (!info) break;
       outermost = bundleOf(info.command) ?? outermost;
       current = info.parent;
@@ -46,9 +49,9 @@ export async function resolvePermissionEntry({ pid = process.pid, fallbackName =
   } catch { /* Fall back to the app's own name below. */ }
   if (!outermost) return { name: fallbackName, bundleId: null, ours: false };
   const [displayName, bundleName, bundleId] = await Promise.all([
-    plistValue(outermost, "CFBundleDisplayName"),
-    plistValue(outermost, "CFBundleName"),
-    plistValue(outermost, "CFBundleIdentifier"),
+    plistValue(outermost, "CFBundleDisplayName", exec),
+    plistValue(outermost, "CFBundleName", exec),
+    plistValue(outermost, "CFBundleIdentifier", exec),
   ]);
   return {
     name: displayName ?? bundleName ?? path.basename(outermost, ".app"),

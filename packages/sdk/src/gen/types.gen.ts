@@ -195,6 +195,11 @@ export type AdminFreeAutoConversions = {
   };
 };
 
+export type NotFoundError = {
+  error: string;
+  message?: string;
+};
+
 export type AdminOrganizationDetail = {
   organization: {
     id: string;
@@ -223,11 +228,6 @@ export type AdminOrganizationDetail = {
     durationMs: number;
   };
   generatedAt: string;
-};
-
-export type NotFoundError = {
-  error: string;
-  message?: string;
 };
 
 export type AdminOrganizationUsage = {
@@ -730,6 +730,342 @@ export type AdminDashboard = {
   }>;
 };
 
+export type AdminOpportunityOverview = {
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  generatedAt: string;
+  timeZone: "UTC";
+  signups: {
+    current: number;
+    previous: number;
+  };
+  joinedMembers: {
+    current: number;
+    previous: number;
+  };
+  activeUsers: {
+    current: number;
+    previous: number;
+  };
+  activeOrganizations: {
+    current: number;
+    previous: number;
+  };
+  daily: Array<{
+    date: string;
+    signups: number;
+    joinedMembers: number;
+  }>;
+  recentSignups: Array<{
+    id: string;
+    name: string;
+    createdAt: string;
+  }>;
+  growingTeams: Array<{
+    id: string;
+    name: string;
+    joinedMembers: number;
+  }>;
+  risingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  fallingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  queue: Array<{
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  }>;
+  waiting: Array<{
+    organizationId: string;
+    organizationName: string;
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    };
+  }>;
+  hidden: {
+    closed: number;
+    dismissed: number;
+  };
+  progress: {
+    reviewed: number;
+    outreach: number;
+    followUpsCompleted: number;
+    followUpsOnTime: number;
+    conversations: number;
+    confirmedExpansion: number;
+    confirmedCommercial: number;
+    activationProgress: number;
+    dueToday: number;
+    overdue: number;
+  };
+};
+
+export type AdminOpportunityAccount = {
+  organization: {
+    id: string;
+    name: string;
+    createdAt: string;
+    planTier: string;
+    seatLimit: number;
+    memberCount: number;
+  };
+  people: Array<{
+    memberId: string;
+    userId: string | null;
+    name: string | null;
+    email: string | null;
+    role: string;
+    joinedAt: string | null;
+    signedUpAt: string | null;
+    lastObservedAt: string | null;
+  }>;
+  opportunity: {
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  } | null;
+  adoption: {
+    stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+    members: number;
+    joinedThisWeek: number;
+    activeUsers: {
+      current: number;
+      previous: number;
+    };
+    lastObservedAt: string | null;
+    skills: number;
+    mcpConnections: number;
+  };
+  followUp: {
+    stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+    ownerUserId: string | null;
+    ownerName: string | null;
+    nextAction: string | null;
+    nextFollowUpAt: string | null;
+    lastContactedAt: string | null;
+    lastActionKind:
+      | "reviewed"
+      | "contacted"
+      | "replied"
+      | "meeting"
+      | "note"
+      | "closed"
+      | "dismissed"
+      | "reopened"
+      | null;
+    lastActionAt: string | null;
+    confirmedOpportunity: "expansion" | "commercial" | null;
+    updatedAt: string;
+  } | null;
+  history: Array<{
+    id: string;
+    kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+    occurredAt: string;
+    actorName: string | null;
+    contactName: string | null;
+    note: string | null;
+    followUpDueAt: string | null;
+  }>;
+  generatedAt: string;
+  timeZone: "UTC";
+};
+
+export type AccountFollowUpActionInput = {
+  requestId: string;
+  kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+  contactUserId?: string | null;
+  note?: string | null;
+  nextAction?: string | null;
+  /**
+   * UTC calendar date (YYYY-MM-DD) of the next follow-up. Null clears it.
+   */
+  followUpOn?: string | null;
+  assignToMe?: boolean;
+  confirmedOpportunity?: "expansion" | "commercial" | null;
+};
+
+export type AdminSignupCompanies = {
+  from: string;
+  to: string;
+  generatedAt: string;
+  /**
+   * Pass as cursor with the same filters and sort to continue; null on the last page.
+   */
+  nextCursor: string | null;
+  companies: Array<{
+    domain: string;
+    signups: number;
+    organizations: number;
+    activeUsers: number;
+    firstSignupAt: string;
+    lastSignInAt: string | null;
+    billing: {
+      plan: "free" | "team" | "enterprise";
+      paying: boolean;
+      modelsAddOn: boolean;
+    };
+    outreach: {
+      status: "not_contacted" | "contacted";
+      lastContactedAt: string | null;
+    };
+    workspaces: Array<{
+      id: string;
+      name: string;
+      members: number;
+    }>;
+  }>;
+  page: {
+    limit: number;
+    total: number;
+    returned: number;
+    hasMore: boolean;
+  };
+};
+
 export type AdminOpportunities = {
   from: string;
   to: string;
@@ -750,6 +1086,15 @@ export type AdminOpportunities = {
     companyDomainCount: number;
     skills: number;
     mcpConnections: number;
+    billing: {
+      plan: "free" | "team" | "enterprise";
+      paying: boolean;
+      modelsAddOn: boolean;
+    };
+    outreach: {
+      status: "not_contacted" | "contacted";
+      lastContactedAt: string | null;
+    };
   }>;
   page: {
     limit: number;
@@ -809,18 +1154,23 @@ export type AdminFeature = {
   key:
     | "nativeDictation"
     | "organizationGrants"
+    | "connectionMcpServers"
     | "liveProviderSync"
+    | "agentConnectionRemoval"
     | "managedDeployments"
     | "workbotDocuments"
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
+    | "workbotUsageRecovery"
     | "automationCalendar"
+    | "removeOpencodeZen"
     | "engineV2ForceUpgrade"
     | "computerUse"
     | "browserDemonstrations"
     | "browserFloatingView"
     | "remoteComputers"
-    | "remoteSessionSubagents";
+    | "remoteSessionSubagents"
+    | "connectStandardTools";
   label: string;
   description: string;
   since: string;
@@ -861,18 +1211,23 @@ export type AdminOrganizationsPageResponse = {
     capabilities?: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -886,7 +1241,7 @@ export type AdminOrganizationsPageResponse = {
     featureStates?: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -895,7 +1250,16 @@ export type AdminOrganizationsPageResponse = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -904,7 +1268,16 @@ export type AdminOrganizationsPageResponse = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -913,7 +1286,7 @@ export type AdminOrganizationsPageResponse = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -922,7 +1295,7 @@ export type AdminOrganizationsPageResponse = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -931,7 +1304,7 @@ export type AdminOrganizationsPageResponse = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -940,7 +1313,16 @@ export type AdminOrganizationsPageResponse = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -949,7 +1331,16 @@ export type AdminOrganizationsPageResponse = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -958,7 +1349,7 @@ export type AdminOrganizationsPageResponse = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -967,7 +1358,7 @@ export type AdminOrganizationsPageResponse = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -976,7 +1367,7 @@ export type AdminOrganizationsPageResponse = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -985,7 +1376,7 @@ export type AdminOrganizationsPageResponse = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -994,7 +1385,7 @@ export type AdminOrganizationsPageResponse = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1003,7 +1394,16 @@ export type AdminOrganizationsPageResponse = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1075,18 +1475,23 @@ export type AdminOverviewResponse = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1100,7 +1505,7 @@ export type AdminOverviewResponse = {
     featureStates: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1109,7 +1514,16 @@ export type AdminOverviewResponse = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1118,7 +1532,16 @@ export type AdminOverviewResponse = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1127,7 +1550,7 @@ export type AdminOverviewResponse = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1136,7 +1559,7 @@ export type AdminOverviewResponse = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1145,7 +1568,7 @@ export type AdminOverviewResponse = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1154,7 +1577,16 @@ export type AdminOverviewResponse = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1163,7 +1595,16 @@ export type AdminOverviewResponse = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1172,7 +1613,7 @@ export type AdminOverviewResponse = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1181,7 +1622,7 @@ export type AdminOverviewResponse = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1190,7 +1631,7 @@ export type AdminOverviewResponse = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1199,7 +1640,7 @@ export type AdminOverviewResponse = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1208,7 +1649,7 @@ export type AdminOverviewResponse = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1217,7 +1658,16 @@ export type AdminOverviewResponse = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -1434,6 +1884,7 @@ export type CurrentUserDesktopConfigResponse = {
   dashboardEnabled?: boolean;
   connectEnabled?: boolean;
   liveProviderSync?: boolean;
+  removeOpencodeZen?: boolean;
   onboardingPrompts?: Array<string>;
   onboardingPromptDescriptions?: Array<string>;
   agentPermissions?: DenDesktopAgentPermissions;
@@ -1978,6 +2429,7 @@ export type OrganizationContextResponse = {
     orgControls: boolean;
     analytics: boolean;
     auditLogs: boolean;
+    scim: boolean;
   };
   [key: string]: unknown;
 };
@@ -4514,10 +4966,12 @@ export type ExternalMcpConnectionResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt?: string;
   connectedForMe: boolean;
@@ -4793,10 +5247,12 @@ export type ExternalMcpConnectionCreatedResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt?: string;
   connectedForMe: boolean;
@@ -4850,6 +5306,51 @@ export type ExternalMcpConnectionCreatedResponse = {
     signIn: string;
     oauthCallback: string;
   };
+  credentialPrompt?: {
+    schemaVersion: "1";
+    kind: "credential_prompt";
+    target:
+      | {
+          type: "mcp_connection_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
+        }
+      | {
+          type: "plugin_connection_key";
+          pluginId: string;
+          configObjectId: string;
+          serverName: string;
+          connectionId: string;
+        }
+      | {
+          type: "gateway_provider_key";
+          inferenceProviderId: string;
+          credentialSetId: string;
+        }
+      | {
+          type: "gateway_provider_credential";
+          inferenceProviderId: string;
+          credentialSetId: string;
+          credentialKind: "aws_keys" | "gcp_service_account" | "api_key_map";
+          envNames?: Array<string>;
+        };
+    name: string;
+    destination: string | null;
+  };
+  nextStep?: string;
 };
 
 export type ExternalMcpConnectionExternalKeyExistsError = {
@@ -4879,10 +5380,12 @@ export type ExternalMcpConnectionUpdatedResponse = {
   credentialMode: "shared" | "per_member";
   apiKeyAuthScheme: "bearer" | "token";
   exposeDirectly: boolean;
+  mcpUrl?: string;
   connected: boolean;
   connectedAt: string | null;
   createdByName?: string | null;
   createdByYou?: boolean;
+  canRemove?: boolean;
   createdAt?: string;
   updatedAt: string;
   connectedForMe: boolean;
@@ -4930,6 +5433,51 @@ export type ExternalMcpConnectionUpdatedResponse = {
   requestedScopes?: Array<string>;
   identityChanged: boolean;
   reconnectionRequired: boolean;
+  credentialPrompt?: {
+    schemaVersion: "1";
+    kind: "credential_prompt";
+    target:
+      | {
+          type: "mcp_connection_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
+        }
+      | {
+          type: "plugin_connection_key";
+          pluginId: string;
+          configObjectId: string;
+          serverName: string;
+          connectionId: string;
+        }
+      | {
+          type: "gateway_provider_key";
+          inferenceProviderId: string;
+          credentialSetId: string;
+        }
+      | {
+          type: "gateway_provider_credential";
+          inferenceProviderId: string;
+          credentialSetId: string;
+          credentialKind: "aws_keys" | "gcp_service_account" | "api_key_map";
+          envNames?: Array<string>;
+        };
+    name: string;
+    destination: string | null;
+  };
+  nextStep?: string;
 };
 
 export type ExternalMcpConnectionMarketplaceManagedError = {
@@ -4970,6 +5518,92 @@ export type ExternalMcpConnectionByKeyUpsertInput = {
 export type ExternalMcpConnectionDeleteByKeyResponse = {
   ok: true;
   deleted: boolean;
+};
+
+export type ExternalMcpConnectionRemovalRequestResponse = {
+  status: "confirmation_required";
+  connection: {
+    id: string;
+    name: string;
+    url: string;
+  };
+  requiredBy: Array<ExternalMcpConnectionRequiredBy>;
+  handoff: {
+    action: "open_link";
+    url: string;
+    instructions: string;
+  };
+};
+
+export type ExternalMcpConnectionRemovalConflict = {
+  error: "connection_name_mismatch" | "connection_in_use";
+  message: string;
+  connection: {
+    id: string;
+    name: string;
+  };
+  requiredBy?: Array<ExternalMcpConnectionRequiredBy>;
+};
+
+export type ExternalMcpConnectionRemovalRequestBody = {
+  /**
+   * The connection's exact name, as getMcpConnections lists it. Nothing is prepared when it does not match.
+   */
+  expectedName: string;
+  /**
+   * The user agreed it may be removed from plugins that need it. Send true only after telling the user which plugins use it.
+   */
+  detachFromPlugins?: boolean;
+};
+
+export type ExternalMcpConnectionCredentialPromptResponse = {
+  connectionId: string;
+  scope: "shared" | "personal";
+  credentialPrompt: {
+    schemaVersion: "1";
+    kind: "credential_prompt";
+    target:
+      | {
+          type: "mcp_connection_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
+        }
+      | {
+          type: "plugin_connection_key";
+          pluginId: string;
+          configObjectId: string;
+          serverName: string;
+          connectionId: string;
+        }
+      | {
+          type: "gateway_provider_key";
+          inferenceProviderId: string;
+          credentialSetId: string;
+        }
+      | {
+          type: "gateway_provider_credential";
+          inferenceProviderId: string;
+          credentialSetId: string;
+          credentialKind: "aws_keys" | "gcp_service_account" | "api_key_map";
+          envNames?: Array<string>;
+        };
+    name: string;
+    destination: string | null;
+  };
+  nextStep: string;
 };
 
 export type ExternalMcpConnectStartResponse = {
@@ -5398,6 +6032,20 @@ export type PluginArchPluginMcpRequirementConfigureResponse = {
       | {
           type: "mcp_connection_key";
           connectionId: string;
+        }
+      | {
+          type: "mcp_connection_member_key";
+          connectionId: string;
+        }
+      | {
+          type: "mcp_connection_shared_switch";
+          connectionId: string;
+          expectedUpdatedAt: string;
+          audience: {
+            orgWide: boolean;
+            memberCount: number;
+            teamCount: number;
+          };
         }
       | {
           type: "plugin_connection_key";
@@ -6714,6 +7362,7 @@ export type WorkbotSession = {
   nativeDictation?: boolean;
   workspaceAssistant?: boolean;
   guidedNavigation?: boolean;
+  usageRecovery?: boolean;
   sideChats: boolean;
   model?: string | null;
   verifyModel?: boolean;
@@ -6730,6 +7379,7 @@ export type WorkbotRunToken = {
     baseUrl: string;
     apiKey: string;
     protocol: "anthropic" | "openai" | "openai-responses";
+    model?: string;
   };
   indexCapability?: string;
 };
@@ -7011,6 +7661,460 @@ export type GetV1AdminFreeAutoConversionsResponses = {
 
 export type GetV1AdminFreeAutoConversionsResponse =
   GetV1AdminFreeAutoConversionsResponses[keyof GetV1AdminFreeAutoConversionsResponses];
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesData = {
+  body?: never;
+  path: {
+    organizationId: string;
+    memberId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities";
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors = {
+  /**
+   * Invalid organization, member or feature settings.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Active organization member not found.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesError =
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors[keyof GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors];
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses = {
+  /**
+   * Member feature settings returned.
+   */
+  200: {
+    featureStates: {
+      nativeDictation: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocuments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocumentEditing: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      automationCalendar: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      engineV2ForceUpgrade: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserDemonstrations: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteComputers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+    };
+  };
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponse =
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses[keyof GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses];
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesData = {
+  body: {
+    capabilities: {
+      nativeDictation?: boolean | null;
+      organizationGrants?: boolean | null;
+      connectionMcpServers?: boolean | null;
+      liveProviderSync?: boolean | null;
+      agentConnectionRemoval?: boolean | null;
+      managedDeployments?: boolean | null;
+      workbotDocuments?: boolean | null;
+      workbotDocumentEditing?: boolean | null;
+      workbotWorkspaceAssistant?: boolean | null;
+      workbotUsageRecovery?: boolean | null;
+      automationCalendar?: boolean | null;
+      removeOpencodeZen?: boolean | null;
+      engineV2ForceUpgrade?: boolean | null;
+      computerUse?: boolean | null;
+      browserDemonstrations?: boolean | null;
+      browserFloatingView?: boolean | null;
+      remoteComputers?: boolean | null;
+      remoteSessionSubagents?: boolean | null;
+      connectStandardTools?: boolean | null;
+    };
+  };
+  path: {
+    organizationId: string;
+    memberId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities";
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors = {
+  /**
+   * Invalid organization, member or feature settings.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Active organization member not found.
+   */
+  404: NotFoundError;
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesError =
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors[keyof PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors];
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses = {
+  /**
+   * Member feature settings saved.
+   */
+  200: {
+    featureStates: {
+      nativeDictation: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      liveProviderSync: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocuments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotDocumentEditing: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      automationCalendar: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      engineV2ForceUpgrade: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      computerUse: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserDemonstrations: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      browserFloatingView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteComputers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+    };
+  };
+};
+
+export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponse =
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses[keyof PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses];
 
 export type GetV1AdminOrganizationsByOrganizationIdData = {
   body?: never;
@@ -7437,6 +8541,180 @@ export type GetV1AdminDashboardResponses = {
 
 export type GetV1AdminDashboardResponse = GetV1AdminDashboardResponses[keyof GetV1AdminDashboardResponses];
 
+export type GetV1AdminOpportunitiesOverviewData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/admin/opportunities/overview";
+};
+
+export type GetV1AdminOpportunitiesOverviewErrors = {
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesOverviewError =
+  GetV1AdminOpportunitiesOverviewErrors[keyof GetV1AdminOpportunitiesOverviewErrors];
+
+export type GetV1AdminOpportunitiesOverviewResponses = {
+  /**
+   * Weekly opportunity overview returned.
+   */
+  200: AdminOpportunityOverview;
+};
+
+export type GetV1AdminOpportunitiesOverviewResponse =
+  GetV1AdminOpportunitiesOverviewResponses[keyof GetV1AdminOpportunitiesOverviewResponses];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}";
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdError =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdErrors[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdErrors];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponses = {
+  /**
+   * Account context returned.
+   */
+  200: AdminOpportunityAccount;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponse =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdResponses[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdResponses];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsData = {
+  body: AccountFollowUpActionInput;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}/actions";
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsError =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses = {
+  /**
+   * Step recorded, or the original retry returned.
+   */
+  200: {
+    ok: true;
+    actionId: string;
+  };
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponse =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses];
+
+export type GetV1AdminOpportunitiesCompaniesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * active keeps companies with at least one person observed using the app in the last 30 days.
+     */
+    activity?: "active" | "all";
+    outreach?: "not_contacted" | "contacted" | "any";
+    billing?: "any" | "paying" | "not_paying";
+    sort?: "active" | "signups" | "recent" | "signin";
+    search?: string;
+    /**
+     * Maximum companies per page, from 1 to 100. Defaults to 50.
+     */
+    limit?: number;
+    /**
+     * Opaque nextCursor from the preceding page. Keep the same filters and sort; omit for the first page.
+     */
+    cursor?: string;
+    /**
+     * Compatibility for numbered admin pages. Use cursor for continued traversal; do not combine with cursor.
+     *
+     * @deprecated
+     */
+    offset?: string;
+  };
+  url: "/v1/admin/opportunities/companies";
+};
+
+export type GetV1AdminOpportunitiesCompaniesErrors = {
+  /**
+   * Invalid report filters.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesCompaniesError =
+  GetV1AdminOpportunitiesCompaniesErrors[keyof GetV1AdminOpportunitiesCompaniesErrors];
+
+export type GetV1AdminOpportunitiesCompaniesResponses = {
+  /**
+   * Signup companies returned.
+   */
+  200: AdminSignupCompanies;
+};
+
+export type GetV1AdminOpportunitiesCompaniesResponse =
+  GetV1AdminOpportunitiesCompaniesResponses[keyof GetV1AdminOpportunitiesCompaniesResponses];
+
 export type GetV1AdminOpportunitiesData = {
   body?: never;
   path?: never;
@@ -7445,6 +8723,10 @@ export type GetV1AdminOpportunitiesData = {
     minMembers?: "1" | "2" | "5" | "10";
     companyEmail?: "0" | "1";
     setup?: "any" | "skills" | "mcp" | "both";
+    /**
+     * Whether a platform admin recorded outreach, a reply or a meeting for the organization.
+     */
+    outreach?: "any" | "not_contacted" | "contacted";
     sort?: "recent" | "active" | "members";
     search?: string;
     /**
@@ -8075,18 +9357,23 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8100,7 +9387,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     featureStates: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8109,7 +9396,16 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8118,7 +9414,16 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8127,7 +9432,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8136,7 +9441,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8145,7 +9450,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8154,7 +9459,16 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8163,7 +9477,16 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8172,7 +9495,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8181,7 +9504,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8190,7 +9513,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8199,7 +9522,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8208,7 +9531,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8217,7 +9540,16 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8277,18 +9609,23 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     capabilities: {
       nativeDictation: boolean;
       organizationGrants: boolean;
+      connectionMcpServers: boolean;
       liveProviderSync: boolean;
+      agentConnectionRemoval: boolean;
       managedDeployments: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8302,7 +9639,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
     featureStates: {
       nativeDictation: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8311,7 +9648,16 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       organizationGrants: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectionMcpServers: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8320,7 +9666,16 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       liveProviderSync: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      agentConnectionRemoval: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8329,7 +9684,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       managedDeployments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8338,7 +9693,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocuments: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8347,7 +9702,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotDocumentEditing: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8356,7 +9711,16 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       workbotWorkspaceAssistant: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8365,7 +9729,16 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       automationCalendar: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8374,7 +9747,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       engineV2ForceUpgrade: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8383,7 +9756,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       computerUse: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8392,7 +9765,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserDemonstrations: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8401,7 +9774,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       browserFloatingView: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8410,7 +9783,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteComputers: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -8419,7 +9792,16 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       };
       remoteSessionSubagents: {
         enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
         killed: boolean;
         lock: boolean | null;
@@ -16308,6 +17690,10 @@ export type PostV1ScimTokenErrors = {
    */
   401: ScimUnauthorizedError;
   /**
+   * SCIM provisioning requires an Enterprise plan.
+   */
+  402: EnterprisePlanRequiredError;
+  /**
    * The caller needs the Manage SCIM provisioning permission and a recent sign-in.
    */
   403: ScimForbiddenError;
@@ -20079,6 +21465,20 @@ export type PostV1InferenceProvidersResponses = {
         | {
             type: "mcp_connection_key";
             connectionId: string;
+          }
+        | {
+            type: "mcp_connection_member_key";
+            connectionId: string;
+          }
+        | {
+            type: "mcp_connection_shared_switch";
+            connectionId: string;
+            expectedUpdatedAt: string;
+            audience: {
+              orgWide: boolean;
+              memberCount: number;
+              teamCount: number;
+            };
           }
         | {
             type: "plugin_connection_key";
@@ -28810,6 +30210,54 @@ export type PutV1McpConnectionsByConnectionIdAccessResponses = {
 export type PutV1McpConnectionsByConnectionIdAccessResponse =
   PutV1McpConnectionsByConnectionIdAccessResponses[keyof PutV1McpConnectionsByConnectionIdAccessResponses];
 
+export type RequestMcpConnectionRemovalData = {
+  body: ExternalMcpConnectionRemovalRequestBody;
+  path: {
+    /**
+     * Den TypeID with 'emc_' prefix and a 26-character base32 suffix.
+     */
+    connectionId: string;
+  };
+  query?: never;
+  url: "/v1/mcp-connections/{connectionId}/removal-request";
+};
+
+export type RequestMcpConnectionRemovalErrors = {
+  /**
+   * Invalid request.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * The caller may not remove this connection.
+   */
+  403: ForbiddenError;
+  /**
+   * Unknown connection, or removing connections through agents is off for this organization.
+   */
+  404: ExternalMcpConnectionNotFoundError;
+  /**
+   * The name does not match this connection, or plugins need it.
+   */
+  409: ExternalMcpConnectionRemovalConflict;
+};
+
+export type RequestMcpConnectionRemovalError =
+  RequestMcpConnectionRemovalErrors[keyof RequestMcpConnectionRemovalErrors];
+
+export type RequestMcpConnectionRemovalResponses = {
+  /**
+   * The removal is ready for the person to confirm in OpenWork.
+   */
+  200: ExternalMcpConnectionRemovalRequestResponse;
+};
+
+export type RequestMcpConnectionRemovalResponse =
+  RequestMcpConnectionRemovalResponses[keyof RequestMcpConnectionRemovalResponses];
+
 export type PostV1McpConnectionsByConnectionIdDisconnectData = {
   body?: never;
   path: {
@@ -28849,6 +30297,56 @@ export type PostV1McpConnectionsByConnectionIdDisconnectResponses = {
 
 export type PostV1McpConnectionsByConnectionIdDisconnectResponse =
   PostV1McpConnectionsByConnectionIdDisconnectResponses[keyof PostV1McpConnectionsByConnectionIdDisconnectResponses];
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptData = {
+  body: {
+    scope?: "shared" | "personal";
+  };
+  path: {
+    /**
+     * Den TypeID with 'emc_' prefix and a 26-character base32 suffix.
+     */
+    connectionId: string;
+  };
+  query?: never;
+  url: "/v1/mcp-connections/{connectionId}/credential-prompt";
+};
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptErrors = {
+  /**
+   * This connection does not take this kind of key.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * The caller cannot enter this key.
+   */
+  403: ForbiddenError;
+  /**
+   * Unknown connection.
+   */
+  404: ExternalMcpConnectionNotFoundError;
+  /**
+   * A marketplace plugin manages this connection's key.
+   */
+  409: ExternalMcpConnectionMarketplaceManagedError;
+};
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptError =
+  PostV1McpConnectionsByConnectionIdCredentialPromptErrors[keyof PostV1McpConnectionsByConnectionIdCredentialPromptErrors];
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptResponses = {
+  /**
+   * A private field is shown to the person.
+   */
+  200: ExternalMcpConnectionCredentialPromptResponse;
+};
+
+export type PostV1McpConnectionsByConnectionIdCredentialPromptResponse =
+  PostV1McpConnectionsByConnectionIdCredentialPromptResponses[keyof PostV1McpConnectionsByConnectionIdCredentialPromptResponses];
 
 export type PostV1McpConnectionsByConnectionIdDisconnectMyAccountData = {
   body?: never;
@@ -34412,6 +35910,54 @@ export type PostV1IntegrationsSlackByConnectionIdInteractionsResponses = {
 export type PostV1IntegrationsSlackByConnectionIdInteractionsResponse =
   PostV1IntegrationsSlackByConnectionIdInteractionsResponses[keyof PostV1IntegrationsSlackByConnectionIdInteractionsResponses];
 
+export type GetWorkbotModelRecoveryData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/workbot/model-recovery";
+};
+
+export type GetWorkbotModelRecoveryErrors = {
+  /**
+   * The token or membership is invalid.
+   */
+  401: UnauthorizedError;
+  /**
+   * Read scope is required.
+   */
+  403: {
+    error: "insufficient_scope";
+  };
+  /**
+   * Usage recovery is off.
+   */
+  404: {
+    error: "feature_disabled";
+  };
+};
+
+export type GetWorkbotModelRecoveryError = GetWorkbotModelRecoveryErrors[keyof GetWorkbotModelRecoveryErrors];
+
+export type GetWorkbotModelRecoveryResponses = {
+  /**
+   * The member's recovery options.
+   */
+  200: {
+    canUpgrade: boolean;
+    purchaseEligible?: boolean;
+    managedLuna?: boolean;
+    hasModelsSubscription?: boolean;
+    paidContinuation?: "unavailable" | "after_upgrade" | "authorized";
+    upgradeBlockedReason?: "paid_workbot_route_unavailable" | null;
+    canManageModels: boolean;
+    canManageBilling: boolean;
+    freeExhausted: boolean;
+    freeResetsAt: string | null;
+  };
+};
+
+export type GetWorkbotModelRecoveryResponse = GetWorkbotModelRecoveryResponses[keyof GetWorkbotModelRecoveryResponses];
+
 export type RecordWorkbotTelemetryData = {
   body:
     | {
@@ -34603,12 +36149,28 @@ export type CreateWorkbotRunTokenErrors = {
    */
   401: UnauthorizedError;
   /**
-   * Workbot is off or the sign-in grant cannot start a turn.
+   * Workbot or model access cannot start a turn.
    */
-  403: {
-    error: string;
-    message?: string;
-  };
+  403:
+    | {
+        error: string;
+        message?: string;
+      }
+    | {
+        error: "workbot_turn_access_denied";
+        reason:
+          | "gateway_not_configured"
+          | "gateway_provider_missing"
+          | "gateway_member_access_missing"
+          | "gateway_model_unavailable"
+          | "gateway_authentication_required"
+          | "gateway_credentials_unavailable"
+          | "oauth_scope_missing"
+          | "model_access_unavailable"
+          | "managed_models_setup_required"
+          | "rate_limited";
+        retryAfter?: number;
+      };
   /**
    * Too many tokens requested.
    */
@@ -34937,6 +36499,25 @@ export type GetMcpAgentWellKnownOauthProtectedResourceResponses = {
 
 export type GetMcpAgentWellKnownOauthProtectedResourceResponse =
   GetMcpAgentWellKnownOauthProtectedResourceResponses[keyof GetMcpAgentWellKnownOauthProtectedResourceResponses];
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdData = {
+  body?: never;
+  path: {
+    connectionId: string;
+  };
+  query?: never;
+  url: "/.well-known/oauth-protected-resource/mcp/agent/servers/{connectionId}";
+};
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses = {
+  /**
+   * Protected resource metadata (RFC 9728).
+   */
+  200: OAuthProtectedResourceMetadata;
+};
+
+export type GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponse =
+  GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses[keyof GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses];
 
 export type GetWellKnownOauthProtectedResourceMcpAdminData = {
   body?: never;

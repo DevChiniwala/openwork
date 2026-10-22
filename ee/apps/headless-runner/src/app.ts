@@ -35,6 +35,8 @@ const createSessionBody = z
     reactions: z.boolean().optional(),
     /** Let the conversation hand longer work to background tasks (start_task) and keep talking. Off unless asked for. */
     tasks: z.boolean().optional(),
+    /** The host opens a document beside this chat on the person's explicit request (`open_document`). Off unless asked for. */
+    documentNavigation: z.boolean().optional(),
     /** Who the conversation belongs to, in the caller's terms, so the caller can list one person's conversations. */
     owner: z.string().min(1).max(200).optional(),
     /** The caller's own id for the conversation, returned when listing. */
@@ -231,12 +233,17 @@ export function createApp(input: {
         return c.json(await input.computer.desktopViewer(session.id, body.data))
       }
       if (c.req.param("operation") === "action" && input.computer?.desktopAction) {
-        const body = z.object({ action: z.enum(["continue", "pause", "resume"]) }).strict().safeParse(raw)
+        const body = z.object({ action: z.enum(["continue", "pause", "resume", "rebuild"]) }).strict().safeParse(raw)
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         return c.json(await input.computer.desktopAction(session.id, body.data.action))
       }
       return c.json({ error: "desktop_not_configured" }, 409)
-    } catch { return c.json({ error: "desktop_unavailable" }, 409) }
+    } catch (error) {
+      // The page only gets a stable code; the reason goes to the runner's log, where an operator can act on it.
+      const code = typeof error === "object" && error !== null && "desktopCode" in error && (error.desktopCode === "desktop_outdated" || error.desktopCode === "desktop_unresponsive") ? error.desktopCode : "desktop_unavailable"
+      console.error("[headless-runner] desktop failed", { sessionId: session.id, operation: c.req.param("operation"), code, error: error instanceof Error ? error.message : "unknown" })
+      return c.json({ error: code }, 409)
+    }
   })
 
   app.post("/v1/sessions", async (c) => {

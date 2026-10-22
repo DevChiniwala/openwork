@@ -3675,12 +3675,16 @@ export function createDenClient(options: {
       );
     },
 
-    /** Private field in chat: a person saves an organization connection's shared key. */
-    async saveMcpConnectionSharedKey(orgId: string, connectionId: string, apiKey: string): Promise<void> {
+    /**
+     * Private field in chat: a person saves an organization connection's shared key.
+     * With expectedUpdatedAt the key replaces each person's own key, only if the
+     * connection is unchanged since then.
+     */
+    async saveMcpConnectionSharedKey(orgId: string, connectionId: string, apiKey: string, options: { expectedUpdatedAt?: string } = {}): Promise<void> {
       await requestJson<unknown>(
         baseUrls,
         `/v1/mcp-connections/${encodeURIComponent(connectionId)}/shared-credential`,
-        { method: "PUT", token, organizationId: orgId, body: { apiKey } },
+        { method: "PUT", token, organizationId: orgId, body: { apiKey, ...(options.expectedUpdatedAt ? { expectedUpdatedAt: options.expectedUpdatedAt } : {}) } },
       );
     },
 

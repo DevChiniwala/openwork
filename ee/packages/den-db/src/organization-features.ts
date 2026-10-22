@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import {
   isFeatureKey,
@@ -13,8 +13,8 @@ import {
   type ResolvedFeature,
 } from "@openwork/features"
 import type { createDenDb } from "./client"
-import { OrganizationTable } from "./schema/org"
-import { FeatureRolloutTable, OrganizationFeatureTable } from "./schema/organization-features"
+import { MemberTable, OrganizationTable } from "./schema/org"
+import { FeatureRolloutTable, MemberFeatureTable, OrganizationFeatureTable } from "./schema/organization-features"
 
 /**
  * Storage for feature state (on/off for everyone and kill switch per feature) and
@@ -94,13 +94,14 @@ export async function readFeatures(
   database: FeatureDatabase,
   organizationId: string | null,
   environment: FeatureEnvironment,
-  options: { lock?: "share" } = {},
+  options: { lock?: "share"; userId?: string } = {},
 ): Promise<FeatureMap> {
   // Sequential on purpose: callers may pass a transaction, and a PlanetScale
   // transaction is one session that fails when two queries are in flight.
   const rollouts = await readFeatureRollouts(database)
   const overrides = organizationId ? await readOrganizationFeatureOverrides(database, organizationId, options) : {}
-  return resolveFeatures({ ...environment, rollouts, overrides })
+  const memberOverrides = organizationId && options.userId ? await readMemberFeatureOverrides(database, organizationId, options.userId, options) : {}
+  return resolveFeatures({ ...environment, rollouts, overrides, memberOverrides })
 }
 
 /** Effective state with its source, for /admin. */
@@ -190,5 +191,53 @@ export async function setOrganizationFeatureOverrides(
     else delete metadata.capabilities
     await tx.update(OrganizationTable).set({ metadata }).where(eq(OrganizationTable.id, organizationId))
     return overrides
+  })
+}
+
+/** Fresh, tenant-scoped member state: it never enters the organization cache. */
+export async function readMemberFeatureOverrides(
+  database: FeatureDatabase,
+  organizationId: string,
+  userId: string,
+  options: { lock?: "share" } = {},
+): Promise<FeatureOverrides> {
+  const query = database.select({ feature_key: MemberFeatureTable.feature_key, enabled: MemberFeatureTable.enabled })
+    .from(MemberFeatureTable)
+    .innerJoin(MemberTable, eq(MemberTable.id, MemberFeatureTable.member_id))
+    .where(and(
+      eq(MemberTable.organizationId, normalizeDenTypeId("organization", organizationId)),
+      eq(MemberTable.userId, normalizeDenTypeId("user", userId)),
+      isNull(MemberTable.removedAt),
+      eq(MemberTable.isSetupAgent, false),
+    ))
+  return toOverrides(await (options.lock ? query.for(options.lock) : query))
+}
+
+/** Lock and revalidate the membership in the same transaction as the write. */
+export async function setMemberFeatureOverrides(database: Db, input: {
+  organizationId: string
+  memberId: string
+  changes: FeatureOverrideChanges
+  setByUserId: string
+}): Promise<boolean> {
+  const organizationId = normalizeDenTypeId("organization", input.organizationId)
+  const memberId = normalizeDenTypeId("member", input.memberId)
+  const setByUserId = normalizeDenTypeId("user", input.setByUserId)
+  return database.transaction(async (tx) => {
+    const [member] = await tx.select({ userId: MemberTable.userId }).from(MemberTable).where(and(
+      eq(MemberTable.id, memberId), eq(MemberTable.organizationId, organizationId),
+      isNull(MemberTable.removedAt), eq(MemberTable.isSetupAgent, false),
+    )).limit(1).for("update")
+    if (!member?.userId) return false
+    for (const [key, value] of Object.entries(input.changes)) {
+      if (!isFeatureKey(key) || value === undefined) continue
+      if (value === null) {
+        await tx.delete(MemberFeatureTable).where(and(eq(MemberFeatureTable.member_id, memberId), eq(MemberFeatureTable.feature_key, key)))
+      } else {
+        await tx.insert(MemberFeatureTable).values({ member_id: memberId, feature_key: key, enabled: value, set_by_user_id: setByUserId })
+          .onDuplicateKeyUpdate({ set: { enabled: value, set_by_user_id: setByUserId } })
+      }
+    }
+    return true
   })
 }

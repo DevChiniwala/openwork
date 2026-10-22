@@ -611,12 +611,12 @@ export function ManageMembersScreen() {
       />
       <OrgLimitDialog
         open={Boolean(seatBillingDialogError)}
-        eyebrow="Seat billing"
-        title="Subscribe to add more users"
-        message="The first 5 users in your organization are free, additional users are charged at $10 per user per month"
+        eyebrow="Free plan limit"
+        title="Upgrade to the Team plan"
+        message={`The Free plan is limited to ${seatBillingDialogError?.freeSeatCount ?? 5} users, counting pending invitations. Upgrade to the Team plan to invite more people. Team is $10 per user per month.`}
         detail={canStartSeatCheckout ? null : permissionLockReason("billing.manage")}
-        closeLabel="Cancel"
-        actionLabel="Subscribe"
+        closeLabel="Not now"
+        actionLabel="Upgrade to Team"
         actionLoading={mutationBusy === "seat-checkout"}
         actionDisabled={!canStartSeatCheckout}
         onClose={() => setSeatBillingDialogError(null)}

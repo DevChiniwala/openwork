@@ -10,14 +10,18 @@ type ComputerStore = {
   requests: Record<string, ComputerRequest>
   /** The chat whose setup checklist is open, from the header or an in-chat card. */
   setupSessionId: string | null
+  /** Bumped when the person presses Continue in a chat's Computer view. */
+  continued: Record<string, number>
   setRequest: (sessionId: string, request: ComputerRequest | null) => void
   openSetup: (sessionId: string) => void
   closeSetup: () => void
+  markContinued: (sessionId: string) => void
 }
 
 export const useComputerStore = create<ComputerStore>((set) => ({
   requests: {},
   setupSessionId: null,
+  continued: {},
   setRequest: (sessionId, request) => set((state) => {
     const requests = { ...state.requests }
     if (request) requests[sessionId] = request
@@ -26,6 +30,7 @@ export const useComputerStore = create<ComputerStore>((set) => ({
   }),
   openSetup: (sessionId) => set({ setupSessionId: sessionId }),
   closeSetup: () => set({ setupSessionId: null }),
+  markContinued: (sessionId) => set((state) => ({ continued: { ...state.continued, [sessionId]: (state.continued[sessionId] ?? 0) + 1 } })),
 }))
 
 export const useComputerRequest = (sessionId: string | null | undefined) =>

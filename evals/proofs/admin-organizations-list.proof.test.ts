@@ -36,11 +36,11 @@ test("a platform admin scans organizations as compact rows and jumps back to the
     await admin.screenshot();
   });
 
-  await step("Manage opens plan, seats and free seats for that one organization", async () => {
+  await step("Manage opens the plan, seats and Free plan user limit for that one organization", async () => {
     await admin.navigate(world.url("/admin/organizations?search=Overview%20workspace"));
     await admin.click({ role: "button", label: `Manage ${organizationName}` });
     await admin.see({ role: "button", label: "Save access" });
-    await admin.see({ role: "button", label: `Edit free seats for ${organizationName}` });
+    await admin.see({ role: "button", label: `Edit the Free plan user limit for ${organizationName}` });
     const editors = await adminProbe.dom('[id^="admin-org-manage-"]');
     const seats = await adminProbe.dom('[data-testid^="admin-org-row-"]');
     const ok = editors.elements.length === 1 && /\/ 100/.test(seats.elements[0]?.text ?? "");

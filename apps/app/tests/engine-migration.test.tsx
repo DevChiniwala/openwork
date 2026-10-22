@@ -15,6 +15,7 @@ const server = await import("../src/app/lib/openwork-server");
 const { isDesktopRuntime } = await import("../src/app/lib/runtime-env");
 const automations = await import("../src/react-app/domains/automations/use-automations");
 const connection = await import("../src/react-app/shell/openwork-connection");
+const den = await import("../src/app/lib/den");
 const { EngineMigrationOverlay, observeEngineMigration, requestEngineMigration, resetEngineMigrationForTest, useEngineMigrationStore } = await import("../src/react-app/shell/engine-migration");
 const { useOpencodeEngineControls } = await import("../src/react-app/shell/opencode-engine-controls");
 const previousAct = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
@@ -340,16 +341,33 @@ test("a fresh forced v2 status refreshes routing without any migration UI or ren
   }
 });
 
-test("signed-out desktop cannot activate cached force flags", async () => {
+test("signed-out desktop follows the deployment switch, never cached organization flags", async () => {
   Reflect.set(window, "__OPENWORK_ELECTRON__", {});
   const client = engineClient();
   spyOn(automations, "useAutomationsDenContext").mockReturnValue({
     client: null, organizationId: orgId, ready: false, queryRoot: ["den", "automations", orgId],
   });
+  const getDeploymentFeatures = mock(async () => ({ engineV2ForceUpgrade: false }));
+  spyOn(den, "createDenClient").mockReturnValue({ getDeploymentFeatures } as unknown as ReturnType<typeof den.createDenClient>);
   await setFeatures(true);
   await renderOverlay();
-  expect(client.setEngineV2ForcePolicy).not.toHaveBeenCalled();
+  for (let tick = 0; tick < 50 && !client.setEngineV2ForcePolicy.mock.calls.length; tick++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  expect(getDeploymentFeatures).toHaveBeenCalled();
+  // The deployment's off switch reaches signed-out desktops; the cached org "on" does not.
+  expect(client.setEngineV2ForcePolicy).toHaveBeenCalledWith({ upgrade: false });
   expect(client.migrateOpencodeHistory).not.toHaveBeenCalled();
+});
+
+test("signed-out desktop sends nothing when Den is unreachable", async () => {
+  Reflect.set(window, "__OPENWORK_ELECTRON__", {});
+  const client = engineClient();
+  spyOn(automations, "useAutomationsDenContext").mockReturnValue({
+    client: null, organizationId: orgId, ready: false, queryRoot: ["den", "automations", orgId],
+  });
+  spyOn(den, "createDenClient").mockReturnValue({ getDeploymentFeatures: mock(async () => { throw new Error("offline"); }) } as unknown as ReturnType<typeof den.createDenClient>);
+  await renderOverlay();
+  for (let tick = 0; tick < 20; tick++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  expect(client.setEngineV2ForcePolicy).not.toHaveBeenCalled();
 });
 
 test("a failed force request never falls back to a renderer migration, switch, or consent", async () => {

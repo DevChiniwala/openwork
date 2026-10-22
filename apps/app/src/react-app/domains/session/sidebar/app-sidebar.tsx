@@ -1870,7 +1870,9 @@ function SessionNumberShortcutSlot({ digit }: { digit: number | undefined }) {
       data-session-action-slot="number-shortcut"
       aria-hidden="true"
       className={cn(
-        "flex h-5 shrink-0 items-center justify-center",
+        // Mounted only once the hold delay has passed; fades in, and unmounts
+        // (hides at once) on release.
+        "flex h-5 shrink-0 items-center justify-center animate-in fade-in duration-1000 ease-out motion-reduce:animate-none",
         ctx.sessionNumberShortcutOs === "macos" ? "w-8" : "w-11",
       )}
     >

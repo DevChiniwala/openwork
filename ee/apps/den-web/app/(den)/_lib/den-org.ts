@@ -351,6 +351,8 @@ export type DenOrgEntitlements = {
   orgControls: boolean;
   analytics: boolean;
   auditLogs: boolean;
+  /** SCIM provisioning (Enterprise). */
+  scim: boolean;
 };
 
 /** Server-advertised and per-org capabilities; optional fields default to off. */
@@ -1269,7 +1271,7 @@ function parseOrgCapabilities(value: unknown): DenOrgCapabilities {
 
 function parseOrgEntitlements(value: unknown): DenOrgEntitlements {
   if (!isRecord(value)) {
-    return { sso: true, desktopPolicies: true, orgControls: true, analytics: true, auditLogs: false };
+    return { sso: true, desktopPolicies: true, orgControls: true, analytics: true, auditLogs: false, scim: true };
   }
 
   return {
@@ -1278,6 +1280,7 @@ function parseOrgEntitlements(value: unknown): DenOrgEntitlements {
     orgControls: value.orgControls !== false,
     analytics: value.analytics !== false,
     auditLogs: value.auditLogs === true,
+    scim: value.scim !== false,
   };
 }
 
