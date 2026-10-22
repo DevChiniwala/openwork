@@ -13,6 +13,8 @@ export const AuditPolicyTable = mysqlTable("audit_policy", {
   effective_at: timestamp("effective_at", { fsp: 3 }).notNull(),
   capture_started_at: timestamp("capture_started_at", { fsp: 3 }),
   attachment_window_seconds: int("attachment_window_seconds", { unsigned: true }).notNull(),
+  // Age-based retention window in days (1..365); set per organization by platform admins.
+  retention_days: smallint("retention_days", { unsigned: true }).notNull().default(90),
 })
 
 export const AuditStateTable = mysqlTable("audit_state", {

@@ -1,0 +1,1 @@
+ALTER TABLE `audit_policy` ADD `retention_days` smallint unsigned DEFAULT 90 NOT NULL;

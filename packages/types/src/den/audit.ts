@@ -8,6 +8,11 @@ export const auditOriginSchema = z.enum(["api", "cloud_ui", "mcp", "scheduler", 
 export const auditOutcomeSchema = z.enum(["succeeded", "failed", "denied", "unknown"])
 export const auditOperationOutcomeSchema = z.enum(["running", "succeeded", "failed", "partial", "unknown"])
 export const auditExcessModeSchema = z.enum(["delete_oldest", "paid_overage", "keep_all"])
+// Age-based retention window: 90 days unless an OpenWork platform admin sets
+// another value for the organization, from 1 to 365 days.
+export const DEFAULT_AUDIT_RETENTION_DAYS = 90
+export const MAX_AUDIT_RETENTION_DAYS = 365
+export const auditRetentionDaysSchema = z.number().int().min(1).max(MAX_AUDIT_RETENTION_DAYS)
 export const auditActorSchema = z.object({
   type: z.enum(["user", "service", "system", "unknown"]),
   id: z.string().nullable(),
@@ -26,7 +31,7 @@ export const auditPolicySchema = z.object({
   organizationId: z.string(), revision: z.number().int().positive(), source: z.enum(["cloud", "operator"]),
   enabled: z.boolean(), categories: z.array(auditCategorySchema), allowance: z.number().int().nonnegative().safe(),
   excessMode: auditExcessModeSchema, effectiveAt: z.string().datetime(), captureStartedAt: z.string().datetime().nullable(),
-  attachmentWindowSeconds: z.number().int().min(1).max(86400),
+  attachmentWindowSeconds: z.number().int().min(1).max(86400), retentionDays: auditRetentionDaysSchema,
 }).strict()
 export const auditHttpContextSchema = z.object({
   method: z.string(), route: z.string(), status: z.number().int().min(100).max(599).optional(),
@@ -65,12 +70,20 @@ export const auditEntitlementSchema = z.object({
 export const auditCaptureUpdateSchema = z.object({
   captureOn: z.boolean(), expectedRevision: z.number().int().nonnegative().safe(),
 }).strict()
+export const auditRetentionAdminResponseSchema = z.object({
+  organizationId: z.string(), available: z.boolean(), retentionDays: auditRetentionDaysSchema,
+  defaultRetentionDays: z.literal(DEFAULT_AUDIT_RETENTION_DAYS), maximumRetentionDays: z.literal(MAX_AUDIT_RETENTION_DAYS),
+  revision: z.number().int().positive().nullable(), cleanupEnabled: z.boolean(),
+}).strict()
+export const auditRetentionUpdateSchema = z.object({
+  retentionDays: auditRetentionDaysSchema, expectedRevision: z.number().int().nonnegative().safe(),
+}).strict()
 export const auditUsageResponseSchema = z.object({
   entitlement: auditEntitlementSchema, captureOn: z.boolean(), captureAvailable: z.boolean(),
   policy: auditPolicySchema.nullable(), captureEnabled: z.boolean(), retainedOperations: z.number().int().nonnegative().safe(),
   eventCount: z.number().int().nonnegative().safe(), logicalBytes: z.number().int().nonnegative().safe(),
   oldestAvailableAt: z.string().datetime().nullable(), measuredAt: z.string().datetime().nullable(),
-  billing: z.literal("disabled"), cleanup: z.literal("dry_run"), drains: z.literal("not_configured"),
+  billing: z.literal("disabled"), cleanup: z.enum(["dry_run", "age_based"]), drains: z.literal("not_configured"),
 }).strict()
 
 export type AuditCategory = z.infer<typeof auditCategorySchema>
@@ -85,6 +98,8 @@ export type AuditEventTypesResponse = z.infer<typeof auditEventTypesResponseSche
 export type AuditEntitlement = z.infer<typeof auditEntitlementSchema>
 export type AuditCaptureUpdate = z.infer<typeof auditCaptureUpdateSchema>
 export type AuditUsageResponse = z.infer<typeof auditUsageResponseSchema>
+export type AuditRetentionAdminResponse = z.infer<typeof auditRetentionAdminResponseSchema>
+export type AuditRetentionUpdate = z.infer<typeof auditRetentionUpdateSchema>
 export type AuditOperationContext = Readonly<{ correlationId: string }>
 
 /** Create once per interaction and pass explicitly, including across reauthentication. */

@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto"
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm"
 import { createDenTypeId, normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import type { createDenDb } from "./client"
-import { auditEventEnvelopeSchema, type AuditActor, type AuditCategory, type AuditEventEnvelope, type AuditPolicy } from "@openwork/types/den/audit"
+import { MAX_AUDIT_RETENTION_DAYS, auditEventEnvelopeSchema, type AuditActor, type AuditCategory, type AuditEventEnvelope, type AuditPolicy } from "@openwork/types/den/audit"
 export type { AuditActor, AuditCategory, AuditEventEnvelope, AuditPolicy } from "@openwork/types/den/audit"
 import { AuditEventResourceTable, AuditOperationStepTable, AuditOperationTable, AuditPolicyTable, AuditStateTable, AuditUsageFactTable, PlatformAuditEventTable } from "./schema/audit"
 import { AuditEventTable } from "./schema/workers"
@@ -178,6 +178,7 @@ function policyValue(row: typeof AuditPolicyTable.$inferSelect): AuditPolicy {
     effectiveAt: row.effective_at.toISOString(),
     captureStartedAt: row.capture_started_at?.toISOString() ?? null,
     attachmentWindowSeconds: row.attachment_window_seconds,
+    retentionDays: row.retention_days,
   }
   validatePolicy(value)
   return value
@@ -187,12 +188,13 @@ function validatePolicy(policy: AuditPolicy) {
   integer(policy.revision, 1, 4_294_967_295)
   integer(policy.allowance)
   integer(policy.attachmentWindowSeconds, 1, 86_400)
+  integer(policy.retentionDays, 1, MAX_AUDIT_RETENTION_DAYS)
   if (!["cloud", "operator"].includes(policy.source) || !["delete_oldest", "paid_overage", "keep_all"].includes(policy.excessMode) || typeof policy.enabled !== "boolean") fail()
   if (!Array.isArray(policy.categories) || policy.categories.length > categories.length || new Set(policy.categories).size !== policy.categories.length || policy.categories.some((value) => !categories.includes(value))) fail()
   if (!Number.isFinite(Date.parse(policy.effectiveAt)) || policy.captureStartedAt !== null && !Number.isFinite(Date.parse(policy.captureStartedAt))) fail()
 }
 function policyIdentity(policy: AuditPolicy) {
-  return canonicalAuditJson({ organizationId: policy.organizationId, revision: policy.revision, source: policy.source, enabled: policy.enabled, categories: [...policy.categories].sort(), allowance: policy.allowance, excessMode: policy.excessMode, effectiveAt: new Date(policy.effectiveAt).toISOString(), attachmentWindowSeconds: policy.attachmentWindowSeconds })
+  return canonicalAuditJson({ organizationId: policy.organizationId, revision: policy.revision, source: policy.source, enabled: policy.enabled, categories: [...policy.categories].sort(), allowance: policy.allowance, excessMode: policy.excessMode, effectiveAt: new Date(policy.effectiveAt).toISOString(), attachmentWindowSeconds: policy.attachmentWindowSeconds, retentionDays: policy.retentionDays })
 }
 
 export async function readAuditPolicy(database: AuditDatabase | AuditTx, organizationId: string): Promise<AuditPolicy | null> {
@@ -358,6 +360,43 @@ export async function setAuditCaptureState(tx: AuditTx, input: { context: AuditC
     changes: { before: snapshot(before), after: snapshot(after), changedFields: ["captureOn", "revision", "effectiveAt"] },
     idempotencyKey: `capture:${after.revision}`,
   } })
+}
+
+/**
+ * Sets the organization's age-based retention window. Platform administrators
+ * only (origin platform_admin, actor the admin user without a membership).
+ * Same optimistic revision guard as capture changes; matching no-ops record
+ * nothing. The lifecycle event is recorded whatever the capture state, like
+ * capture changes, so a retention change is always evidenced.
+ */
+export async function setAuditRetentionDays(tx: AuditTx, input: { context: AuditContext; retentionDays: number; expectedRevision: number }): Promise<AuditPolicy> {
+  const identity = validateContext(input.context)
+  integer(input.expectedRevision)
+  integer(input.retentionDays, 1, MAX_AUDIT_RETENTION_DAYS)
+  if (input.context.kind !== "audit.policy" || input.context.scope !== identity.organizationId || identity.actor.type !== "user" || identity.actor.memberId !== undefined || input.context.origin !== "platform_admin" || input.context.originTrust !== "authenticated" || !input.context.requestId || input.context.initiatingActor || input.context.correlationId || input.context.jobRunId || input.context.causedByEventId) fail()
+  const { retentionDays, expectedRevision } = input
+  const context: AuditContext = { organizationId: identity.organizationId, actor: identity.actor, principalKey: input.context.principalKey, kind: "audit.policy", scope: identity.organizationId, origin: "platform_admin", originTrust: "authenticated", requestId: input.context.requestId }
+  const before = await readAuditPolicy(tx, identity.organizationId)
+  if (!before) {
+    if (expectedRevision !== 0) throw new AuditLogError("audit_policy_changed")
+    throw new AuditLogError("audit_policy_not_configured")
+  }
+  if (before.revision !== expectedRevision) throw new AuditLogError("audit_policy_changed")
+  if (before.retentionDays === retentionDays) return before
+  const now = new Date()
+  const after: AuditPolicy = { ...before, retentionDays, revision: add(before.revision, 1), effectiveAt: now.toISOString() }
+  validatePolicy(after)
+  const result = await tx.update(AuditPolicyTable).set({ retention_days: after.retentionDays, revision: after.revision, effective_at: now })
+    .where(and(eq(AuditPolicyTable.organization_id, identity.organizationId), eq(AuditPolicyTable.revision, expectedRevision)))
+  if (affectedRows(result) === 0) throw new AuditLogError("audit_policy_changed")
+  const snapshot = (policy: AuditPolicy) => ({ retentionDays: policy.retentionDays, revision: policy.revision, effectiveAt: policy.effectiveAt })
+  await appendAuditEventCore(tx, { context, policy: after, event: {
+    action: "audit.retention.updated", category: "lifecycle", outcome: "succeeded",
+    resources: [{ type: "audit_policy", id: identity.organizationId, relationship: "target" }],
+    changes: { before: snapshot(before), after: snapshot(after), changedFields: ["retentionDays", "revision", "effectiveAt"] },
+    idempotencyKey: `retention:${after.revision}`,
+  } })
+  return after
 }
 
 /** Operation outcome projection (audit_operation.outcome); never part of the event envelope or its content hash. */
@@ -533,6 +572,72 @@ export async function refreshAuditUsageCounts(database: AuditDatabase, options: 
       .onDuplicateKeyUpdate({ set: { ...totals, updated_at: updatedAt } })
   }
   return { organizations: organizationIds.length, refreshedAt: new Date().toISOString() }
+}
+
+export type AuditRetentionCleanupSummary = { operations: number; events: number; batches: number; complete: boolean }
+export const MAX_AUDIT_RETENTION_BATCH = 500
+const DAY_MS = 86_400_000
+
+/**
+ * Permanently deletes whole operations recorded on or before now - retentionDays,
+ * in bounded batches, each in its own transaction. Running operations and
+ * operations still inside their attachment window are kept (the next run takes
+ * them). Each batch marks its operations evicting (appends then refuse to join
+ * them), deletes their events, resources and step claims, records the -1 usage
+ * fact and deletes the operation rows. Legacy rows (no operation) and the
+ * platform store are never touched. Policies with keep_all keep everything.
+ * Callers decide whether cleanup is on (feature auditRetentionCleanup).
+ */
+export async function deleteExpiredAuditOperations(database: AuditDatabase, input: { organizationId: string; now: Date; retentionDays: number; batchSize: number; maxBatches?: number; deadline?: number }): Promise<AuditRetentionCleanupSummary> {
+  const organizationId = normalizeDenTypeId("organization", input.organizationId)
+  integer(input.retentionDays, 1, MAX_AUDIT_RETENTION_DAYS)
+  integer(input.batchSize, 1, MAX_AUDIT_RETENTION_BATCH)
+  const maxBatches = integer(input.maxBatches ?? 100, 1, 10_000)
+  if (!Number.isFinite(input.now.getTime())) fail()
+  const now = input.now
+  const cutoff = new Date(now.getTime() - input.retentionDays * DAY_MS)
+  const summary: AuditRetentionCleanupSummary = { operations: 0, events: 0, batches: 0, complete: false }
+  const eligible = and(
+    eq(AuditOperationTable.organization_id, organizationId), eq(AuditOperationTable.retention_state, "retained"),
+    lte(AuditOperationTable.first_recorded_at, cutoff), ne(AuditOperationTable.outcome, "running"), lte(AuditOperationTable.attachment_expires_at, now),
+  )
+  while (summary.batches < maxBatches && (input.deadline === undefined || Date.now() < input.deadline)) {
+    const batch = await database.transaction(async (tx) => {
+      const policy = await readAuditPolicy(tx, organizationId)
+      if (!policy || policy.excessMode === "keep_all") return null
+      const candidates = (await tx.select({ id: AuditOperationTable.id }).from(AuditOperationTable).where(eligible)
+        .orderBy(asc(AuditOperationTable.first_recorded_at), asc(AuditOperationTable.id)).limit(input.batchSize)).map((row) => row.id)
+      if (!candidates.length) return null
+      // The guarded update claims the batch; a concurrent append that already
+      // joined an operation keeps writing to a row this run then deletes, so
+      // only operations past their attachment window are eligible.
+      await tx.update(AuditOperationTable).set({ retention_state: "evicting" }).where(and(eligible, inArray(AuditOperationTable.id, candidates)))
+      const ids = (await tx.select({ id: AuditOperationTable.id }).from(AuditOperationTable)
+        .where(and(eq(AuditOperationTable.organization_id, organizationId), eq(AuditOperationTable.retention_state, "evicting"), inArray(AuditOperationTable.id, candidates)))).map((row) => row.id)
+      if (!ids.length) return { operations: 0, events: 0, more: candidates.length === input.batchSize }
+      await tx.delete(AuditEventResourceTable).where(and(eq(AuditEventResourceTable.organization_id, organizationId), inArray(AuditEventResourceTable.operation_id, ids)))
+      const events = affectedRows(await tx.delete(AuditEventTable).where(and(eq(AuditEventTable.org_id, organizationId), inArray(AuditEventTable.operation_id, ids)))) ?? 0
+      await tx.delete(AuditOperationStepTable).where(and(eq(AuditOperationStepTable.organization_id, organizationId), inArray(AuditOperationStepTable.operation_id, ids)))
+      await tx.insert(AuditUsageFactTable).values(ids.map((operationId) => ({
+        id: createDenTypeId("auditUsageFact"), organization_id: organizationId, operation_id: operationId, delta: -1 as const, effective_at: now,
+        policy_revision: policy.revision, allowance: policy.allowance, excess_mode: policy.excessMode,
+      }))).onDuplicateKeyUpdate({ set: { id: sql`${AuditUsageFactTable.id}` } })
+      const operations = affectedRows(await tx.delete(AuditOperationTable).where(and(eq(AuditOperationTable.organization_id, organizationId), eq(AuditOperationTable.retention_state, "evicting"), inArray(AuditOperationTable.id, ids)))) ?? ids.length
+      return { operations, events, more: candidates.length === input.batchSize }
+    })
+    if (!batch) {
+      summary.complete = true
+      break
+    }
+    summary.batches++
+    summary.operations = add(summary.operations, batch.operations)
+    summary.events = add(summary.events, batch.events)
+    if (!batch.more) {
+      summary.complete = true
+      break
+    }
+  }
+  return summary
 }
 
 export type PlatformAuditEventInput = {
