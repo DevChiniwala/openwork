@@ -16,6 +16,10 @@ export type DenApiReadinessResponse = {
   checks: {
     database: "ok" | "error";
   };
+  /**
+   * True while this instance shuts down and finishes its in-flight requests.
+   */
+  draining?: boolean;
 };
 
 export type AdminFreeAutoUsageResponse = {

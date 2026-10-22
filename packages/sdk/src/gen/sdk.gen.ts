@@ -1168,7 +1168,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Check den-api readiness
    *
-   * Verifies den-api can reach its database dependency.
+   * Verifies den-api can reach its database dependency and is not shutting down.
    */
   public getReady<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GetReadyResponses, GetReadyErrors, ThrowOnError>({

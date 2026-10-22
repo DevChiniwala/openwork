@@ -293,6 +293,10 @@
             "required": [
               "database"
             ]
+          },
+          "draining": {
+            "description": "True while this instance shuts down and finishes its in-flight requests.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -32522,7 +32526,7 @@
         ],
         "security": [],
         "summary": "Check den-api readiness",
-        "description": "Verifies den-api can reach its database dependency.",
+        "description": "Verifies den-api can reach its database dependency and is not shutting down.",
         "responses": {
           "200": {
             "description": "den-api is ready to serve traffic.",
