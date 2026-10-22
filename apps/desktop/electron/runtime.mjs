@@ -582,26 +582,41 @@ async function readJsonFile(targetPath, fallback) {
   }
 }
 
-function targetTriple() {
-  if (process.platform === "darwin") {
-    return process.arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
+function targetTriple(platform = process.platform, arch = process.arch) {
+  if (platform === "darwin") {
+    return arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
   }
-  if (process.platform === "linux") {
-    return process.arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu";
+  if (platform === "linux") {
+    return arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu";
   }
-  if (process.platform === "win32") {
-    return process.arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+  if (platform === "win32") {
+    return arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
   }
   return null;
 }
 
-function binaryFileNames(baseName) {
-  const ext = process.platform === "win32" ? ".exe" : "";
-  const triple = targetTriple();
+function binaryFileNames(baseName, platform = process.platform, arch = process.arch) {
+  const ext = platform === "win32" ? ".exe" : "";
+  const triple = targetTriple(platform, arch);
   return [
-    triple ? `${baseName}-${triple}${ext}` : null,
     `${baseName}${ext}`,
+    triple ? `${baseName}-${triple}${ext}` : null,
   ].filter(Boolean);
+}
+
+export function bundledEngineEnv(sidecarDirs, { required = false, platform = process.platform, arch = process.arch } = {}) {
+  /** @type {NodeJS.ProcessEnv} */
+  const env = {};
+  for (const [base, key] of [["opencode", "OPENWORK_OPENCODE_BIN"], ["opencode2", "OPENWORK_OPENCODE2_BIN"]]) {
+    const candidates = sidecarDirs.flatMap((directory) =>
+      binaryFileNames(base, platform, arch).map((name) => path.resolve(directory, name)));
+    const binary = candidates.find((candidate) => {
+      try { return statSync(candidate).isFile(); } catch { return false; }
+    });
+    if (binary) env[key] = binary;
+    else if (required) throw new Error(`Missing packaged engine ${base}. Checked: ${candidates.join(", ")}`);
+  }
+  return env;
 }
 
 function isDirectory(targetPath) {
@@ -1904,8 +1919,12 @@ export function createRuntimeManager({
       engineState.opencodeBinSource = managedOpencode?.source ?? null;
     }
 
-    // Inject user env vars so the server and managed OpenCode inherit them.
-    const serverEnv = await buildChildEnv({});
+    // The embedded server resolves v2 independently of v1. Give both engines
+    // absolute bundled paths before loading it, never a PATH/cache download.
+    // Keep triple-name support for dev and older packaged layouts.
+    const engineEnv = bundledEngineEnv(sidecarDirs, { required: app.isPackaged });
+    if (managedOpencode) engineEnv.OPENWORK_OPENCODE_BIN = managedOpencode.path;
+    const serverEnv = await buildChildEnv(engineEnv);
     Object.assign(process.env, serverEnv);
 
     // Once the embedded server has a persisted registry, it is the source of

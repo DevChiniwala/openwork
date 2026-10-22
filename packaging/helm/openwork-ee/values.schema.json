@@ -138,6 +138,16 @@
               ],
               "description": "Calendar: desktop app: Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar. Renders DEN_FEATURE_AUTOMATION_CALENDAR."
             },
+            "removeOpencodeZen": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Remove OpenCode Zen models: Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead. Renders DEN_FEATURE_REMOVE_OPENCODE_ZEN."
+            },
             "engineV2ForceUpgrade": {
               "enum": [
                 "",
