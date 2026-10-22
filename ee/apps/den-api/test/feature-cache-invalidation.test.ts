@@ -234,18 +234,25 @@ test("member overrides come from the feature cache with the organization state, 
   assert.deepEqual(state.mock.calls[0].arguments, [organizationId, userId])
 })
 
-test("members of organizations without member overrides never read member overrides", async () => {
-  const reads = stubReads([rolloutAfter, [], [{ organization_id: createDenTypeId("organization") }]])
+test("members without overrides never read member overrides", async () => {
+  const reads = stubReads([rolloutAfter, [], [{ organization_id: organizationId, user_id: createDenTypeId("user") }]])
   assert.deepEqual((await cache.features.state(organizationId, userId)).memberOverrides, {})
-  assert.deepEqual(reads.map((read) => read.fields), [["feature_key", "enabled", "killed"], ["feature_key", "enabled"], ["organization_id"]])
+  assert.deepEqual(reads.map((read) => read.fields), [["feature_key", "enabled", "killed"], ["feature_key", "enabled"], ["organization_id", "user_id"]])
   stubReads([rolloutAfter, []])
   assert.deepEqual((await cache.features.state(organizationId)).memberOverrides, {})
 })
 
-test("members of an organization with member overrides get their own overrides", async () => {
-  const reads = stubReads([rolloutAfter, [], [{ organization_id: organizationId }, { organization_id: organizationId }], [{ feature_key: "remoteSessionSubagents", enabled: false }]])
+test("members with overrides read them fresh from their active membership", async () => {
+  const listed = [{ organization_id: organizationId, user_id: userId }, { organization_id: organizationId, user_id: userId }]
+  const reads = stubReads([rolloutAfter, [], listed, [{ feature_key: "remoteSessionSubagents", enabled: false }]])
   assert.deepEqual((await cache.features.state(organizationId, userId)).memberOverrides, { remoteSessionSubagents: false })
-  assert.equal(reads.length, 4)
+  assert.deepEqual(reads[3].fields, ["feature_key", "enabled"])
+})
+
+test("a replaced membership does not inherit the previous membership's overrides from a stale member list", async () => {
+  // The list still names the user, but the live join finds no rows for the new, active membership.
+  stubReads([rolloutAfter, [], [{ organization_id: organizationId, user_id: userId }], []])
+  assert.deepEqual((await cache.features.state(organizationId, userId)).memberOverrides, {})
 })
 
 test("member override writes invalidate the feature cache after the write commits", async () => {
