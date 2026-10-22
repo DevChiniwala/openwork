@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -40,6 +40,106 @@ test("server configuration defaults migration on without any rollout flag", asyn
     } finally {
       if (previous === undefined) delete process.env.OPENWORK_ENGINE_AUTO_UPGRADE;
       else process.env.OPENWORK_ENGINE_AUTO_UPGRADE = previous;
+    }
+  });
+});
+
+for (const source of ["global-cli", "global-env", "global-file", "workspace-file"]) {
+  test(`a supplied ${source} engine never automatically selects a host-local engine`, async () => {
+    await profile(async (_config, dir) => {
+      const configPath = join(dir, "server.json");
+      const baseUrl = "http://127.0.0.1:49001";
+      const previous = process.env.OPENWORK_OPENCODE_BASE_URL;
+      try {
+        delete process.env.OPENWORK_OPENCODE_BASE_URL;
+        if (source === "global-env") process.env.OPENWORK_OPENCODE_BASE_URL = baseUrl;
+        if (source === "global-file") writeFileSync(configPath, JSON.stringify({ opencodeBaseUrl: baseUrl }));
+        if (source === "workspace-file") writeFileSync(configPath, JSON.stringify({ workspaces: [{ path: dir, baseUrl }, { path: join(dir, "local") }] }));
+        const config = await resolveServerConfig({ configPath,
+          workspaces: source === "workspace-file" ? [] : [dir],
+          ...(source === "global-cli" ? { opencodeBaseUrl: baseUrl } : {}),
+        });
+        assert.equal(config.externalOpencode, true);
+        if (source === "workspace-file") assert.equal(config.opencodeBaseUrl, undefined);
+        assert.equal(config.workspaces[0]?.baseUrl, baseUrl);
+        // Neither a fresh-install hint nor a positive legacy/local migration
+        // setting proves that an externally supplied engine shares our DB.
+        config.freshInstallEngine = "v2";
+        config.engineAutoUpgrade = true;
+        let probes = 0;
+        const engine = createEngineV2Preview({ config, autoUpgradeIdle: async () => { probes++; return true; } });
+        try {
+          engine.setForcePolicy({ upgrade: true });
+          await new Promise(resolve => setTimeout(resolve, 20));
+          assert.equal(probes, 0);
+          assert.equal(engine.status().enabled, false);
+          assert.equal(engine.status().chatRouting, false);
+          assert.equal(engine.status().running, false);
+          assert.equal(engine.status().forceUpgradePending, false);
+          assert.equal(config.workspaces[0]?.baseUrl, baseUrl);
+          assert.deepEqual(readEngineV2PreviewState(config), { enabled: false, chatRouting: false });
+          assert.equal(existsSync(join(dir, "engine-v2-preview.json")), false, "no automatic engine choice is persisted");
+        } finally { await engine.stop(); }
+      } finally {
+        if (previous === undefined) delete process.env.OPENWORK_OPENCODE_BASE_URL;
+        else process.env.OPENWORK_OPENCODE_BASE_URL = previous;
+      }
+    });
+  });
+}
+
+test("managed global and workspace URLs retain local migration ownership after hydration", async () => {
+  await profile(async (_config, dir) => {
+    const config = await resolveServerConfig({ configPath: join(dir, "server.json"), workspaces: [dir] });
+    assert.equal(config.externalOpencode, false);
+    // CLI/embedded hydrate these URLs after config resolution. Their presence
+    // must not be mistaken for an originally supplied external connection.
+    config.opencodeBaseUrl = "http://127.0.0.1:49002";
+    const workspace = config.workspaces[0];
+    assert.ok(workspace);
+    workspace.baseUrl = config.opencodeBaseUrl;
+    writeFileSync(join(dir, "v1.db"), "not a SQLite database");
+    const errors: string[] = [];
+    const engine = createEngineV2Preview({ config, autoUpgradeError: error => errors.push(error) });
+    try {
+      for (let check = 0; check < 100 && errors.length === 0; check++) await new Promise(resolve => setTimeout(resolve, 5));
+      assert.equal(errors.length, 1, "the owned local history migration is attempted");
+      assert.equal(readEngineV2PreviewState(config).autoUpgradeRetry?.attempts, 1);
+      assert.equal(engine.status().chatRouting, false, "unreadable local history still fails safely");
+    } finally { await engine.stop(); }
+  });
+});
+
+test("direct server configs without a bootstrap snapshot also preserve supplied engines", async () => {
+  await profile(async config => {
+    config.opencodeBaseUrl = "https://external-engine.example";
+    const engine = createEngineV2Preview({ config, autoUpgradeIdle: async () => assert.fail("external engine must not migrate") });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(engine.status().chatRouting, false);
+      assert.equal(engine.status().forceUpgradePending, false);
+    } finally { await engine.stop(); }
+  });
+});
+
+test("external engine ownership does not overwrite an explicitly saved or pinned v2 choice", async () => {
+  await profile(async (config, dir) => {
+    config.externalOpencode = true;
+    writeFileSync(join(dir, "engine-v2-preview.json"), JSON.stringify({ enabled: true, chatRouting: true, engineOrigin: "manual" }));
+    const engine = createEngineV2Preview({ config, deferStart: true });
+    try {
+      assert.equal(engine.status().chatRouting, true);
+      assert.equal(engine.status().engineOrigin, "manual");
+    } finally { await engine.stop(); }
+    writeFileSync(join(dir, "engine-v2-preview.json"), JSON.stringify({ enabled: false, chatRouting: false }));
+    const previous = process.env.OPENWORK_ENGINE_V2_PREVIEW;
+    process.env.OPENWORK_ENGINE_V2_PREVIEW = "chat";
+    const pinned = createEngineV2Preview({ config, deferStart: true });
+    try { assert.equal(pinned.status().chatRouting, true); }
+    finally {
+      await pinned.stop();
+      if (previous === undefined) delete process.env.OPENWORK_ENGINE_V2_PREVIEW;
+      else process.env.OPENWORK_ENGINE_V2_PREVIEW = previous;
     }
   });
 });

@@ -60,7 +60,10 @@ The public and signed-in feature responses also retain a deprecated constant
 `engineV2ForceUpgrade: true` for older desktop renderers; this is not an editable
 feature, and stored off/kill-switch values cannot change it.
 Local support/test environment overrides and explicit manual v1 choices are
-separate from the retired rollout flag and still take precedence.
+separate from the retired rollout flag and still take precedence. Explicitly
+configured external engines are not local migration sources: automatic migration
+must not replace their routing with a host-local sidecar or copy unrelated local
+history.
 
 ## Running tasks, switching, and migration progress
 

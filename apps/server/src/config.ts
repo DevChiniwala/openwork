@@ -1,7 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { openworkServerConfigPath } from "@openwork/paths";
 import type { ApprovalMode, ApprovalConfig, ServerConfig, WorkspaceConfig, LogFormat } from "./types.js";
-import { buildWorkspaceInfos } from "./workspaces.js";
+import { buildWorkspaceInfos, hasExternalOpencode } from "./workspaces.js";
 import { parseList, readJsonFile, shortId } from "./utils.js";
 
 export interface CliArgs {
@@ -344,6 +344,9 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
     hostToken,
     configPath,
     opencodeBaseUrl,
+    // Capture caller-supplied connections before CLI/embedded managed startup
+    // fills both the global and workspace URLs with its own local engine.
+    externalOpencode: hasExternalOpencode({ opencodeBaseUrl, workspaces }),
     opencodeDirectory,
     opencodeUsername,
     opencodePassword,

@@ -94,6 +94,11 @@ export interface ServerConfig {
   hostToken: string;
   configPath?: string;
   opencodeBaseUrl?: string;
+  /**
+   * Bootstrap snapshot of supplied global/workspace engine URLs, before managed URL hydration.
+   * External engines do not share this host's history database; never auto-select local v2 for them.
+   */
+  externalOpencode?: boolean;
   opencodeDirectory?: string;
   opencodeUsername?: string;
   opencodePassword?: string;

@@ -56,6 +56,14 @@ test("a force-upgraded fresh profile records its selected engine ownership", () 
   });
 });
 
+test("a managed fresh profile still selects v2 after its local URLs are hydrated", () => {
+  withProfile((config, env) => {
+    assert.equal(seedFreshInstallEngineState({ ...config, externalOpencode: false,
+      opencodeBaseUrl: "http://127.0.0.1:49002" }, env), true);
+    assert.equal(readEngineV2PreviewState(config).chatRouting, true);
+  });
+});
+
 test("a profile with OpenCode v1 history stays on v1", () => {
   withProfile((config, env, dir) => {
     mkdirSync(join(dir, "opencode"), { recursive: true });

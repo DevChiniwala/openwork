@@ -54,7 +54,7 @@ export function engineInstanceId(env: NodeJS.ProcessEnv = process.env): string |
   const key = env.OPENWORK_SERVER_STATE_PATH?.trim() || env.OPENWORK_ELECTRON_APP_IDENTIFIER?.trim();
   return key ? createHash("sha256").update(key).digest("hex").slice(0, 12) : undefined;
 }
-import { findManagedEngineWorkspace } from "./workspaces.js";
+import { findManagedEngineWorkspace, hasExternalOpencode } from "./workspaces.js";
 import { globalSkillDirectories } from "./skills.js";
 import { localProviderDefinitions, readLocalProviderApiKeys } from "./opencode-v2-local-auth.js";
 
@@ -281,7 +281,8 @@ function v1HistoryExists(env: NodeJS.ProcessEnv): boolean {
  * Save the fresh-install engine choice once, before the first read, so later
  * starts (which no longer look fresh) keep it and a switch back to v1 sticks.
  */
-export function seedFreshInstallEngineState(config: Pick<ServerConfig, "configPath" | "freshInstallEngine" | "engineAutoUpgrade" | "engineForcePolicy">, env: NodeJS.ProcessEnv = process.env): boolean {
+export function seedFreshInstallEngineState(config: Pick<ServerConfig, "configPath" | "freshInstallEngine" | "engineAutoUpgrade" | "engineForcePolicy" | "externalOpencode" | "opencodeBaseUrl"> & Partial<Pick<ServerConfig, "workspaces">>, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (hasExternalOpencode(config)) return false;
   const state = freshInstallEngineState({
     requested: config.freshInstallEngine,
     env,
@@ -610,9 +611,10 @@ export function createEngineV2Preview(options: {
   let engineOrigin: EngineOrigin = initialState.engineOrigin ?? "manual";
   let engineChangedAt = initialState.engineChangedAt;
   let engineForced = initialState.engineForced === true;
-  // Migration is the default, not a Den rollout. Only local configuration or
-  // an explicitly pinned engine can opt out; old policy responses cannot undo it.
-  const autoUpgradeEnabled = config.engineAutoUpgrade !== false && !process.env.OPENWORK_ENGINE_V2_PREVIEW?.trim();
+  // Only engines using this host's history can be migrated automatically. The
+  // bootstrap ownership snapshot survives managed global/workspace URL hydration.
+  // An explicit saved/pinned engine still wins; legacy policy cannot undo it.
+  const autoUpgradeEnabled = !hasExternalOpencode(config) && config.engineAutoUpgrade !== false && !process.env.OPENWORK_ENGINE_V2_PREVIEW?.trim();
   let autoUpgradeRetry = initialState.autoUpgradeRetry;
   const autoUpgradeAbort = new AbortController();
   let autoUpgradeJob: Promise<void> | undefined;
