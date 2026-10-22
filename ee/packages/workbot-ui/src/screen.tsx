@@ -33,6 +33,7 @@ import { OpenFileContext } from "./open-file";
 import { PreviewPanel } from "./preview";
 import { Welcome } from "./welcome";
 import { ModelRecovery, AccessRecovery } from "./model-recovery";
+import { hasAnsweredTurn, WorkbotSetupChip } from "./activation";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
 import { WorkbotComputer } from "./computer";
@@ -318,7 +319,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       <ComputerNavigationContext.Provider value={navigateComputerFromChat}>
       <DocumentNavigationContext.Provider value={guided && host.documents ? { status: navigationStatus, open: followNavigation } : null}>
         <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased" data-workbot-workspace>
-          <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null}
+          <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null} answered={hasAnsweredTurn(data?.turns)}
             files={filesEnabled ? <FilesButton open={filesOpen} onOpen={() => setFilesOpen(true)} /> : null}
             chats={host.workspaceAssistant ? <WorkspaceMenu page={tab} onPage={setTab} onDocument={navigateDocument} drafts={documentsDirty} onChats={navigation?.openChats} /> : navigation ? <ChatsButton onOpen={navigation.openChats} /> : null}
             nav={host.workspaceAssistant ? null : <WorkbotNav tab={tab} onTab={setTab} />}
@@ -360,6 +361,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           userName={user?.name ?? null}
           files={null}
           nav={<WorkbotNav tab={tab} onTab={setTab} />}
+          answered={hasAnsweredTurn(data?.turns)}
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
@@ -442,6 +444,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         title={navigation && chatId ? <SideChatTitle title={navigation.title} onBack={() => navigation.openChat(null)} /> : null}
         remove={navigation && chatId && data.turns.length > 0 ? <RemoveChatButton chatId={chatId} title={navigation.title} onRemoved={() => { composerState.dispose(); navigation.openChat(null); }} /> : null}
         nav={!chatId ? <WorkbotNav tab={tab} onTab={setTab} /> : null}
+        answered={hasAnsweredTurn(data.turns)}
       />
       <div className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -661,6 +664,8 @@ function WorkbotHeader(props: {
   remove?: ReactNode;
   /** Home / Calendar, after the name (where the Calendar is on). */
   nav?: ReactNode;
+  /** Whether an answer to the person has finished, for the Get set up chip (shown only after the first answer). */
+  answered?: boolean;
 }) {
   const { name, organizationName, userName, files } = props;
   const apps = useConnectedApps();
@@ -677,6 +682,7 @@ function WorkbotHeader(props: {
       )}
       <div className="flex shrink-0 items-center gap-2.5 sm:gap-3.5">
         {props.remove}
+        <WorkbotSetupChip answered={props.answered === true} />
         {files}
         {apps.length > 0 ? (
           <span className="flex h-7 items-center gap-[7px] rounded-full bg-[var(--wb-chip)] pl-2 pr-2.5" title={names.join(", ")} aria-label={`Connected: ${names.join(", ")}`}>
