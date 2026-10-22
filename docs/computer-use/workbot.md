@@ -27,9 +27,10 @@ with the existing `bash` and `look` tools available on the same machine.
 
 ## Prepare the headless runner
 
-Build `ee/packages/headless-computer/Dockerfile.desktop` using a pinned
-`node:24-bookworm-slim@sha256:…` base, push it to your registry, and create a
-Daytona Linux VM snapshot from the resulting image digest.
+Build `ee/packages/headless-computer/Dockerfile.desktop` using its digest-pinned
+`node:24.22.1-bookworm-slim` default (or an explicitly verified pinned override),
+push it to your registry, and create a Daytona Linux VM snapshot from the
+resulting image digest.
 The **Daytona Eval Image** workflow offers a manual `computer-desktop` target:
 it publishes AMD64 to an immutable `computer-desktop-<commit>` tag without
 changing the existing eval image's `dev` tag. Its run summary records the digest.
@@ -38,7 +39,6 @@ require an AMD64 image and an existing image reference for Linux VMs:
 
 ```sh
 docker build --platform linux/amd64 -f ee/packages/headless-computer/Dockerfile.desktop \
-  --build-arg OPENWORK_COMPUTER_BASE_IMAGE="$PINNED_NODE_IMAGE" \
   -t "$COMPUTER_IMAGE" .
 docker push "$COMPUTER_IMAGE"
 daytona snapshot create workbot-desktop --image "$COMPUTER_IMAGE_DIGEST" \
@@ -118,7 +118,9 @@ publishes only its viewer port, at a random host under that domain; the guest's
 single-use, origin-bound viewer tickets still gate every connection. Freestyle
 pauses a computer with its memory after the runner's idle period, and resumes it
 for the next turn. The builder installs the desktop on Freestyle's Ubuntu base,
-with Chromium for Testing in place of Debian's package.
+with Chromium for Testing in place of Debian's package and patched Node 24.x
+(24.22.1 or newer). Rebuild the snapshot and existing computers to adopt the
+updated runtime; changing runner configuration does not patch an existing VM.
 
 ## Transport and rollout
 

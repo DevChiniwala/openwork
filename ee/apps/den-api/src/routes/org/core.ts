@@ -189,7 +189,7 @@ const organizationContextResponseSchema = z.object({
   features: z.record(z.string(), z.boolean()).meta({ description: "Effective on/off for every OpenWork feature in this organization. Treat a missing key as off." }),
   canManageDeploymentServices: z.boolean().meta({ description: "Whether this caller may open installation diagnostics: a self-hosted installation administrator (local allowlist), signed in or using an API key they own. Organization ownership and permissions never grant it. False on hosted deployments and when the lookup fails." }),
   deploymentCapabilities: deploymentCapabilitiesSchema,
-  entitlements: z.object({ sso: z.boolean(), desktopPolicies: z.boolean(), orgControls: z.boolean(), analytics: z.boolean(), auditLogs: z.boolean() }),
+  entitlements: z.object({ sso: z.boolean(), desktopPolicies: z.boolean(), orgControls: z.boolean(), analytics: z.boolean(), auditLogs: z.boolean(), scim: z.boolean() }),
 }).passthrough().meta({ ref: "OrganizationContextResponse" })
 
 const userEmailRequiredSchema = z.object({

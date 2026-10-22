@@ -22,10 +22,12 @@ const SECTIONS = [
 ];
 
 export function AdminShell({ hasSessionCookie, children }: { hasSessionCookie: boolean; children: ReactNode }) {
-  const pathname = usePathname();
+  // Check access once per admin visit. Keying the gate by pathname re-ran the
+  // check and remounted every page on each click; each data endpoint still
+  // authorizes itself and pages show the access screen when it fails.
   return (
     <SessionCookieContext.Provider value={hasSessionCookie}>
-      <AdminAccessGate key={pathname} hasSessionCookie={hasSessionCookie}>
+      <AdminAccessGate hasSessionCookie={hasSessionCookie}>
         <AdminShellContent>{children}</AdminShellContent>
       </AdminAccessGate>
     </SessionCookieContext.Provider>

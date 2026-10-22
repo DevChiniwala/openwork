@@ -67,7 +67,7 @@
     "htmlparser2": "8.0.2",
     "jsonc-parser": "^3.2.1",
     "minimatch": "^10.2.5",
-    "undici": "6.28.1",
+    "undici": "6.29.1",
     "yaml": "^2.9.0",
     "zod": "^4.3.6",
     "@openwork/computer-use": "workspace:*"
@@ -83,6 +83,9 @@
     "fast-png": "8.0.0",
     "jpeg-js": "0.4.4",
     "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=24.22.1 <25"
   },
   "packageManager": "pnpm@10.27.0"
 }

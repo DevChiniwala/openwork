@@ -414,7 +414,7 @@ function MembersView() {
         <div className="flex flex-col">
           <h3 className="text-xl font-semibold tracking-[-0.02em] text-[#111827]">Members</h3>
           <span className="text-xs text-[#6B7280]">
-            {Math.min(seats, FREE_SEATS)} of {FREE_SEATS} free seats used{over ? ` · ${seats - FREE_SEATS} paid` : ""}
+            {over ? `Team plan · ${seats} users` : `Free plan · ${seats} of ${FREE_SEATS} users`}
           </span>
         </div>
         <button type="button" onClick={invite} className={`flex h-8 items-center rounded-lg bg-[var(--lp-ink)] px-3.5 text-xs text-white hover:opacity-90 ${focusRing}`}>
@@ -456,7 +456,7 @@ function MembersView() {
       </ul>
       {over ? (
         <p className="mt-4 rounded-lg bg-[var(--lp-tonal)] px-3 py-2.5 text-xs text-[#374151]">
-          Your workspace includes {FREE_SEATS} free seats. Seat {FREE_SEATS + 1} and up are $10 a month each.
+          The Free plan covers up to {FREE_SEATS} users. The Team plan is $10 per user a month.
         </p>
       ) : null}
     </div>

@@ -86,7 +86,7 @@ export function createAgentMcpServer(options: {
   remoteSessionStatus?: boolean
   /** Which tools/list this request gets; see connect-tool-view.ts. */
   toolView?: ConnectToolView
-  /** Describe search matches as MCP tools (`connectToolShapes`). */
+  /** Describe search matches as MCP tools (part of `connectStandardTools`). */
   toolShapes?: boolean
   /** Advertise the MCP Skills Extension (SEP-2640); its handlers are registered by the caller. */
   skillsExtension?: boolean

@@ -31,8 +31,13 @@ export const CONNECT_TOOL_VIEW_PARAMETER = "tools"
  * - claude-code: Claude Code defers MCP tool definitions by default and loads
  *   them through its ToolSearch tool
  *   (https://code.claude.com/docs/en/mcp#scale-with-mcp-tool-search).
+ * - opencode: OpenCode v2 (including OpenWork Desktop) searches MCP definitions
+ *   on demand through Code Mode:
+ *   https://github.com/anomalyco/opencode/blob/v2.0.26/packages/core/src/tool/mcp.ts
+ *   Its identity is shared by Desktop and standalone OpenCode, not an
+ *   authorization boundary.
  */
-export const CONNECT_FULL_TOOL_CLIENTS: ReadonlySet<string> = new Set(["claude-code"])
+export const CONNECT_FULL_TOOL_CLIENTS: ReadonlySet<string> = new Set(["claude-code", "opencode"])
 
 /** The `?tools=full|search` override; anything else is no override. */
 export function connectToolViewOverride(url: string): ConnectToolView | null {
@@ -52,17 +57,10 @@ export function requestClientInfo(params: unknown): ConnectClientInfo | null {
 
 export function connectToolView(
   clientInfo: ConnectClientInfo | null,
-  flags: { enabled: boolean; desktopEnabled?: boolean; override?: ConnectToolView | null },
+  flags: { enabled: boolean; override?: ConnectToolView | null },
 ): ConnectToolView {
-  const clientName = clientInfo?.name.trim().toLowerCase()
-  // OpenCode v2 searches MCP definitions on demand through Code Mode:
-  // https://github.com/anomalyco/opencode/blob/v2.0.26/packages/core/src/tool/mcp.ts
-  // Its identity is shared by Desktop and standalone OpenCode, not an
-  // authorization boundary.
-  // Keep its rollout independent from Claude Code and explicit URL opt-ins.
-  const desktopFull = flags.desktopEnabled === true && clientName === "opencode"
-  if (!flags.enabled && !desktopFull) return "search"
+  if (!flags.enabled) return "search"
   if (flags.override) return flags.override
-  if (desktopFull) return "full"
-  return flags.enabled && clientName && CONNECT_FULL_TOOL_CLIENTS.has(clientName) ? "full" : "search"
+  const clientName = clientInfo?.name.trim().toLowerCase()
+  return clientName && CONNECT_FULL_TOOL_CLIENTS.has(clientName) ? "full" : "search"
 }
