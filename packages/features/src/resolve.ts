@@ -65,6 +65,8 @@ export const RETIRED_FEATURE_KEYS = [
   "workbotTeamLinks", "remoteSessionEvents", "modelsAnalyticsUi", "taskAnalyticsUi",
   // Compact App errors are standard on v2; the separate offline indicator was removed.
   "offlineRecovery",
+  // Folded into connectStandardTools (2026-10): one rollout for schemas and all supported clients.
+  "connectToolShapes", "desktopConnectStandardTools",
 ] as const
 
 export function isFeatureKey(value: string): value is FeatureKey {

@@ -25,7 +25,7 @@ export type CloudSkillContext = {
     transform(callback: (editor: { get(id: string): unknown; add(skill: NativeSkill): void }) => void): Promise<Registration>;
     reload(): Promise<void>;
   };
-  session?: { hook(name: "prompt", callback: (event: PromptEvent) => void): Promise<Registration> };
+  session?: { hook(name: "prompt", callback: (event: PromptEvent) => void | Promise<void>): Promise<Registration> };
 };
 
 export const CLOUD_SKILL_ID_PREFIX = "openwork-cloud-";
@@ -35,6 +35,9 @@ const MAX_SKILLS = 150;
 const NATIVE_BUDGET_CHARS = 64_000;
 const NATIVE_DESCRIPTION_CHARS = 1_024;
 const MAX_MENTIONED_SKILLS = 3;
+// Bodies kept for the skills messages used most recently, so using one again
+// needs no read before the model runs. Every other skill loads on use.
+const MAX_WARM_SKILLS = 8;
 
 const skillId = (skill: CatalogSkill) => `${CLOUD_SKILL_ID_PREFIX}${skill.name}`;
 // Not SKILL.md: the native skill tool must not scan a fake directory. The engine
@@ -80,10 +83,10 @@ function budgeted(skills: CatalogSkill[], budget: number, descriptionChars: numb
 }
 
 /**
- * Each organization skill is a native skill
- * with its full description and its authorized SKILL.md, verified against the
- * digest Den published. A skill whose body could not be read or verified keeps
- * the discovery note, so it still works through get_skill.
+ * Each organization skill is a native skill with its full description. A
+ * skill whose authorized SKILL.md has been read for a message, verified against
+ * the digest Den published, carries it; every other skill keeps the discovery
+ * note, so it still works through get_skill.
  */
 export function nativeSkills(catalog: Catalog, contents: ReadonlyMap<string, string>): NativeSkill[] {
   return budgeted(catalog.skills, NATIVE_BUDGET_CHARS, NATIVE_DESCRIPTION_CHARS, skill => {
@@ -134,15 +137,19 @@ export function mentionedSkillIds(text: string, skills: ReadonlyArray<Pick<Nativ
 
 /** Setup starts background discovery without making Cloud a dependency of
  * chatting or local skill discovery. Only authorized catalog entries and
- * digest-verified bodies are added to the native registry. */
+ * digest-verified bodies are added to the native registry. Discovery reads
+ * metadata only; a body is read when a message names or attaches its skill. */
 export async function registerCloudSkillDiscovery(context: CloudSkillContext) {
   let skills: NativeSkill[] = [];
+  let catalog: Catalog = { skills: [] };
   let fingerprint = "[]";
   let closed = false;
   let refreshing = false;
-  // Verified SKILL.md bodies by digest, in memory only. A body is re-read only
-  // when Den publishes a new digest, and dropped as soon as Den stops listing it.
+  // Verified SKILL.md bodies by digest, in memory only, for the warm skills.
+  // A body is re-read only when Den publishes a new digest for one of them.
   const contents = new Map<string, string>();
+  // Skill IDs messages used, most recent last.
+  const warm: string[] = [];
   const controller = new AbortController();
   let registration: Registration | undefined;
   let promptHook: Registration | undefined;
@@ -157,37 +164,31 @@ export async function registerCloudSkillDiscovery(context: CloudSkillContext) {
     return response.ok ? await response.json() : null;
   };
 
-  const loadContents = async (catalog: Catalog) => {
-    const wanted = new Set(catalog.skills.flatMap(skill => skill.digest && !skill.setup ? [skill.digest] : []));
-    for (const digest of contents.keys()) if (!wanted.has(digest)) contents.delete(digest);
-    for (const skill of catalog.skills) {
-      if (closed || !skill.digest || !skill.url || skill.setup || contents.has(skill.digest)) continue;
-      const result = z.object({ content: z.string() }).safeParse(await call("openwork_skill_read", { url: skill.url }).catch(() => null));
+  /** Read listed skills' bodies in one request and keep those matching Den's digest. */
+  const readBodies = async (entries: CatalogSkill[], use: boolean) => {
+    const loadable = entries.filter(skill => skill.url && skill.digest && !skill.setup);
+    if (loadable.length === 0) return;
+    const result = z.object({ contents: z.record(z.string(), z.string()) })
+      .safeParse(await call("openwork_skill_read", { urls: loadable.map(skill => skill.url), ...(use ? { use } : {}) }).catch(() => null));
+    if (!result.success) return;
+    for (const skill of loadable) {
+      const body = result.data.contents[skill.url!];
       // Only a body that matches Den's published digest is used.
-      if (result.success && sha256Digest(result.data.content) === skill.digest) contents.set(skill.digest, result.data.content);
+      if (body !== undefined && sha256Digest(body) === skill.digest) contents.set(skill.digest!, body);
     }
   };
 
-  const ensurePromptHook = async () => {
-    if (promptHook || !context.session) return;
-    promptHook = await context.session.hook("prompt", event => {
-      if (skills.length === 0) return;
-      const attached = new Set((event.prompt.skills ?? []).map(skill => skill.id));
-      const mentioned = mentionedSkillIds(event.prompt.text, skills).filter(id => !attached.has(id));
-      if (mentioned.length === 0) return;
-      event.prompt.skills = [...(event.prompt.skills ?? []), ...mentioned.map(id => ({ id }))];
-    });
+  const warmEntries = () => {
+    const listed = new Set(nativeSkills(catalog, contents).map(skill => skill.id));
+    return catalog.skills.filter(skill => warm.includes(skillId(skill)) && listed.has(skillId(skill)));
   };
 
-  const refresh = async () => {
-    if (closed || refreshing) return;
-    refreshing = true;
-    try {
-      const value = await call("openwork_skills", {});
-      if (value === null) return;
-      const catalog = catalogSchema.parse(value);
-      await loadContents(catalog);
-      await ensurePromptHook();
+  // Registry updates run one at a time, from refreshes and prompts alike.
+  let publishing = Promise.resolve();
+  const publish = () => {
+    publishing = publishing.catch(() => {}).then(async () => {
+      const wanted = new Set(warmEntries().flatMap(skill => skill.digest && !skill.setup ? [skill.digest] : []));
+      for (const digest of contents.keys()) if (!wanted.has(digest)) contents.delete(digest);
       const next = nativeSkills(catalog, contents);
       const key = JSON.stringify(next);
       if (closed || key === fingerprint) return;
@@ -206,6 +207,49 @@ export async function registerCloudSkillDiscovery(context: CloudSkillContext) {
         await context.skill.reload();
       }
       fingerprint = key;
+    });
+    return publishing;
+  };
+
+  const ensurePromptHook = async () => {
+    if (promptHook || !context.session) return;
+    promptHook = await context.session.hook("prompt", async event => {
+      if (skills.length === 0) return;
+      const attached = new Set((event.prompt.skills ?? []).map(skill => skill.id));
+      const mentioned = mentionedSkillIds(event.prompt.text, skills).filter(id => !attached.has(id));
+      if (mentioned.length) event.prompt.skills = [...(event.prompt.skills ?? []), ...mentioned.map(id => ({ id }))];
+      // Only registered skills: an unlisted ID never costs a read.
+      const registered = new Set(skills.map(skill => skill.id));
+      const used = new Set([...attached, ...mentioned].filter(id => registered.has(id)));
+      const entries = catalog.skills.filter(skill => used.has(skillId(skill)));
+      if (entries.length === 0) return;
+      try {
+        // Freshly authorized for this message, and counted by Den as a use.
+        // A body that cannot be read leaves the discovery note: get_skill still works.
+        await readBodies(entries, true);
+        for (const skill of entries) {
+          const id = skillId(skill);
+          warm.splice(0, warm.length, ...warm.filter(entry => entry !== id), id);
+        }
+        warm.splice(0, Math.max(0, warm.length - MAX_WARM_SKILLS));
+        await publish();
+      } catch {
+        // A message is never held back by Cloud skill loading.
+      }
+    });
+  };
+
+  const refresh = async () => {
+    if (closed || refreshing) return;
+    refreshing = true;
+    try {
+      const value = await call("openwork_skills", {});
+      if (value === null) return;
+      catalog = catalogSchema.parse(value);
+      // Only warm skills whose digest changed are read again.
+      await readBodies(warmEntries().filter(skill => skill.digest && !contents.has(skill.digest)), false);
+      await ensurePromptHook();
+      await publish();
     } catch {
       // Cloud readiness is never a prerequisite to chatting. Discovery entries
       // carry no body; native bodies are dropped as soon as Den stops listing them.
@@ -222,6 +266,7 @@ export async function registerCloudSkillDiscovery(context: CloudSkillContext) {
     controller.abort();
     skills = [];
     contents.clear();
+    await publishing.catch(() => {});
     await promptHook?.dispose();
     await registration?.dispose();
   };

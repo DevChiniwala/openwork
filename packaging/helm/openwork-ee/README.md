@@ -229,6 +229,42 @@ Old `config.features.engineV2ForceUpgrade` entries are accepted but ignored and
 can be removed. Migration keeps backups, waits for idle, and respects explicit
 manual engine choices. See [engine migration](../../../docs/opencode-engine-migration.md).
 
+### Node.js security baseline and image upgrades
+
+Deploy newly published OpenWork application images built with **stable Node.js
+24.x >=24.22.1**. Re-rendering or upgrading only the chart does not patch the
+runtime inside an existing image. Pin the new OpenWork application release with
+`image.tag` (or upgrade to its matching published chart), and review any
+per-component image tag overrides, including legacy `inference.image.tag` and
+canonical `gateway.image.tag`, so they do not retain older images. Update mirrored
+images to the newly built release as well; do not merely retag an old image.
+
+`Chart.appVersion` is the **OpenWork application release**, not the Node.js
+version. Do not set it or `image.tag` to `24.22.1` to request a runtime upgrade.
+
+After upgrading, run the existing test hook:
+
+```sh
+helm test openwork-ee --logs
+```
+
+The `env-probe` Job uses the configured Den API image and reports its actual
+Node.js version, platform, and architecture. It fails for older runtimes,
+prereleases, or other Node.js major versions, in addition to its existing
+environment and custom-CA checks. This is an operator-invoked post-deployment
+check, not an install/upgrade admission gate. It proves the runtime in the probe's
+Den API image only: separately verify the Den web, Gateway/inference, and any other
+application images you deploy, especially with per-component overrides. Helm
+rendering cannot inspect an image's runtime or prove that running pods have
+pulled the new image.
+
+Local regression checks (no cluster required):
+
+```sh
+node --test packaging/helm/openwork-ee/tests/node-runtime.mjs
+bash packaging/helm/openwork-ee/tests/image-tag-and-migration-hook.sh
+```
+
 Create a values file for the target environment:
 
 ```yaml

@@ -102,7 +102,11 @@ test("managed global and workspace URLs retain local migration ownership after h
     const errors: string[] = [];
     const engine = createEngineV2Preview({ config, autoUpgradeError: error => errors.push(error) });
     try {
-      for (let check = 0; check < 100 && errors.length === 0; check++) await new Promise(resolve => setTimeout(resolve, 5));
+      // The failure callback runs before retry state is persisted. Wait for
+      // the durable outcome as well, rather than racing the asynchronous write.
+      for (let check = 0; check < 100 && (errors.length === 0 || !readEngineV2PreviewState(config).autoUpgradeRetry); check++) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
       assert.equal(errors.length, 1, "the owned local history migration is attempted");
       assert.equal(readEngineV2PreviewState(config).autoUpgradeRetry?.attempts, 1);
       assert.equal(engine.status().chatRouting, false, "unreadable local history still fails safely");
@@ -260,7 +264,11 @@ test("legacy upgrade:false cannot block the default boot migration", async () =>
     try {
       engine.setForcePolicy({ upgrade: false });
       engine.start();
-      for (let check = 0; check < 100 && errors.length === 0; check++) await new Promise(resolve => setTimeout(resolve, 5));
+      // The failure callback runs before retry state is persisted. Wait for
+      // the durable outcome as well, rather than racing the asynchronous write.
+      for (let check = 0; check < 100 && (errors.length === 0 || !readEngineV2PreviewState(config).autoUpgradeRetry); check++) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
       assert.equal(errors.length, 1, "default migration still attempts history access without a rollout flag");
       assert.equal(engine.status().chatRouting, false, "unreadable history still fails safely");
     } finally { await engine.stop(); }
@@ -359,7 +367,11 @@ test("an install that never chose an engine is still moved to v2 in the backgrou
     const engine = createEngineV2Preview({ config, autoUpgradeError: error => errors.push(error) });
     try {
       engine.start();
-      for (let check = 0; check < 100 && errors.length === 0; check++) await new Promise(resolve => setTimeout(resolve, 5));
+      // The failure callback runs before retry state is persisted. Wait for
+      // the durable outcome as well, rather than racing the asynchronous write.
+      for (let check = 0; check < 100 && (errors.length === 0 || !readEngineV2PreviewState(config).autoUpgradeRetry); check++) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
       assert.equal(errors.length, 1, "the upgrade was attempted (and failed safely on unreadable history)");
       assert.equal(engine.status().chatRouting, false, "a failed attempt keeps v1");
     } finally { await engine.stop(); }

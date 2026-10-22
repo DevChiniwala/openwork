@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { ModelError, openAIResponsesModel, toResponsesInput } from "../src/model.js"
+import { CUT_OFF_CALL, ModelError, openAIResponsesModel, toResponsesInput } from "../src/model.js"
 import type { Message } from "../src/types.js"
 
 const tool = { name: "mail_search", description: "Search mail", inputSchema: { type: "object", properties: { query: { type: "string" } } } }
@@ -89,4 +89,63 @@ test("a failed response is a model error, not an empty answer", async () => {
     openAIResponsesModel({ baseUrl: "https://gateway.test/v1", maxOutputTokens: 100, fetch }).complete(request({ onText: () => undefined })),
     (error: unknown) => error instanceof ModelError && error.code === "model_failed" && /The model crashed/.test(error.message),
   )
+})
+
+test("a response stopped at the output cap is marked cut off, and the call it was writing is not run", async () => {
+  const { fetch } = recorder(() => sse([
+    { type: "response.output_item.added", item: { type: "function_call", name: "mail_search" } },
+    { type: "response.incomplete", response: { status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [
+      { type: "function_call", call_id: "call_3", name: "mail_search", arguments: "{\"query\":\"Blue Har" },
+    ], usage: { input_tokens: 10, output_tokens: 100 } } },
+  ]))
+  const step = await openAIResponsesModel({ baseUrl: "https://gateway.test/v1", maxOutputTokens: 100, fetch }).complete(request({ onText: () => undefined }))
+  assert.equal(step.cutOff, true)
+  assert.deepEqual(step.toolCalls, [{ id: "call_3", name: "mail_search", input: {}, inputError: CUT_OFF_CALL }])
+
+  const { fetch: empty } = recorder(() => Response.json({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [] }))
+  const bare = await openAIResponsesModel({ baseUrl: "https://gateway.test/v1", maxOutputTokens: 100, fetch: empty }).complete(request())
+  assert.equal(bare.cutOff, true)
+  assert.deepEqual(bare.toolCalls, [])
+})
+
+/** A Responses stream the test writes to; the runner's abort errors it, as a real fetch body does. */
+function liveStream() {
+  const encoder = new TextEncoder()
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = new ReadableStream<Uint8Array>({ start: (opened) => void (controller = opened) })
+    init?.signal?.addEventListener("abort", () => controller.error(init.signal?.reason), { once: true })
+    return new Response(body, { headers: { "content-type": "text/event-stream" } })
+  }) as typeof globalThis.fetch
+  return { fetch, send: (event: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)), end: () => controller.close() }
+}
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+test("a streamed reply may take longer than the call limit while it keeps writing; a silent one is ended", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] })
+  const writing = liveStream()
+  const reply = openAIResponsesModel({ baseUrl: "https://gateway.test/v1", maxOutputTokens: 100, fetch: writing.fetch, sleep: async () => undefined })
+    .complete(request({ onText: () => undefined }))
+  await settle()
+  // Ten minutes in all, never three minutes without a word.
+  for (let minute = 0; minute < 4; minute += 1) {
+    writing.send({ type: "response.output_text.delta", delta: "x" })
+    await settle()
+    t.mock.timers.tick(150_000)
+    await settle()
+  }
+  writing.send({ type: "response.completed", response: { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "xxxx" }] }] } })
+  writing.end()
+  assert.equal((await reply).text, "xxxx")
+
+  const silent = liveStream()
+  const stalled = openAIResponsesModel({ baseUrl: "https://gateway.test/v1", maxOutputTokens: 100, fetch: silent.fetch, sleep: async () => undefined })
+    .complete(request({ onText: () => undefined }))
+  const failed = assert.rejects(stalled, (error: unknown) => error instanceof ModelError && error.code === "model_stream_interrupted")
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await settle()
+    t.mock.timers.tick(180_000)
+    await settle()
+  }
+  await failed
 })

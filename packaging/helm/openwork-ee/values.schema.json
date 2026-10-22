@@ -78,6 +78,16 @@
               ],
               "description": "Managed deployments: Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments. Renders DEN_FEATURE_MANAGED_DEPLOYMENTS."
             },
+            "enterprisePlan": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Enterprise plan billing: Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page. Renders DEN_FEATURE_ENTERPRISE_PLAN."
+            },
             "workbotDocuments": {
               "enum": [
                 "",
@@ -158,6 +168,16 @@
               ],
               "description": "Workbot: teach browser tasks: Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs. Renders DEN_FEATURE_BROWSER_DEMONSTRATIONS."
             },
+            "browserLiveView": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: browser live view: Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window. Renders DEN_FEATURE_BROWSER_LIVE_VIEW."
+            },
             "browserFloatingView": {
               "enum": [
                 "",
@@ -188,26 +208,6 @@
               ],
               "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
             },
-            "connectToolShapes": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Connect: MCP tool shapes in capability search: Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work. Renders DEN_FEATURE_CONNECT_TOOL_SHAPES."
-            },
-            "desktopConnectStandardTools": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Desktop: standard Connect tools: OpenCode agents, including OpenWork Desktop, discover connection actions, Workflows and Apps as individual tools. Turning this off restores capability search without changing the connection URL. Renders DEN_FEATURE_DESKTOP_CONNECT_STANDARD_TOOLS."
-            },
             "connectStandardTools": {
               "enum": [
                 "",
@@ -216,7 +216,7 @@
                 true,
                 false
               ],
-              "description": "Connect: standard tools for tool-search clients: Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first. Renders DEN_FEATURE_CONNECT_STANDARD_TOOLS."
+              "description": "Connect: standard tools: Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas. Renders DEN_FEATURE_CONNECT_STANDARD_TOOLS."
             },
             "gatewayDashboard": {
               "enum": [
@@ -959,6 +959,26 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "offlineRecovery": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "connectToolShapes": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "desktopConnectStandardTools": {
               "enum": [
                 "",
                 "true",
