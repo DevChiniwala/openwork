@@ -12,14 +12,16 @@
  * write that can change what a member may use, including skill edits, plugin,
  * marketplace and team access, membership, feature flags and every deploy, so
  * a reused body is one the member could read at that revision. Token checks
- * still run on every request.
+ * still run on every request. A write made outside any request does not move
+ * the revision, so an entry lasts at most 15 minutes: the same limit desktops
+ * already apply before they reload an inventory whose revision is unchanged.
  *
  * Kept free of database and environment imports so it can be unit tested.
  */
 
 const MAX_ENTRIES = 4_000
 const MAX_BYTES = 32 * 1024 * 1024
-const TTL_MS = 30 * 60_000
+const TTL_MS = 15 * 60_000
 
 type Entry = { revision: string; text: string; bytes: number; expiresAt: number }
 

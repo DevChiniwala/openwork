@@ -59,12 +59,12 @@ describe("readOpenWorkConnectSkillContent", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("reads a SKILL.md from Den once per published digest", async () => {
+  test("every body it serves comes from a read Den authorized", async () => {
     const den = fakeDen({ skills: [skill("crm-sync", crmUrl, crmBody)] });
-    for (let attempt = 0; attempt < 5; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       expect(await readOpenWorkConnectSkillContent(config, crmUrl, den.fetcher)).toBe(crmBody);
     }
-    expect(den.reads).toEqual([crmUrl]);
+    expect(den.reads).toEqual([crmUrl, crmUrl, crmUrl]);
   });
 
   test("does not re-read a body that failed its digest on every refresh", async () => {
@@ -72,9 +72,17 @@ describe("readOpenWorkConnectSkillContent", () => {
     expect(await readOpenWorkConnectSkillContent(config, tamperedUrl, den.fetcher)).toBe("not the published body");
     expect(await readOpenWorkConnectSkillContent(config, tamperedUrl, den.fetcher)).toBeNull();
     expect(den.reads).toEqual([tamperedUrl]);
+    // After ten minutes it is read again.
+    setSystemTime(new Date(Date.now() + 10 * 60_000 + 1_000));
+    try {
+      await readOpenWorkConnectSkillContent(config, tamperedUrl, den.fetcher);
+      expect(den.reads).toEqual([tamperedUrl, tamperedUrl]);
+    } finally {
+      setSystemTime();
+    }
   });
 
-  test("never serves a remembered body once Den stops listing the skill", async () => {
+  test("returns nothing once Den stops listing the skill", async () => {
     const den = fakeDen({ skills: [skill("crm-sync", crmUrl, crmBody)] });
     expect(await readOpenWorkConnectSkillContent(config, crmUrl, den.fetcher)).toBe(crmBody);
     // The next index read, once the 30 s catalog cache expires, no longer lists it.

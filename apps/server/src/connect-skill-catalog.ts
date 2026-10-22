@@ -15,7 +15,7 @@ const OPENWORK_CLOUD_MCP_NAME = "openwork-cloud";
 const SKILL_INDEX_URI = "skill://index.json";
 const SKILL_INDEX_SCHEMA = "https://schemas.agentskills.io/discovery/0.2.0/schema.json";
 const CATALOG_CACHE_TTL_MS = 30_000;
-const SKILL_BODY_CACHE_MAX = 512;
+const SKILL_BODY_RETRY_MAX = 512;
 const SKILL_BODY_RETRY_MS = 10 * 60_000;
 
 const skillIndexSchema = z.object({
@@ -44,20 +44,20 @@ export type OpenWorkConnectSkill = z.infer<typeof skillIndexSchema>["skills"][nu
 export type OpenWorkConnectSkillIndex = { skills: OpenWorkConnectSkill[]; delivery?: "native" };
 type CloudIndex = { cloud: Record<string, unknown>; index: OpenWorkConnectSkillIndex };
 const catalogCache = new Map<string, { expiresAt: number; value: Promise<OpenWorkConnectSkillIndex | null> }>();
-// SKILL.md bodies by the digest Den published for them. A digest names exact
-// bytes, so a body is fetched again only when Den publishes a new digest.
-const skillBodies = new Map<string, string>();
-// Digests whose read failed or did not match, and when to try them again.
+// Digests whose read failed or did not match, and when to try them again. A
+// digest names exact bytes, so retrying it on every refresh cannot help; it
+// only repeats the same Den request. Bodies themselves are never kept here:
+// every body served comes from a read Den authorized.
 const skillBodyRetryAt = new Map<string, number>();
 
 function sha256Digest(text: string): string {
   return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
 }
 
-function rememberSkillBody(digest: string, body: string): void {
-  skillBodies.delete(digest);
-  skillBodies.set(digest, body);
-  if (skillBodies.size > SKILL_BODY_CACHE_MAX) skillBodies.delete(skillBodies.keys().next().value!);
+function holdSkillBodyRetry(digest: string): void {
+  skillBodyRetryAt.delete(digest);
+  skillBodyRetryAt.set(digest, Date.now() + SKILL_BODY_RETRY_MS);
+  if (skillBodyRetryAt.size > SKILL_BODY_RETRY_MAX) skillBodyRetryAt.delete(skillBodyRetryAt.keys().next().value!);
 }
 
 /**
@@ -152,9 +152,8 @@ export async function readOpenWorkConnectSkillCatalog(
 /**
  * Read one listed skill's SKILL.md through the same working openwork-cloud
  * config. Only URLs in the current index are read, so this cannot be used to
- * fetch arbitrary resources. A body is served from memory only while the
- * current index still lists the skill with the same digest; Den rechecks
- * access on every read it serves.
+ * fetch arbitrary resources. Den rechecks access on every read. A digest whose
+ * read failed or did not match is not read again for ten minutes.
  */
 export async function readOpenWorkConnectSkillContent(
   config: ServerConfig,
@@ -166,19 +165,11 @@ export async function readOpenWorkConnectSkillContent(
     const listed = working?.index.skills.find((skill) => skill.url === url);
     if (!working || !listed) return null;
     const digest = listed.digest;
-    if (digest) {
-      const cached = skillBodies.get(digest);
-      if (cached !== undefined) return cached;
-      if ((skillBodyRetryAt.get(digest) ?? 0) > Date.now()) return null;
-    }
+    if (digest && (skillBodyRetryAt.get(digest) ?? 0) > Date.now()) return null;
     const body = await readMcpResourceText({ config: working.cloud, fetcher, uri: url, clientName: "openwork-server-skill-content" });
     if (digest) {
-      if (body !== null && sha256Digest(body) === digest) {
-        skillBodyRetryAt.delete(digest);
-        rememberSkillBody(digest, body);
-      } else {
-        skillBodyRetryAt.set(digest, Date.now() + SKILL_BODY_RETRY_MS);
-      }
+      if (body !== null && sha256Digest(body) === digest) skillBodyRetryAt.delete(digest);
+      else holdSkillBodyRetry(digest);
     }
     return body;
   } catch {
@@ -188,7 +179,6 @@ export async function readOpenWorkConnectSkillContent(
 
 export function resetOpenWorkConnectSkillCatalogCacheForTests(): void {
   catalogCache.clear();
-  skillBodies.clear();
   skillBodyRetryAt.clear();
 }
 

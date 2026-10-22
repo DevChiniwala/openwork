@@ -26,9 +26,10 @@ test("a new inventory revision, another user or another organization never reuse
   assert.equal(readCachedSkill(key), null)
 })
 
-test("entries expire", () => {
+test("entries expire after 15 minutes even when the revision has not moved", () => {
   rememberSkillRead(key, "# CRM sync", 0)
-  assert.equal(readCachedSkill(key, 30 * 60_000), null)
+  assert.equal(readCachedSkill(key, 14 * 60_000), "# CRM sync")
+  assert.equal(readCachedSkill(key, 15 * 60_000), null)
 })
 
 test("only SKILL.md documents are cached, not the skill index", () => {
