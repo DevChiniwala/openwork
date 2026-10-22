@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 
 import { claimSignInReturnDraft, clearSignInReturnTarget } from "@/app/lib/den-sign-in-return";
@@ -31,6 +31,14 @@ export function SignInHandoffNotice(props: {
   const [pasteOpen, setPasteOpen] = useState(false);
   const manual = useManualSignInCode();
   const inputId = useId();
+  const attempt = target?.startedAt;
+  const { setCode } = manual;
+  useEffect(() => {
+    // The notice stays mounted with the conversation across sign-out/sign-in.
+    // A new attempt must not inherit an open form or an earlier code/error.
+    setPasteOpen(false);
+    setCode("");
+  }, [attempt, setCode]);
   const sessionId = props.sessionId ?? null;
   const workspaceId = props.workspaceId ?? null;
   const sameConversation = target?.sessionId === sessionId
@@ -88,7 +96,7 @@ export function SignInHandoffNotice(props: {
           {authUrl ? <Button size="sm" variant="outline" onClick={copyLink}>Copy sign-in link</Button> : null}
           <Button size="sm" variant="outline" aria-expanded={pasteOpen}
             onClick={() => setPasteOpen((open) => !open)}>
-            {t("den.paste_signin_code")}
+            {pasteOpen ? t("den.hide_signin_code") : t("den.paste_signin_code")}
           </Button>
           <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => clearSignInReturnTarget()}>Cancel</Button>
         </div>
