@@ -17211,7 +17211,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Report a Get set up step Workbot observed
    *
-   * For the Workbot app only. With a live Workbot member token (write scope), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.
+   * For the Workbot app only. With a live Workbot member token (read and write scopes), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.
    */
   public recordWorkbotActivationEvent<ThrowOnError extends boolean = false>(
     parameters: {

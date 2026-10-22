@@ -68,6 +68,15 @@ test("the Get set up checklist is off by default, then reports each person's own
   assert.equal(step((await owner("GET", "/v1/me/activation")).body, "gateway_provider")?.done, true)
 
   // Workbot reads and writes the same record with the member's Workbot token, never another person's.
+  const writeOnly = await den.request(member.token, "POST", "/v1/mcp/token", { orgId: workspace.orgId, body: { scopes: ["mcp:write"] } })
+  assert.equal(writeOnly.status, 200, summary(writeOnly))
+  const writeOnlyToken = field(writeOnly.body, "token")
+  assert.equal(typeof writeOnlyToken, "string")
+  if (typeof writeOnlyToken !== "string") throw new Error("expected a write-only token")
+  const denied = await den.request(writeOnlyToken, "POST", "/v1/workbot/activation/events", { body: { step: "first_response" } })
+  assert.equal(denied.status, 403, summary(denied))
+  assert.deepEqual(denied.body, { error: "insufficient_scope" }, "write-only grants never disclose checklist state")
+  assert.equal(step((await memberCall("GET", "/v1/me/activation")).body, "first_response")?.done, false)
   const memberToken = await den.mintMcpToken(member, workspace.orgId)
   const workbotView = await den.request(memberToken, "GET", "/v1/workbot/activation")
   assert.equal(workbotView.status, 200, summary(workbotView))

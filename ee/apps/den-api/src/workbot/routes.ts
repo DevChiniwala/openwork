@@ -411,7 +411,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
     if (resolved instanceof Response) return resolved
     const auditBlocked = await attributeWorkbot(c, resolved)
     if (auditBlocked) return auditBlocked
-    if (!resolved.scopes.has(write ? DEN_MCP_WRITE_SCOPE : DEN_MCP_READ_SCOPE)) return c.json({ error: "insufficient_scope" }, 403)
+    if (!resolved.scopes.has(DEN_MCP_READ_SCOPE) || (write && !resolved.scopes.has(DEN_MCP_WRITE_SCOPE))) return c.json({ error: "insufficient_scope" }, 403)
     const organizationContext = await getOrganizationContextForUser({ userId: normalizeDenTypeId("user", resolved.principal.userId), organizationId: resolved.organization.id })
     if (!organizationContext) return c.json({ error: "membership_revoked", message: "This account is no longer a member of the workspace." }, 401)
     if (!organizationContext.features.activationChecklist) return c.json({ error: "feature_disabled", feature: "activationChecklist" }, 404)
@@ -443,7 +443,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
     describeWorkbotRoute({
       tags: ["Workbot"], operationId: "recordWorkbotActivationEvent", "x-mcp": false,
       summary: "Report a Get set up step Workbot observed",
-      description: "For the Workbot app only. With a live Workbot member token (write scope), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.",
+      description: "For the Workbot app only. With a live Workbot member token (read and write scopes), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.",
       responses: { 200: jsonResponse("The updated checklist.", activationResponseSchema), 400: jsonResponse("The event is not one Workbot may report.", signedOutSchema), ...activationResponses },
     }),
     tokenRoute,

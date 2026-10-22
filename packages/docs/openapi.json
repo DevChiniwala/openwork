@@ -114337,7 +114337,7 @@
         ],
         "x-mcp": false,
         "summary": "Report a Get set up step Workbot observed",
-        "description": "For the Workbot app only. With a live Workbot member token (write scope), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.",
+        "description": "For the Workbot app only. With a live Workbot member token (read and write scopes), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.",
         "responses": {
           "200": {
             "description": "The updated checklist.",
