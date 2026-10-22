@@ -16,6 +16,10 @@ export type DenApiReadinessResponse = {
   checks: {
     database: "ok" | "error";
   };
+  /**
+   * True while this instance shuts down and finishes its in-flight requests.
+   */
+  draining?: boolean;
 };
 
 export type AdminFreeAutoUsageResponse = {
@@ -1150,6 +1154,17 @@ export type DeploymentServiceReadiness = {
   services: Array<DeploymentServiceStatus>;
 };
 
+export type AdminEnterpriseBillingState = {
+  featureEnabled: boolean;
+  configured: boolean;
+  users: number;
+  minimumUsers: number;
+  billableUsers: number;
+  subscription: {
+    [key: string]: unknown;
+  } | null;
+};
+
 export type AdminFeature = {
   key:
     | "nativeDictation"
@@ -1158,6 +1173,7 @@ export type AdminFeature = {
     | "liveProviderSync"
     | "agentConnectionRemoval"
     | "managedDeployments"
+    | "enterprisePlan"
     | "workbotDocuments"
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
@@ -1168,11 +1184,10 @@ export type AdminFeature = {
     | "engineV2ForceUpgrade"
     | "computerUse"
     | "browserDemonstrations"
+    | "browserLiveView"
     | "browserFloatingView"
     | "remoteComputers"
     | "remoteSessionSubagents"
-    | "connectToolShapes"
-    | "desktopConnectStandardTools"
     | "connectStandardTools";
   label: string;
   description: string;
@@ -1218,6 +1233,7 @@ export type AdminOrganizationsPageResponse = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -1228,11 +1244,10 @@ export type AdminOrganizationsPageResponse = {
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
+      browserLiveView: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -1291,6 +1306,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1389,6 +1413,15 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      browserLiveView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1408,24 +1441,6 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1512,6 +1527,7 @@ export type AdminOverviewResponse = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -1522,11 +1538,10 @@ export type AdminOverviewResponse = {
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
+      browserLiveView: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -1585,6 +1600,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1683,6 +1707,15 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      browserLiveView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1702,24 +1735,6 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1862,6 +1877,24 @@ export type CurrentUserOrganizationsResponse = {
   }>;
   activeOrgId: string | null;
   activeOrgSlug: string | null;
+};
+
+export type CurrentUserInvitationsResponse = {
+  invitations: Array<{
+    /**
+     * Den TypeID with 'inv_' prefix and a 26-character base32 suffix.
+     */
+    id: string;
+    organization: {
+      /**
+       * Den TypeID with 'org_' prefix and a 26-character base32 suffix.
+       */
+      id: string;
+      name: string;
+    };
+    role: string;
+    expiresAt: string;
+  }>;
 };
 
 export type SendDownloadLinkResponse = {
@@ -2492,6 +2525,7 @@ export type OrganizationContextResponse = {
     orgControls: boolean;
     analytics: boolean;
     auditLogs: boolean;
+    scim: boolean;
   };
   [key: string]: unknown;
 };
@@ -5005,6 +5039,18 @@ export type ExternalMcpConnectionReadiness = {
   checkedAt: string;
   lastSuccessfulAt: string | null;
   reason: string | null;
+  /**
+   * Why the check did not pass. sign_in_* means a person must sign in again; the others are not sign-in problems. Null when Ready or for checks recorded before this field existed.
+   */
+  failure?:
+    | "sign_in_required"
+    | "sign_in_rejected"
+    | "setup_required"
+    | "unavailable"
+    | "timed_out"
+    | "settings_changed"
+    | "tools_unreadable"
+    | null;
 };
 
 export type ExternalMcpConnectionRequiredBy = {
@@ -5019,7 +5065,14 @@ export type ExternalMcpConnectionAccessSummary = {
 };
 
 export type ExternalMcpConnectionResponse = {
+  /**
+   * The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).
+   */
   readiness?: ExternalMcpConnectionReadiness | null;
+  /**
+   * scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.
+   */
+  organizationReadiness?: ExternalMcpConnectionReadiness | null;
   id: string;
   name: string;
   externalKey: string | null;
@@ -5099,6 +5152,20 @@ export type ExternalMcpConnectionToolPolicyResponse = {
 export type ExternalMcpConnectionToolPolicyInput = {
   allDisabled: boolean;
   disabledTools: Array<string>;
+};
+
+export type ExternalMcpReadinessChecksResponse = {
+  results: Array<{
+    connectionId: string;
+    /**
+     * copied_from_member: a member's Ready check was copied to the connector. checked: a check ran and was recorded (Ready or not). not_checkable: nobody with a working sign-in has checked it and the caller cannot check it themselves.
+     */
+    outcome: "copied_from_member" | "checked" | "already_checked" | "not_checkable" | "not_found";
+  }>;
+};
+
+export type ExternalMcpReadinessChecksRequest = {
+  connectionIds: Array<string>;
 };
 
 export type ExternalMcpConnectionNotReadyError = {
@@ -5300,7 +5367,14 @@ export type ExternalMcpConnectionToolRunInput = {
 };
 
 export type ExternalMcpConnectionCreatedResponse = {
+  /**
+   * The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).
+   */
   readiness?: ExternalMcpConnectionReadiness | null;
+  /**
+   * scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.
+   */
+  organizationReadiness?: ExternalMcpConnectionReadiness | null;
   id: string;
   name: string;
   externalKey: string | null;
@@ -5433,7 +5507,14 @@ export type ExternalMcpConnectionAccessInput = {
 };
 
 export type ExternalMcpConnectionUpdatedResponse = {
+  /**
+   * The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).
+   */
   readiness?: ExternalMcpConnectionReadiness | null;
+  /**
+   * scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.
+   */
+  organizationReadiness?: ExternalMcpConnectionReadiness | null;
   id: string;
   name: string;
   externalKey: string | null;
@@ -7418,6 +7499,7 @@ export type WorkbotSession = {
   canSchedule: boolean;
   computer?: boolean;
   browserDemonstrations?: boolean;
+  browserLiveView?: boolean;
   calendar?: boolean;
   documents?: boolean;
   documentEditing?: boolean;
@@ -7816,6 +7898,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      enterprisePlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       workbotDocuments: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7906,6 +7997,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      browserLiveView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7925,24 +8025,6 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7976,6 +8058,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       liveProviderSync?: boolean | null;
       agentConnectionRemoval?: boolean | null;
       managedDeployments?: boolean | null;
+      enterprisePlan?: boolean | null;
       workbotDocuments?: boolean | null;
       workbotDocumentEditing?: boolean | null;
       workbotWorkspaceAssistant?: boolean | null;
@@ -7986,11 +8069,10 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       engineV2ForceUpgrade?: boolean | null;
       computerUse?: boolean | null;
       browserDemonstrations?: boolean | null;
+      browserLiveView?: boolean | null;
       browserFloatingView?: boolean | null;
       remoteComputers?: boolean | null;
       remoteSessionSubagents?: boolean | null;
-      connectToolShapes?: boolean | null;
-      desktopConnectStandardTools?: boolean | null;
       connectStandardTools?: boolean | null;
     };
   };
@@ -8084,6 +8166,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      enterprisePlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       workbotDocuments: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8174,6 +8265,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      browserLiveView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8193,24 +8293,6 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9310,6 +9392,185 @@ export type PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses = {
 export type PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponse =
   PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses[keyof PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses];
 
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/enterprise-subscription";
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors = {
+  /**
+   * The organization id was invalid.
+   */
+  400: {
+    error: "invalid_request";
+    message: string;
+  };
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionError =
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors[keyof GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors];
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses = {
+  /**
+   * Enterprise billing returned.
+   */
+  200: {
+    enterprise: AdminEnterpriseBillingState;
+  };
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponse =
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses[keyof GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses];
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/enterprise-subscription";
+};
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors = {
+  /**
+   * The request body or organization id was invalid.
+   */
+  400: {
+    error: "invalid_request";
+    message: string;
+  };
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+  /**
+   * The organization has no ongoing Enterprise subscription, or Enterprise plan billing is off for it.
+   */
+  404:
+    | {
+        error: string;
+        message: string;
+      }
+    | {
+        error: "feature_disabled";
+        feature: string;
+      };
+  /**
+   * Stripe Enterprise billing is not configured on this deployment.
+   */
+  503: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionError =
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors[keyof PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors];
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses = {
+  /**
+   * The minimum users were updated.
+   */
+  200: {
+    ok: true;
+    enterprise: AdminEnterpriseBillingState;
+  };
+};
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponse =
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses[keyof PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses];
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/enterprise-subscription";
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors = {
+  /**
+   * The request body, organization id or price was invalid.
+   */
+  400:
+    | {
+        error: "invalid_request";
+        message: string;
+      }
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+  /**
+   * The organization does not exist, or Enterprise plan billing is off for it.
+   */
+  404:
+    | NotFoundError
+    | {
+        error: string;
+        message: string;
+      }
+    | {
+        error: "feature_disabled";
+        feature: string;
+      };
+  /**
+   * The organization already has an Enterprise subscription.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Stripe Enterprise billing is not configured on this deployment.
+   */
+  503: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionError =
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors[keyof PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors];
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses = {
+  /**
+   * The Enterprise subscription was created.
+   */
+  200: {
+    ok: true;
+    enterprise: AdminEnterpriseBillingState;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponse =
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses[keyof PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses];
+
 export type PatchV1AdminOrganizationsByOrganizationIdDpaData = {
   body: {
     dpaSigned: boolean;
@@ -9480,6 +9741,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -9490,11 +9752,10 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
+      browserLiveView: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -9553,6 +9814,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9651,6 +9921,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      browserLiveView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -9670,24 +9949,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9762,6 +10023,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -9772,11 +10034,10 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
+      browserLiveView: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -9835,6 +10096,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9933,6 +10203,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      browserLiveView: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       browserFloatingView: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -9952,24 +10231,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -11512,6 +11773,31 @@ export type GetV1MeOrgsResponses = {
 };
 
 export type GetV1MeOrgsResponse = GetV1MeOrgsResponses[keyof GetV1MeOrgsResponses];
+
+export type GetV1MeInvitationsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/me/invitations";
+};
+
+export type GetV1MeInvitationsErrors = {
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+};
+
+export type GetV1MeInvitationsError = GetV1MeInvitationsErrors[keyof GetV1MeInvitationsErrors];
+
+export type GetV1MeInvitationsResponses = {
+  /**
+   * Pending invitations returned successfully.
+   */
+  200: CurrentUserInvitationsResponse;
+};
+
+export type GetV1MeInvitationsResponse = GetV1MeInvitationsResponses[keyof GetV1MeInvitationsResponses];
 
 export type PostV1MeSendDownloadLinkData = {
   body?: never;
@@ -17868,6 +18154,10 @@ export type PostV1ScimTokenErrors = {
    * Unauthorized
    */
   401: ScimUnauthorizedError;
+  /**
+   * SCIM provisioning requires an Enterprise plan.
+   */
+  402: EnterprisePlanRequiredError;
   /**
    * The caller needs the Manage SCIM provisioning permission and a recent sign-in.
    */
@@ -29886,6 +30176,41 @@ export type PutV1McpConnectionsByConnectionIdToolPolicyResponses = {
 
 export type PutV1McpConnectionsByConnectionIdToolPolicyResponse =
   PutV1McpConnectionsByConnectionIdToolPolicyResponses[keyof PutV1McpConnectionsByConnectionIdToolPolicyResponses];
+
+export type PostV1McpConnectionsReadinessChecksData = {
+  body: ExternalMcpReadinessChecksRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/mcp-connections/readiness-checks";
+};
+
+export type PostV1McpConnectionsReadinessChecksErrors = {
+  /**
+   * Invalid request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Connection management permission required.
+   */
+  403: ForbiddenError;
+};
+
+export type PostV1McpConnectionsReadinessChecksError =
+  PostV1McpConnectionsReadinessChecksErrors[keyof PostV1McpConnectionsReadinessChecksErrors];
+
+export type PostV1McpConnectionsReadinessChecksResponses = {
+  /**
+   * What happened to each connector.
+   */
+  200: ExternalMcpReadinessChecksResponse;
+};
+
+export type PostV1McpConnectionsReadinessChecksResponse =
+  PostV1McpConnectionsReadinessChecksResponses[keyof PostV1McpConnectionsReadinessChecksResponses];
 
 export type PostV1McpConnectionsByConnectionIdCheckData = {
   body?: never;

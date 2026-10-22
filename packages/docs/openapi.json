@@ -293,6 +293,10 @@
             "required": [
               "database"
             ]
+          },
+          "draining": {
+            "description": "True while this instance shuts down and finishes its in-flight requests.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4790,6 +4794,52 @@
         ],
         "additionalProperties": false
       },
+      "AdminEnterpriseBillingState": {
+        "type": "object",
+        "properties": {
+          "featureEnabled": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "users": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "minimumUsers": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "billableUsers": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "subscription": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "featureEnabled",
+          "configured",
+          "users",
+          "minimumUsers",
+          "billableUsers",
+          "subscription"
+        ]
+      },
       "AdminFeature": {
         "type": "object",
         "properties": {
@@ -4802,6 +4852,7 @@
               "liveProviderSync",
               "agentConnectionRemoval",
               "managedDeployments",
+              "enterprisePlan",
               "workbotDocuments",
               "workbotDocumentEditing",
               "workbotWorkspaceAssistant",
@@ -4812,11 +4863,10 @@
               "engineV2ForceUpgrade",
               "computerUse",
               "browserDemonstrations",
+              "browserLiveView",
               "browserFloatingView",
               "remoteComputers",
               "remoteSessionSubagents",
-              "connectToolShapes",
-              "desktopConnectStandardTools",
               "connectStandardTools"
             ]
           },
@@ -5010,6 +5060,9 @@
                     "managedDeployments": {
                       "type": "boolean"
                     },
+                    "enterprisePlan": {
+                      "type": "boolean"
+                    },
                     "workbotDocuments": {
                       "type": "boolean"
                     },
@@ -5040,6 +5093,9 @@
                     "browserDemonstrations": {
                       "type": "boolean"
                     },
+                    "browserLiveView": {
+                      "type": "boolean"
+                    },
                     "browserFloatingView": {
                       "type": "boolean"
                     },
@@ -5047,12 +5103,6 @@
                       "type": "boolean"
                     },
                     "remoteSessionSubagents": {
-                      "type": "boolean"
-                    },
-                    "connectToolShapes": {
-                      "type": "boolean"
-                    },
-                    "desktopConnectStandardTools": {
                       "type": "boolean"
                     },
                     "connectStandardTools": {
@@ -5072,6 +5122,7 @@
                     "liveProviderSync",
                     "agentConnectionRemoval",
                     "managedDeployments",
+                    "enterprisePlan",
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
@@ -5082,11 +5133,10 @@
                     "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
+                    "browserLiveView",
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "connectStandardTools",
                     "gatewayDashboard"
                   ]
@@ -5436,6 +5486,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "enterprisePlan": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "workbotDocuments": {
                       "type": "object",
                       "properties": {
@@ -6006,6 +6113,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "browserLiveView": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "browserFloatingView": {
                       "type": "object",
                       "properties": {
@@ -6177,120 +6341,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "connectToolShapes": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
-                    "desktopConnectStandardTools": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "connectStandardTools": {
                       "type": "object",
                       "properties": {
@@ -6356,6 +6406,7 @@
                     "liveProviderSync",
                     "agentConnectionRemoval",
                     "managedDeployments",
+                    "enterprisePlan",
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
@@ -6366,11 +6417,10 @@
                     "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
+                    "browserLiveView",
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "connectStandardTools"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -6759,6 +6809,9 @@
                     "managedDeployments": {
                       "type": "boolean"
                     },
+                    "enterprisePlan": {
+                      "type": "boolean"
+                    },
                     "workbotDocuments": {
                       "type": "boolean"
                     },
@@ -6789,6 +6842,9 @@
                     "browserDemonstrations": {
                       "type": "boolean"
                     },
+                    "browserLiveView": {
+                      "type": "boolean"
+                    },
                     "browserFloatingView": {
                       "type": "boolean"
                     },
@@ -6796,12 +6852,6 @@
                       "type": "boolean"
                     },
                     "remoteSessionSubagents": {
-                      "type": "boolean"
-                    },
-                    "connectToolShapes": {
-                      "type": "boolean"
-                    },
-                    "desktopConnectStandardTools": {
                       "type": "boolean"
                     },
                     "connectStandardTools": {
@@ -6821,6 +6871,7 @@
                     "liveProviderSync",
                     "agentConnectionRemoval",
                     "managedDeployments",
+                    "enterprisePlan",
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
@@ -6831,11 +6882,10 @@
                     "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
+                    "browserLiveView",
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "connectStandardTools",
                     "gatewayDashboard"
                   ]
@@ -7185,6 +7235,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "enterprisePlan": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "workbotDocuments": {
                       "type": "object",
                       "properties": {
@@ -7755,6 +7862,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "browserLiveView": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "browserFloatingView": {
                       "type": "object",
                       "properties": {
@@ -7926,120 +8090,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "connectToolShapes": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
-                    "desktopConnectStandardTools": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "connectStandardTools": {
                       "type": "object",
                       "properties": {
@@ -8105,6 +8155,7 @@
                     "liveProviderSync",
                     "agentConnectionRemoval",
                     "managedDeployments",
+                    "enterprisePlan",
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
@@ -8115,11 +8166,10 @@
                     "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
+                    "browserLiveView",
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "connectStandardTools"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -8663,6 +8713,62 @@
           "orgs",
           "activeOrgId",
           "activeOrgSlug"
+        ]
+      },
+      "CurrentUserInvitationsResponse": {
+        "type": "object",
+        "properties": {
+          "invitations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "description": "Den TypeID with 'inv_' prefix and a 26-character base32 suffix.",
+                  "format": "typeid",
+                  "type": "string",
+                  "minLength": 30,
+                  "maxLength": 30
+                },
+                "organization": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "description": "Den TypeID with 'org_' prefix and a 26-character base32 suffix.",
+                      "format": "typeid",
+                      "type": "string",
+                      "minLength": 30,
+                      "maxLength": 30
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ]
+                },
+                "role": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                }
+              },
+              "required": [
+                "id",
+                "organization",
+                "role",
+                "expiresAt"
+              ]
+            }
+          }
+        },
+        "required": [
+          "invitations"
         ]
       },
       "SendDownloadLinkResponse": {
@@ -11195,6 +11301,9 @@
               },
               "auditLogs": {
                 "type": "boolean"
+              },
+              "scim": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -11202,7 +11311,8 @@
               "desktopPolicies",
               "orgControls",
               "analytics",
-              "auditLogs"
+              "auditLogs",
+              "scim"
             ]
           }
         },
@@ -21560,6 +21670,26 @@
                 "type": "null"
               }
             ]
+          },
+          "failure": {
+            "description": "Why the check did not pass. sign_in_* means a person must sign in again; the others are not sign-in problems. Null when Ready or for checks recorded before this field existed.",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "sign_in_required",
+                  "sign_in_rejected",
+                  "setup_required",
+                  "unavailable",
+                  "timed_out",
+                  "settings_changed",
+                  "tools_unreadable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -21613,6 +21743,18 @@
         "type": "object",
         "properties": {
           "readiness": {
+            "description": "The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizationReadiness": {
+            "description": "scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
@@ -22074,6 +22216,58 @@
         "required": [
           "allDisabled",
           "disabledTools"
+        ]
+      },
+      "ExternalMcpReadinessChecksResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "connectionId": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "copied_from_member",
+                    "checked",
+                    "already_checked",
+                    "not_checkable",
+                    "not_found"
+                  ],
+                  "description": "copied_from_member: a member's Ready check was copied to the connector. checked: a check ran and was recorded (Ready or not). not_checkable: nobody with a working sign-in has checked it and the caller cannot check it themselves."
+                }
+              },
+              "required": [
+                "connectionId",
+                "outcome"
+              ]
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "ExternalMcpReadinessChecksRequest": {
+        "type": "object",
+        "properties": {
+          "connectionIds": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        },
+        "required": [
+          "connectionIds"
         ]
       },
       "ExternalMcpConnectionNotReadyError": {
@@ -22709,6 +22903,18 @@
         "type": "object",
         "properties": {
           "readiness": {
+            "description": "The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizationReadiness": {
+            "description": "scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
@@ -23409,6 +23615,18 @@
         "type": "object",
         "properties": {
           "readiness": {
+            "description": "The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizationReadiness": {
+            "description": "scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
@@ -32022,6 +32240,9 @@
           "browserDemonstrations": {
             "type": "boolean"
           },
+          "browserLiveView": {
+            "type": "boolean"
+          },
           "calendar": {
             "type": "boolean"
           },
@@ -32893,7 +33114,7 @@
         ],
         "security": [],
         "summary": "Check den-api readiness",
-        "description": "Verifies den-api can reach its database dependency.",
+        "description": "Verifies den-api can reach its database dependency and is not shutting down.",
         "responses": {
           "200": {
             "description": "den-api is ready to serve traffic.",
@@ -33457,6 +33678,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "enterprisePlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotDocuments": {
                           "type": "object",
                           "properties": {
@@ -34027,6 +34305,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "browserLiveView": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "browserFloatingView": {
                           "type": "object",
                           "properties": {
@@ -34198,120 +34533,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -34377,6 +34598,7 @@
                         "liveProviderSync",
                         "agentConnectionRemoval",
                         "managedDeployments",
+                        "enterprisePlan",
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
@@ -34387,11 +34609,10 @@
                         "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
+                        "browserLiveView",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "connectStandardTools"
                       ]
                     }
@@ -34831,6 +35052,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "enterprisePlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotDocuments": {
                           "type": "object",
                           "properties": {
@@ -35401,6 +35679,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "browserLiveView": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "browserFloatingView": {
                           "type": "object",
                           "properties": {
@@ -35572,120 +35907,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -35751,6 +35972,7 @@
                         "liveProviderSync",
                         "agentConnectionRemoval",
                         "managedDeployments",
+                        "enterprisePlan",
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
@@ -35761,11 +35983,10 @@
                         "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
+                        "browserLiveView",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "connectStandardTools"
                       ]
                     }
@@ -35888,6 +36109,16 @@
                           }
                         ]
                       },
+                      "enterprisePlan": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "workbotDocuments": {
                         "anyOf": [
                           {
@@ -35988,6 +36219,16 @@
                           }
                         ]
                       },
+                      "browserLiveView": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "browserFloatingView": {
                         "anyOf": [
                           {
@@ -36009,26 +36250,6 @@
                         ]
                       },
                       "remoteSessionSubagents": {
-                        "anyOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "connectToolShapes": {
-                        "anyOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "desktopConnectStandardTools": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -38778,6 +38999,457 @@
         ]
       }
     },
+    "/v1/admin/organizations/{organizationId}/enterprise-subscription": {
+      "get": {
+        "operationId": "getV1AdminOrganizationsByOrganizationIdEnterpriseSubscription",
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get an organization's Enterprise plan billing",
+        "description": "Returns the organization's Stripe Enterprise subscription, committed minimum users and the users Stripe bills.",
+        "responses": {
+          "200": {
+            "description": "Enterprise billing returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enterprise": {
+                      "$ref": "#/components/schemas/AdminEnterpriseBillingState"
+                    }
+                  },
+                  "required": [
+                    "enterprise"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The organization id was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "invalid_request"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user is not an admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "postV1AdminOrganizationsByOrganizationIdEnterpriseSubscription",
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Start an organization's Enterprise plan",
+        "description": "Creates a Stripe Enterprise subscription on a custom per-user price of the Enterprise product, billed by invoice, never below the committed minimum users. Cancels a Team plan subscription with a prorated credit. Body: { priceId, minimumUsers, billingEmail, daysUntilDue? }.",
+        "responses": {
+          "200": {
+            "description": "The Enterprise subscription was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "enterprise": {
+                      "$ref": "#/components/schemas/AdminEnterpriseBillingState"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "enterprise"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body, organization id or price was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "const": "invalid_request"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user is not an admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization does not exist, or Enterprise plan billing is off for it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/NotFoundError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "const": "feature_disabled"
+                        },
+                        "feature": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "feature"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The organization already has an Enterprise subscription.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stripe Enterprise billing is not configured on this deployment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "patchV1AdminOrganizationsByOrganizationIdEnterpriseSubscription",
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Change an organization's Enterprise minimum users",
+        "description": "Updates the committed minimum users on the organization's Enterprise subscription and resynchronizes its Stripe quantity. Body: { minimumUsers }.",
+        "responses": {
+          "200": {
+            "description": "The minimum users were updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "enterprise": {
+                      "$ref": "#/components/schemas/AdminEnterpriseBillingState"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "enterprise"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body or organization id was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "invalid_request"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user is not an admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization has no ongoing Enterprise subscription, or Enterprise plan billing is off for it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "const": "feature_disabled"
+                        },
+                        "feature": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "feature"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stripe Enterprise billing is not configured on this deployment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/admin/organizations/{organizationId}/dpa": {
       "patch": {
         "operationId": "patchV1AdminOrganizationsByOrganizationIdDpa",
@@ -39135,6 +39807,9 @@
                         "managedDeployments": {
                           "type": "boolean"
                         },
+                        "enterprisePlan": {
+                          "type": "boolean"
+                        },
                         "workbotDocuments": {
                           "type": "boolean"
                         },
@@ -39165,6 +39840,9 @@
                         "browserDemonstrations": {
                           "type": "boolean"
                         },
+                        "browserLiveView": {
+                          "type": "boolean"
+                        },
                         "browserFloatingView": {
                           "type": "boolean"
                         },
@@ -39172,12 +39850,6 @@
                           "type": "boolean"
                         },
                         "remoteSessionSubagents": {
-                          "type": "boolean"
-                        },
-                        "connectToolShapes": {
-                          "type": "boolean"
-                        },
-                        "desktopConnectStandardTools": {
                           "type": "boolean"
                         },
                         "connectStandardTools": {
@@ -39197,6 +39869,7 @@
                         "liveProviderSync",
                         "agentConnectionRemoval",
                         "managedDeployments",
+                        "enterprisePlan",
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
@@ -39207,11 +39880,10 @@
                         "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
+                        "browserLiveView",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "connectStandardTools",
                         "gatewayDashboard"
                       ]
@@ -39561,6 +40233,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "enterprisePlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotDocuments": {
                           "type": "object",
                           "properties": {
@@ -40131,6 +40860,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "browserLiveView": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "browserFloatingView": {
                           "type": "object",
                           "properties": {
@@ -40302,120 +41088,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -40481,6 +41153,7 @@
                         "liveProviderSync",
                         "agentConnectionRemoval",
                         "managedDeployments",
+                        "enterprisePlan",
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
@@ -40491,11 +41164,10 @@
                         "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
+                        "browserLiveView",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "connectStandardTools"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -40633,6 +41305,9 @@
                         "managedDeployments": {
                           "type": "boolean"
                         },
+                        "enterprisePlan": {
+                          "type": "boolean"
+                        },
                         "workbotDocuments": {
                           "type": "boolean"
                         },
@@ -40663,6 +41338,9 @@
                         "browserDemonstrations": {
                           "type": "boolean"
                         },
+                        "browserLiveView": {
+                          "type": "boolean"
+                        },
                         "browserFloatingView": {
                           "type": "boolean"
                         },
@@ -40670,12 +41348,6 @@
                           "type": "boolean"
                         },
                         "remoteSessionSubagents": {
-                          "type": "boolean"
-                        },
-                        "connectToolShapes": {
-                          "type": "boolean"
-                        },
-                        "desktopConnectStandardTools": {
                           "type": "boolean"
                         },
                         "connectStandardTools": {
@@ -40695,6 +41367,7 @@
                         "liveProviderSync",
                         "agentConnectionRemoval",
                         "managedDeployments",
+                        "enterprisePlan",
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
@@ -40705,11 +41378,10 @@
                         "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
+                        "browserLiveView",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "connectStandardTools",
                         "gatewayDashboard"
                       ]
@@ -41059,6 +41731,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "enterprisePlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotDocuments": {
                           "type": "object",
                           "properties": {
@@ -41629,6 +42358,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "browserLiveView": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "browserFloatingView": {
                           "type": "object",
                           "properties": {
@@ -41800,120 +42586,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -41979,6 +42651,7 @@
                         "liveProviderSync",
                         "agentConnectionRemoval",
                         "managedDeployments",
+                        "enterprisePlan",
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
@@ -41989,11 +42662,10 @@
                         "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
+                        "browserLiveView",
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "connectStandardTools"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -44960,6 +45632,46 @@
           },
           "401": {
             "description": "The caller must be authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/me/invitations": {
+      "get": {
+        "operationId": "getV1MeInvitations",
+        "tags": [
+          "Users"
+        ],
+        "summary": "List current user's pending invitations",
+        "description": "Lists unexpired invitations sent to the signed-in person's verified email for organizations they have not joined yet. Always empty for an unverified email, whatever the deployment's verification setting. Accept one with POST /v1/orgs/invitations/accept.",
+        "responses": {
+          "200": {
+            "description": "Pending invitations returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserInvitationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be signed in.",
             "content": {
               "application/json": {
                 "schema": {
@@ -66450,6 +67162,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScimUnauthorizedError"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "SCIM provisioning requires an Enterprise plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnterprisePlanRequiredError"
                 }
               }
             }
@@ -98943,6 +99665,76 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ExternalMcpConnectionToolPolicyInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/mcp-connections/readiness-checks": {
+      "post": {
+        "operationId": "postV1McpConnectionsReadinessChecks",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "Check connectors that have no stored status",
+        "description": "For an admin's connector list. For each listed connector with no stored status: copies any member's still-valid Ready check onto a per-member connector, otherwise checks it (initialize and tools/list, no tools executed) with the shared credential or the caller's own sign-in. Connectors that already have a status are left alone; use the per-connection check to re-check one. Requires connections.manage.",
+        "responses": {
+          "200": {
+            "description": "What happened to each connector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalMcpReadinessChecksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Connection management permission required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalMcpReadinessChecksRequest"
               }
             }
           }
