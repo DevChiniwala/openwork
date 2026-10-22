@@ -319,6 +319,12 @@ export async function readRemoteSkillSource(input: {
   skill: RemoteSkillDescriptor
   organizationId: string
   member: Awaited<ReturnType<typeof resolveMcpMemberIdentity>>
+  /**
+   * Whether this read is a Library use. get_skill is the agent loading a skill
+   * to follow it; a skill:// resource read is how hosts fetch skills ahead of
+   * time (OpenWork prefetches every listed one), so it is not.
+   */
+  recordUse: boolean
 }): Promise<RemoteSkillSource> {
   const builtinResult = executeBuiltinSkillCapability(input.skill.capability)
   if (builtinResult) return { content: builtinResult.content, provenance: builtinResult.provenance }
@@ -329,8 +335,7 @@ export async function readRemoteSkillSource(input: {
     member: input.member,
     pluginId: marketplace.pluginId,
     configObjectId: marketplace.configObjectId,
-    // Served to the member's agent (skill:// resource or get_skill): one Library use.
-    usageSource: "agent",
+    ...(input.recordUse ? { usageSource: "agent" as const } : {}),
   })
   if (!marketplaceResult.ok || marketplaceResult.result.kind !== "skill") return null
   const result = marketplaceResult.result
@@ -443,6 +448,7 @@ export function registerAgentSkillResources(input: {
         skill,
         organizationId: input.organizationId,
         member: input.member,
+        recordUse: false,
       })
       if (!source) {
         throw new ProtocolError(ProtocolErrorCode.InvalidRequest, "Skill is no longer available")
@@ -918,6 +924,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
         skill,
         organizationId: principal.organizationId,
         member: memberIdentity,
+        recordUse: true,
       }),
     })
 
