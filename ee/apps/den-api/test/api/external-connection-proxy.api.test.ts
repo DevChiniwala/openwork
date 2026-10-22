@@ -4,10 +4,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
 import { Hono } from "hono"
-import type { ExternalMcpConnectionRow } from "../src/capability-sources/external-mcp-connections.js"
-import { externalMcpToolSchemaDigest } from "../src/mcp/external-mcp-tool-arguments.js"
-import { DEN_MCP_WRITE_SCOPE } from "../src/mcp/scopes.js"
-import { scoreText, tokenize } from "../src/mcp/search.js"
+import type { ExternalMcpConnectionRow } from "../../src/capability-sources/external-mcp-connections.js"
+import { externalMcpToolSchemaDigest } from "../../src/mcp/external-mcp-tool-arguments.js"
+import { DEN_MCP_WRITE_SCOPE } from "../../src/mcp/scopes.js"
+import { scoreText, tokenize } from "../../src/mcp/search.js"
 
 // Default adapters initialize at import time, but all provider operations and
 // usage writes below are synthetic: no database or external connection is used.
@@ -16,15 +16,15 @@ process.env.BETTER_AUTH_URL ??= "http://unit.test"
 process.env.BETTER_AUTH_SECRET ??= "synthetic-external-proxy-unit-test-secret"
 process.env.DEN_DB_ENCRYPTION_KEY ??= "synthetic-external-proxy-unit-test-encryption-key"
 process.env.OPENWORK_DEV_MODE ??= "1"
-const { db } = await import("../src/db.js")
+const { db } = await import("../../src/db.js")
 const bootstrapSelect = mock.method(db, "select", () => ({
   from() { return { async where() { return [{ id: "unit_oauth_resource", identifier: "http://unit.test/mcp/agent", policyVersion: 1 }] } } },
 }))
-const { auth } = await import("../src/auth.js")
+const { auth } = await import("../../src/auth.js")
 await auth.$context
 bootstrapSelect.mock.restore()
 mock.method(db, "insert", () => ({ values: async () => undefined }))
-const { createExternalConnectionProxyServer, handleExternalConnectionProxyRequest } = await import("../src/mcp/external-connection-proxy.js")
+const { createExternalConnectionProxyServer, handleExternalConnectionProxyRequest } = await import("../../src/mcp/external-connection-proxy.js")
 
 type ProxyInput = Parameters<typeof createExternalConnectionProxyServer>[0]
 const member = { orgMembershipId: createDenTypeId("member") }

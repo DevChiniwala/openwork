@@ -115,9 +115,10 @@ test("capability tool shapes are opt-in and turning them off preserves cached ex
     const execute = list(field(listed.result, "tools")).find((tool) => tool.name === "execute_capability")
     const modern = enabled === true
     const properties = field(search, "outputSchema", "properties", "matches", "items", "properties")
-    assert.equal(field(properties, modern ? "inputSchema" : "argumentsSchema") !== undefined, true)
-    assert.equal(field(properties, modern ? "argumentsSchema" : "inputSchema"), undefined)
-    assert.match(String(execute?.description), modern ? /inputSchema/ : /argumentsSchema/)
+    // Off serves the older fields only; on adds inputSchema and keeps them.
+    assert.equal(field(properties, "argumentsSchema") !== undefined, true)
+    assert.equal(field(properties, "inputSchema") !== undefined, modern)
+    assert.match(String(execute?.description), modern ? /inputSchema/ : /pathParams/)
 
     const found = await rpc(rileyToken, "tools/call", {
       name: "search_capabilities", arguments: { query: "status page", type: "mcp" },
@@ -126,9 +127,9 @@ test("capability tool shapes are opt-in and turning them off preserves cached ex
       .find((entry) => entry.name === `mcp:${connectionId}:read_status`)
     assert.ok(match, JSON.stringify(found))
     assert.equal(typeof match[modern ? "description" : "summary"], "string")
-    assert.equal(match[modern ? "inputSchema" : "argumentsSchema"] !== undefined, true)
-    assert.equal(match[modern ? "argumentsSchema" : "inputSchema"], undefined)
-    if (!modern) assert.deepEqual(match.invocation, { argumentsField: "body" })
+    assert.equal(match.argumentsSchema !== undefined, true)
+    assert.equal(match.inputSchema !== undefined, modern)
+    assert.deepEqual(match.invocation, { argumentsField: "body" })
     assert.deepEqual(JSON.parse(resultText(found.result)), field(found.result, "structuredContent"))
 
     // Both directions survive a rollback or a tools/list cached before rollout.
