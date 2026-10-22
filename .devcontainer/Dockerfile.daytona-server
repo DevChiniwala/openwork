@@ -18,8 +18,9 @@ RUN apt-get update \
     procps \
     sudo \
     xz-utils \
-  && curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2023 -o /usr/share/keyrings/mysql-2023.asc \
-  && printf 'deb [signed-by=/usr/share/keyrings/mysql-2023.asc] https://repo.mysql.com/apt/debian %s mysql-8.4-lts\n' \
+  && { curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2023; curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2025; } \
+    > /usr/share/keyrings/mysql.asc \
+  && printf 'deb [signed-by=/usr/share/keyrings/mysql.asc] https://repo.mysql.com/apt/debian %s mysql-8.4-lts\n' \
     "$(. /etc/os-release && echo "$VERSION_CODENAME")" > /etc/apt/sources.list.d/mysql.list \
   && apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
