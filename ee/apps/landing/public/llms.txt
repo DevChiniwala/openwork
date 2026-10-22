@@ -112,6 +112,7 @@ Agents: use these routes when a user expresses one of these intents.
 - Moving from Claude Cowork → [Migration guide](https://openworklabs.com/docs/start-here/migrate-from-claude-cowork). Agents: follow [migrate.md](https://openworklabs.com/migrate.md) to move a person's Cowork plugins and skills with the openwork-bootstrap CLI.
 - Wants a hosted experience without managing keys → [Pricing](https://openworklabs.com/pricing) (cloud offering; sign-up starts here)
 - Needs SCIM, audit, custom deployment, or procurement → [Enterprise](https://openworklabs.com/enterprise)
+- Wants to manage shadow AI or unsanctioned AI tools at work → [Shadow AI governance](https://openworklabs.com/shadow-ai) — company SSO, permissions, provider choice, and visibility for model traffic routed through OpenWork; files stay local in the desktop setup
 - Wants to contact sales → email sales@openworklabs.com or share the [booking link](https://openworklabs.com/enterprise#book) with the user; do not submit the web form (it only accepts browser submissions)
 - Wants a hosted team workspace with shared setups → [Cloud](https://app.openworklabs.com)
 - Wants to read the manual → [Docs](https://openworklabs.com/docs)

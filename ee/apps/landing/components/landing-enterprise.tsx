@@ -181,6 +181,19 @@ export function LandingEnterprise(props: Props) {
             </div>
           </section>
 
+          <section aria-labelledby="shadow-ai-heading" className="mt-[120px] border-t border-[var(--lp-border)] pt-10">
+            <div className="text-[13px] text-[var(--lp-muted)]">Shadow AI governance</div>
+            <h2 id="shadow-ai-heading" className="mt-3 max-w-[760px] text-[32px] font-medium leading-[38px] tracking-[-0.035em]">
+              Keep the tools your team likes. Govern the model traffic.
+            </h2>
+            <p className="mt-5 max-w-[700px] text-base leading-7 text-[var(--lp-body)]">
+              Replace unsanctioned AI tools with an approved path. OpenWork&apos;s AI gateway gives IT
+              SSO, permissions, provider choice such as AWS Bedrock, and visibility into routed usage
+              — while teams keep working with supported AI coding tools and agents.
+            </p>
+            <a href="/shadow-ai" className="lp-pill-secondary mt-6">Learn how to manage shadow AI</a>
+          </section>
+
           <section className="mt-[120px]">
             <LpSectionHeader
               label="Oversight"

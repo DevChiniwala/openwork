@@ -10,6 +10,7 @@ export const config = {
     "/cloud",
     "/pricing",
     "/enterprise",
+    "/shadow-ai",
     "/download",
     "/glm-5.2",
     "/alternatives/claude-cowork",

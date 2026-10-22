@@ -1,3 +1,4 @@
+import { shadowAiMarkdown } from "./shadow-ai"
 import { claudeCowork3pMarkdown } from "./claude-cowork-3p"
 import { claudeCoworkAlternativeMarkdown } from "./claude-cowork-alternative"
 import { GUIDES_PATH, guideMarkdown, guidePath, guides, guidesIndexMarkdown } from "./guides"
@@ -228,6 +229,7 @@ export const agentMarkdown: Record<string, string> = {
   "/cloud": cloud,
   "/pricing": pricing,
   "/enterprise": enterprise,
+  "/shadow-ai": shadowAiMarkdown,
   "/download": download,
   "/glm-5.2": glm52,
   "/alternatives/claude-cowork": claudeCoworkAlternativeMarkdown,

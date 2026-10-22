@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 import { LandingFaq } from "./landing-faq";
 import { LandingHeroPrompt } from "./landing-hero-prompt";
@@ -100,7 +101,7 @@ export function LandingHome(props: Props) {
               <div className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-2 text-xs text-[var(--lp-muted)]">
                 <span>Free desktop app</span>
                 <span aria-hidden="true">·</span>
-                <a href="/download" className="underline-offset-4 hover:underline">macOS</a>
+                <Link href="/download" className="underline-offset-4 hover:underline">macOS</Link>
                 <span aria-hidden="true">·</span>
                 <a href={props.windowsDownloadHref} className="underline-offset-4 hover:underline">Windows</a>
                 <span aria-hidden="true">·</span>
