@@ -44029,7 +44029,7 @@
           "Users"
         ],
         "summary": "List current user's pending invitations",
-        "description": "Lists unexpired invitations sent to the signed-in person's email for organizations they have not joined yet. Empty until the email is verified when the deployment requires verification. Accept one with POST /v1/orgs/invitations/accept.",
+        "description": "Lists unexpired invitations sent to the signed-in person's verified email for organizations they have not joined yet. Always empty for an unverified email, whatever the deployment's verification setting. Accept one with POST /v1/orgs/invitations/accept.",
         "responses": {
           "200": {
             "description": "Pending invitations returned successfully.",

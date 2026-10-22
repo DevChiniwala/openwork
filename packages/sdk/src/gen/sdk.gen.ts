@@ -3073,7 +3073,7 @@ export class DenClient extends HeyApiClient {
   /**
    * List current user's pending invitations
    *
-   * Lists unexpired invitations sent to the signed-in person's email for organizations they have not joined yet. Empty until the email is verified when the deployment requires verification. Accept one with POST /v1/orgs/invitations/accept.
+   * Lists unexpired invitations sent to the signed-in person's verified email for organizations they have not joined yet. Always empty for an unverified email, whatever the deployment's verification setting. Accept one with POST /v1/orgs/invitations/accept.
    */
   public getV1MeInvitations<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GetV1MeInvitationsResponses, GetV1MeInvitationsErrors, ThrowOnError>({

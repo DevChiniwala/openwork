@@ -21,7 +21,6 @@ import { readAgentPermissionRulesForMember } from "../../agent-permissions.js"
 import { desktopConfigDefaultModel } from "../../default-model.js"
 import { DenEmailSendError, sendEmail } from "../../utils/email/send-email.js"
 import { getOrganizationFeatures } from "../../features.js"
-import { validateInvitationAcceptVerification } from "../../organization-join-verification.js"
 
 const DOWNLOAD_LINK_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 const DOWNLOAD_LINK_RATE_LIMIT_MAX = 5
@@ -227,7 +226,7 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
     describeRoute({
       tags: ["Users"],
       summary: "List current user's pending invitations",
-      description: "Lists unexpired invitations sent to the signed-in person's email for organizations they have not joined yet. Empty until the email is verified when the deployment requires verification. Accept one with POST /v1/orgs/invitations/accept.",
+      description: "Lists unexpired invitations sent to the signed-in person's verified email for organizations they have not joined yet. Always empty for an unverified email, whatever the deployment's verification setting. Accept one with POST /v1/orgs/invitations/accept.",
       responses: {
         200: jsonResponse("Pending invitations returned successfully.", meInvitationsResponseSchema),
         401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
@@ -237,9 +236,9 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
     async (c) => {
     const user = c.get("user")
     const email = user.email?.trim().toLowerCase()
-    // Listing names the inviting organizations, so it follows the same verification boundary as accepting.
-    const verification = validateInvitationAcceptVerification({ emailVerified: user.emailVerified, emailVerificationRequired: env.requireEmailVerification })
-    if (!email || !verification.ok) return c.json({ invitations: [] })
+    // Only a verified email proves the person owns the inbox an invitation went to. Without it, listing would hand
+    // out the invitation id that accepting otherwise requires from the emailed link, even where verification is off.
+    if (!email || user.emailVerified !== true) return c.json({ invitations: [] })
 
     const userId = normalizeDenTypeId("user", user.id)
     const rows = await db
