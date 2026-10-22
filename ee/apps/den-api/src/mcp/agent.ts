@@ -104,6 +104,13 @@ import {
 import { registerAgentSkillTools } from "./skill-created-app.js"
 import { registerAgentSkillCatalogTools, standardSkillMarkdown, type RemoteSkillSource } from "./skill-tools.js"
 import { isSkillDocumentUri, readCachedSkill, rememberSkillRead, skillReadResponse } from "./skill-read-cache.js"
+import {
+  parseSkillSyncRequest,
+  skillBatchResponse,
+  skillIndexChanges,
+  unchangedSkillIndexResponse,
+  type SkillSyncRequest,
+} from "./skill-index-sync.js"
 import { cache } from "../cache.js"
 import {
   connectionActionSearchCard,
@@ -245,8 +252,9 @@ async function mcpRequestInfo(request: Request): Promise<{
   generatedCatalog: boolean
   toolName: string | null
   clientInfo: ConnectClientInfo | null
+  skillSync: SkillSyncRequest | null
 }> {
-  if (request.method.toUpperCase() !== "POST") return { id: null, method: null, resourceUri: null, generatedCatalog: false, toolName: null, clientInfo: null }
+  if (request.method.toUpperCase() !== "POST") return { id: null, method: null, resourceUri: null, generatedCatalog: false, toolName: null, clientInfo: null, skillSync: null }
   const body: unknown = await request.clone().json().catch(() => null)
   const id = typeof body === "object" && body !== null && "id" in body && (typeof body.id === "string" || typeof body.id === "number")
     ? body.id
@@ -262,7 +270,10 @@ async function mcpRequestInfo(request: Request): Promise<{
     : null
   const resourceUri = params && "uri" in params && typeof params.uri === "string" ? params.uri : null
   const toolName = method === "tools/call" && params && "name" in params && typeof params.name === "string" ? params.name : null
-  return { id, method, resourceUri, generatedCatalog: needsGeneratedArtifactCatalog(method, params), toolName, clientInfo: requestClientInfo(params) }
+  return {
+    id, method, resourceUri, generatedCatalog: needsGeneratedArtifactCatalog(method, params), toolName, clientInfo: requestClientInfo(params),
+    skillSync: method === "resources/read" ? parseSkillSyncRequest(params) : null,
+  }
 }
 
 export const AGENT_SKILL_INDEX_URI = "skill://index.json"
@@ -426,18 +437,23 @@ export function registerAgentSkillResources(input: {
   resolveSkills?: () => Promise<ResolvedSkill[]>
   /** Hears each SKILL.md served, so a repeat read can skip this request's setup (skill-read-cache.ts). */
   onSkillRead?: (uri: string, text: string) => void
+  /** The client asked for the index as changes against what it holds (skill-index-sync.ts). */
+  indexSync?: { revision: string | null; known?: Record<string, string> }
 }) {
   input.server.registerResource("agent-skills-index", AGENT_SKILL_INDEX_URI, {
     title: "Available Agent Skills",
     description: "Authorized Agent Skills discovery index for this OpenWork member.",
     mimeType: "application/json",
-  }, async () => ({
-    contents: [{
-      uri: AGENT_SKILL_INDEX_URI,
-      mimeType: "application/json",
-      text: JSON.stringify(buildAgentSkillIndex(input.skills, input.resolveSkills ? await input.resolveSkills() : undefined)),
-    }],
-  }))
+  }, async () => {
+    const index = buildAgentSkillIndex(input.skills, input.resolveSkills ? await input.resolveSkills() : undefined)
+    return {
+      contents: [{
+        uri: AGENT_SKILL_INDEX_URI,
+        mimeType: "application/json",
+        text: JSON.stringify(input.indexSync ? skillIndexChanges(index, input.indexSync.revision, input.indexSync.known) : index),
+      }],
+    }
+  })
   for (const skill of input.skills) {
     input.server.registerResource(skill.name, skill.location, {
       title: skill.title,
@@ -534,9 +550,18 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const skillReadUri = method === "resources/read" && requestInfo.id !== null && isSkillDocumentUri(requestInfo.resourceUri)
       ? requestInfo.resourceUri
       : null
-    const skillReadRevision = skillReadUri ? await cache.inventory.revision(organizationId) : null
-    const skillReadKey = skillReadUri && skillReadRevision
-      ? { organizationId, userId: principal.userId, uri: skillReadUri, revision: skillReadRevision }
+    // Several SKILL.md bodies in one read, or one a message is about to use (skill-index-sync.ts).
+    const skillBatch = skillReadUri && requestInfo.skillSync && (requestInfo.skillSync.uris || requestInfo.skillSync.use)
+      ? { uris: [...new Set([skillReadUri, ...(requestInfo.skillSync.uris ?? [])])], use: requestInfo.skillSync.use === true }
+      : null
+    // Read before the index is built, so a write during the build leaves the client one revision behind, not ahead.
+    const indexSync = method === "resources/read" && requestInfo.resourceUri === AGENT_SKILL_INDEX_URI ? requestInfo.skillSync : null
+    const inventoryRevision = skillReadUri || indexSync ? await cache.inventory.revision(organizationId) : null
+    if (indexSync?.revision && indexSync.revision === inventoryRevision && requestInfo.id !== null) {
+      return unchangedSkillIndexResponse(requestInfo.id, AGENT_SKILL_INDEX_URI, AGENT_SKILL_INDEX_SCHEMA, inventoryRevision)
+    }
+    const skillReadKey = skillReadUri && inventoryRevision && !skillBatch
+      ? { organizationId, userId: principal.userId, uri: skillReadUri, revision: inventoryRevision }
       : null
     const cachedSkill = skillReadKey ? readCachedSkill(skillReadKey) : null
     if (skillReadKey && cachedSkill !== null && requestInfo.id !== null) {
@@ -649,6 +674,30 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       organizationId: principal.organizationId,
       member: memberIdentity,
     }))()
+    if (skillBatch && requestInfo.id !== null) {
+      // Each body is authorized exactly as a single read is. A body for a
+      // message that uses the skill is a Library use and is never served from
+      // the read cache; a background read is neither.
+      const skills = await loadRemoteSkills()
+      const contents: Array<{ uri: string; text: string }> = []
+      for (const uri of skillBatch.uris) {
+        const skill = skills.find((entry) => entry.location === uri)
+        if (!skill) continue
+        const key = inventoryRevision ? { organizationId, userId: principal.userId, uri, revision: inventoryRevision } : null
+        const cached = key && !skillBatch.use ? readCachedSkill(key) : null
+        if (cached !== null) {
+          contents.push({ uri, text: cached })
+          continue
+        }
+        const source = await readRemoteSkillSource({ skill, organizationId: principal.organizationId, member: memberIdentity, recordUse: skillBatch.use })
+        if (!source || "blocked" in source) continue
+        const text = standardSkillMarkdown(skill, source.content)
+        if (key) rememberSkillRead(key, text)
+        contents.push({ uri, text })
+      }
+      finishIndexTiming()
+      return skillBatchResponse(requestInfo.id, contents)
+    }
     // execute_capability and every full-view tool run capabilities through this one executor.
     const executeCapabilityTool = async ({ name, arguments: args, schemaDigest, path, query, body }: CapabilityCall & { schemaDigest?: string }) => {
       // A built App opens through its own server; anything unavailable falls
@@ -795,6 +844,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
         organizationId: principal.organizationId,
         member: memberIdentity,
         ...(nativeSkills ? { resolveSkills: loadResolvedSkills } : {}),
+        ...(indexSync ? { indexSync: { revision: inventoryRevision, known: indexSync.known } } : {}),
         ...(skillReadKey ? { onSkillRead: (uri: string, text: string) => {
           if (uri === skillReadKey.uri) rememberSkillRead(skillReadKey, text)
         } } : {}),
