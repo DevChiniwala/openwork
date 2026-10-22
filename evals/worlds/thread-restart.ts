@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { promisify } from "node:util";
 import { evalIn, quitDesktop, readComposerState } from "@openwork/behaviors";
@@ -121,7 +122,14 @@ export async function restartedThreadWorld(seed: Seed, ctx: { place: Place }) {
   // on the fixture-owned origin too: hosted Den can otherwise force v2 while
   // this world is explicitly exercising v1. Unavailable local features apply no
   // force policy. Reuse these origins after relaunch as well.
-  const localOnlyEnv = { VITE_DEN_BASE_URL: mock.url, VITE_DEN_API_BASE_URL: mock.url };
+  // Native desktop bootstrap overrides Vite's defaults, so pin both to the
+  // same local origin instead of only changing the renderer build settings.
+  const bootstrapPath = seed.tmpPath("thread-restart-bootstrap.json");
+  await writeFile(bootstrapPath, JSON.stringify({ baseUrl: mock.url, apiBaseUrl: mock.url, requireSignin: false }));
+  const localOnlyEnv = {
+    OPENWORK_DESKTOP_BOOTSTRAP_PATH: bootstrapPath,
+    VITE_DEN_BASE_URL: mock.url, VITE_DEN_API_BASE_URL: mock.url,
+  };
   let app: Surface & { stop(): Promise<void> } = await seed.desktop({
     name: "thread-restart", profileDir: seed.tmpPath("thread-restart-profile"), env: localOnlyEnv,
   });
