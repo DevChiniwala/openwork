@@ -6,6 +6,7 @@
   "exports": {
     ".": { "types": "./index.d.mts", "default": "./index.mjs" },
     "./broker": "./broker.mjs",
+    "./reaper": "./reaper.mjs",
     "./client": "./client.mjs"
   }
 }

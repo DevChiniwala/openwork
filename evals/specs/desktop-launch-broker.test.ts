@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { Worker } from "node:worker_threads";
+import { spawn as nativeSpawn } from "node:child_process";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,26 +10,33 @@ import { orphanedPackagedSidecarPids } from "../../apps/desktop/electron/runtime
 import { probeEngineV2Path, ENGINE_V2_VERSION_PROBE_TIMEOUT_MS } from "../../apps/server/src/engine-v2-version-probe.ts";
 import { test } from "@openwork/testkit";
 import { createProcessLauncher } from "../../packages/child-process/client.mjs";
+import { windowsCleanupCandidates } from "../../packages/child-process/reaper.mjs";
 
 function broker(delayMs = 0) {
-  const worker = new Worker(`
-    const { parentPort, workerData } = require('node:worker_threads');
-    import(workerData.module).then(({ serveProcessLauncher }) => {
+  // A separate OS process matters for crash/reparenting proof. A worker thread
+  // shares the runner's parent pid and is not the utility process's OS boundary.
+  const child = nativeSpawn(process.execPath, ["-e", `
+    let receiver; const queued = [];
+    process.on('message', value => receiver ? receiver(value) : queued.push(value));
+    import(${JSON.stringify(new URL("../../packages/child-process/broker.mjs", import.meta.url).href)}).then(({ serveProcessLauncher }) => {
       serveProcessLauncher({
-        send: value => parentPort.postMessage(value),
-        subscribe: receive => parentPort.on('message', value => {
-          if (value.type === 'spawn' && workerData.delayMs) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, workerData.delayMs);
-          receive(value);
-        }),
-        onClose: receive => parentPort.once('close', receive),
+        send: value => process.send(value),
+        subscribe: receive => {
+          receiver = value => {
+            if (value.type === 'spawn' && ${delayMs}) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${delayMs});
+            receive(value);
+          };
+          queued.forEach(receiver);
+        },
+        onClose: receive => process.once('disconnect', receive),
       });
-      parentPort.postMessage({ ready: true });
-    });`, { eval: true, workerData: { module: new URL("../../packages/child-process/broker.mjs", import.meta.url).href, delayMs } });
+    });`], { stdio: ["ignore", "ignore", "inherit", "ipc"], serialization: "advanced" });
   const launcher = createProcessLauncher({
-    send: (value: unknown) => worker.postMessage(value),
-    subscribe: (receive: (value: unknown) => void) => worker.on("message", receive),
-    onClose: (receive: () => void) => worker.once("exit", receive),
+    send: (value: Parameters<typeof child.send>[0]) => child.send(value),
+    subscribe: (receive: (value: unknown) => void) => child.on("message", receive),
+    onClose: (receive: () => void) => child.once("exit", receive),
   });
+  const worker = { async terminate() { const exited = once(child, "exit"); child.kill("SIGKILL"); await exited; } };
   return { worker, launcher, async close() { await launcher.shutdown(); await worker.terminate(); } };
 }
 
@@ -38,6 +45,27 @@ function collect(stream: NodeJS.ReadableStream | null): () => string {
   stream?.on("data", chunk => { value += String(chunk); });
   return () => value;
 }
+
+test("Windows crash cleanup requires matching parent, image, pid and launch interval", () => {
+  const request = { parentPid: 50, startedAt: 10_000, endedAt: 20_000, children: [{ pid: 100, command: "C:\\app\\opencode2.exe", startedAt: 11_000 }] };
+  const valid = { pid: 100, parentPid: 50, executable: "C:\\app\\opencode2.exe", startedAt: 11_100 };
+  const rows = [valid,
+    { ...valid, pid: 101 },
+    { ...valid, parentPid: 51 },
+    { ...valid, executable: "C:\\unrelated\\opencode2.exe" },
+    { ...valid, startedAt: 1_000 },
+    { ...valid, startedAt: 22_000 },
+    { ...valid, executable: "" },
+  ];
+  assert.deepEqual(windowsCleanupCandidates(rows, request), [valid]);
+  assert.throws(() => windowsCleanupCandidates(rows, { ...request, parentPid: 4 }), /identity/);
+});
+
+test("Windows crash cleanup can find an admitted child whose spawn receipt was lost", () => {
+  const request = { parentPid: 50, startedAt: 10_000, endedAt: 20_000, children: [{ command: "opencode2", startedAt: 11_000 }] };
+  const valid = { pid: 101, parentPid: 50, executable: "C:\\app\\opencode2.exe", startedAt: 11_100 };
+  assert.deepEqual(windowsCleanupCandidates([valid, { ...valid, parentPid: 999 }, { ...valid, executable: "C:\\app\\other.exe" }], request), [valid]);
+});
 
 test("broker preserves pid, cwd, env, both output streams and nonzero exit", async () => {
   const host = broker();
@@ -123,6 +151,27 @@ test("broker crash fails pending creation once and never replays it", async () =
   assert.throws(() => host.launcher.shutdown(), /unavailable/);
 });
 
+test.skipIf(process.platform === "win32")("POSIX broker crash reaps an admitted engine and its process group without replay", async () => {
+  const host = broker();
+  const child = host.launcher.spawn(process.execPath, ["-e", "const grand = require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); console.log(grand.pid); setInterval(() => {}, 1000)"], { stdio: ["ignore", "pipe", "pipe"] });
+  const pidLine = once(child.stdout, "data");
+  const grandPid = Number(String((await pidLine)[0]).trim());
+  const pid = child.pid;
+  assert.ok(typeof pid === "number");
+  assert.ok(grandPid > 0);
+  const closed = new Promise(resolve => child.once("close", resolve));
+  await host.worker.terminate();
+  await closed;
+  const deadline = Date.now() + 2_000;
+  while (true) {
+    try { process.kill(grandPid, 0); }
+    catch { break; }
+    assert.ok(Date.now() < deadline, "engine descendant survived the broker");
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.throws(() => process.kill(pid, 0));
+});
+
 test("graceful broker shutdown confirms a live managed child has stopped", async () => {
   const host = broker();
   const child = host.launcher.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
@@ -131,6 +180,41 @@ test("graceful broker shutdown confirms a live managed child has stopped", async
   assert.ok(typeof pid === "number");
   await host.close();
   assert.throws(() => process.kill(pid, 0));
+});
+
+test("broker shutdown is idempotent and new launches cannot race teardown", async () => {
+  const host = broker();
+  const first = host.launcher.shutdown();
+  assert.equal(host.launcher.shutdown(), first);
+  assert.throws(() => host.launcher.spawn(process.execPath, ["-e", "process.exit(0)"], {}), /shutting down/);
+  await first;
+  await host.worker.terminate();
+});
+
+test("shutdown does not deadlock on a child whose output the caller never reads", async () => {
+  const host = broker();
+  const child = host.launcher.spawn(process.execPath, ["-e", "process.stdout.write('x'.repeat(2 * 1024 * 1024)); setInterval(() => {}, 1000)"], { stdio: ["ignore", "pipe", "pipe"] });
+  await once(child, "spawn");
+  const pid = child.pid;
+  assert.ok(typeof pid === "number");
+  await host.close();
+  assert.throws(() => process.kill(pid, 0));
+});
+
+test("a deliberately detached helper survives a clean broker shutdown without a false error", async () => {
+  const host = broker();
+  const child = host.launcher.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached: true });
+  let errors = 0;
+  child.on("error", () => { errors++; });
+  await once(child, "spawn");
+  const pid = child.pid;
+  assert.ok(typeof pid === "number");
+  try {
+    child.unref();
+    await host.close();
+    assert.doesNotThrow(() => process.kill(pid, 0));
+    assert.equal(errors, 0);
+  } finally { try { process.kill(pid, "SIGKILL"); } catch { /* Already gone. */ } }
 });
 
 test("migration-style IPC reaches the real child and its reply returns over the private channel", async () => {

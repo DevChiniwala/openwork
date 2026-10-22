@@ -9,19 +9,22 @@ export function createProcessLauncher(transport) {
   let sequence = 0;
   let failed = false;
   let stopped;
+  let shutdownPromise;
   const children = new Map();
   function request(message) {
     if (failed) throw new Error("Desktop launch broker unavailable; restart OpenWork to retry");
     transport.send(message);
   }
   function launch(type, command, args = [], options = {}, callback) {
+    if (shutdownPromise) throw new Error("Desktop launch broker is shutting down");
     if (options.signal?.aborted) options.signal.throwIfAborted();
     const id = ++sequence;
     // Constructing ChildProcess does not call its native spawn method.
     const child = new ChildProcess();
     const pendingWrites = new Map();
-    // execFile owns an error listener even when its caller only uses callback.
-    if (callback) child.on("error", () => undefined);
+    // A broker failure must be a recoverable service error, never an unhandled
+    // EventEmitter error that takes down the desktop. Callers still receive it.
+    child.on("error", () => undefined);
     Object.assign(child, { pid: undefined, exitCode: null, signalCode: null, killed: false, connected: false });
     // Drop the uncloneable AbortSignal; cancellation travels over this channel.
     const { signal, ...explicit } = options;
@@ -56,20 +59,21 @@ export function createProcessLauncher(transport) {
     const abort = () => child.kill(options.killSignal ?? "SIGTERM");
     signal?.addEventListener("abort", abort, { once: true });
     child.once("close", () => signal?.removeEventListener("abort", abort));
-    children.set(id, { child, callback, pendingWrites });
+    children.set(id, { child, callback, pendingWrites, command, startedAt: Date.now(), detached: options.detached === true, processGroup: false });
     try { request({ type, id, command, args, options: serializable }); }
     catch (error) { queueMicrotask(() => finishError(id, error)); }
     return child;
   }
-  function finishError(id, error) {
+  function finishError(id, error, exited = false) {
     const entry = children.get(id);
     if (!entry) return;
     children.delete(id);
     entry.callback?.(error, "", "");
     entry.child.emit("error", error);
     for (const stream of entry.child.stdio) stream?.destroy();
-    // A lost broker is not an observed OS exit. Never manufacture an exit
-    // code or claim a running engine was reaped when its outcome is unknown.
+    // A lost broker is not an observed OS exit. Only an independently
+    // confirmed cleanup can supply an exit event; its OS status stays unknown.
+    if (exited) entry.child.emit("exit", null, null);
     entry.child.emit("close", null, null);
   }
   transport.subscribe(message => {
@@ -81,6 +85,7 @@ export function createProcessLauncher(transport) {
       case "spawn":
         child.pid = message.pid;
         child.connected = message.connected;
+        entry.processGroup = message.processGroup;
         child.emit("spawn");
         break;
       case "data": {
@@ -110,21 +115,50 @@ export function createProcessLauncher(transport) {
         break;
     }
   });
+  async function reapKnownChildren(entries) {
+    const owned = entries.filter(entry => !entry.detached && entry.child.pid !== undefined);
+    if (owned.length && process.platform === "win32") throw new Error("Windows launch broker cleanup requires a tree reaper");
+    for (const entry of owned) {
+      try { process.kill(entry.processGroup ? -entry.child.pid : entry.child.pid, "SIGKILL"); }
+      catch (error) { if (error.code !== "ESRCH") throw error; }
+    }
+    const deadline = Date.now() + 2_000;
+    for (const entry of owned) {
+      while (true) {
+        try { process.kill(entry.child.pid, 0); }
+        catch (error) { if (error.code === "ESRCH") break; throw error; }
+        if (Date.now() >= deadline) throw new Error("Launch broker cleanup could not be confirmed");
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+    }
+  }
   transport.onClose(() => {
     failed = true;
-    for (const id of [...children.keys()]) finishError(id, new Error("Desktop launch broker exited; process outcome unknown. Restart OpenWork to retry."));
+    if (shutdownPromise) {
+      for (const [id, entry] of children) {
+        if (entry.detached && entry.child.pid !== undefined) children.delete(id);
+      }
+    }
+    const entries = [...children.entries()];
+    const cleanup = transport.cleanup ?? reapKnownChildren;
+    Promise.resolve().then(() => cleanup(entries.map(([, entry]) => entry))).then(() => {
+      for (const [id, entry] of entries) finishError(id, new Error("Desktop launch broker exited. Known children were stopped; pending creation was not replayed. Restart OpenWork to retry."), entry.child.pid !== undefined && !entry.detached);
+    }, () => {
+      for (const [id] of entries) finishError(id, new Error("Desktop launch broker exited; child cleanup could not be confirmed. Restart OpenWork to retry."));
+    });
   });
   return {
     spawn: (command, args, options) => launch("spawn", command, args, options),
     execFile: (command, args, options, callback) => launch("exec", command, args, options, callback),
     shutdown() {
+      if (shutdownPromise) return shutdownPromise;
       if (failed) throw new Error("Desktop launch broker unavailable; restart OpenWork to retry");
-      const finished = new Promise((resolve, reject) => {
+      shutdownPromise = new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("Desktop launch broker did not confirm child cleanup")), 10_000);
         stopped = () => { clearTimeout(timer); resolve(); };
       });
       request({ type: "shutdown" });
-      return finished;
+      return shutdownPromise;
     },
   };
 }

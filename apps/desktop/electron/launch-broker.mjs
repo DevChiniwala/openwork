@@ -8,6 +8,9 @@ import { installProcessLauncher } from "@openwork/child-process";
  */
 export function startDesktopLaunchBroker({ utilityProcess, enabled }) {
   if (!enabled) return null;
+  const startedAt = Date.now();
+  let brokerPid;
+  let endedAt;
   const worker = utilityProcess.fork(fileURLToPath(new URL("./launch-broker-process.mjs", import.meta.url)), [], {
     serviceName: "OpenWork launch broker",
     stdio: "pipe",
@@ -16,14 +19,45 @@ export function startDesktopLaunchBroker({ utilityProcess, enabled }) {
   // draining. No request, argument, environment or pipe payload is logged here.
   worker.stdout?.pipe(process.stdout, { end: false });
   worker.stderr?.pipe(process.stderr, { end: false });
+  worker.once("spawn", () => { brokerPid = worker.pid; });
+  let stopping = false;
+  async function cleanupWindows(entries) {
+    const children = entries.filter(entry => !entry.detached).map(entry => ({
+      pid: entry.child.pid, command: entry.command, startedAt: entry.startedAt,
+    }));
+    if (children.length === 0) return;
+    const reaper = utilityProcess.fork(fileURLToPath(new URL("./launch-broker-reaper.mjs", import.meta.url)), [], {
+      serviceName: "OpenWork launch cleanup", stdio: "ignore",
+    });
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reaper.kill();
+        if (ok) resolve();
+        else reject(new Error("Launch broker child cleanup could not be confirmed"));
+      };
+      const timer = setTimeout(() => finish(false), 30_000);
+      reaper.once("message", result => finish(result?.ok === true));
+      reaper.once("exit", () => finish(false));
+      reaper.postMessage({ parentPid: brokerPid, startedAt, endedAt, children });
+    });
+  }
   const launcher = createProcessLauncher({
     send: value => worker.postMessage(value),
     subscribe: receive => worker.on("message", receive),
-    onClose: receive => worker.once("exit", receive),
+    cleanup: process.platform === "win32" ? cleanupWindows : undefined,
+    onClose: receive => worker.once("exit", () => {
+      endedAt = Date.now();
+      if (!stopping) console.error("[launch-broker] service exited; restart is required");
+      receive();
+    }),
   });
   installProcessLauncher(launcher);
   return {
     pid: () => worker.pid,
-    async stop() { await launcher.shutdown(); worker.kill(); },
+    async stop() { stopping = true; await launcher.shutdown(); worker.kill(); },
   };
 }
