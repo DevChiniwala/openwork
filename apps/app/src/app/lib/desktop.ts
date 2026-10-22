@@ -85,6 +85,11 @@ export type RecoveryActionResult = {
   reason?: string;
 };
 
+export type SpeechDictationEvent =
+  | { id: string; type: "ready" | "end" }
+  | { id: string; type: "result"; segments: string[] }
+  | { id: string; type: "error"; code: string };
+
 // ---------------------------------------------------------------------------
 // Electron bridge surface
 // ---------------------------------------------------------------------------
@@ -102,6 +107,9 @@ declare global {
       ) => Promise<DesktopCommandResult<C>>;
       computer?: {
         onRequest?: (callback: (payload: { sessionId: string; request: ComputerRequest | null }) => void) => () => void;
+      };
+      dictation?: {
+        onEvent?: (callback: (payload: SpeechDictationEvent) => void) => () => void;
       };
       automationRunner?: {
         onCredentialRejected?: (callback: () => void) => () => void;

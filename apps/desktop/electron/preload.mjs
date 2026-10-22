@@ -167,6 +167,13 @@ contextBridge.exposeInMainWorld("__OPENWORK_ELECTRON__", {
       return () => ipcRenderer.removeListener("openwork:computer:request", handler);
     },
   },
+  dictation: {
+    onEvent(callback) {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("openwork:dictation:event", handler);
+      return () => ipcRenderer.removeListener("openwork:dictation:event", handler);
+    },
+  },
   automationRunner: {
     onCredentialRejected(callback) {
       const handler = () => callback();

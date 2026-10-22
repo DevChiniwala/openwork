@@ -419,6 +419,12 @@ export type ComputerPresentation = {
 export type DesktopCommandMap = {
   __startNativeDictation: { args: [requestId: string]; result: { ok: true } | { ok: false; reason: "unavailable" | "not_focused" | "failed" } };
   __cancelNativeDictationStart: { args: [requestId: string]; result: boolean };
+  // Bundled speech helper: "local" is Apple's on-device recognizer, "online"
+  // Windows' online speech recognition. Results arrive on the dictation event channel.
+  __speechDictationMode: { args: []; result: "local" | "online" | null };
+  __startSpeechDictation: { args: [requestId: string, language: string]; result: { ok: true } | { ok: false; reason: "unavailable" | "not_focused" | "failed" } };
+  __stopSpeechDictation: { args: [requestId: string]; result: boolean };
+  __abortSpeechDictation: { args: [requestId: string]; result: boolean };
   // Workspace state
   workspaceBootstrap: { args: []; result: WorkspaceList };
   workspaceSetSelected: { args: [workspaceId: string]; result: WorkspaceList };

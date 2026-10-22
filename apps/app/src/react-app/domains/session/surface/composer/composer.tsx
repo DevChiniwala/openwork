@@ -54,6 +54,7 @@ import { modelRecoveryChatKey, useModelRecoveryStore } from "../model-recovery-s
 import { useNativeDictation } from "@openwork/ui/react";
 import { useNativeDictationFeature } from "./use-native-dictation-feature";
 import { startNativeDictation } from "./start-native-dictation";
+import { useDesktopSpeechDictation } from "./desktop-speech-dictation";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import { NativeDictationControl } from "./native-dictation-control";
 import { useSessionReferencesMaybe, type SessionReferenceCandidate } from "@/components/chat/session-reference-context";
@@ -283,6 +284,7 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
   const imeComposingRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const nativeDictationEnabled = useNativeDictationFeature();
+  const speechDictation = useDesktopSpeechDictation();
   const dictationInput = () => rootRef.current?.querySelector<HTMLElement>("[contenteditable='true']") ?? null;
   const dictation = useNativeDictation({
     enabled: nativeDictationEnabled,
@@ -292,6 +294,7 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
     selection: () => editorRef.current?.draftSelectionRange() ?? { start: props.draft.length, end: props.draft.length },
     focusInput: () => dictationInput()?.focus(),
     startNative: isDesktopRuntime() ? startNativeDictation : undefined,
+    ...speechDictation,
   });
   const prepareVoiceSubmission = () => {
     if (!nativeDictationEnabled) return latestProps.current;

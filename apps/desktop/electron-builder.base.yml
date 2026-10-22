@@ -56,6 +56,7 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: OpenWork uses the microphone when you allow a page to access audio input.
     NSAppleEventsUsageDescription: OpenWork controls this app with a script when you approve a computer use task.
+    NSSpeechRecognitionUsageDescription: OpenWork turns your speech into text on this Mac when you dictate a message.
   extraResources:
     - from: resources/sidecars
       to: sidecars
@@ -73,6 +74,7 @@ mac:
       to: helpers
       filter:
         - "OpenWork Computer Use.app/**"
+        - openwork-dictation
   target:
     - dmg
     - zip
@@ -108,6 +110,10 @@ win:
   extraResources:
     - from: resources/icons/icon.png
       to: icons/icon.png
+    - from: resources/helpers
+      to: helpers
+      filter:
+        - openwork-dictation.exe
     - from: resources/sidecars
       to: sidecars
       filter:
