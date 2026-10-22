@@ -46,6 +46,7 @@ config:
     remoteSessionSubagents: ""      # default off · A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.
     connectToolShapes: ""           # default off · Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work.
     desktopConnectStandardTools: "" # default off · OpenCode agents, including OpenWork Desktop, discover connection actions, Workflows and Apps as individual tools. Turning this off restores capability search without changing the connection URL.
+    desktopSignInReturn: ""         # default off · Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.
     connectStandardTools: ""        # default off · Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.
   # END GENERATED features
   tenancy:

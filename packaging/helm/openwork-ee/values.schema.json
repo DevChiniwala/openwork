@@ -218,6 +218,16 @@
               ],
               "description": "Desktop: standard Connect tools: OpenCode agents, including OpenWork Desktop, discover connection actions, Workflows and Apps as individual tools. Turning this off restores capability search without changing the connection URL. Renders DEN_FEATURE_DESKTOP_CONNECT_STANDARD_TOOLS."
             },
+            "desktopSignInReturn": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Desktop: sign-in returns you to the same task: Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact. Renders DEN_FEATURE_DESKTOP_SIGN_IN_RETURN."
+            },
             "connectStandardTools": {
               "enum": [
                 "",

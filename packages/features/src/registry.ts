@@ -196,6 +196,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  desktopSignInReturn: {
+    label: "Desktop: sign-in returns you to the same task",
+    description: "Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   connectStandardTools: {
     label: "Connect: standard tools for tool-search clients",
     description: "Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.",

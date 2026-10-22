@@ -4816,6 +4816,7 @@
               "remoteSessionSubagents",
               "connectToolShapes",
               "desktopConnectStandardTools",
+              "desktopSignInReturn",
               "connectStandardTools"
             ]
           },
@@ -5051,6 +5052,9 @@
                     "desktopConnectStandardTools": {
                       "type": "boolean"
                     },
+                    "desktopSignInReturn": {
+                      "type": "boolean"
+                    },
                     "connectStandardTools": {
                       "type": "boolean"
                     },
@@ -5082,6 +5086,7 @@
                     "remoteSessionSubagents",
                     "connectToolShapes",
                     "desktopConnectStandardTools",
+                    "desktopSignInReturn",
                     "connectStandardTools",
                     "gatewayDashboard"
                   ]
@@ -6229,6 +6234,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "desktopSignInReturn": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "connectStandardTools": {
                       "type": "object",
                       "properties": {
@@ -6308,6 +6370,7 @@
                     "remoteSessionSubagents",
                     "connectToolShapes",
                     "desktopConnectStandardTools",
+                    "desktopSignInReturn",
                     "connectStandardTools"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -6738,6 +6801,9 @@
                     "desktopConnectStandardTools": {
                       "type": "boolean"
                     },
+                    "desktopSignInReturn": {
+                      "type": "boolean"
+                    },
                     "connectStandardTools": {
                       "type": "boolean"
                     },
@@ -6769,6 +6835,7 @@
                     "remoteSessionSubagents",
                     "connectToolShapes",
                     "desktopConnectStandardTools",
+                    "desktopSignInReturn",
                     "connectStandardTools",
                     "gatewayDashboard"
                   ]
@@ -7916,6 +7983,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "desktopSignInReturn": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "connectStandardTools": {
                       "type": "object",
                       "properties": {
@@ -7995,6 +8119,7 @@
                     "remoteSessionSubagents",
                     "connectToolShapes",
                     "desktopConnectStandardTools",
+                    "desktopSignInReturn",
                     "connectStandardTools"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -34130,6 +34255,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "desktopSignInReturn": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -34209,6 +34391,7 @@
                         "remoteSessionSubagents",
                         "connectToolShapes",
                         "desktopConnectStandardTools",
+                        "desktopSignInReturn",
                         "connectStandardTools"
                       ]
                     }
@@ -35446,6 +35629,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "desktopSignInReturn": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -35525,6 +35765,7 @@
                         "remoteSessionSubagents",
                         "connectToolShapes",
                         "desktopConnectStandardTools",
+                        "desktopSignInReturn",
                         "connectStandardTools"
                       ]
                     }
@@ -35778,6 +36019,16 @@
                         ]
                       },
                       "desktopConnectStandardTools": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "desktopSignInReturn": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -38926,6 +39177,9 @@
                         "desktopConnectStandardTools": {
                           "type": "boolean"
                         },
+                        "desktopSignInReturn": {
+                          "type": "boolean"
+                        },
                         "connectStandardTools": {
                           "type": "boolean"
                         },
@@ -38957,6 +39211,7 @@
                         "remoteSessionSubagents",
                         "connectToolShapes",
                         "desktopConnectStandardTools",
+                        "desktopSignInReturn",
                         "connectStandardTools",
                         "gatewayDashboard"
                       ]
@@ -40104,6 +40359,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "desktopSignInReturn": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -40183,6 +40495,7 @@
                         "remoteSessionSubagents",
                         "connectToolShapes",
                         "desktopConnectStandardTools",
+                        "desktopSignInReturn",
                         "connectStandardTools"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -40362,6 +40675,9 @@
                         "desktopConnectStandardTools": {
                           "type": "boolean"
                         },
+                        "desktopSignInReturn": {
+                          "type": "boolean"
+                        },
                         "connectStandardTools": {
                           "type": "boolean"
                         },
@@ -40393,6 +40709,7 @@
                         "remoteSessionSubagents",
                         "connectToolShapes",
                         "desktopConnectStandardTools",
+                        "desktopSignInReturn",
                         "connectStandardTools",
                         "gatewayDashboard"
                       ]
@@ -41540,6 +41857,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "desktopSignInReturn": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -41619,6 +41993,7 @@
                         "remoteSessionSubagents",
                         "connectToolShapes",
                         "desktopConnectStandardTools",
+                        "desktopSignInReturn",
                         "connectStandardTools"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."

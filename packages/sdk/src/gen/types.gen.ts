@@ -1172,6 +1172,7 @@ export type AdminFeature = {
     | "remoteSessionSubagents"
     | "connectToolShapes"
     | "desktopConnectStandardTools"
+    | "desktopSignInReturn"
     | "connectStandardTools";
   label: string;
   description: string;
@@ -1231,6 +1232,7 @@ export type AdminOrganizationsPageResponse = {
       remoteSessionSubagents: boolean;
       connectToolShapes: boolean;
       desktopConnectStandardTools: boolean;
+      desktopSignInReturn: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -1423,6 +1425,15 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1515,6 +1526,7 @@ export type AdminOverviewResponse = {
       remoteSessionSubagents: boolean;
       connectToolShapes: boolean;
       desktopConnectStandardTools: boolean;
+      desktopSignInReturn: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -1699,6 +1711,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       desktopConnectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      desktopSignInReturn: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7921,6 +7942,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7960,6 +7990,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       remoteSessionSubagents?: boolean | null;
       connectToolShapes?: boolean | null;
       desktopConnectStandardTools?: boolean | null;
+      desktopSignInReturn?: boolean | null;
       connectStandardTools?: boolean | null;
     };
   };
@@ -8171,6 +8202,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       desktopConnectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      desktopSignInReturn: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9454,6 +9494,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteSessionSubagents: boolean;
       connectToolShapes: boolean;
       desktopConnectStandardTools: boolean;
+      desktopSignInReturn: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -9638,6 +9679,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       desktopConnectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      desktopSignInReturn: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9726,6 +9776,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteSessionSubagents: boolean;
       connectToolShapes: boolean;
       desktopConnectStandardTools: boolean;
+      desktopSignInReturn: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -9910,6 +9961,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       desktopConnectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      desktopSignInReturn: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
