@@ -1,5 +1,21 @@
 export const shadowAiFaq = [
   {
+    question: "What is shadow AI governance?",
+    answer: "Shadow AI governance is the ongoing process of discovering unapproved AI use, setting rules for data and access, giving employees sanctioned tools, and reviewing adoption and risk. It combines people, an AI usage policy, and technical controls; buying a gateway alone is not a complete governance program."
+  },
+  {
+    question: "How do you detect shadow AI?",
+    answer: "Start with employee interviews, approved-software inventories, procurement and expense records, and permitted endpoint or network signals. Record the tools, owners, accounts, and data involved. OpenWork shows usage routed through its gateway; it is not a network-wide tool for detecting personal accounts or unsanctioned AI tools outside that path."
+  },
+  {
+    question: "What should an AI usage policy include?",
+    answer: "Name approved AI tools and providers, allowed and prohibited data, access owners, review requirements for AI output, retention expectations, an exception process, and an incident reporting route. Explain how employees get sanctioned access and review the policy as tools and obligations change."
+  },
+  {
+    question: "Why are unsanctioned AI tools a security risk?",
+    answer: "Unreviewed AI tools can send company data to providers with unsuitable retention or processing terms. Personal accounts and keys can also leave gaps in access control, offboarding, spend ownership, and audit records. The level of risk depends on the data, tool configuration, and provider terms."
+  },
+  {
     question: "What is shadow AI?",
     answer:
       "Shadow AI is employees using AI tools at work without their company's approval or oversight. It can include personal chatbot accounts, unsanctioned AI coding tools, and agents connected to company files with personal API keys. The issue is not that people use AI; it is that IT cannot consistently govern access, providers, or usage."
@@ -35,6 +51,15 @@ export const shadowAiMarkdown = `# Manage shadow AI without taking away the tool
 
 Shadow AI is employees using unsanctioned AI tools at work. OpenWork gives IT one controlled path for model traffic, while teams keep the AI coding tools and agents they prefer.
 
+## A shadow AI governance framework
+
+1. Discover existing AI use through team interviews, inventories, procurement records, and permitted endpoint or network signals.
+2. Set an AI usage policy covering approved providers, prohibited data, access owners, human review, exceptions, and incidents.
+3. Give employees a sanctioned path through company sign-in, model permissions, approved providers, and supported clients.
+4. Monitor routed usage, review access and exceptions, and improve the policy. An AI gateway is not network-wide discovery.
+
+Unsanctioned AI tools can expose confidential data, conflict with contractual or data-handling obligations, and leave gaps in audit records and offboarding.
+
 ## Shadow AI governance through an AI gateway
 
 - Company SSO and permissions govern access to the approved model path.
@@ -57,6 +82,7 @@ ${shadowAiFaq.map((entry) => `### ${entry.question}\n\n${entry.answer}`).join("\
 
 ## Next steps
 
+- [AI governance and AI usage policy](https://openworklabs.com/ai-governance)
 - [Plan your rollout](https://openworklabs.com/enterprise#book)
 - [Enterprise deployment](https://openworklabs.com/enterprise)
 - [Plans and pricing](https://openworklabs.com/pricing)

@@ -43,6 +43,9 @@ export function SiteFooter() {
           <Link href="/shadow-ai" className="whitespace-nowrap transition-colors hover:text-gray-800">
             Shadow AI governance
           </Link>
+          <Link href="/ai-governance" className="whitespace-nowrap transition-colors hover:text-gray-800">
+            AI governance
+          </Link>
           <Link href="/contact" className="whitespace-nowrap transition-colors hover:text-gray-800">
             Contact
           </Link>
