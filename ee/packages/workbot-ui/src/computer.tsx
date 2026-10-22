@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { WorkbotTeaching } from "./teaching";
+import { ScreencastViewer, type ScreencastPage } from "./screencast";
 import { errorMessage, workbotHost } from "./host";
 import type { WorkbotPage } from "./data";
 
@@ -32,7 +33,10 @@ export function openBrowserPage(id: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-/** Both views belong to the main conversation's computer. noVNC carries pixels and native input. */
+/**
+ * Both views belong to the main conversation's computer. noVNC carries pixels and native input; with the browser live
+ * view on, watching the browser streams the page itself instead.
+ */
 export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, pages = [] }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean; /** The pages Workbot opened in this conversation, oldest first. */ pages?: WorkbotPage[] }) {
   const host = workbotHost();
   const [teaching, setTeaching] = useState<BrowserTeachingContext>();
@@ -61,18 +65,20 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
   const [revision, setRevision] = useState(0);
   const [changing, setChanging] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [livePage, setLivePage] = useState<ScreencastPage | null>(null);
   const identity = host.identity ? `${host.identity.organizationId}:${host.identity.principalId}` : "";
 
   useEffect(() => {
     const target = screen.current;
     if (!target || paused) return;
-    setError(null); setConnected(false); setReconnecting(false);
-    return connectDesktopViewer(target, host, { view, control }, {
+    setError(null); setConnected(false); setReconnecting(false); setLivePage(null);
+    return connectDesktopViewer(target, host, { view, control, screencast: host.browserLiveView === true }, {
       paused: () => setPaused(true),
       agentPaused: setAgentPaused,
       connected: () => { setConnected(true); setReconnecting(false); setError(null); },
       reconnecting: () => { setConnected(false); setReconnecting(true); },
       failed: (message) => { setConnected(false); setError(message); },
+      page: setLivePage,
     });
   }, [host, identity, view, control, paused, revision]);
 
@@ -106,6 +112,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
       </div>
     </div>
     {view === "browser" && pages.length > 0 ? <BrowserPages pages={pages} selected={page} /> : null}
+    {view === "browser" && livePage && !paused && !error ? <LiveAddress page={livePage} /> : null}
     {canTeach && host.browserDemonstrations === true && <div hidden={view !== "browser"} style={{ display: view === "browser" ? undefined : "none" }}><WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? async text => { if (!await action("continue")) throw new Error("Return browser control to Workbot before starting the run. Your inputs are still here."); await onRun(text); } : undefined} /></div>}
     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#f5f6f7]">
       <div ref={screen} className={`relative h-full w-full ${paused || error ? "hidden" : ""}`} aria-label={`${view === "browser" ? "Browser" : "Computer"} live view`} />
@@ -131,18 +138,23 @@ type ViewerEvents = {
   connected(): void;
   reconnecting(): void;
   failed(message: string): void;
+  /** The address and title of the tab the screencast shows. noVNC shows the browser's own toolbar instead. */
+  page?(page: ScreencastPage): void;
 };
 
 /**
- * Streams one view of the member's computer into `target` with noVNC, renewing the connection before the computer
- * closes it and reconnecting a few times when it drops. Returns the function that closes it.
+ * Streams one view of the member's computer into `target`, renewing the connection before the computer closes it and
+ * reconnecting a few times when it drops. Returns the function that closes it. With `screencast`, watching the browser
+ * uses the computer's page stream; a computer whose image predates it refuses the stream, and the view falls back to
+ * noVNC.
  */
-export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeof workbotHost>, options: { view: ComputerView; control: boolean }, events: ViewerEvents) {
+export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeof workbotHost>, options: { view: ComputerView; control: boolean; screencast?: boolean }, events: ViewerEvents) {
   const { view, control } = options;
   let disposed = false;
+  let screencastRefused = false;
   // The live connection, and its replacement while it connects.
-  let client: import("@novnc/novnc").default | null = null;
-  let next: import("@novnc/novnc").default | null = null;
+  let client: import("@novnc/novnc").default | ScreencastViewer | null = null;
+  let next: import("@novnc/novnc").default | ScreencastViewer | null = null;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let renewal: ReturnType<typeof setTimeout> | undefined;
   const controller = new AbortController();
@@ -168,20 +180,31 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
       const session = viewerSchema.parse(payload);
       if (session.state === "paused") { events.paused(); return; }
       events.agentPaused(session.paused);
-      const { default: RFB } = await import("@novnc/novnc");
+      // The computer issues one ticket for watching the browser; its page stream and VNC accept it at sibling paths.
+      const streamUrl = options.screencast && view === "browser" && !control && !screencastRefused && /\/vnc\/[A-Za-z0-9_-]{43}$/.test(session.url)
+        ? session.url.replace(/\/vnc\/([A-Za-z0-9_-]{43})$/, "/screencast/$1") : null;
+      const RFB = streamUrl ? null : (await import("@novnc/novnc")).default;
       if (disposed) return;
       // Each connection draws into its own layer, shown once it is live.
       const layer = document.createElement("div");
       layer.style.cssText = "position:absolute;inset:0;visibility:hidden";
       target.append(layer);
-      const candidate = new RFB(layer, session.url, { shared: true });
+      let candidate: import("@novnc/novnc").default | ScreencastViewer;
+      if (RFB) {
+        const rfb = new RFB(layer, session.url, { shared: true });
+        rfb.viewOnly = !control;
+        rfb.scaleViewport = true;
+        rfb.resizeSession = false;
+        rfb.background = "#f5f6f7";
+        candidate = rfb;
+      } else {
+        const stream = new ScreencastViewer(layer, streamUrl!);
+        stream.addEventListener("page", (event) => { if (!disposed && client === stream) events.page?.((event as CustomEvent<ScreencastPage>).detail); });
+        candidate = stream;
+      }
       const superseded = next;
       next = candidate;
       superseded?.disconnect();
-      candidate.viewOnly = !control;
-      candidate.scaleViewport = true;
-      candidate.resizeSession = false;
-      candidate.background = "#f5f6f7";
       candidate.addEventListener("connect", () => {
         if (disposed || next !== candidate) { candidate.disconnect(); return; }
         // noVNC reports the connection before its first frame arrives, so keep the current
@@ -192,6 +215,7 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
           const previous = client;
           client = candidate; next = null;
           previous?.disconnect();
+          if (candidate instanceof ScreencastViewer && candidate.page) events.page?.(candidate.page);
           failures = 0; events.connected();
           // The computer closes each connection after a minute and renewal goes through
           // membership and flags again, so renew early instead of going blank.
@@ -205,6 +229,8 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
       candidate.addEventListener("disconnect", () => {
         layer.remove();
         if (next === candidate) next = null;
+        // A stream that ends before its first frame means this computer has no page stream yet; use VNC from now on.
+        if (candidate instanceof ScreencastViewer && !candidate.connected) screencastRefused = true;
         // Only the live connection closing (or a first attempt failing with nothing newer
         // in flight) changes the screen; replaced connections and failed renewals do not.
         const live = client === candidate || client === null && next === null && !renewing;
@@ -225,6 +251,15 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
   };
   void connect();
   return () => { disposed = true; controller.abort(); clearTimeout(retry); clearTimeout(renewal); next?.disconnect(); client?.disconnect(); target.replaceChildren(); };
+}
+
+/** The page stream has no browser toolbar, so show which page is on screen: its address, with the title on hover. */
+function LiveAddress({ page }: { page: ScreencastPage }) {
+  let address = page.url;
+  try { const url = new URL(page.url); address = url.protocol === "http:" || url.protocol === "https:" ? `${url.host}${url.pathname === "/" ? "" : url.pathname}` : page.url; } catch {}
+  return <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--wb-hairline)] px-3 py-1.5 text-[12px] text-[var(--wb-muted)] sm:px-6" title={page.title || page.url} aria-label="Page on screen">
+    <Globe size={12} aria-hidden className="shrink-0" /><span className="truncate">{address}</span>
+  </div>;
 }
 
 /**

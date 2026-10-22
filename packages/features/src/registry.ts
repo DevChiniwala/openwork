@@ -167,6 +167,14 @@ export const FEATURES = defineFeatures({
     default: false,
   },
 
+  browserLiveView: {
+    label: "Workbot: browser live view",
+    description: "Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+
   browserFloatingView: {
     label: "Desktop: floating and full-screen browser",
     description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.",

@@ -1307,6 +1307,7 @@ export class DenClient extends HeyApiClient {
         engineV2ForceUpgrade?: boolean | null;
         computerUse?: boolean | null;
         browserDemonstrations?: boolean | null;
+        browserLiveView?: boolean | null;
         browserFloatingView?: boolean | null;
         remoteComputers?: boolean | null;
         remoteSessionSubagents?: boolean | null;

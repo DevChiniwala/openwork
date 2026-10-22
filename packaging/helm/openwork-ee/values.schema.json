@@ -178,6 +178,16 @@
               ],
               "description": "Workbot: teach browser tasks: Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs. Renders DEN_FEATURE_BROWSER_DEMONSTRATIONS."
             },
+            "browserLiveView": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: browser live view: Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window. Renders DEN_FEATURE_BROWSER_LIVE_VIEW."
+            },
             "browserFloatingView": {
               "enum": [
                 "",
