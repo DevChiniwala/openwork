@@ -32,6 +32,7 @@ import { applyBrandAppName } from "./brand-app-name.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createComputerControl } from "@openwork/computer-use/computer-control";
 import { createLocalComputerAdapter } from "./computer-local.mjs";
+import { createComputerScripting } from "./computer-scripting.mjs";
 import { remoteComputerAdapters } from "./computer-targets.mjs";
 import { resetPermissionEntry, resolvePermissionEntry } from "./computer-permission-entry.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
@@ -93,6 +94,7 @@ import {
   runDetachedTask,
 } from "./process-resilience.mjs";
 import { createQuitSequencer } from "./quit-sequence.mjs";
+import { createStartupLog, startupPhase, withStartupPhase } from "./startup-log.mjs";
 
 // Startup milestones (epoch ms) for the renderer's one-per-launch startup
 // report to Den. The OS process creation time includes module loading; the
@@ -204,6 +206,13 @@ let computerPermissionEntry = null;
 const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ fallbackName: APP_NAME })
   .catch(() => ({ name: APP_NAME, bundleId: null, ours: false })));
 const computerControl = createComputerControl({
+  // Blender reads the bridge from disk, so packaged builds unpack it beside app.asar.
+  runScript: createComputerScripting({
+    stateDir: path.join(app.getPath("userData"), "computer-scripting"),
+    bridgeScript: path.join(__dirname, "computer-scripting", "openwork_blender.py").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+  }),
+  // Where computer steps spend their time: on this computer, or waiting for the model.
+  onTiming: (_sessionId, step) => console.info(`[computer] ${step.name} computer ${Math.round(step.computerMs)} ms${step.modelMs === undefined ? "" : ` · model ${Math.round(step.modelMs)} ms`}`),
   runProgram: async (request, host, signal) => (await import("@openwork/computer-use/runtime")).runComputerProgram(request, host, signal),
   browserTask: (request, options) => browserPanel?.browserTask(request, options) ?? Promise.resolve({ ok: false, code: "browser_unavailable" }),
   readRemoteFeatureEnabled: async () => {
@@ -269,6 +278,7 @@ const uiControlServer = createUiControlServer({
   browserTask: (args, options) => browserPanel?.browserTask(args, options) ?? { ok: false, code: "browser_unavailable" },
   computerTask: (args, options) => computerControl.execute(args, options),
   computerProgram: (args, options) => computerControl.program(args, options),
+  computerScript: (args, options) => computerControl.script(args, options),
   listWebMcpTools: (args, options) => browserPanel?.listWebMcpTools(args, options) ?? {
     ok: false,
     error: "The built-in browser is not ready.",
@@ -338,6 +348,9 @@ const userDataPath = BLANK_SLATE_LAUNCH.userDataPath ?? resolveUserDataPath({
   userDataOverride: process.env.OPENWORK_ELECTRON_USERDATA,
 });
 app.setPath("userData", userDataPath);
+const desktopStartupLog = createStartupLog({ directory: path.join(userDataPath, "logs") });
+const endAppReady = startupPhase("app.ready");
+app.once("quit", () => desktopStartupLog.close());
 const linuxDesktopIntegration = createLinuxDesktopIntegration({
   app,
   dialog,
@@ -1277,6 +1290,10 @@ async function acceptConnectLink(rawUrl) {
 }
 
 async function persistConnectLinkClaims(claims) {
+  return withStartupPhase("org.activation", () => persistConnectLinkClaimsInner(claims));
+}
+
+async function persistConnectLinkClaimsInner(claims) {
   const previous = workspaceStore.readDesktopBootstrapConfigSync();
   const config = await persistConnectLinkBranding(claims, {
     persistBootstrap: (config) => workspaceStore.setDesktopBootstrapConfig(config),
@@ -1613,7 +1630,7 @@ async function bootRuntimeForSelectedWorkspace() {
 }
 
 function startRuntimeBootstrap() {
-  runtimeBootstrapPromise = bootRuntimeForSelectedWorkspace().catch((error) => ({
+  runtimeBootstrapPromise = withStartupPhase("runtime.start", bootRuntimeForSelectedWorkspace).catch((error) => ({
     ok: false,
     error: error instanceof Error ? error.message : String(error),
   }));
@@ -1912,7 +1929,7 @@ const desktopCommandHandlers = {
       return ensureRuntimeBootstrap();
   },
   "runtimeStatus": async (event, ...args) => {
-      return runtimeManager.runtimeStatus();
+      return { ...await runtimeManager.runtimeStatus(), desktopStartupLog: desktopStartupLog.read() };
   },
   "engineStop": async (event, ...args) => {
       return runtimeManager.engineStop();
@@ -2014,7 +2031,7 @@ const desktopCommandHandlers = {
   },
   "computerAnswerRequest": async (event, input) => {
       assertComputerSender(event);
-      return computerControl.answerRequest({ sessionId: String(input?.sessionId ?? ""), answer: input?.answer });
+      return computerControl.answerRequest({ sessionId: String(input?.sessionId ?? ""), answer: input?.answer, ...(typeof input?.id === "string" ? { id: input.id } : {}) });
   },
   "computerSetFeatureEnabled": async (event, enabled) => {
       assertComputerSender(event);
@@ -2577,6 +2594,10 @@ async function handleDesktopInvoke(event, command, ...args) {
 
 
 async function createMainWindow() {
+  return withStartupPhase("window.create", createMainWindowInner);
+}
+
+async function createMainWindowInner() {
   if (mainWindow) return mainWindow;
 
   const preloadPath = path.join(__dirname, "preload.mjs");
@@ -2662,11 +2683,13 @@ async function createMainWindow() {
   });
   mainWindow.setTitle(currentDisplayAppName);
 
+  const endWindowShow = startupPhase("window.show");
   mainWindow.once("ready-to-show", () => {
     if (startupTimings.windowShownAt === null) startupTimings.windowShownAt = Date.now();
     mainWindow?.setTitle(currentDisplayAppName);
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
     mainWindow?.show();
+    endWindowShow();
     resolveShortcutWindowReady();
     flushPendingDeepLinks();
   });
@@ -2909,7 +2932,8 @@ or use: pnpm dev:worktree`);
     });
   });
 
-  app.whenReady().then(async () => {
+  app.whenReady().then(() => withStartupPhase("bootstrap.apply", async () => {
+    endAppReady();
     holdSpellcheckerUntilActivation(workspaceStore.readDesktopBootstrapConfigSync());
     const systemCaCertificates = await runtimeManager.systemCaCertificates();
     session.defaultSession.setCertificateVerifyProc(createSystemCaCertificateVerifyProc(systemCaCertificates));
@@ -2999,7 +3023,7 @@ or use: pnpm dev:worktree`);
     // a working app first. Renderer-owned checks pass the selected release
     // channel explicitly, avoiding stale stable-feed results for alpha users.
     runDetachedTask("initialize updater", ensureAutoUpdater);
-  }).catch((error) => {
+  })).catch((error) => {
     console.error("[desktop] startup failed", error);
     // A quit that arrives mid-startup aborts the pending window load and
     // rejects this chain. showErrorBox is a synchronous modal: raised here it

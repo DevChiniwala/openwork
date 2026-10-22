@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useDebugRailSlot } from "../panel/debug-rail-slot";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { appBuildInfo } from "@/app/lib/desktop";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { createClientV2, isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
@@ -15,6 +16,10 @@ import { toast } from "@/components/ui/sonner";
 import type { OpenworkServerClient } from "@/app/lib/openwork-server";
 import { useWorkspaceSyncStreamStore, workspaceSyncStreamKey } from "../sync/session-sync";
 import type { SessionRenderModel } from "../sync/transition-controller";
+import { DebugResources, useDebugResources, type DebugActivity } from "./debug-resources";
+import { DebugProviders, DebugWorkspaceProviders } from "./debug-providers";
+import type { ModelRef } from "@/app/types";
+import type { ModelAvailabilityResolver } from "./model-availability";
 
 type PanelBounds = { left: number; top: number };
 
@@ -33,19 +38,44 @@ function DiagnosticTable({ rows }: { rows: readonly (readonly [string, string | 
   );
 }
 
-export function SessionDebugPanel(props: {
+/** Details of the focused conversation. Absent when no thread is open. */
+export type SessionDebugThread = {
   model: SessionRenderModel;
-  client: OpenworkServerClient;
-  workspaceId: string;
-  opencodeBaseUrl: string;
-  openworkToken: string;
   status: string;
   messageCount: number;
   todoCount: number;
   modelLabel: string;
   waitingOn: string;
+  activity: readonly DebugActivity[];
+  threadTitle: string;
+  selectedModel: ModelRef;
+  variant: string | null;
+  historyComplete: boolean;
+  resolveAvailability?: ModelAvailabilityResolver;
+  onCopyThread: () => Promise<void>;
+};
+
+/** App and workspace facts shown when no thread is open. */
+export type SessionDebugWorkspace = {
+  name: string;
+  startupPhase: string;
+  providersConnected: number;
+  mcpConnected: number;
+};
+
+export function SessionDebugPanel(props: {
+  client: OpenworkServerClient | null;
+  workspaceId: string;
+  workspaceRoot: string;
+  opencodeBaseUrl: string;
+  openworkToken: string;
+  thread: SessionDebugThread | null;
+  workspace?: SessionDebugWorkspace;
 }) {
   const [dismissed, setDismissed] = useState(true);
+  const [tab, setTab] = useState("overview");
+  const thread = props.thread;
+  const hasRuntime = Boolean(props.client && props.opencodeBaseUrl && props.openworkToken);
   const slot = useDebugRailSlot();
   const panelRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
@@ -54,13 +84,16 @@ export function SessionDebugPanel(props: {
   const streamKey = workspaceSyncStreamKey({ workspaceId: props.workspaceId, baseUrl: props.opencodeBaseUrl });
   const streamPhase = useWorkspaceSyncStreamStore(state => state.phasesByKey[streamKey]);
   const reconcileHealth = useWorkspaceSyncStreamStore(state => state.reconcileHealthByKey[streamKey]);
+  const resources = useDebugResources({ workspaceId: props.workspaceId, sessionId: thread?.model.intendedSessionId ?? "",
+    baseUrl: props.opencodeBaseUrl, enabled: !dismissed });
 
   const diagnostics = useQuery({
-    queryKey: ["react-session-debug-health", props.client.baseUrl, props.workspaceId, props.opencodeBaseUrl],
-    enabled: !dismissed,
+    queryKey: ["react-session-debug-health", props.client?.baseUrl, props.workspaceId, props.opencodeBaseUrl],
+    enabled: !dismissed && hasRuntime,
     retry: false,
     refetchInterval: dismissed ? false : 15_000,
     queryFn: async ({ signal }) => {
+      if (!props.client) throw new Error("No workspace runtime");
       const engine = isOpencodeV2BaseUrl(props.opencodeBaseUrl)
         ? createClientV2(props.opencodeBaseUrl, undefined, { token: props.openworkToken })
         : createClient(props.opencodeBaseUrl, undefined, { mode: "openwork", token: props.openworkToken });
@@ -99,29 +132,40 @@ export function SessionDebugPanel(props: {
 
   const data = diagnostics.data;
   const connected = data?.server?.ok === true && data?.opencode?.healthy === true;
-  const connectionLabel = diagnostics.isFetching ? "Checking" : !data ? "Not checked" : connected ? "Connected" : "Health check failed";
+  const connectionLabel = !hasRuntime ? "No runtime" : diagnostics.isFetching ? "Checking" : !data ? "Not checked" : connected ? "Connected" : "Health check failed";
   const latency = connected && !diagnostics.isFetching ? `${data.latencyMs} ms` : "—";
   const version = build.data?.version ?? import.meta.env.VITE_OPENWORK_APP_VERSION ?? "Unknown";
-  const rows = [
-    ["Status", props.status],
-    ["Waiting on", props.waitingOn],
-    ["Messages / todos", `${props.messageCount} / ${props.todoCount}`],
-    ["Model", props.modelLabel || "Unknown"],
+  const runtimeRows = [
     [isDesktopRuntime() ? "Desktop" : "Web app", version],
     ["OpenCode", data?.opencode?.version ?? "Unavailable"],
     ["Event stream", streamPhase ?? "Not started"],
   ] as const;
-  const details = [
-    ["Intended session", props.model.intendedSessionId || "—"],
-    ["Rendered session", props.model.renderedSessionId || "—"],
-    ["Transition", props.model.transitionState],
-    ["Render source", props.model.renderSource],
-    ["Workspace", props.workspaceId],
+  const rows: readonly (readonly [string, string | number])[] = thread ? [
+    ["Status", thread.status],
+    ["Waiting on", thread.waitingOn],
+    ["Messages / todos", `${thread.messageCount} / ${thread.todoCount}`],
+    ["Model", thread.modelLabel || "Unknown"],
+    ...runtimeRows,
+  ] : [
+    ["Thread", "None selected"],
+    ["Workspace name", props.workspace?.name || "None"],
+    ...runtimeRows,
+    ["Providers connected", props.workspace?.providersConnected ?? 0],
+    ["MCP connected", props.workspace?.mcpConnected ?? 0],
+  ];
+  const details: readonly (readonly [string, string | number])[] = [
+    ...(thread ? [
+      ["Intended session", thread.model.intendedSessionId || "—"],
+      ["Rendered session", thread.model.renderedSessionId || "—"],
+      ["Transition", thread.model.transitionState],
+      ["Render source", thread.model.renderSource],
+    ] as const : [["Startup phase", props.workspace?.startupPhase ?? "Unknown"]] as const),
+    ["Workspace", props.workspaceId || "None"],
     ["OpenWork server", data?.server?.version ?? "Unavailable"],
     ["Build", build.data?.gitSha ?? import.meta.env.VITE_OPENWORK_BUILD_SHA ?? "Unknown"],
     ["Sync failures", reconcileHealth?.consecutiveFailures ?? 0],
     ["Last checked", data?.checkedAt ?? "—"],
-  ] as const;
+  ];
 
   function startInteraction(event: PointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return;
@@ -167,6 +211,8 @@ export function SessionDebugPanel(props: {
       await navigator.clipboard.writeText([
         "React session debug", ...rows, ...details,
         ["Connection", connectionLabel], ["Health round trip", latency], ["Event stream", streamPhase ?? "Not started"],
+        ...(thread?.activity ?? []).map(item => [item.label, item.state] as const),
+        ...resources.map(item => [item.label, `${item.state}${item.elapsedMs === null ? "" : ` (${(item.elapsedMs / 1_000).toFixed(1)}s)`}`] as const),
       ].map(row => typeof row === "string" ? row : `${row[0]}: ${row[1]}`).join("\n"));
       setCopied(true);
     } catch {
@@ -204,19 +250,38 @@ export function SessionDebugPanel(props: {
         </Button>
         <Button variant="ghost" size="icon-xs" className="rounded-sm" aria-label="Dismiss session debug" title="Dismiss" onClick={() => setDismissed(true)}><X className="size-4" /></Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-        <DiagnosticTable rows={rows} />
-        <Collapsible>
-          <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group h-6 w-full justify-start gap-1 rounded-sm px-0 text-[11px]" />}>
-            <ChevronRight className="size-3 transition-transform group-data-panel-open:rotate-90" /> More details
-          </CollapsibleTrigger>
-          <CollapsibleContent><DiagnosticTable rows={details} /></CollapsibleContent>
-        </Collapsible>
-      </div>
+      <Tabs value={tab} onValueChange={value => setTab(value === "providers" ? "providers" : value === "resources" ? "resources" : "overview")} className="min-h-0 flex-1 gap-0 overflow-hidden">
+        <TabsList aria-label="Session debug views" variant="line" className="h-7 w-full shrink-0 justify-start border-b border-dls-border px-2">
+          <TabsTrigger value="overview" className="flex-none px-1.5 text-[11px]">Overview</TabsTrigger>
+          <TabsTrigger value="resources" className="flex-none px-1.5 text-[11px]">Resources</TabsTrigger>
+          <TabsTrigger value="providers" className="flex-none px-1.5 text-[11px]">Providers</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="max-h-96 min-h-0 overflow-y-auto px-2 py-1">
+          <DiagnosticTable rows={rows} />
+          <Collapsible>
+            <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group h-6 w-full justify-start gap-1 rounded-sm px-0 text-[11px]" />}>
+              <ChevronRight className="size-3 transition-transform group-data-panel-open:rotate-90" /> More details
+            </CollapsibleTrigger>
+            <CollapsibleContent><DiagnosticTable rows={details} /></CollapsibleContent>
+          </Collapsible>
+        </TabsContent>
+        <TabsContent value="resources" className="max-h-96 min-h-0 overflow-y-auto px-2 py-1 [overflow-anchor:none]">
+          <DebugResources resources={resources} activity={thread?.activity ?? []} waitingOn={thread?.waitingOn ?? "No thread selected"} />
+        </TabsContent>
+        <TabsContent value="providers" className="max-h-96 min-h-0 overflow-y-auto px-2 py-1 [overflow-anchor:none]">
+          {tab !== "providers" ? null : !hasRuntime ? <div className="py-2">No workspace runtime is connected.</div>
+            : thread ? <DebugProviders key={`${props.workspaceId}:${thread.model.intendedSessionId}`}
+              workspaceId={props.workspaceId} workspaceRoot={props.workspaceRoot} sessionId={thread.model.intendedSessionId}
+              threadTitle={thread.threadTitle} baseUrl={props.opencodeBaseUrl} token={props.openworkToken}
+              selectedModel={thread.selectedModel} variant={thread.variant} status={thread.status} messageCount={thread.messageCount}
+              historyComplete={thread.historyComplete} resolveAvailability={thread.resolveAvailability} onCopyThread={thread.onCopyThread} />
+            : <DebugWorkspaceProviders workspaceRoot={props.workspaceRoot} baseUrl={props.opencodeBaseUrl} token={props.openworkToken} />}
+        </TabsContent>
+      </Tabs>
       <footer className="flex shrink-0 items-center gap-2 border-t border-dls-border px-1 py-1 text-[11px]">
         <span className={data && !connected ? "pl-1 text-destructive" : "pl-1 text-dls-text"}>{connectionLabel}</span>
         <span className="ml-auto font-mono tabular-nums" title="Combined server and engine health round trip, including proxy overhead">Health RTT {latency}</span>
-        <Button variant="ghost" size="icon-xs" className="rounded-sm" aria-label="Refresh diagnostics" title="Refresh diagnostics" disabled={diagnostics.isFetching} onClick={() => void diagnostics.refetch()}><RefreshCw className="size-3" /></Button>
+        <Button variant="ghost" size="icon-xs" className="rounded-sm" aria-label="Refresh diagnostics" title="Refresh diagnostics" disabled={!hasRuntime || diagnostics.isFetching} onClick={() => void diagnostics.refetch()}><RefreshCw className="size-3" /></Button>
         <Button variant="ghost" size="icon-sm" className="rounded-sm" aria-label="Hide session debug" title="Hide session debug" onClick={() => setDismissed(true)}><Bug className="size-4" /></Button>
       </footer>
       </PopoverContent>

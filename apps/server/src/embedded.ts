@@ -243,7 +243,9 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
         workspaceDirs: config.workspaces.map((workspace) => workspace.path).filter((path) => path.trim()),
       }));
       for (const { result } of seeded) {
-        if (!result.seeded && result.reason === "failed") {
+        if (result.seeded) {
+          logger.log("info", `Bundled engine dependencies seeded: true (${result.durationMs} ms).`);
+        } else if (result.reason === "failed") {
           logger.log("warn", "Bundled engine dependencies could not be prepared; using the engine installer.");
         }
       }

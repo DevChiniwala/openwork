@@ -1200,6 +1200,26 @@ export function SessionRoute() {
       if (starter) local.setPrefs((previous) => ({ ...previous, defaultModel: starter, modelVariant: null }));
     } catch {}
   }, [initialAutoAccess.isPending, initialAutoAccess.fetchStatus, initialAutoAccess.data, cloudProviderList, providerListQuery.data, loading, selectedSessionId, sessionsByWorkspaceId, workspaceSessionGroups, local, workspaceDefault]);
+  // OpenCode Zen removed (the `removeOpencodeZen` feature, or an enforced Zen
+  // policy): disable the provider in the engine on the screen everyone uses,
+  // not only while Settings is open, and move a Zen default to a model the
+  // person can actually use. Never re-enable Zen here; that races Disconnect.
+  const opencodeZenBlocked = checkDesktopRestriction({ restriction: "allowZenModel" });
+  useEffect(() => {
+    if (!opencodeZenBlocked || !providerAuthClient || !selectedWorkspaceId) return;
+    void sessionProviderAuthStore.ensureProjectProviderDisabledState("opencode", true).catch((error: unknown) => {
+      console.warn("[opencode-zen] failed to disable OpenCode Zen in the engine", error);
+    });
+  }, [opencodeZenBlocked, providerAuthClient, selectedWorkspaceId, selectedWorkspaceRoot, sessionProviderAuthStore]);
+  useEffect(() => {
+    if (!opencodeZenBlocked) return;
+    const current = local.prefs.defaultModel;
+    if (current && current.providerID !== "opencode") return;
+    // Already filtered by policy, so Zen is gone from it while blocked.
+    const usable = entitledModelOptions.filter((option) => option.providerID !== "opencode");
+    const replacement = starterModel(usable) ?? usable[0];
+    if (replacement) local.setPrefs((previous) => ({ ...previous, defaultModel: { providerID: replacement.providerID, modelID: replacement.modelID }, modelVariant: null }));
+  }, [opencodeZenBlocked, entitledModelOptions, local]);
   const openWorkModelsAvailable = hasOpenWorkModelsAvailable({
     providerConnectedIds,
     providers,
@@ -1925,6 +1945,9 @@ export function SessionRoute() {
           || selectedConversationRef.current.sessionId !== navigationOwner.sessionId
           || selectedConversationRef.current.draftScope !== navigationOwner.draftScope
           || focusedWorkbenchPaneOwner() !== paneOwner) return;
+        // A fork continues with the model and setting its source conversation used.
+        const sourceSelection = getSessionModelSelection(targetSessionId);
+        if (sourceSelection) useSessionModelStore.getState().setModel(forked.id, sourceSelection.model, sourceSelection.variant);
         writeLastSessionFor(selectedWorkspaceId, forked.id);
         rememberPendingCreatedSession(selectedWorkspaceId, forked.id);
         setSessionsByWorkspaceId((current) => ({
@@ -4275,7 +4298,7 @@ export function SessionRoute() {
       target={modelPickerSessionId ? "session" : "default"}
       currentBehaviorValue={modelPickerSelection
         ? modelPickerSelection.variant
-        : modelPickerSessionId ? local.prefs.modelVariant ?? null : newTaskVariant}
+        : modelPickerSessionId ? modelVariantValue : newTaskVariant}
       current={
         modelPickerSelection?.model
           ?? (modelPickerSessionId ? local.prefs.defaultModel : newTaskModel)

@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { Cloud, Monitor, ArrowUp, Check, ChevronDown, FileText, LoaderCircle, MessageSquare, RefreshCw, Square, Terminal, Zap } from "lucide-react";
+import { Cloud, Monitor, ArrowUp, Check, ChevronDown, FileText, LoaderCircle, RefreshCw, Square, Terminal, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
@@ -59,6 +59,7 @@ import { NativeDictationControl } from "./native-dictation-control";
 import { useSessionReferencesMaybe, type SessionReferenceCandidate } from "@/components/chat/session-reference-context";
 import { formatRelativeTime } from "@/app/utils";
 import { filterSessionReferenceCandidates } from "./session-reference-search";
+import { resolveExtensionIconSrc } from "@/react-app/design-system/extension-icon-src";
 
 type MentionItem = {
   id: string;
@@ -243,8 +244,9 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [activeMentionQuery, setActiveMentionQuery] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
-  const [activeSessionQuery, setActiveSessionQuery] = useState<string | null>(null);
-  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const [activeSessionTrigger, setActiveSessionTrigger] = useState<{ query: string; offset: number } | null>(null);
+  // Draft offset of the `#` whose list was dismissed.
+  const [sessionMenuDismissedAt, setSessionMenuDismissedAt] = useState<number | null>(null);
   const sessionReferences = useSessionReferencesMaybe();
   // Outside a page that can resolve tasks, `#` is plain text.
   const sessionReferencesEnabled = Boolean(sessionReferences);
@@ -406,12 +408,25 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
     setMenuIndex(0);
   }, [mentionOpenNext, mentionQuery]);
 
-  const sessionMenuOpenNext = sessionReferencesEnabled && activeSessionQuery !== null;
-  const sessionQuery = activeSessionQuery ?? "";
+  // The task list stays open while the caret is in a `#query`, through spaces
+  // and queries with no match, until a task is picked, Escape is pressed, or
+  // the person presses outside the list. Dismissed, it stays closed for that
+  // `#` and opens again for the next one.
+  const handleSessionTriggerChange = useCallback((next: { query: string; offset: number } | null) => {
+    setActiveSessionTrigger((current) => (
+      current?.query === next?.query && current?.offset === next?.offset ? current : next
+    ));
+  }, []);
+  const sessionTriggerActive = sessionReferencesEnabled && activeSessionTrigger !== null;
+  const sessionQuery = activeSessionTrigger?.query ?? "";
   useEffect(() => {
-    setSessionMenuOpen(sessionMenuOpenNext);
-    setMenuIndex(0);
-  }, [sessionMenuOpenNext, sessionQuery]);
+    if (!sessionTriggerActive) setSessionMenuDismissedAt(null);
+  }, [sessionTriggerActive]);
+  const sessionMenuOpen = sessionTriggerActive && activeSessionTrigger.offset !== sessionMenuDismissedAt;
+  const dismissSessionMenu = () => setSessionMenuDismissedAt(activeSessionTrigger?.offset ?? null);
+  useEffect(() => {
+    if (sessionMenuOpen) setMenuIndex(0);
+  }, [sessionMenuOpen, sessionQuery]);
 
   useEffect(() => {
     if (!agentMenuOpen && !toolMenuOpen) return;
@@ -1020,8 +1035,7 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
     });
     if (draft == null) return false;
     props.onDraftChange(draft);
-    setSessionMenuOpen(false);
-    setActiveSessionQuery(null);
+    setActiveSessionTrigger(null);
     return true;
   };
 
@@ -1183,6 +1197,12 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
       }
     }
 
+    // The task list also shows "no match", so Escape closes it even when empty.
+    if (activeMenu === "session" && event.key === "Escape") {
+      event.preventDefault();
+      dismissSessionMenu();
+      return;
+    }
     if (!activeMenu || !activeItems.length) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -1204,7 +1224,6 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
       event.preventDefault();
       setSlashOpen(false);
       setMentionOpen(false);
-      setSessionMenuOpen(false);
     }
   };
 
@@ -1325,54 +1344,59 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
     </ComposerSuggestionMenu>
   );
 
-  // Hidden while nothing matches, so `#tag` text never shows an empty list.
   const renderSessionMenu = () => (
     <ComposerSuggestionMenu
-      open={activeMenu === "session" && sessionFiltered.length > 0}
+      open={activeMenu === "session"}
       anchor={panelRef}
-      onDismiss={() => setSessionMenuOpen(false)}
+      onDismiss={dismissSessionMenu}
     >
-      <div role="listbox" aria-label={t("composer.session_references_label")} className="flex flex-col gap-0.5" data-session-reference-menu="">
-        {sessionFiltered.map((candidate, index) => (
-          <button
-            key={`${candidate.workspaceId}:${candidate.sessionId}`}
-            ref={(element) => {
-              menuItemRefs.current[index] = element;
-            }}
-            type="button"
-            role="option"
-            aria-selected={index === menuIndex}
-            tabIndex={-1}
-            title={candidate.title}
-            className={composerSuggestionRowClass(index === menuIndex)}
-            onMouseMove={() => setMenuIndex(index)}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              applySessionReferenceSelection(candidate);
-            }}
-            onClick={(event) => {
-              if (event.detail === 0) applySessionReferenceSelection(candidate);
-            }}
-          >
-            <MessageSquare size={14} className="mt-0.5 shrink-0 text-gray-9" />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center justify-between gap-3">
-                <span className="truncate text-xs font-semibold">{candidate.title}</span>
-                {candidate.updatedAt > 0 ? (
-                  <span className="shrink-0 text-[11px] text-gray-10 tabular-nums">{formatRelativeTime(candidate.updatedAt)}</span>
-                ) : null}
+      {sessionFiltered.length > 0 ? (
+        <div role="listbox" aria-label={t("composer.session_references_label")} className="flex flex-col gap-0.5" data-session-reference-menu="">
+          {sessionFiltered.map((candidate, index) => (
+            <button
+              key={`${candidate.workspaceId}:${candidate.sessionId}`}
+              ref={(element) => {
+                menuItemRefs.current[index] = element;
+              }}
+              type="button"
+              role="option"
+              aria-selected={index === menuIndex}
+              tabIndex={-1}
+              title={candidate.title}
+              className={composerSuggestionRowClass(index === menuIndex)}
+              onMouseMove={() => setMenuIndex(index)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                applySessionReferenceSelection(candidate);
+              }}
+              onClick={(event) => {
+                if (event.detail === 0) applySessionReferenceSelection(candidate);
+              }}
+            >
+              <img src={resolveExtensionIconSrc("/openwork-sidebar-mark.svg")} alt="" aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 object-contain opacity-80 dark:invert" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-3">
+                  <span className="truncate text-xs font-semibold">{candidate.title}</span>
+                  {candidate.updatedAt > 0 ? (
+                    <span className="shrink-0 text-[11px] text-gray-10 tabular-nums">{formatRelativeTime(candidate.updatedAt)}</span>
+                  ) : null}
+                </span>
+                <span className="flex items-center gap-2 text-xs text-gray-10">
+                  <span className="min-w-0 truncate">{candidate.workspaceTitle}</span>
+                  {candidate.archived ? (
+                    <span className="shrink-0 rounded-sm bg-gray-3 px-1 text-[11px] text-gray-11">{t("composer.session_reference_archived")}</span>
+                  ) : null}
+                </span>
               </span>
-              <span className="flex items-center gap-2 text-xs text-gray-10">
-                <span className="min-w-0 truncate">{candidate.workspaceTitle}</span>
-                {candidate.archived ? (
-                  <span className="shrink-0 rounded-sm bg-gray-3 px-1 text-[11px] text-gray-11">{t("composer.session_reference_archived")}</span>
-                ) : null}
-              </span>
-            </span>
-          </button>
-        ))}
-      </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div role="status" className="px-3 py-2 text-xs text-gray-10">
+          {sessionQuery.trim() ? t("composer.session_references_no_match") : t("composer.session_references_empty")}
+        </div>
+      )}
     </ComposerSuggestionMenu>
   );
 
@@ -1432,7 +1456,7 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
               placeholder={t("composer.placeholder")}
               onChange={nativeDictationEnabled ? dictation.edit : props.onDraftChange}
               onMentionQueryChange={setActiveMentionQuery}
-              onSessionReferenceQueryChange={sessionReferencesEnabled ? setActiveSessionQuery : undefined}
+              onSessionReferenceQueryChange={sessionReferencesEnabled ? handleSessionTriggerChange : undefined}
               onOpenSessionReference={sessionReferences?.openReference}
               onSubmit={handleEditorSubmit}
               onExpandPastedText={handleExpandPastedText}

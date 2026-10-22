@@ -128,6 +128,16 @@
               ],
               "description": "Calendar: desktop app: Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar. Renders DEN_FEATURE_AUTOMATION_CALENDAR."
             },
+            "removeOpencodeZen": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Remove OpenCode Zen models: Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead. Renders DEN_FEATURE_REMOVE_OPENCODE_ZEN."
+            },
             "engineV2ForceUpgrade": {
               "enum": [
                 "",
@@ -187,6 +197,26 @@
                 false
               ],
               "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
+            },
+            "connectToolShapes": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: MCP tool shapes in capability search: Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work. Renders DEN_FEATURE_CONNECT_TOOL_SHAPES."
+            },
+            "connectStandardTools": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: standard tools for tool-search clients: Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first. Renders DEN_FEATURE_CONNECT_STANDARD_TOOLS."
             },
             "gatewayDashboard": {
               "enum": [

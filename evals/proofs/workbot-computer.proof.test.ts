@@ -27,12 +27,24 @@ test("a member opens Workbot's Computer tab directly when the rollout is enabled
     await user.see({ role: "button", label: "Computer" });
     await user.click({ role: "button", label: "Computer" });
     await user.see({ role: "button", label: "Browser" });
+    // The tab opens on its Browser view, and the address says so.
+    expect(new URL(await probe.url()).pathname).toBe("/browser");
     await user.see({ text: "Your computer is unavailable. Try reconnecting." }, { timeoutMs: 30_000 });
     await user.see({ role: "button", label: "Reconnect" });
     await user.notSee({ text: "Allow for this chat" });
     const visible = (await probe.dom('section[aria-label="Computer"]')).elements.length > 0;
     evidence.recordAssertionEvidence("Direct access and honest availability", "The real Workbot tab opens without consent. This fixture has no desktop provider, so it offers Reconnect instead of a fake stream.", visible);
     await user.screenshot();
+  });
+  await step("after: a computer that won't connect offers Rebuild, which asks before erasing it", async () => {
+    await user.click({ role: "button", label: "Rebuild computer" });
+    await user.see({ text: "Rebuild your computer?" });
+    await user.see({ text: "Its open apps, browser tabs and files are erased." });
+    await user.screenshot();
+    // This fixture has no desktop provider to rebuild against, so the proof stops at the confirmation.
+    await user.click({ role: "button", label: "Cancel" });
+    await user.notSee({ text: "Rebuild your computer?" });
+    await user.see({ role: "button", label: "Reconnect" });
   });
   await step("the workspace navigation also opens the same Computer view", async () => {
     await user.click({ role: "button", label: "Home" });

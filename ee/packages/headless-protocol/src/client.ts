@@ -313,7 +313,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       if (status !== 200 || !parsed.success) return { ok: false as const, status, error: errorCode(payload, "teaching_unavailable") }
       return { ok: true as const, value: parsed.data }
     },
-    async desktopAction(sessionId: string, action: "continue" | "pause" | "resume") {
+    async desktopAction(sessionId: string, action: "continue" | "pause" | "resume" | "rebuild") {
       const { status, payload } = await request(deps, "POST", `${sessionPath(sessionId)}/desktop/action`, { action }, 180_000)
       return { ok: status === 200, error: errorCode(payload, "desktop_unavailable") }
     },

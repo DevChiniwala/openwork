@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useDragControls } from "motion/react";
+import { AGENT_VIEWPORTS, type AgentViewportKey } from "@openwork/browser-tabs";
 
 import type { OpenworkServerClient } from "@/app/lib/openwork-server";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
@@ -52,6 +53,7 @@ import {
 import { computeBrowserBounds, createBrowserBoundsSync } from "./browser-bounds-sync";
 import { browserOperationLabels } from "./browser-status";
 import type { BrowserPresentationMode } from "./browser-presentation-store";
+import { chooseAgentViewport, storedAgentViewport } from "./agent-viewport";
 
 /** Floating browser presentation controls, present only while that feature is on. */
 export type BrowserPresentationControls = {
@@ -77,6 +79,37 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     getElectronBrowser()?.hide?.();
   });
+}
+
+/** The size pages lay out at while the agent works, like Chrome's device toolbar. */
+function AgentViewportMenu({ viewport }: { viewport: { key: AgentViewportKey; scale: number } | null }) {
+  const [chosen, setChosen] = React.useState(storedAgentViewport);
+  const active = viewport?.key ?? chosen;
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={(
+          <Button variant="ghost" size="sm" className="h-6 shrink-0 px-2 text-xs text-muted-foreground"
+            aria-label={`Agent page size: ${AGENT_VIEWPORTS[active].label}. Change it`}>
+            {AGENT_VIEWPORTS[active].label}{viewport && viewport.scale < 1 ? ` · ${Math.round(viewport.scale * 100)}%` : ""}
+          </Button>
+        )}
+      />
+      <PopoverContent align="end" side="bottom" sideOffset={8} className="w-64 gap-0 p-1">
+        <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
+          While the agent works, pages keep this size and scale to fit the panel.
+        </p>
+        {(Object.keys(AGENT_VIEWPORTS) as AgentViewportKey[]).map((key) => (
+          <button key={key} type="button" aria-pressed={key === active}
+            className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted aria-pressed:bg-muted"
+            onClick={() => { setChosen(key); chooseAgentViewport(key); }}>
+            <span className="font-medium">{AGENT_VIEWPORTS[key].label}</span>
+            <span className="text-muted-foreground">{AGENT_VIEWPORTS[key].width} × {AGENT_VIEWPORTS[key].height}</span>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 const MARKDOWN_PRIMITIVE_ARTIFACT_CONTENT = `# Artifact Markdown Proof
@@ -332,6 +365,7 @@ export function BrowserPanelContent({
           <span role="status" className="min-w-0 flex-1 truncate text-muted-foreground">
             {tab.browserTask?.status === "paused" ? "You have control · resume when finished" : tab.browserTask?.status === "running" ? browserOperationLabels[tab.browserTask.operation ?? ""] ?? "Working on this page" : tab.browserTask?.status === "needs_attention" ? browserOperationLabels[tab.browserTask.operation ?? ""] ?? "Review this page" : "This conversation's tab"}
           </span>
+          <AgentViewportMenu viewport={tab.agentViewport ?? null} />
           <Button variant="outline" size="sm" className="h-6 px-2 text-xs"
             onClick={() => { void window.__OPENWORK_ELECTRON__?.browser?.taskControl?.(tab.id, tab.browserTask?.status === "paused" ? "resume" : "pause"); }}>
             {tab.browserTask?.status === "paused" ? "Resume browser" : "Take over"}
@@ -515,7 +549,8 @@ export function BrowserPanelContent({
       ) : null}
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {isAvailable ? (
-          <div ref={contentRef} data-browser-shortcut-tab={tab.id} className="h-full overflow-hidden">
+          // A page the agent controls is drawn scaled inside this area; the rest frames it.
+          <div ref={contentRef} data-browser-shortcut-tab={tab.id} className={`h-full overflow-hidden${tab.agentViewport ? " bg-muted" : ""}`}>
             {blockedSite && !suspended ? (
               <BlockedSitePage url={blockedSite.url} message={blockedSite.message} errorDescription={blockedSite.errorDescription} />
             ) : pageFailure && !suspended ? (

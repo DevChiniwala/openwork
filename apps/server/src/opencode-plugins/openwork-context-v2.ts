@@ -21,20 +21,23 @@ type Context = CloudSkillContext & {
   tool: { transform(callback: (editor: { add(tool: Tool): void }) => void): Promise<{ dispose(): Promise<void> }> };
 };
 
-// Separate credentials authorize app reads and conversation-scoped browser
-// and computer operations. Neither grants arbitrary host APIs or OpenWork app commands.
+// Separate credentials authorize app reads plus sidebar group changes, and
+// conversation-scoped browser and computer operations. Neither grants
+// arbitrary host APIs or other OpenWork app commands.
 export default {
   id: "openwork.context",
   async setup(context: Context) {
     const browser = context.options.browser;
     const browserDefinitions = browser ? { tool: { ...(await browserTools()).tool, ...(await computerTools()).tool } } : undefined;
     const registration = await context.tool.transform(editor => {
-      for (const name of ["openwork_context", "openwork_query"]) {
+      for (const name of ["openwork_context", "openwork_query", "openwork_execute"]) {
         editor.add({
           name,
           description: name === "openwork_context"
-            ? "Read OpenWork app context and available read-only affordances. Use this to discover session.search and session.read for other conversations."
-            : "Read an OpenWork affordance without changing the app or navigating. Use the exact id and arguments from openwork_context; session.read includes live background-agent activity.",
+            ? "Read OpenWork app context and available affordances. Use this to discover session.search and session.read for other conversations and the session.group commands for sidebar groups."
+            : name === "openwork_query"
+              ? "Read an OpenWork affordance without changing the app or navigating. Use the exact id and arguments from openwork_context; session.read includes live background-agent activity."
+              : "Run an OpenWork command listed in openwork_context: create, move sessions between, or remove sidebar groups. Use the exact id and arguments from openwork_context.",
           input: name === "openwork_context" ? { type: "object", properties: {}, additionalProperties: false } : {
             type: "object", properties: { id: { type: "string" }, args: { type: "object", additionalProperties: true } },
             required: ["id"], additionalProperties: false,
@@ -44,9 +47,9 @@ export default {
             const response = await fetch(context.options.url, {
               method: "POST", redirect: "error", signal: call.signal,
               headers: { Authorization: `Bearer ${context.options.token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ name, input }),
+              body: JSON.stringify({ name, input, sessionId: call.sessionID }),
             });
-            if (!response.ok) throw new Error(`OpenWork read failed (${response.status})`);
+            if (!response.ok) throw new Error(`OpenWork ${name === "openwork_execute" ? "command" : "read"} failed (${response.status})`);
             return { content: [{ type: "text", text: await response.text() }] };
           },
         });

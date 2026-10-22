@@ -130,6 +130,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  removeOpencodeZen: {
+    label: "Remove OpenCode Zen models",
+    description: "Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   engineV2ForceUpgrade: {
     label: "Upgrade to OpenCode v2",
     description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle.",
@@ -171,6 +178,20 @@ export const FEATURES = defineFeatures({
   remoteSessionSubagents: {
     label: "Desktop: tasks on other computers as sub-agents",
     description: "A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  connectToolShapes: {
+    label: "Connect: MCP tool shapes in capability search",
+    description: "Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  connectStandardTools: {
+    label: "Connect: standard tools for tool-search clients",
+    description: "Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

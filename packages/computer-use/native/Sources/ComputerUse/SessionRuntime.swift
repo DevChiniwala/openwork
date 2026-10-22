@@ -300,7 +300,7 @@ final class SessionRuntime {
         var width = max(1, Int(bounds.width)); var height = max(1, Int(bounds.height))
         if image {
             do {
-                let captured = try await access.capture(target: current.target, app: current.app, bounds: bounds, state: state, check: check)
+                let captured = try await observationImage(current, bounds: bounds, state: state, check: check)
                 png = captured.0; width = captured.1; height = captured.2
             } catch {
                 try check()
@@ -350,8 +350,15 @@ final class SessionRuntime {
             if let issue = state.privacyIssue { payload["privacy_issue"] = issue }
         }
         var result: [[String: Any]] = []
-        if let png { result.append(["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]) }
+        if let png { result.append(["type": "image", "data": png.base64EncodedString(), "mimeType": Self.observationMimeType]) }
         return result + text(payload)
+    }
+
+    /// Observations are compact JPEGs: image tokens and upload time dominate each step.
+    /// The re-capture that guards coordinate input uses the same encoding, so digests compare.
+    static let observationMimeType = "image/jpeg"
+    private func observationImage(_ current: Session, bounds: CGRect, state: WindowState, check: () throws -> Void) async throws -> (Data, Int, Int, Int64) {
+        try await access.capture(target: current.target, app: current.app, bounds: bounds, state: state, maxLongSide: 1280, jpegQuality: 0.8, check: check)
     }
 
     /// A sharper look at part of the current observation, for reading only. It
@@ -440,7 +447,7 @@ final class SessionRuntime {
                         throw UseError("stale_observation", "The observed window content or focus changed.", next: "observe")
                     }
                     if action.usesCoordinates {
-                        let captured = try await access.capture(target: current.target, app: current.app, bounds: bounds, state: live, check: check)
+                        let captured = try await observationImage(current, bounds: bounds, state: live, check: check)
                         guard access.imageDigest(captured.0) == observation.imageDigest else {
                             throw UseError("stale_observation", "The window image changed. Observe before coordinate input.", next: "observe")
                         }

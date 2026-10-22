@@ -48,6 +48,7 @@ import type {
   WorkspaceList,
 } from "./desktop-types";
 import type {
+  AgentViewportKey,
   BrowserPanelOwnerPayload,
   BrowserPanelTab,
   BrowserStatePayload,
@@ -225,6 +226,10 @@ declare global {
         setProxy?: (proxy?: string | null) => Promise<BrowserProxyState>;
         getProxy?: () => Promise<BrowserProxyState>;
         setControlEnabled?: (enabled: boolean) => Promise<boolean>;
+        /** The size tabs lay out at while the agent controls them, drawn scaled to fit the panel. */
+        setAgentViewport?: (key: AgentViewportKey) => Promise<AgentViewportKey>;
+        /** The conversation's turn ended: its tabs fit the panel again. */
+        endAgentTurn?: (sessionId: string) => Promise<boolean>;
         /** The member's agent permission rules for websites, applied to every page the built-in browser opens; null while they are being verified for an organization that uses them, which opens none. */
         setAgentPermissionRules?: (rules: DesktopAgentPermissionRule[] | null) => Promise<boolean>;
         showTabContextMenu?: (tabId: string, point?: { x: number; y: number }) => Promise<void>;
@@ -690,6 +695,7 @@ const {
   openworkServerInfo,
   openworkServerRestart,
   runtimeBootstrap,
+  runtimeStatus,
   engineInfo,
   pickDirectory,
   pickFile,
@@ -731,6 +737,7 @@ export {
   openworkServerInfo,
   openworkServerRestart,
   runtimeBootstrap,
+  runtimeStatus,
   engineInfo,
   pickDirectory,
   pickFile,

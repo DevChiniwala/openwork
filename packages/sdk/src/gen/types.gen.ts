@@ -730,6 +730,342 @@ export type AdminDashboard = {
   }>;
 };
 
+export type AdminOpportunityOverview = {
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  generatedAt: string;
+  timeZone: "UTC";
+  signups: {
+    current: number;
+    previous: number;
+  };
+  joinedMembers: {
+    current: number;
+    previous: number;
+  };
+  activeUsers: {
+    current: number;
+    previous: number;
+  };
+  activeOrganizations: {
+    current: number;
+    previous: number;
+  };
+  daily: Array<{
+    date: string;
+    signups: number;
+    joinedMembers: number;
+  }>;
+  recentSignups: Array<{
+    id: string;
+    name: string;
+    createdAt: string;
+  }>;
+  growingTeams: Array<{
+    id: string;
+    name: string;
+    joinedMembers: number;
+  }>;
+  risingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  fallingActivity: Array<{
+    id: string;
+    name: string;
+    current: number;
+    previous: number;
+  }>;
+  queue: Array<{
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  }>;
+  waiting: Array<{
+    organizationId: string;
+    organizationName: string;
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    };
+  }>;
+  hidden: {
+    closed: number;
+    dismissed: number;
+  };
+  progress: {
+    reviewed: number;
+    outreach: number;
+    followUpsCompleted: number;
+    followUpsOnTime: number;
+    conversations: number;
+    confirmedExpansion: number;
+    confirmedCommercial: number;
+    activationProgress: number;
+    dueToday: number;
+    overdue: number;
+  };
+};
+
+export type AdminOpportunityAccount = {
+  organization: {
+    id: string;
+    name: string;
+    createdAt: string;
+    planTier: string;
+    seatLimit: number;
+    memberCount: number;
+  };
+  people: Array<{
+    memberId: string;
+    userId: string | null;
+    name: string | null;
+    email: string | null;
+    role: string;
+    joinedAt: string | null;
+    signedUpAt: string | null;
+    lastObservedAt: string | null;
+  }>;
+  opportunity: {
+    organizationId: string;
+    organizationName: string;
+    organizationCreatedAt: string;
+    kind: "follow_up" | "commercial" | "expansion" | "declining" | "activation" | "welcome";
+    priority: "high" | "medium" | "low";
+    why: string;
+    action: {
+      label: string;
+      purpose: string;
+    };
+    signals: Array<{
+      type:
+        | "follow_up_due"
+        | "ready_for_outreach"
+        | "trial_ending"
+        | "plan_ending"
+        | "seats_near_limit"
+        | "members_joined"
+        | "activity_up"
+        | "activity_down"
+        | "no_observed_use"
+        | "setup_without_use"
+        | "signup"
+        | "recently_contacted";
+      label: string;
+      at: string | null;
+      userId: string | null;
+    }>;
+    adoption: {
+      stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+      members: number;
+      joinedThisWeek: number;
+      activeUsers: {
+        current: number;
+        previous: number;
+      };
+      lastObservedAt: string | null;
+      skills: number;
+      mcpConnections: number;
+    };
+    followUp: {
+      stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+      ownerUserId: string | null;
+      ownerName: string | null;
+      nextAction: string | null;
+      nextFollowUpAt: string | null;
+      lastContactedAt: string | null;
+      lastActionKind:
+        | "reviewed"
+        | "contacted"
+        | "replied"
+        | "meeting"
+        | "note"
+        | "closed"
+        | "dismissed"
+        | "reopened"
+        | null;
+      lastActionAt: string | null;
+      confirmedOpportunity: "expansion" | "commercial" | null;
+      updatedAt: string;
+    } | null;
+  } | null;
+  adoption: {
+    stage: "no_observed_use" | "quiet_this_week" | "individual" | "team" | "expanding";
+    members: number;
+    joinedThisWeek: number;
+    activeUsers: {
+      current: number;
+      previous: number;
+    };
+    lastObservedAt: string | null;
+    skills: number;
+    mcpConnections: number;
+  };
+  followUp: {
+    stage: "needs_review" | "ready" | "contacted" | "engaged" | "closed" | "dismissed";
+    ownerUserId: string | null;
+    ownerName: string | null;
+    nextAction: string | null;
+    nextFollowUpAt: string | null;
+    lastContactedAt: string | null;
+    lastActionKind:
+      | "reviewed"
+      | "contacted"
+      | "replied"
+      | "meeting"
+      | "note"
+      | "closed"
+      | "dismissed"
+      | "reopened"
+      | null;
+    lastActionAt: string | null;
+    confirmedOpportunity: "expansion" | "commercial" | null;
+    updatedAt: string;
+  } | null;
+  history: Array<{
+    id: string;
+    kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+    occurredAt: string;
+    actorName: string | null;
+    contactName: string | null;
+    note: string | null;
+    followUpDueAt: string | null;
+  }>;
+  generatedAt: string;
+  timeZone: "UTC";
+};
+
+export type AccountFollowUpActionInput = {
+  requestId: string;
+  kind: "reviewed" | "contacted" | "replied" | "meeting" | "note" | "closed" | "dismissed" | "reopened";
+  contactUserId?: string | null;
+  note?: string | null;
+  nextAction?: string | null;
+  /**
+   * UTC calendar date (YYYY-MM-DD) of the next follow-up. Null clears it.
+   */
+  followUpOn?: string | null;
+  assignToMe?: boolean;
+  confirmedOpportunity?: "expansion" | "commercial" | null;
+};
+
+export type AdminSignupCompanies = {
+  from: string;
+  to: string;
+  generatedAt: string;
+  /**
+   * Pass as cursor with the same filters and sort to continue; null on the last page.
+   */
+  nextCursor: string | null;
+  companies: Array<{
+    domain: string;
+    signups: number;
+    organizations: number;
+    activeUsers: number;
+    firstSignupAt: string;
+    lastSignInAt: string | null;
+    billing: {
+      plan: "free" | "team" | "enterprise";
+      paying: boolean;
+      modelsAddOn: boolean;
+    };
+    outreach: {
+      status: "not_contacted" | "contacted";
+      lastContactedAt: string | null;
+    };
+    workspaces: Array<{
+      id: string;
+      name: string;
+      members: number;
+    }>;
+  }>;
+  page: {
+    limit: number;
+    total: number;
+    returned: number;
+    hasMore: boolean;
+  };
+};
+
 export type AdminOpportunities = {
   from: string;
   to: string;
@@ -750,6 +1086,15 @@ export type AdminOpportunities = {
     companyDomainCount: number;
     skills: number;
     mcpConnections: number;
+    billing: {
+      plan: "free" | "team" | "enterprise";
+      paying: boolean;
+      modelsAddOn: boolean;
+    };
+    outreach: {
+      status: "not_contacted" | "contacted";
+      lastContactedAt: string | null;
+    };
   }>;
   page: {
     limit: number;
@@ -818,12 +1163,15 @@ export type AdminFeature = {
     | "workbotWorkspaceAssistant"
     | "workbotUsageRecovery"
     | "automationCalendar"
+    | "removeOpencodeZen"
     | "engineV2ForceUpgrade"
     | "computerUse"
     | "browserDemonstrations"
     | "browserFloatingView"
     | "remoteComputers"
-    | "remoteSessionSubagents";
+    | "remoteSessionSubagents"
+    | "connectToolShapes"
+    | "connectStandardTools";
   label: string;
   description: string;
   since: string;
@@ -873,12 +1221,15 @@ export type AdminOrganizationsPageResponse = {
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectToolShapes: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -989,6 +1340,15 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       engineV2ForceUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1035,6 +1395,24 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectToolShapes: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1117,12 +1495,15 @@ export type AdminOverviewResponse = {
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectToolShapes: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1233,6 +1614,15 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       engineV2ForceUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1279,6 +1669,24 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectToolShapes: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1497,6 +1905,7 @@ export type CurrentUserDesktopConfigResponse = {
   dashboardEnabled?: boolean;
   connectEnabled?: boolean;
   liveProviderSync?: boolean;
+  removeOpencodeZen?: boolean;
   onboardingPrompts?: Array<string>;
   onboardingPromptDescriptions?: Array<string>;
   agentPermissions?: DenDesktopAgentPermissions;
@@ -7410,6 +7819,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       engineV2ForceUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7464,6 +7882,24 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      connectToolShapes: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
     };
   };
 };
@@ -7485,12 +7921,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       workbotWorkspaceAssistant?: boolean | null;
       workbotUsageRecovery?: boolean | null;
       automationCalendar?: boolean | null;
+      removeOpencodeZen?: boolean | null;
       engineV2ForceUpgrade?: boolean | null;
       computerUse?: boolean | null;
       browserDemonstrations?: boolean | null;
       browserFloatingView?: boolean | null;
       remoteComputers?: boolean | null;
       remoteSessionSubagents?: boolean | null;
+      connectToolShapes?: boolean | null;
+      connectStandardTools?: boolean | null;
     };
   };
   path: {
@@ -7628,6 +8067,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       engineV2ForceUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7674,6 +8122,24 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectToolShapes: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8114,6 +8580,180 @@ export type GetV1AdminDashboardResponses = {
 
 export type GetV1AdminDashboardResponse = GetV1AdminDashboardResponses[keyof GetV1AdminDashboardResponses];
 
+export type GetV1AdminOpportunitiesOverviewData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/admin/opportunities/overview";
+};
+
+export type GetV1AdminOpportunitiesOverviewErrors = {
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesOverviewError =
+  GetV1AdminOpportunitiesOverviewErrors[keyof GetV1AdminOpportunitiesOverviewErrors];
+
+export type GetV1AdminOpportunitiesOverviewResponses = {
+  /**
+   * Weekly opportunity overview returned.
+   */
+  200: AdminOpportunityOverview;
+};
+
+export type GetV1AdminOpportunitiesOverviewResponse =
+  GetV1AdminOpportunitiesOverviewResponses[keyof GetV1AdminOpportunitiesOverviewResponses];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}";
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdError =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdErrors[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdErrors];
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponses = {
+  /**
+   * Account context returned.
+   */
+  200: AdminOpportunityAccount;
+};
+
+export type GetV1AdminOpportunitiesAccountsByOrganizationIdResponse =
+  GetV1AdminOpportunitiesAccountsByOrganizationIdResponses[keyof GetV1AdminOpportunitiesAccountsByOrganizationIdResponses];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsData = {
+  body: AccountFollowUpActionInput;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/opportunities/accounts/{organizationId}/actions";
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors = {
+  /**
+   * Invalid organization, contact or follow-up date.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+  /**
+   * Organization not found.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsError =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors];
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses = {
+  /**
+   * Step recorded, or the original retry returned.
+   */
+  200: {
+    ok: true;
+    actionId: string;
+  };
+};
+
+export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponse =
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses];
+
+export type GetV1AdminOpportunitiesCompaniesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * active keeps companies with at least one person observed using the app in the last 30 days.
+     */
+    activity?: "active" | "all";
+    outreach?: "not_contacted" | "contacted" | "any";
+    billing?: "any" | "paying" | "not_paying";
+    sort?: "active" | "signups" | "recent" | "signin";
+    search?: string;
+    /**
+     * Maximum companies per page, from 1 to 100. Defaults to 50.
+     */
+    limit?: number;
+    /**
+     * Opaque nextCursor from the preceding page. Keep the same filters and sort; omit for the first page.
+     */
+    cursor?: string;
+    /**
+     * Compatibility for numbered admin pages. Use cursor for continued traversal; do not combine with cursor.
+     *
+     * @deprecated
+     */
+    offset?: string;
+  };
+  url: "/v1/admin/opportunities/companies";
+};
+
+export type GetV1AdminOpportunitiesCompaniesErrors = {
+  /**
+   * Invalid report filters.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesCompaniesError =
+  GetV1AdminOpportunitiesCompaniesErrors[keyof GetV1AdminOpportunitiesCompaniesErrors];
+
+export type GetV1AdminOpportunitiesCompaniesResponses = {
+  /**
+   * Signup companies returned.
+   */
+  200: AdminSignupCompanies;
+};
+
+export type GetV1AdminOpportunitiesCompaniesResponse =
+  GetV1AdminOpportunitiesCompaniesResponses[keyof GetV1AdminOpportunitiesCompaniesResponses];
+
 export type GetV1AdminOpportunitiesData = {
   body?: never;
   path?: never;
@@ -8122,6 +8762,10 @@ export type GetV1AdminOpportunitiesData = {
     minMembers?: "1" | "2" | "5" | "10";
     companyEmail?: "0" | "1";
     setup?: "any" | "skills" | "mcp" | "both";
+    /**
+     * Whether a platform admin recorded outreach, a reply or a meeting for the organization.
+     */
+    outreach?: "any" | "not_contacted" | "contacted";
     sort?: "recent" | "active" | "members";
     search?: string;
     /**
@@ -8761,12 +9405,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectToolShapes: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -8877,6 +9524,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       engineV2ForceUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8923,6 +9579,24 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectToolShapes: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8993,12 +9667,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
       automationCalendar: boolean;
+      removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
+      connectToolShapes: boolean;
+      connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -9109,6 +9786,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      removeOpencodeZen: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       engineV2ForceUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -9155,6 +9841,24 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectToolShapes: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
+import { startupPhase } from "./startup-phase.js";
 import { randomUUID } from "node:crypto";
 import { appendEngineOutputTail, createEngineStartupLineReader } from "./engine-output.js";
 
@@ -274,6 +275,10 @@ async function startManagedOpencodeServer(
 }
 
 export async function createManagedOpencodeServer(options: ManagedOpencodeServerOptions): Promise<ManagedOpencodeServer> {
+  return startupPhase("engine.v1.serve", () => createManagedOpencodeServerInner(options));
+}
+
+async function createManagedOpencodeServerInner(options: ManagedOpencodeServerOptions): Promise<ManagedOpencodeServer> {
   const hostname = options.hostname ?? "127.0.0.1";
   const port = options.port ?? await findFreePort(hostname, options.excludedPorts);
   try {

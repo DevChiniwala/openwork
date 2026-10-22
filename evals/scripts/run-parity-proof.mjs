@@ -6,6 +6,7 @@ import { prepareParityBinaries } from "./engine-parity-binaries.mjs";
 
 // Keyed by basename: a journey can live in evals/specs, evals/core or evals/proofs.
 const specs = new Set([
+  "session-debug.proof.test.ts",
   "v2-chat-recovery.proof.test.ts",
   "live-provider-sync.proof.test.ts",
   "agent-connection-journey.e2e.test.ts",
@@ -14,6 +15,7 @@ const specs = new Set([
 ]);
 
 const v2Only = new Set([
+  "session-debug.proof.test.ts",
   "v2-chat-recovery.proof.test.ts",
   // Cold profiles share only verified executable provisioning, never inventory.
   "live-provider-sync.proof.test.ts",

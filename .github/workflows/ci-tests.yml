@@ -110,7 +110,7 @@ jobs:
           pnpm --filter @openwork-ee/workbot test:service-readiness
           # Den web does not install tsx in CI; keep its JSX config with the API-owned loader.
           TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/diagnostics/*.test.ts' '../den-web/components/diagnostics/*.test.tsx' '../den-web/components/admin/services/*.test.ts' '../den-web/components/services/*.test.tsx' '../den-web/app/(den)/dashboard/_lib/diagnostics-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts'
-          bun test apps/app/tests/deployment-service-readiness.test.ts
+          bun test apps/app/tests/deployment-service-readiness.test.ts apps/app/tests/opencode-zen-removal.test.ts
       - name: Boot the app provider tree
         run: pnpm test:boot
       - name: Test native dictation focus and draft boundaries
@@ -130,7 +130,7 @@ jobs:
         run: |
           pnpm --filter @openwork/computer-use build
           node --test ee/packages/headless-computer/src/viewer-tickets.test.mjs
-          node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs
+          node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/browser-task-viewport.test.mjs packages/browser-tabs/index.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs
           python3 ee/packages/headless-computer/scripts/desktop-bridge.test.py
           python3 ee/packages/headless-computer/scripts/app-scripting.test.py
           python3 ee/packages/headless-computer/scripts/configure-desktop-files.test.py

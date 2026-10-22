@@ -14,6 +14,7 @@ import { useComputerRequest, useComputerStore } from "./computer-store"
 
 export type ComputerBusy = "halt" | "reset" | "choose" | ComputerPermission | null
 const message = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
+const seconds = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`
 
 /** The rollout enables access. This control shows readiness and active work. */
 export function ComputerControl({ sessionId }: { sessionId: string }) {
@@ -120,6 +121,7 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
         {snapshot ? <p data-testid="session-computer-readiness" data-state={snapshot.readiness}>{snapshot.detail}</p> : null}
         {session?.appName ? <p>{session.appName}{session.windowTitle ? ` · ${session.windowTitle}` : ""}</p> : null}
         {session?.reason ? <p>{session.reason}</p> : null}
+        {snapshot?.timing?.last ? <p data-testid="session-computer-timing">Last step: computer {seconds(snapshot.timing.last.computerMs)}{snapshot.timing.last.modelMs === undefined ? "" : ` · model ${seconds(snapshot.timing.last.modelMs)}`}</p> : null}
         {readError ? <p role="alert" className="text-red-11">Updates unavailable. {readError}</p> : null}
         {actionError ? <p role="alert" className="text-red-11">{actionError}</p> : null}
         {snapshot?.busyElsewhere ? <p>Another chat is using the computer. This chat can use it when that task finishes.</p> : null}

@@ -134,6 +134,7 @@ async function press(editor: HTMLElement, key: string) {
   await settle();
 }
 
+const status = () => document.querySelector<HTMLElement>("[data-composer-suggestions] [role='status']");
 const options = () => [...document.querySelectorAll<HTMLElement>("[data-session-reference-menu] [role='option']")];
 
 test("# opens the task picker, filters fuzzily, and Enter inserts a stable reference", async () => {
@@ -182,17 +183,47 @@ test("arrow keys move through results and Escape dismisses without inserting", a
   await act(async () => { view.root.unmount(); });
 });
 
-test("Markdown headings and #tags without a match stay plain text", async () => {
+test("Markdown headings stay plain text; a # query without a match shows a hint and Enter still sends", async () => {
   const view = await mountComposer();
   await view.typeText(view.editor, "# ");
   expect(options()).toHaveLength(0);
+  expect(status()).toBeNull();
   await view.typeText(view.editor, "Notes ##");
-  expect(options()).toHaveLength(0);
+  expect(status()).toBeNull();
   await view.typeText(view.editor, " #zzqx");
   expect(options()).toHaveLength(0);
+  expect(status()?.textContent).toContain("No tasks match");
   await press(view.editor, "Enter");
   expect(view.draft()).toBe("# Notes ## #zzqx");
   expect(view.sent).toEqual(["# Notes ## #zzqx"]);
+  await act(async () => { view.root.unmount(); });
+});
+
+test("task names with spaces: the list stays open through spaces and picks the matching task", async () => {
+  const view = await mountComposer();
+  await view.typeText(view.editor, "see #fix");
+  expect(options().map((option) => option.title)).toEqual(["Fix login bug"]);
+  await view.typeText(view.editor, " login");
+  expect(options().map((option) => option.title)).toEqual(["Fix login bug"]);
+  await view.typeText(view.editor, " bug");
+  expect(options().map((option) => option.title)).toEqual(["Fix login bug"]);
+  await press(view.editor, "Enter");
+  expect(view.draft()).toBe("see [session ws_1 ses_login Fix login bug] ");
+  expect(status()).toBeNull();
+  await act(async () => { view.root.unmount(); });
+});
+
+test("after Escape the list stays closed while typing, and the next # opens it again", async () => {
+  const view = await mountComposer();
+  await view.typeText(view.editor, "#");
+  expect(options().length).toBeGreaterThan(0);
+  await press(view.editor, "Escape");
+  await view.typeText(view.editor, "pri");
+  expect(options()).toHaveLength(0);
+  expect(status()).toBeNull();
+  await view.typeText(view.editor, "cing then ");
+  await view.typeText(view.editor, "#pri");
+  expect(options().map((option) => option.title)).toEqual(["Pricing page"]);
   await act(async () => { view.root.unmount(); });
 });
 

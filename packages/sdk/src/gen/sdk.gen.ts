@@ -3,6 +3,7 @@
 import { client } from "./client.gen.js";
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js";
 import type {
+  AccountFollowUpActionInput,
   ActivateAutomationErrors,
   ActivateAutomationResponses,
   AgentPermissionPolicyWrite,
@@ -209,7 +210,13 @@ import type {
   GetV1AdminFreeAutoUsageResponses,
   GetV1AdminMetricsErrors,
   GetV1AdminMetricsResponses,
+  GetV1AdminOpportunitiesAccountsByOrganizationIdErrors,
+  GetV1AdminOpportunitiesAccountsByOrganizationIdResponses,
+  GetV1AdminOpportunitiesCompaniesErrors,
+  GetV1AdminOpportunitiesCompaniesResponses,
   GetV1AdminOpportunitiesErrors,
+  GetV1AdminOpportunitiesOverviewErrors,
+  GetV1AdminOpportunitiesOverviewResponses,
   GetV1AdminOpportunitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
@@ -679,6 +686,8 @@ import type {
   PostRegisterResponses,
   PostV1AdminAdminsErrors,
   PostV1AdminAdminsResponses,
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors,
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
@@ -1284,12 +1293,15 @@ export class DenClient extends HeyApiClient {
         workbotWorkspaceAssistant?: boolean | null;
         workbotUsageRecovery?: boolean | null;
         automationCalendar?: boolean | null;
+        removeOpencodeZen?: boolean | null;
         engineV2ForceUpgrade?: boolean | null;
         computerUse?: boolean | null;
         browserDemonstrations?: boolean | null;
         browserFloatingView?: boolean | null;
         remoteComputers?: boolean | null;
         remoteSessionSubagents?: boolean | null;
+        connectToolShapes?: boolean | null;
+        connectStandardTools?: boolean | null;
       };
     },
     options?: Options<never, ThrowOnError>,
@@ -1615,9 +1627,130 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Get this week's actionable platform activity
+   *
+   * Platform-admin-only Monday-to-now UTC summary compared with the same elapsed period last week. Counts registered accounts, current joined human memberships and organization-scoped observed telemetry. Returns daily signup and membership counts, at most eight records per signal list, and a prioritized queue built from transparent, dated signals and recorded internal follow-ups. Missing telemetry does not establish inactivity or service health. No emails, content, credentials or external enrichment.
+   */
+  public getV1AdminOpportunitiesOverview<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesOverviewResponses,
+      GetV1AdminOpportunitiesOverviewErrors,
+      ThrowOnError
+    >({ url: "/v1/admin/opportunities/overview", ...options });
+  }
+
+  /**
+   * Get an account's sales context
+   *
+   * Platform-admin-only. Returns the organization's current people (owners first, at most 25) with their existing admin-visible name, email and role, observed adoption, the transparent recommendation and its dated signals, and internal follow-up history. Internal context only: not visible to the organization.
+   */
+  public getV1AdminOpportunitiesAccountsByOrganizationId<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesAccountsByOrganizationIdResponses,
+      GetV1AdminOpportunitiesAccountsByOrganizationIdErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/accounts/{organizationId}",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Record a sales follow-up step
+   *
+   * Platform-admin-only. Appends what happened (reviewed, contacted, reply, meeting, note, closed, dismissed or reopened) and sets the next action, owner and UTC follow-up date in one idempotent request. Never sends a message, changes the organization or writes to its audit log.
+   */
+  public postV1AdminOpportunitiesAccountsByOrganizationIdActions<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      accountFollowUpActionInput: AccountFollowUpActionInput;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { key: "accountFollowUpActionInput", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses,
+      PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/accounts/{organizationId}/actions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Group signups by company email domain
+   *
+   * Platform-admin-only, paginated. Groups accounts with a verified, non-personal email domain across every organization they joined: signups, first signup, latest sign-in still on record, organizations, people observed using the app in the last 30 days, highest stored plan, current paid subscription, and whether a platform admin recorded outreach for any of those organizations. Defaults to active companies nobody has contacted. A domain does not establish employment and organizations are never merged. No content, credentials, Stripe calls or external enrichment.
+   */
+  public getV1AdminOpportunitiesCompanies<ThrowOnError extends boolean = false>(
+    parameters?: {
+      activity?: "active" | "all";
+      outreach?: "not_contacted" | "contacted" | "any";
+      billing?: "any" | "paying" | "not_paying";
+      sort?: "active" | "signups" | "recent" | "signin";
+      search?: string;
+      limit?: number;
+      cursor?: string;
+      offset?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "activity" },
+            { in: "query", key: "outreach" },
+            { in: "query", key: "billing" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesCompaniesResponses,
+      GetV1AdminOpportunitiesCompaniesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/companies",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
    * Find organizations with observed app adoption
    *
-   * Platform-admin-only, server-paginated organization signals. Defaults to two joined human users and observed organization-scoped telemetry in the last 30 days, most recent first. Company-email signals use verified addresses excluding known personal providers; they do not establish employment. Cloud setup counts active, non-deleted skill and MCP metadata. Missing telemetry does not imply inactivity. No content, credentials, billing lookups or external enrichment.
+   * Platform-admin-only, server-paginated organization signals. Defaults to two joined human users and observed organization-scoped telemetry in the last 30 days, most recent first. Company-email signals use verified addresses excluding known personal providers; they do not establish employment. Cloud setup counts active, non-deleted skill and MCP metadata. Billing is the stored plan tier and recorded subscription status; outreach is what platform admins recorded. Missing telemetry does not imply inactivity. No content, credentials, Stripe calls or external enrichment.
    */
   public getV1AdminOpportunities<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1625,6 +1758,7 @@ export class DenClient extends HeyApiClient {
       minMembers?: "1" | "2" | "5" | "10";
       companyEmail?: "0" | "1";
       setup?: "any" | "skills" | "mcp" | "both";
+      outreach?: "any" | "not_contacted" | "contacted";
       sort?: "recent" | "active" | "members";
       search?: string;
       limit?: number;
@@ -1642,6 +1776,7 @@ export class DenClient extends HeyApiClient {
             { in: "query", key: "minMembers" },
             { in: "query", key: "companyEmail" },
             { in: "query", key: "setup" },
+            { in: "query", key: "outreach" },
             { in: "query", key: "sort" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
