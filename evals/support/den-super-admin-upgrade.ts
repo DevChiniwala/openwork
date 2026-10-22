@@ -3,11 +3,13 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
-// Explicit opt-in integration lab. Only these disposable, exp-o2-* resources are
-// touched. Published arm64 artifacts are immutable; no production credentials.
+// Only disposable exp-o2-* resources are touched. Mac uses the existing Podman
+// VM; Linux CI uses Docker directly. Architecture manifests are immutable.
+const containerCommand = process.platform === "darwin" ? "podman" : "docker"
+const amd64 = process.arch === "x64"
 export const images = {
-  before: "ghcr.io/different-ai/openwork-den-api@sha256:329dc3c2f2124430e19b7a2687f624a2c9680555014335d7eea0d1a010328b65",
-  after: "ghcr.io/different-ai/openwork-den-api@sha256:d1dc9836d5d006164149358f35d7088f468053d53783866f44fb592d6b1b1b96",
+  before: `ghcr.io/different-ai/openwork-den-api@sha256:${amd64 ? "9076534aea522294235c1a9e9132a19e23fc2ea4ed952346bbde73613d64e27b" : "329dc3c2f2124430e19b7a2687f624a2c9680555014335d7eea0d1a010328b65"}`,
+  after: `ghcr.io/different-ai/openwork-den-api@sha256:${amd64 ? "e41f91ac17cc6b3b09730c6affb59d6de69d55e470febc2791a03ed89a3158d3" : "d1dc9836d5d006164149358f35d7088f468053d53783866f44fb592d6b1b1b96"}`,
 }
 const root = fileURLToPath(new URL("../../", import.meta.url))
 const api = "http://127.0.0.1:38919"
@@ -24,7 +26,7 @@ export const preservedKeys = [
 
 function run(command: string, args: string[], input?: string) {
   try {
-    return execFileSync(command, args, { cwd: root, encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"], timeout: 240_000 })
+    return execFileSync(command === "podman" ? containerCommand : command, args, { cwd: root, encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"], timeout: 240_000 })
   } catch (error) {
     // Child output can contain authentication/configuration data. Never relay it.
     const code = error && typeof error === "object" && "status" in error ? error.status : "unknown"
@@ -89,12 +91,14 @@ export class UpgradeLab {
     assert.equal(run("podman", ["ps", "-a", "--filter", "name=exp-o2-", "--format", "{{.Names}}" ]).trim(), "", "owned lab names must be unused")
     assert.equal(run("podman", ["volume", "ls", "--filter", "name=exp-o2-", "--format", "{{.Name}}"] ).trim(), "", "owned volumes must be unused")
     const image = this.engine === "mysql"
-      ? "docker.io/library/mysql@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb"
-      : "docker.io/library/mariadb@sha256:250e1609e93c0e6aecf64bfbab2d84d5e89d2481540fe77447ff6c855c3b1873"
+      ? `docker.io/library/mysql@sha256:${amd64 ? "6f3a50835c54d61ffdcf78d71381ba268c27804cd96755231d2fd6f180f822f0" : "b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb"}`
+      : `docker.io/library/mariadb@sha256:${amd64 ? "33a6653ab666774f48818120045f9367a81cd4c54c027412fe294a7d1274e2dc" : "250e1609e93c0e6aecf64bfbab2d84d5e89d2481540fe77447ff6c855c3b1873"}`
     run("podman", ["run", "-d", "--name", "exp-o2-db", "--network", "host", "--volume", "exp-o2-db-data:/var/lib/mysql", "-e", this.engine === "mysql" ? "MYSQL_ALLOW_EMPTY_PASSWORD=1" : "MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1", "-e", this.engine === "mysql" ? "MYSQL_DATABASE=exp_o2" : "MARIADB_DATABASE=exp_o2", image, "--port=33489", "--bind-address=127.0.0.1", "--performance_schema=OFF", "--innodb-buffer-pool-size=128M"])
-    const machine = record(JSON.parse(run("podman", ["machine", "inspect"]))[0])
-    const ssh = record(machine.SSHConfig)
-    this.forward = spawn("ssh", ["-i", text(ssh.IdentityPath), "-p", String(ssh.Port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ExitOnForwardFailure=yes", "-N", "-L", "33489:127.0.0.1:33489", "-L", "38919:127.0.0.1:38919", "-L", "38920:127.0.0.1:38920", "core@127.0.0.1"], { stdio: "ignore" })
+    if (process.platform === "darwin") {
+      const machine = record(JSON.parse(run("podman", ["machine", "inspect"]))[0])
+      const ssh = record(machine.SSHConfig)
+      this.forward = spawn("ssh", ["-i", text(ssh.IdentityPath), "-p", String(ssh.Port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ExitOnForwardFailure=yes", "-N", "-L", "33489:127.0.0.1:33489", "-L", "38919:127.0.0.1:38919", "-L", "38920:127.0.0.1:38920", "core@127.0.0.1"], { stdio: "ignore" })
+    }
     await until(async () => { try { this.sql("SELECT 1"); return true } catch { return false } }, "database")
     run("podman", ["run", "-d", "--name", "exp-o2-redis", "--network", "host", "--volume", "exp-o2-redis-data:/data", "redis:7-alpine", "redis-server", "--port", "63489", "--bind", "127.0.0.1"])
     run("podman", ["run", "-d", "--name", "exp-o2-mail", "--network", "host", "-e", "MP_SMTP_BIND_ADDR=127.0.0.1:10389", "-e", "MP_UI_BIND_ADDR=127.0.0.1:8099", "docker.io/axllent/mailpit:latest"])
@@ -142,7 +146,8 @@ export class UpgradeLab {
   async close() {
     this.sql("DROP DATABASE IF EXISTS exp_o2")
     assert.equal(run("podman", ["exec", "exp-o2-db", this.engine === "mysql" ? "mysql" : "mariadb", "-uroot", "--batch", "--skip-column-names", "-e", "SHOW DATABASES LIKE 'exp_o2'"]).trim(), "", "owned database dropped before removing storage")
-    for (const name of names) run("podman", ["rm", "-f", "-v", `exp-o2-${name}`])
+    const present = new Set(run("podman", ["ps", "-a", "--format", "{{.Names}}"] ).trim().split("\n"))
+    for (const name of names) if (present.has(`exp-o2-${name}`)) run("podman", ["rm", "-f", "-v", `exp-o2-${name}`])
     for (const name of ["exp-o2-db-data", "exp-o2-redis-data"]) {
       run("podman", ["volume", "rm", name])
       assert.equal(run("podman", ["volume", "ls", "--filter", `name=^${name}$`, "--format", "{{.Name}}"] ).trim(), "", "owned volume removed")
@@ -150,7 +155,7 @@ export class UpgradeLab {
     this.forward?.kill("SIGTERM")
     await until(async () => !this.forward || this.forward.exitCode !== null || this.forward.signalCode !== null, "SSH forward exit")
     assert.equal(run("podman", ["ps", "-a", "--filter", "name=exp-o2-", "--format", "{{.Names}}"] ).trim(), "")
-    const listeners = run("podman", ["machine", "ssh", "ss", "-ltn"])
+    const listeners = process.platform === "darwin" ? run("podman", ["machine", "ssh", "ss", "-ltn"]) : run("ss", ["-ltn"])
     assert.equal(listeners.split("\n").filter(line => /:(33489|38919|38920|63489|10389|8099)\s/.test(line)).length, 0, "owned VM ports closed")
     console.log(`${this.engine}: exp-o2 database, containers, volumes, SSH forward and VM ports removed and verified`)
   }
