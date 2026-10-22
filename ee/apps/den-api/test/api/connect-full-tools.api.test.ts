@@ -102,10 +102,10 @@ test("with the flag off, neither the override nor a known client changes Connect
   }
 })
 
-test("Desktop gets full tools at the unchanged URL only during its own rollout", async () => {
+test("one flag switches Desktop and Claude Code off, on and off at the unchanged URL", async () => {
   const desktop = { clientInfo: { name: "opencode", version: "2.0.26" } }
   for (const enabled of [false, true, false]) {
-    const rollout = await den.setFeature(orgId, "desktopConnectStandardTools", enabled)
+    const rollout = await den.setFeature(orgId, "connectStandardTools", enabled)
     assert.ok(rollout.status < 300, summary(rollout))
     const names = await toolNames(rileyToken, desktop)
     assert.equal(names.includes("status_board.read_status"), enabled, names.join(","))
@@ -113,7 +113,8 @@ test("Desktop gets full tools at the unchanged URL only during its own rollout",
     assert.equal(names.includes("execute_capability"), !enabled)
     assert.ok(!names.includes("status_board.reset_status"), "disabled tools stay hidden")
     assert.ok((await toolNames(rileyToken)).includes("search_capabilities"), "legacy probes stay compatible")
-    assert.ok((await toolNames(rileyToken, { clientInfo: { name: "claude-code", version: "2" } })).includes("search_capabilities"), "desktop rollout does not enable Claude Code")
+    const claude = await toolNames(rileyToken, { clientInfo: { name: "claude-code", version: "2" } })
+    assert.deepEqual(claude, names, "supported clients follow the same rollout")
     const direct = await rpc(rileyToken, "tools/call", { name: "status_board.read_status", arguments: {} }, desktop)
     if (!enabled) {
       assert.ok(direct.error !== undefined || field(direct.result, "isError") === true)
@@ -131,12 +132,52 @@ test("Desktop gets full tools at the unchanged URL only during its own rollout",
   }
 })
 
-test("capability tool shapes are opt-in and turning them off preserves cached execution calls", async () => {
+test("the existing member allowlist controls tools and schemas, and cannot bypass the kill switch", async () => {
+  assert.equal((await den.setFeature(orgId, "connectStandardTools", false)).status, 200)
+  const signedIn = await den.signIn(`platform-admin+${den.stamp}@example.test`)
+  const admin = text(field(signedIn.body, "token"), "platform admin session")
+  const change = (value: boolean | null) => den.request(admin, "PUT", `/v1/admin/organizations/${orgId}/members/${riley.memberId}/capabilities`, {
+    body: { capabilities: { connectStandardTools: value } },
+  })
+  const killed = (value: boolean) => den.request(admin, "PUT", "/v1/admin/features/connectStandardTools", { body: { killed: value } })
+  const options = { clientInfo: { name: "opencode", version: "2.0.26" } }
+  try {
+    const allowed = await change(true)
+    assert.equal(allowed.status, 200, summary(allowed))
+    assert.ok((await toolNames(rileyToken, options)).includes("status_board.read_status"))
+    assert.ok((await toolNames(samToken, options)).includes("search_capabilities"), "a member override never enables peers")
+    // Even legacy clients use the same member-resolved flag for their schemas.
+    const schemaProperties = async (token: string) => {
+      const listed = await rpc(token, "tools/list", {})
+      const search = list(field(listed.result, "tools")).find((tool) => tool.name === "search_capabilities")
+      return field(search, "outputSchema", "properties", "matches", "items", "properties", "inputSchema")
+    }
+    assert.notEqual(await schemaProperties(rileyToken), undefined)
+    assert.equal(await schemaProperties(samToken), undefined)
+    const kill = await killed(true)
+    assert.equal(kill.status, 200, summary(kill))
+    assert.ok((await toolNames(rileyToken, { ...options, query: "?tools=full" })).includes("search_capabilities"))
+    assert.equal(await schemaProperties(rileyToken), undefined)
+    assert.equal((await killed(false)).status, 200)
+    assert.equal((await change(null)).status, 200)
+    assert.ok((await toolNames(rileyToken, options)).includes("search_capabilities"), "reset inherits the org's disabled flag")
+    assert.equal((await den.setFeature(orgId, "connectStandardTools", true)).status, 200)
+    assert.equal((await change(false)).status, 200)
+    assert.ok((await toolNames(rileyToken, options)).includes("search_capabilities"))
+    assert.ok(!(await toolNames(samToken, options)).includes("search_capabilities"), "explicit member off does not disable peers")
+  } finally {
+    assert.equal((await killed(false)).status, 200)
+    assert.equal((await change(null)).status, 200)
+    assert.equal((await den.setFeature(orgId, "connectStandardTools", false)).status, 200)
+  }
+})
+
+test("the same rollout gates capability schemas and turning it off preserves cached execution calls", async () => {
   // A released Desktop has no new client metadata: the default response must
   // still describe arguments in body, not require the newly shipped format.
   for (const enabled of [undefined, true, false]) {
     if (enabled !== undefined) {
-      const rollout = await den.setFeature(orgId, "connectToolShapes", enabled)
+      const rollout = await den.setFeature(orgId, "connectStandardTools", enabled)
       assert.ok(rollout.status < 300, summary(rollout))
     }
     const listed = await rpc(rileyToken, "tools/list", {})
