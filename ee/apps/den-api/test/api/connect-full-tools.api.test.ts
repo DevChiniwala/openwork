@@ -102,6 +102,35 @@ test("with the flag off, neither the override nor a known client changes Connect
   }
 })
 
+test("Desktop gets full tools at the unchanged URL only during its own rollout", async () => {
+  const desktop = { clientInfo: { name: "opencode", version: "2.0.26" } }
+  for (const enabled of [false, true, false]) {
+    const rollout = await den.setFeature(orgId, "desktopConnectStandardTools", enabled)
+    assert.ok(rollout.status < 300, summary(rollout))
+    const names = await toolNames(rileyToken, desktop)
+    assert.equal(names.includes("status_board.read_status"), enabled, names.join(","))
+    assert.equal(names.includes("search_capabilities"), !enabled)
+    assert.equal(names.includes("execute_capability"), !enabled)
+    assert.ok(!names.includes("status_board.reset_status"), "disabled tools stay hidden")
+    assert.ok((await toolNames(rileyToken)).includes("search_capabilities"), "legacy probes stay compatible")
+    assert.ok((await toolNames(rileyToken, { clientInfo: { name: "claude-code", version: "2" } })).includes("search_capabilities"), "desktop rollout does not enable Claude Code")
+    const direct = await rpc(rileyToken, "tools/call", { name: "status_board.read_status", arguments: {} }, desktop)
+    if (!enabled) {
+      assert.ok(direct.error !== undefined || field(direct.result, "isError") === true)
+      continue
+    }
+    assert.notEqual(field(direct.result, "isError"), true, JSON.stringify(direct))
+    assert.equal(resultText(direct.result), PROOF)
+    assert.ok((await toolNames(rileyToken, { ...desktop, query: "?tools=search" })).includes("search_capabilities"))
+    assert.ok(!(await toolNames(samToken, desktop)).some((name) => name.startsWith("status_board.")))
+    for (const [token, name] of [[samToken, "status_board.read_status"], [rileyToken, "status_board.reset_status"]]) {
+      const denied = await rpc(token, "tools/call", { name, arguments: {} }, desktop)
+      assert.ok(denied.error !== undefined || field(denied.result, "isError") === true)
+      assert.doesNotMatch(JSON.stringify(denied), new RegExp(PROOF))
+    }
+  }
+})
+
 test("capability tool shapes are opt-in and turning them off preserves cached execution calls", async () => {
   // A released Desktop has no new client metadata: the default response must
   // still describe arguments in body, not require the newly shipped format.

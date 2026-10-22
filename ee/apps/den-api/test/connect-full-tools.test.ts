@@ -49,6 +49,25 @@ test("only an allowlisted client or the explicit override picks the full view, a
   assert.equal(connectToolViewOverride("https://den.test/mcp/agent"), null)
 })
 
+test("OpenCode full tools have an independent desktop rollout and preserve explicit search", () => {
+  for (const enabled of [false, true]) {
+    for (const desktopEnabled of [false, true]) {
+      const flags = { enabled, desktopEnabled }
+      assert.equal(connectToolView({ name: "opencode" }, flags), desktopEnabled ? "full" : "search")
+      assert.equal(connectToolView({ name: " OpenCode " }, flags), desktopEnabled ? "full" : "search")
+      assert.equal(connectToolView(CLAUDE_CODE, flags), enabled ? "full" : "search")
+      assert.equal(connectToolView({ name: "cursor" }, flags), "search")
+      assert.equal(connectToolView(null, flags), "search")
+      assert.equal(connectToolView({ name: "opencode" }, { ...flags, override: "search" }), "search")
+    }
+  }
+  // The desktop flag cannot opt unknown clients or legacy requests into full.
+  assert.equal(connectToolView(null, { enabled: false, desktopEnabled: true, override: "full" }), "search")
+  assert.equal(connectToolView({ name: "cursor" }, { enabled: false, desktopEnabled: true, override: "full" }), "search")
+  // Existing explicit opt-ins still work independently of the desktop rollout.
+  assert.equal(connectToolView({ name: "opencode" }, { enabled: true, desktopEnabled: false, override: "full" }), "full")
+})
+
 test("clientInfo comes only from the request's own _meta", () => {
   assert.deepEqual(requestClientInfo({ _meta: { [CLIENT_INFO_META_KEY]: CLAUDE_CODE } }), CLAUDE_CODE)
   assert.deepEqual(requestClientInfo({ _meta: { [CLIENT_INFO_META_KEY]: { name: "claude-code" } } }), { name: "claude-code" })

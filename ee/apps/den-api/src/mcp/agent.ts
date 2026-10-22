@@ -526,6 +526,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const method = requestInfo.method
     const toolView = connectToolView(requestInfo.clientInfo, {
       enabled: organizationFeatures.connectStandardTools,
+      desktopEnabled: organizationFeatures.desktopConnectStandardTools,
       override: connectToolViewOverride(c.req.url),
     })
     const audience: AgentMcpAudience = { organizationId, userId: principal.userId, fullTools: toolView === "full" }

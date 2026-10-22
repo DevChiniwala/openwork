@@ -521,7 +521,7 @@ export async function waitForEngineV2Catalog(
 }
 
 /** Translate only fields supported by the pinned v2 MCP API. */
-export function mapRuntimeMcpToV2(value: unknown): Record<string, unknown> | undefined {
+export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
   if (value.enabled === false || value.disabled === true) return undefined;
   const shared = {
@@ -543,6 +543,9 @@ export function mapRuntimeMcpToV2(value: unknown): Record<string, unknown> | und
     ...(typeof value.oauth.scope === "string" ? { scope: value.oauth.scope } : {}),
   } : value.oauth === false ? false : undefined;
   return { type: "remote", url: value.url, headers: strings(value.headers),
+    // Only the managed Connect endpoint needs modern discovery and per-request
+    // clientInfo. Keep third-party servers on the engine's legacy default.
+    ...(name === "openwork-cloud" ? { protocol: "auto" } : {}),
     ...(oauth === undefined ? {} : { oauth }), ...shared };
 }
 
@@ -721,7 +724,7 @@ export function createEngineV2Preview(options: {
     const organizationMcp = mcpRules ? await registeredOrganizationMcpServers(config, [location.workspaceId]) : {};
     const desired = new Map(Object.entries(runtime).flatMap(([name, value]) => {
       if (agentPermissionEngineMcpDenial(agentPermissionRules, name, value, organizationMcp)) return [];
-      const mapped = mapRuntimeMcpToV2(value);
+      const mapped = mapRuntimeMcpToV2(value, name);
       return mapped ? [[name, { config: mapped, fingerprint: JSON.stringify(mapped) }] as const] : [];
     }));
     const { applied, attempts } = location;
