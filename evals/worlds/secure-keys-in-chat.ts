@@ -94,10 +94,20 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
     if (!workspace) await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!workspace) throw new Error(`Missing workspace after sign-in; route: ${await base.route()}`);
-  const connected = await base.request(`/workspace/${workspace}/mcp/openwork-cloud/reconcile`, "POST", {
-    config: { type: "remote", url: `${den.ref.apiUrl}/mcp/agent`, enabled: true, oauth: false, headers: { Authorization: `Bearer ${token}` } }, trigger: "secure-keys-fixture",
-  });
-  if (connected.status !== 200) throw new Error(`Connect reconciliation failed: ${connected.status}`);
+  // A 200 only means reconciliation ran. On a slow boot the engine can still
+  // be unreachable, and the first chat would then fail or miss Cloud tools,
+  // so repeat it until the health says the Cloud tools are usable.
+  let health: unknown = null;
+  for (const deadline = Date.now() + 90_000; Date.now() < deadline;) {
+    const connected = await base.request(`/workspace/${workspace}/mcp/openwork-cloud/reconcile`, "POST", {
+      config: { type: "remote", url: `${den.ref.apiUrl}/mcp/agent`, enabled: true, oauth: false, headers: { Authorization: `Bearer ${token}` } }, trigger: "secure-keys-fixture",
+    });
+    if (connected.status !== 200) throw new Error(`Connect reconciliation failed: ${connected.status}`);
+    health = connected.body;
+    if (field(health, "usable") === true) break;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  if (field(health, "usable") !== true) throw new Error(`OpenWork Cloud tools never became usable; last phase: ${String(field(health, "phase"))}`);
   const sentinels = await fetch(`${base.mock.url}/admin/private-sentinels`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: [...Object.values(keys), serviceAccountSentinel] }) });
   if (!sentinels.ok) throw new Error("Model privacy witness setup failed");
 
