@@ -8290,6 +8290,62 @@
           "activeOrgSlug"
         ]
       },
+      "CurrentUserInvitationsResponse": {
+        "type": "object",
+        "properties": {
+          "invitations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "description": "Den TypeID with 'inv_' prefix and a 26-character base32 suffix.",
+                  "format": "typeid",
+                  "type": "string",
+                  "minLength": 30,
+                  "maxLength": 30
+                },
+                "organization": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "description": "Den TypeID with 'org_' prefix and a 26-character base32 suffix.",
+                      "format": "typeid",
+                      "type": "string",
+                      "minLength": 30,
+                      "maxLength": 30
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ]
+                },
+                "role": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                }
+              },
+              "required": [
+                "id",
+                "organization",
+                "role",
+                "expiresAt"
+              ]
+            }
+          }
+        },
+        "required": [
+          "invitations"
+        ]
+      },
       "SendDownloadLinkResponse": {
         "type": "object",
         "properties": {
@@ -43947,6 +44003,46 @@
           },
           "401": {
             "description": "The caller must be authenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/me/invitations": {
+      "get": {
+        "operationId": "getV1MeInvitations",
+        "tags": [
+          "Users"
+        ],
+        "summary": "List current user's pending invitations",
+        "description": "Lists unexpired invitations sent to the signed-in person's email for organizations they have not joined yet. Empty until the email is verified when the deployment requires verification. Accept one with POST /v1/orgs/invitations/accept.",
+        "responses": {
+          "200": {
+            "description": "Pending invitations returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserInvitationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be signed in.",
             "content": {
               "application/json": {
                 "schema": {

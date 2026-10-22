@@ -1,5 +1,5 @@
-import { eq } from "@openwork-ee/den-db/drizzle"
-import { AuthAccountTable, AuthUserTable, RateLimitTable } from "@openwork-ee/den-db/schema"
+import { and, eq, gt, isNull, sql } from "@openwork-ee/den-db/drizzle"
+import { AuthAccountTable, AuthUserTable, InvitationTable, MemberTable, OrganizationTable, RateLimitTable } from "@openwork-ee/den-db/schema"
 import { createDenTypeId, normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { desktopConfigSchema } from "@openwork/types/den/desktop-policies"
 import type { Hono } from "hono"
@@ -21,6 +21,7 @@ import { readAgentPermissionRulesForMember } from "../../agent-permissions.js"
 import { desktopConfigDefaultModel } from "../../default-model.js"
 import { DenEmailSendError, sendEmail } from "../../utils/email/send-email.js"
 import { getOrganizationFeatures } from "../../features.js"
+import { validateInvitationAcceptVerification } from "../../organization-join-verification.js"
 
 const DOWNLOAD_LINK_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 const DOWNLOAD_LINK_RATE_LIMIT_MAX = 5
@@ -38,6 +39,15 @@ const meOrganizationsResponseSchema = z.object({
   activeOrgId: denTypeIdSchema("organization").nullable(),
   activeOrgSlug: z.string().nullable(),
 }).meta({ ref: "CurrentUserOrganizationsResponse" })
+
+const meInvitationsResponseSchema = z.object({
+  invitations: z.array(z.object({
+    id: denTypeIdSchema("invitation"),
+    organization: z.object({ id: denTypeIdSchema("organization"), name: z.string() }),
+    role: z.string(),
+    expiresAt: z.string().datetime(),
+  })),
+}).meta({ ref: "CurrentUserInvitationsResponse" })
 
 const meDesktopConfigResponseSchema = desktopConfigSchema.meta({
   ref: "CurrentUserDesktopConfigResponse",
@@ -208,6 +218,50 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
       })),
       activeOrgId: c.get("activeOrganizationId") ?? null,
       activeOrgSlug: c.get("activeOrganizationSlug") ?? null,
+    })
+    },
+  )
+
+  app.get(
+    "/v1/me/invitations",
+    describeRoute({
+      tags: ["Users"],
+      summary: "List current user's pending invitations",
+      description: "Lists unexpired invitations sent to the signed-in person's email for organizations they have not joined yet. Empty until the email is verified when the deployment requires verification. Accept one with POST /v1/orgs/invitations/accept.",
+      responses: {
+        200: jsonResponse("Pending invitations returned successfully.", meInvitationsResponseSchema),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+      },
+    }),
+    userSessionRoute(),
+    async (c) => {
+    const user = c.get("user")
+    const email = user.email?.trim().toLowerCase()
+    // Listing names the inviting organizations, so it follows the same verification boundary as accepting.
+    const verification = validateInvitationAcceptVerification({ emailVerified: user.emailVerified, emailVerificationRequired: env.requireEmailVerification })
+    if (!email || !verification.ok) return c.json({ invitations: [] })
+
+    const userId = normalizeDenTypeId("user", user.id)
+    const rows = await db
+      .select({ id: InvitationTable.id, organizationId: InvitationTable.organizationId, organizationName: OrganizationTable.name, role: InvitationTable.role, expiresAt: InvitationTable.expiresAt })
+      .from(InvitationTable)
+      .innerJoin(OrganizationTable, eq(OrganizationTable.id, InvitationTable.organizationId))
+      .leftJoin(MemberTable, and(eq(MemberTable.organizationId, InvitationTable.organizationId), eq(MemberTable.userId, userId), isNull(MemberTable.removedAt)))
+      .where(and(
+        eq(InvitationTable.status, "pending"),
+        gt(InvitationTable.expiresAt, new Date()),
+        sql`lower(${InvitationTable.email}) = ${email}`,
+        isNull(MemberTable.id),
+      ))
+      .limit(20)
+
+    return c.json({
+      invitations: rows.map((row) => ({
+        id: row.id,
+        organization: { id: row.organizationId, name: row.organizationName },
+        role: row.role,
+        expiresAt: row.expiresAt.toISOString(),
+      })),
     })
     },
   )

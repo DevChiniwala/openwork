@@ -1801,6 +1801,24 @@ export type CurrentUserOrganizationsResponse = {
   activeOrgSlug: string | null;
 };
 
+export type CurrentUserInvitationsResponse = {
+  invitations: Array<{
+    /**
+     * Den TypeID with 'inv_' prefix and a 26-character base32 suffix.
+     */
+    id: string;
+    organization: {
+      /**
+       * Den TypeID with 'org_' prefix and a 26-character base32 suffix.
+       */
+      id: string;
+      name: string;
+    };
+    role: string;
+    expiresAt: string;
+  }>;
+};
+
 export type SendDownloadLinkResponse = {
   ok: true;
 };
@@ -11380,6 +11398,31 @@ export type GetV1MeOrgsResponses = {
 };
 
 export type GetV1MeOrgsResponse = GetV1MeOrgsResponses[keyof GetV1MeOrgsResponses];
+
+export type GetV1MeInvitationsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/me/invitations";
+};
+
+export type GetV1MeInvitationsErrors = {
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+};
+
+export type GetV1MeInvitationsError = GetV1MeInvitationsErrors[keyof GetV1MeInvitationsErrors];
+
+export type GetV1MeInvitationsResponses = {
+  /**
+   * Pending invitations returned successfully.
+   */
+  200: CurrentUserInvitationsResponse;
+};
+
+export type GetV1MeInvitationsResponse = GetV1MeInvitationsResponses[keyof GetV1MeInvitationsResponses];
 
 export type PostV1MeSendDownloadLinkData = {
   body?: never;
