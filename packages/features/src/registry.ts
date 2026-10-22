@@ -130,6 +130,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  removeOpencodeZen: {
+    label: "Remove OpenCode Zen models",
+    description: "Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   engineV2ForceUpgrade: {
     label: "Upgrade to OpenCode v2",
     description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle.",
