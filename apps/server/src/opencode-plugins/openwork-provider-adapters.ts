@@ -214,6 +214,63 @@ function sessionContribution(): OpenworkFeatureContribution {
   };
 }
 
+function sessionGroupContribution(): OpenworkFeatureContribution {
+  const provider: OpenworkProviderRef = { id: "openwork-server", kind: "builtin" };
+  const workspaceId = argument("workspaceId", "string", false, "Optional workspace id or name. Defaults to the workspace of the session involved.");
+  return {
+    featureId: "session-groups",
+    provider,
+    affordances: [
+      affordance({
+        id: "session.group.list",
+        kind: "query",
+        title: "List sidebar groups",
+        description: "List the sidebar groups (for example Done, In progress) of a workspace with the sessions in each. Sessions not listed are ungrouped. Works without the desktop window open.",
+        provider,
+        arguments: [workspaceId],
+        effects: readEffects,
+      }),
+      affordance({
+        id: "session.group.create",
+        kind: "command",
+        title: "Create a sidebar group",
+        description: "Add a group to a workspace sidebar. An existing group with the same name is reused and returned with created:false.",
+        provider,
+        arguments: [argument("label", "string", true, "Group name, at most 120 characters."), workspaceId],
+        effects: writeEffects,
+      }),
+      affordance({
+        id: "session.group.move",
+        kind: "command",
+        title: "Move a session to a group",
+        description: "Put a session in a sidebar group, or ungroup it when groupId is omitted. The result confirms the saved group.",
+        provider,
+        arguments: [
+          argument("sessionId", "string", true, "Session id from session.search, session.read or session.group.list."),
+          argument("groupId", "string", false, "Group id or exact name from session.group.list. Omit to ungroup."),
+          workspaceId,
+        ],
+        effects: writeEffects,
+      }),
+      affordance({
+        id: "session.group.remove",
+        kind: "command",
+        title: "Remove a sidebar group",
+        description: "Remove a group the person asked to remove. Its sessions are kept: ungrouped, or moved to destinationGroupId.",
+        provider,
+        arguments: [
+          argument("groupId", "string", true, "Group id or exact name to remove."),
+          argument("destinationGroupId", "string", false, "Optional group id or name that receives its sessions."),
+          argument("confirmed", "boolean", true, "Must be true."),
+          workspaceId,
+        ],
+        effects: writeEffects,
+      }),
+    ],
+    guidance: [],
+  };
+}
+
 function automationContribution(): OpenworkFeatureContribution {
   const provider: OpenworkProviderRef = { id: "openwork-automations", kind: "builtin" };
   return {
@@ -344,6 +401,7 @@ export function buildOpenworkProviderContributions(
   const connect = connectContribution(skills, cloudMcp);
   return [
     sessionContribution(),
+    sessionGroupContribution(),
     automationContribution(),
     extensionContribution(),
     ...mcps
