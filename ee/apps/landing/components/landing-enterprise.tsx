@@ -1,4 +1,5 @@
 import { Check, ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { BookCallForm } from "./book-call-form";
 import { CoworkComparison } from "./cowork-comparison";
@@ -24,7 +25,7 @@ const body = "text-[15px] leading-[23px] text-[var(--lp-body)]";
 const section = "mt-28 scroll-mt-24 md:mt-36";
 
 /** Tonal icon card, same pattern as CompareCards on the compare pages. */
-function IconCard({ card, children }: { card: EnterpriseCard; children?: React.ReactNode }) {
+function IconCard({ card, children }: { card: EnterpriseCard; children?: ReactNode }) {
   const Icon = card.icon;
   return (
     <li className="flex flex-col rounded-[20px] bg-[var(--lp-tonal)] p-6">
