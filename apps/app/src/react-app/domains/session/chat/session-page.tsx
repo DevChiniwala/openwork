@@ -95,6 +95,7 @@ import { useBrowserPresentationController } from "../panel/use-browser-presentat
 import { useBrowserAgentTurns } from "../panel/agent-viewport";
 import { BrowserHeaderButton, BrowserPresentationSurfaces } from "../panel/browser-presentation";
 import { DebugRailProvider, DebugRailSlot } from "../panel/debug-rail-slot";
+import { SessionDebugPanel } from "../surface/debug-panel";
 import { FloatingSlotProvider, SessionFloatingLayer } from "../panel/floating-slot";
 import { useDesktopFeature } from "../status/use-desktop-feature";
 import { CloudComputerControl } from "../computer/cloud-computer-control";
@@ -2051,6 +2052,12 @@ export function SessionPage(props: SessionPageProps) {
           </aside>
           </div>
           <BrowserPresentationSurfaces sessionId={sidePanelSessionKey} controller={browserPresentation} />
+          {/* With a thread open, the session surface owns the debug panel. */}
+          {props.developerMode && !canRenderReactSurface ? <SessionDebugPanel
+            client={props.openworkServerClient} workspaceId={props.runtimeWorkspaceId ?? ""} workspaceRoot={props.selectedWorkspaceRoot}
+            opencodeBaseUrl={reactSessionBaseUrl} openworkToken={reactSessionToken} thread={null}
+            workspace={{ name: workspaceName, startupPhase: props.startupPhase, providersConnected: props.providerConnectedIds.length, mcpConnected: props.mcpConnectedCount }}
+          /> : null}
           </FloatingSlotProvider>
           </DebugRailProvider>
         </SidebarInset>

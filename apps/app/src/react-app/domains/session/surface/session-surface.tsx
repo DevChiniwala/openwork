@@ -3754,11 +3754,24 @@ export function SessionSurface(props: SessionSurfaceProps) {
       </div>
       {/* Error display moved inline into the session conversation area */}
       {props.developerMode && props.isControlTarget ? <SessionDebugPanel
-        model={model} client={props.client} workspaceId={props.workspaceId}
+        client={props.client} workspaceId={props.workspaceId} workspaceRoot={props.workspaceRoot}
         opencodeBaseUrl={props.opencodeBaseUrl} openworkToken={props.openworkToken}
-        status={liveStatus.type} messageCount={renderedMessages.length} todoCount={props.todos?.length ?? 0}
-        modelLabel={props.modelLabel}
-        waitingOn={props.activePermission ? "Permission" : props.activeQuestion ? "Your answer" : sending ? "Send acknowledgement" : snapshotQuery.isFetching ? "Session history" : liveStatus.type === "retry" ? "Retry backoff" : liveStatus.type === "busy" ? "Assistant" : "Nothing"}
+        thread={{
+          model, status: liveStatus.type, messageCount: renderedMessages.length, todoCount: props.todos?.length ?? 0,
+          modelLabel: sessionModel.modelLabel, threadTitle: snapshot?.session.title ?? "Focused thread",
+          selectedModel: sessionModel.selectedModel, variant: sessionModel.modelVariant, historyComplete: hasFullHistory,
+          resolveAvailability: props.resolveModelAvailability, onCopyThread: handleCopyTranscript,
+          waitingOn: props.activePermission ? "Permission" : props.activeQuestion ? "Your answer" : attachmentsUploading ? "Attachment upload" : preparingCloudTools ? "Connected tools" : sending ? "Send acknowledgement" : snapshotQuery.isFetching || openingHistory.openingLoading ? "Session history" : liveStatus.type === "retry" ? "Retry backoff" : liveStatus.type === "busy" ? "Assistant" : "Nothing",
+          activity: [
+            { label: "Conversation history", state: snapshotQuery.isError || openingHistory.openingError ? "Failed" : snapshotQuery.isFetching || openingHistory.openingLoading || openingHistory.pages.loading ? "Loading" : "Loaded" },
+            { label: "Attachments", state: attachmentsUploading ? "Uploading" : "Idle" },
+            { label: "Connected tools", state: props.cloudMcpSubmissionState.status === "repairing" ? "Reconnecting" : props.cloudMcpSubmissionState.status === "checking" ? "Checking" : props.cloudMcpSubmissionState.status === "failed" ? "Failed" : "Ready" },
+            { label: "Prompt send", state: sending ? "Sending" : "Idle" },
+            { label: "Assistant", state: liveStatus.type === "busy" ? "Running" : liveStatus.type === "retry" ? "Waiting to retry" : "Idle" },
+            { label: "Queued messages", state: queuedItems.length > 0 ? `${queuedItems.length} waiting` : "Empty" },
+            { label: "Your input", state: props.activePermission ? "Permission required" : props.activeQuestion ? "Answer required" : "None" },
+          ],
+        }}
       /> : null}
     </div>
     </DevProfiler>

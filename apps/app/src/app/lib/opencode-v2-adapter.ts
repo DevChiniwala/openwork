@@ -257,6 +257,8 @@ export type V2MappedMessage = {
     modelID?: string;
     providerID?: string;
     resolvedModel?: { id: string; providerID?: string; name?: string };
+    tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } };
+    cost?: number;
   };
   parts: Part[];
 };
@@ -840,6 +842,23 @@ function mapV2ReplyModel(value: Record<string, unknown>) {
   };
 }
 
+function mapV2ReplyUsage(value: Record<string, unknown>) {
+  const tokens = readRecord(value, "tokens");
+  const cache = readRecord(tokens, "cache");
+  const number = (record: unknown, key: string) => {
+    const result = readNumber(record, key);
+    return result !== undefined && Number.isFinite(result) && result >= 0 ? result : undefined;
+  };
+  const cost = number(value, "cost");
+  // Preserve missing counters as unknown. A missing measurement is not zero.
+  return {
+    ...(tokens ? { tokens: { input: number(tokens, "input"), output: number(tokens, "output"),
+      reasoning: number(tokens, "reasoning"), ...(cache ? { cache: { read: number(cache, "read"), write: number(cache, "write") } } : {}),
+    } } : {}),
+    ...(cost === undefined ? {} : { cost }),
+  };
+}
+
 /**
  * A native user turn stores the whole prompt string. Return the parts v1 keeps
  * for the same send: the words, pasted text marked as pasted, and hidden
@@ -928,6 +947,7 @@ function mapV2Message(
         ...(completed === undefined ? {} : { completed }),
       },
       ...(role === "assistant" ? mapV2ReplyModel(value) : {}),
+      ...(role === "assistant" ? mapV2ReplyUsage(value) : {}),
       ...(role === "assistant" && error
         ? { error: mapV2SessionError(error) }
         : {}),
