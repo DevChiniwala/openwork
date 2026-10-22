@@ -232,6 +232,12 @@ export function canReturnAfterSignIn(target: SignInReturnTarget | null): target 
   return Boolean(target && target.signedInAt !== null && !target.routed);
 }
 
+/** A delayed auth redirect cannot replay an already returned or replaced attempt. */
+export function shouldHandleSignInReturnAttempt(attempt: SignInReturnTarget | null, current: SignInReturnTarget | null): boolean {
+  if (!attempt) return current === null;
+  return Boolean(current && current.startedAt === attempt.startedAt && !current.routed);
+}
+
 export type PostHandoffRoute =
   | { kind: "onboarding"; path: "/onboarding" }
   | { kind: "return"; path: string }

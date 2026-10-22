@@ -55,7 +55,7 @@ import { SettingsRoute } from "./settings-route";
 import { ShellConfigProvider } from "./shell-config";
 import { WelcomeRoute } from "./welcome-route";
 import { readOrgSelectionPending } from "../../app/lib/den-sign-in-intent";
-import { readSignInReturnTarget, resolvePostHandoffRoute } from "../../app/lib/den-sign-in-return";
+import { readSignInReturnTarget, resolvePostHandoffRoute, shouldHandleSignInReturnAttempt } from "../../app/lib/den-sign-in-return";
 import { completeSignInReturn } from "../domains/cloud/sign-in-return";
 import {
   resolveDenSigninRedirect,
@@ -164,6 +164,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
     const handler = (event: WindowEventMap[typeof denSessionUpdatedEvent]) => {
       if (event.detail?.status !== "success") return;
       const signInLocation = locationRef.current;
+      const signInAttempt = readSignInReturnTarget();
       let attempts = 0;
       const check = () => {
         const currentLocation = locationRef.current;
@@ -172,6 +173,11 @@ function DenSigninGate({ children }: DenSigninGateProps) {
           || currentLocation.search !== signInLocation.search
           || currentLocation.hash !== signInLocation.hash
         ) return;
+        const target = readSignInReturnTarget();
+        // Onboarding can already have returned to the very same URL before
+        // this delayed check runs. Consuming the target is not a new sign-in
+        // without a target: never bounce that conversation to the session root.
+        if (!shouldHandleSignInReturnAttempt(signInAttempt, target)) return;
         attempts++;
         const settings = readDenSettings();
         // Desktop-initiated sign-in with the choice deliberately open: the org
@@ -183,7 +189,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
           hasToken: Boolean(settings.authToken?.trim()),
           activeOrgId: settings.activeOrgId,
           orgSelectionPending: readOrgSelectionPending().pending,
-          target: readSignInReturnTarget(),
+          target,
         });
         if (route) {
           if (route.kind !== "return" || !completeSignInReturn(navigate)) {

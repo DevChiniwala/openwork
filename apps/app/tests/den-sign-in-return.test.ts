@@ -21,6 +21,7 @@ import {
   recordSignInReturnTarget,
   resolvePostHandoffRoute,
   sessionRouteIds,
+  shouldHandleSignInReturnAttempt,
   type SignInReturnStorage,
 } from "../src/app/lib/den-sign-in-return";
 import { openAutoSignIn } from "../src/react-app/domains/cloud/auto-access-ui";
@@ -140,6 +141,21 @@ describe("where a successful handoff lands", () => {
     expect(resolvePostHandoffRoute({ hasToken: true, activeOrgId: "org-a", orgSelectionPending: false, target: expired })).toEqual({ kind: "default", path: "/session" });
     const unfinished = recordSignInReturnTarget({ path: conversation }, T0, storage);
     expect(resolvePostHandoffRoute({ hasToken: true, activeOrgId: "org-a", orgSelectionPending: false, target: unfinished })).toEqual({ kind: "default", path: "/session" });
+  });
+
+  test("a delayed success redirect cannot replay onboarding's return or a superseded attempt", () => {
+    const storage = memoryStorage();
+    const attempt = signedIn(storage);
+    expect(shouldHandleSignInReturnAttempt(attempt, readSignInReturnTarget(T0 + 2, storage))).toBe(true);
+    claimSignInReturnRoute(T0 + 3, storage);
+    expect(shouldHandleSignInReturnAttempt(attempt, readSignInReturnTarget(T0 + 4, storage))).toBe(false);
+    claimSignInReturnDraft(T0 + 5, storage);
+    expect(shouldHandleSignInReturnAttempt(attempt, readSignInReturnTarget(T0 + 6, storage))).toBe(false);
+    const newer = recordSignInReturnTarget({ path: conversation }, T0 + 7, storage);
+    expect(shouldHandleSignInReturnAttempt(attempt, newer)).toBe(false);
+    expect(shouldHandleSignInReturnAttempt(null, newer)).toBe(false);
+    // A sign-in with no return attempt still uses the existing default landing.
+    expect(shouldHandleSignInReturnAttempt(null, null)).toBe(true);
   });
 
   test("waits while the organization is still resolving", () => {
