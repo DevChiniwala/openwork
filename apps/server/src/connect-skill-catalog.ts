@@ -15,6 +15,8 @@ const OPENWORK_CLOUD_MCP_NAME = "openwork-cloud";
 const SKILL_INDEX_URI = "skill://index.json";
 const SKILL_INDEX_SCHEMA = "https://schemas.agentskills.io/discovery/0.2.0/schema.json";
 const CATALOG_CACHE_TTL_MS = 30_000;
+const SKILL_BODY_CACHE_MAX = 512;
+const SKILL_BODY_RETRY_MS = 10 * 60_000;
 
 const skillIndexSchema = z.object({
   $schema: z.literal(SKILL_INDEX_SCHEMA),
@@ -42,6 +44,21 @@ export type OpenWorkConnectSkill = z.infer<typeof skillIndexSchema>["skills"][nu
 export type OpenWorkConnectSkillIndex = { skills: OpenWorkConnectSkill[]; delivery?: "native" };
 type CloudIndex = { cloud: Record<string, unknown>; index: OpenWorkConnectSkillIndex };
 const catalogCache = new Map<string, { expiresAt: number; value: Promise<OpenWorkConnectSkillIndex | null> }>();
+// SKILL.md bodies by the digest Den published for them. A digest names exact
+// bytes, so a body is fetched again only when Den publishes a new digest.
+const skillBodies = new Map<string, string>();
+// Digests whose read failed or did not match, and when to try them again.
+const skillBodyRetryAt = new Map<string, number>();
+
+function sha256Digest(text: string): string {
+  return `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+}
+
+function rememberSkillBody(digest: string, body: string): void {
+  skillBodies.delete(digest);
+  skillBodies.set(digest, body);
+  if (skillBodies.size > SKILL_BODY_CACHE_MAX) skillBodies.delete(skillBodies.keys().next().value!);
+}
 
 /**
  * Read the standards-shaped skill index through one openwork-cloud config.
@@ -135,7 +152,9 @@ export async function readOpenWorkConnectSkillCatalog(
 /**
  * Read one listed skill's SKILL.md through the same working openwork-cloud
  * config. Only URLs in the current index are read, so this cannot be used to
- * fetch arbitrary resources. Den rechecks access on every read.
+ * fetch arbitrary resources. A body is served from memory only while the
+ * current index still lists the skill with the same digest; Den rechecks
+ * access on every read it serves.
  */
 export async function readOpenWorkConnectSkillContent(
   config: ServerConfig,
@@ -144,8 +163,24 @@ export async function readOpenWorkConnectSkillContent(
 ): Promise<string | null> {
   try {
     const working = await readWorkingCloudIndex(config, fetcher);
-    if (!working || !working.index.skills.some((skill) => skill.url === url)) return null;
-    return await readMcpResourceText({ config: working.cloud, fetcher, uri: url, clientName: "openwork-server-skill-content" });
+    const listed = working?.index.skills.find((skill) => skill.url === url);
+    if (!working || !listed) return null;
+    const digest = listed.digest;
+    if (digest) {
+      const cached = skillBodies.get(digest);
+      if (cached !== undefined) return cached;
+      if ((skillBodyRetryAt.get(digest) ?? 0) > Date.now()) return null;
+    }
+    const body = await readMcpResourceText({ config: working.cloud, fetcher, uri: url, clientName: "openwork-server-skill-content" });
+    if (digest) {
+      if (body !== null && sha256Digest(body) === digest) {
+        skillBodyRetryAt.delete(digest);
+        rememberSkillBody(digest, body);
+      } else {
+        skillBodyRetryAt.set(digest, Date.now() + SKILL_BODY_RETRY_MS);
+      }
+    }
+    return body;
   } catch {
     return null;
   }
@@ -153,6 +188,8 @@ export async function readOpenWorkConnectSkillContent(
 
 export function resetOpenWorkConnectSkillCatalogCacheForTests(): void {
   catalogCache.clear();
+  skillBodies.clear();
+  skillBodyRetryAt.clear();
 }
 
 type InjectedMarketplaceSkill = {

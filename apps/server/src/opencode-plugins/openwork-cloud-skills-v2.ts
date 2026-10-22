@@ -158,10 +158,12 @@ export async function registerCloudSkillDiscovery(context: CloudSkillContext) {
   };
 
   const loadContents = async (catalog: Catalog) => {
-    const wanted = new Set(catalog.skills.flatMap(skill => skill.digest && !skill.setup ? [skill.digest] : []));
+    // Only skills that fit the native listing are registered, so only their bodies are read.
+    const listed = new Set(nativeSkills(catalog, contents).map(skill => skill.id));
+    const wanted = new Set(catalog.skills.flatMap(skill => skill.digest && !skill.setup && listed.has(skillId(skill)) ? [skill.digest] : []));
     for (const digest of contents.keys()) if (!wanted.has(digest)) contents.delete(digest);
     for (const skill of catalog.skills) {
-      if (closed || !skill.digest || !skill.url || skill.setup || contents.has(skill.digest)) continue;
+      if (closed || !skill.digest || !skill.url || skill.setup || !wanted.has(skill.digest) || contents.has(skill.digest)) continue;
       const result = z.object({ content: z.string() }).safeParse(await call("openwork_skill_read", { url: skill.url }).catch(() => null));
       // Only a body that matches Den's published digest is used.
       if (result.success && sha256Digest(result.data.content) === skill.digest) contents.set(skill.digest, result.data.content);
