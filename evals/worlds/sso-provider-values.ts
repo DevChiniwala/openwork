@@ -28,7 +28,7 @@ async function ssoWorld(seed: Seed, saved: boolean) {
   const cookies = login.headers.getSetCookie();
   const cookie = cookies.map(value => value.split(";")[0]).join("; ");
   const headers = { cookie, authorization: `Bearer ${den.admin.token}`, "content-type": "application/json" };
-  const cert = execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/dev/null", "-out", "/dev/stdout", "-days", "1", "-subj", "/CN=idp.example.test"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const cert = execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "/dev/null", "-out", "-", "-days", "1", "-subj", "/CN=idp.example.test"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   let savedConnection: ReturnType<typeof ssoConnection> = null;
   if (saved) {
     const registered = await seed.api(den.admin, "/v1/sso/saml", { method: "POST", headers, body: JSON.stringify({
