@@ -10,6 +10,7 @@ import { mergeReplyMetadata, replyModelFromInfo } from "./reply-model";
 import { closeSessionBrowserTabs } from "@/app/lib/desktop";
 import { captureAnalyticsEvent, takeTaskRunStart } from "@/app/lib/analytics";
 import { trackTaskCompleted, trackTaskFailed } from "@/app/lib/den-telemetry";
+import { noteActivationRunCompleted } from "../../cloud/activation/use-activation";
 import { observeModelsTaskEvent } from "@/app/lib/models-task-analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { createClientV2, isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
@@ -1869,6 +1870,7 @@ function applySessionRunStatus(
         duration_ms: Date.now() - runStartedAt,
       });
       trackTaskCompleted(sessionId, Date.now() - runStartedAt);
+      noteActivationRunCompleted(sessionId, Date.now() - runStartedAt);
       notifyDesktopEvent({ type: "task.completed", sessionId });
       entry.titleRecovery?.observe(sessionId);
     }

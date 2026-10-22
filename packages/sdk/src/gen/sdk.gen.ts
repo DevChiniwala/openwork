@@ -195,6 +195,8 @@ import type {
   GetMcpAdminWellKnownOauthProtectedResourceResponses,
   GetMcpAgentWellKnownOauthProtectedResourceResponses,
   GetMcpWellKnownOauthProtectedResourceResponses,
+  GetMyActivationErrors,
+  GetMyActivationResponses,
   GetOfficeFileContentsErrors,
   GetOfficeFileContentsResponses,
   GetOfficeFileInfoErrors,
@@ -583,6 +585,8 @@ import type {
   GetWellKnownOauthProtectedResourceResponses,
   GetWellKnownOpenidConfigurationApiAuthResponses,
   GetWellKnownOpenidConfigurationResponses,
+  GetWorkbotActivationErrors,
+  GetWorkbotActivationResponses,
   GetWorkbotModelRecoveryErrors,
   GetWorkbotModelRecoveryResponses,
   GetWorkbotSessionErrors,
@@ -1059,6 +1063,10 @@ import type {
   ReadGoogleDocumentTextResponses,
   ReadGoogleDriveDocumentContentErrors,
   ReadGoogleDriveDocumentContentResponses,
+  RecordMyActivationEventErrors,
+  RecordMyActivationEventResponses,
+  RecordWorkbotActivationEventErrors,
+  RecordWorkbotActivationEventResponses,
   RecordWorkbotTelemetryErrors,
   RecordWorkbotTelemetryResponses,
   RemoteSessionStatusRequest,
@@ -1314,6 +1322,7 @@ export class DenClient extends HeyApiClient {
         remoteComputers?: boolean | null;
         remoteSessionSubagents?: boolean | null;
         desktopSignInReturn?: boolean | null;
+        activationChecklist?: boolean | null;
         connectStandardTools?: boolean | null;
         teamPlan?: boolean | null;
         selfServeEnterprise?: boolean | null;
@@ -3123,6 +3132,57 @@ export class DenClient extends HeyApiClient {
       url: "/v1/skill-hubs/{skillHubId}/access/{accessId}",
       ...options,
       ...params,
+    });
+  }
+
+  /**
+   * Get my Get set up checklist
+   *
+   * The six activation steps for the signed-in member in the active organization (first answer, invite a teammate, use a skill, set up a model provider, share a provider on AI Gateway, connect an app), each checked off only from what actually happened, with who can do a step the caller cannot. Off unless the activationChecklist feature is on.
+   */
+  public getMyActivation<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GetMyActivationResponses, GetMyActivationErrors, ThrowOnError>({
+      url: "/v1/me/activation",
+      ...options,
+    });
+  }
+
+  /**
+   * Report a Get set up step this app observed
+   *
+   * Records a step only the client can see (its first answer, a provider key saved on the device, a local skill run) or that the member hid the checklist. Repeats are ignored. Returns the updated checklist. Off unless the activationChecklist feature is on.
+   */
+  public recordMyActivationEvent<ThrowOnError extends boolean = false>(
+    parameters: {
+      step: "first_response" | "use_skill" | "own_provider" | "dismiss";
+      durationMs?: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "step" },
+            { in: "body", key: "durationMs" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      RecordMyActivationEventResponses,
+      RecordMyActivationEventErrors,
+      ThrowOnError
+    >({
+      url: "/v1/me/activation/events",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 
@@ -17134,6 +17194,58 @@ export class DenClient extends HeyApiClient {
     return (options?.client ?? this.client).get<GetWorkbotSessionResponses, GetWorkbotSessionErrors, ThrowOnError>({
       url: "/v1/workbot/session",
       ...options,
+    });
+  }
+
+  /**
+   * The member's Get set up checklist, for Workbot
+   *
+   * For the Workbot app only. With a live Workbot member token (read scope), returns the same six activation steps as GET /v1/me/activation for the token's organization and member. Off unless the activationChecklist feature is on.
+   */
+  public getWorkbotActivation<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetWorkbotActivationResponses,
+      GetWorkbotActivationErrors,
+      ThrowOnError
+    >({ url: "/v1/workbot/activation", ...options });
+  }
+
+  /**
+   * Report a Get set up step Workbot observed
+   *
+   * For the Workbot app only. With a live Workbot member token (read and write scopes), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.
+   */
+  public recordWorkbotActivationEvent<ThrowOnError extends boolean = false>(
+    parameters: {
+      step: "first_response" | "use_skill" | "own_provider" | "dismiss";
+      durationMs?: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "step" },
+            { in: "body", key: "durationMs" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      RecordWorkbotActivationEventResponses,
+      RecordWorkbotActivationEventErrors,
+      ThrowOnError
+    >({
+      url: "/v1/workbot/activation/events",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 

@@ -101,6 +101,7 @@ import {
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import { AccountStatusMenu, type AccountStatusMenuProps } from "./account-status-menu";
+import { ActivationCard } from "../../cloud/activation/activation-card";
 import { usePlatform } from "../../../kernel/platform";
 import {
   sessionNumberAriaKeyShortcut,
@@ -894,6 +895,7 @@ export function AppSidebar(props: AppSidebarProps) {
         </SidebarReorderScope>
 
         <SidebarFooter className="border-t border-sidebar-border/60 p-1.5 pe-0">
+          <ActivationCard onOpenExtensions={props.onOpenExtensions} />
           <AccountStatusMenu {...props.status} onOpenAccountSettings={props.onOpenAccountSettings} />
         </SidebarFooter>
 

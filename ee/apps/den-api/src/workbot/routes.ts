@@ -37,6 +37,9 @@ import { workbotConnectRequestSchema } from "./connect-return-schema.js"
 import { resolvePublicApiBaseUrl } from "../capability-sources/generic-oauth.js"
 import { env } from "../env.js"
 import { getNativeOAuthProvider } from "../capability-sources/provider-registry.js"
+import { activationEventRequestSchema } from "@openwork/types/den/activation"
+import { activationResponseSchema } from "../routes/me/activation.js"
+import { readActivationState, recordActivationEvent } from "../activation.js"
 
 /**
  * What Den tells the Workbot app (ee/apps/workbot) about a signed-in person. Workbot calls these server-to-server
@@ -69,6 +72,8 @@ const sessionSchema = z.object({
   /** Offers to open mentioned documents and keeps the chat beside them: on with the workspace assistant. */
   guidedNavigation: z.boolean().optional(),
   usageRecovery: z.boolean().optional(),
+  /** The Get set up checklist (`GET /v1/workbot/activation`); older Dens omit it: off. */
+  activationChecklist: z.boolean().optional(),
   /** The person can start side chats next to their main chat (while Workbot is on). */
   sideChats: z.boolean(),
   /**
@@ -389,12 +394,66 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         workspaceAssistant: features.workbotWorkspaceAssistant,
         guidedNavigation: features.workbotWorkspaceAssistant,
         usageRecovery: features.workbotUsageRecovery,
+        activationChecklist: features.activationChecklist,
         sideChats: true,
         model,
         gatewayModels: true,
         stepTurns: true,
         sessionCells: true,
       })
+    },
+  )
+
+  /** The member's Get set up checklist, for Workbot's header. Same facts and rules as `GET /v1/me/activation`. */
+  const activationFor = async (c: Context, write: boolean) => {
+    c.header("Cache-Control", "no-store")
+    const resolved = await resolve(c.req.raw.headers)
+    if (resolved instanceof Response) return resolved
+    const auditBlocked = await attributeWorkbot(c, resolved)
+    if (auditBlocked) return auditBlocked
+    if (!resolved.scopes.has(DEN_MCP_READ_SCOPE) || (write && !resolved.scopes.has(DEN_MCP_WRITE_SCOPE))) return c.json({ error: "insufficient_scope" }, 403)
+    const organizationContext = await getOrganizationContextForUser({ userId: normalizeDenTypeId("user", resolved.principal.userId), organizationId: resolved.organization.id })
+    if (!organizationContext) return c.json({ error: "membership_revoked", message: "This account is no longer a member of the workspace." }, 401)
+    if (!organizationContext.features.activationChecklist) return c.json({ error: "feature_disabled", feature: "activationChecklist" }, 404)
+    const memberTeams = await listTeamsForMember({ organizationId: resolved.organization.id, memberId: normalizeDenTypeId("member", resolved.memberId) })
+    return { organizationContext, memberTeams, resolved }
+  }
+  const activationResponses = {
+    401: jsonResponse("The token or membership is invalid.", unauthorizedSchema),
+    403: jsonResponse("The sign-in grant does not allow this.", z.object({ error: z.literal("insufficient_scope") })),
+    404: jsonResponse("The checklist is off for this workspace.", z.object({ error: z.literal("feature_disabled"), feature: z.string() })),
+  }
+  app.get(
+    "/v1/workbot/activation",
+    describeWorkbotRoute({
+      tags: ["Workbot"], operationId: "getWorkbotActivation", "x-mcp": false,
+      summary: "The member's Get set up checklist, for Workbot",
+      description: "For the Workbot app only. With a live Workbot member token (read scope), returns the same six activation steps as GET /v1/me/activation for the token's organization and member. Off unless the activationChecklist feature is on.",
+      responses: { 200: jsonResponse("The member's checklist.", activationResponseSchema), ...activationResponses },
+    }),
+    tokenRoute,
+    async (c) => {
+      const context = await activationFor(c, false)
+      if (context instanceof Response) return context
+      return c.json(await readActivationState(context))
+    },
+  )
+  app.post(
+    "/v1/workbot/activation/events",
+    describeWorkbotRoute({
+      tags: ["Workbot"], operationId: "recordWorkbotActivationEvent", "x-mcp": false,
+      summary: "Report a Get set up step Workbot observed",
+      description: "For the Workbot app only. With a live Workbot member token (read and write scopes), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.",
+      responses: { 200: jsonResponse("The updated checklist.", activationResponseSchema), 400: jsonResponse("The event is not one Workbot may report.", signedOutSchema), ...activationResponses },
+    }),
+    tokenRoute,
+    bodyLimit({ maxSize: 1024 }),
+    jsonValidator(activationEventRequestSchema),
+    async (c) => {
+      const context = await activationFor(c, true)
+      if (context instanceof Response) return context
+      await recordActivationEvent({ organizationId: context.resolved.organization.id, memberId: context.resolved.memberId }, c.req.valid("json"), "workbot")
+      return c.json(await readActivationState(context))
     },
   )
 

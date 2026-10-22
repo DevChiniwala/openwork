@@ -204,6 +204,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  activationChecklist: {
+    label: "Get set up checklist",
+    description: "After their first answer, people see a Get set up checklist in Desktop and Workbot: invite a teammate, use a skill, add a model provider, share one on AI Gateway and connect an app, each checked off once it works.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   connectStandardTools: {
     label: "Connect: standard tools",
     description: "Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.",

@@ -41,6 +41,8 @@ export type WorkbotHost = {
   guidedNavigation?: boolean
   /** Signed-in model-limit recovery; never offers anonymous access or starts a payment. */
   usageRecovery?: { denUrl: string; organizationId: string }
+  /** The Get set up checklist in the header, and the Den pages its steps open. Omitted means off. */
+  activation?: { denUrl: string; organizationId: string }
   /** The organization runs Automations in the cloud, so the Calendar can create them. Off when unset. */
   canSchedule?: boolean
   /** Where the person connects their own Google or Microsoft account, for the Calendar's connect links. */

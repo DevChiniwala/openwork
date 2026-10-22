@@ -4867,6 +4867,7 @@
               "remoteComputers",
               "remoteSessionSubagents",
               "desktopSignInReturn",
+              "activationChecklist",
               "connectStandardTools",
               "teamPlan",
               "selfServeEnterprise"
@@ -5107,6 +5108,9 @@
                     "desktopSignInReturn": {
                       "type": "boolean"
                     },
+                    "activationChecklist": {
+                      "type": "boolean"
+                    },
                     "connectStandardTools": {
                       "type": "boolean"
                     },
@@ -5145,6 +5149,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise",
@@ -6351,6 +6356,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "activationChecklist": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "connectStandardTools": {
                       "type": "object",
                       "properties": {
@@ -6545,6 +6607,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise"
@@ -6980,6 +7043,9 @@
                     "desktopSignInReturn": {
                       "type": "boolean"
                     },
+                    "activationChecklist": {
+                      "type": "boolean"
+                    },
                     "connectStandardTools": {
                       "type": "boolean"
                     },
@@ -7018,6 +7084,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise",
@@ -8224,6 +8291,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "activationChecklist": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "connectStandardTools": {
                       "type": "object",
                       "properties": {
@@ -8418,6 +8542,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise"
@@ -8887,6 +9012,68 @@
         "required": [
           "error",
           "message"
+        ]
+      },
+      "ActivationChecklist": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "first_response",
+                    "invite_teammate",
+                    "use_skill",
+                    "own_provider",
+                    "gateway_provider",
+                    "connector"
+                  ]
+                },
+                "done": {
+                  "type": "boolean"
+                },
+                "detail": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "lockedReason": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "id",
+                "done"
+              ]
+            }
+          },
+          "dismissed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "steps",
+          "dismissed"
+        ]
+      },
+      "ActivationChecklistDisabled": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "const": "feature_disabled"
+          },
+          "feature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "feature"
         ]
       },
       "CurrentUserResponse": {
@@ -32582,6 +32769,9 @@
           "usageRecovery": {
             "type": "boolean"
           },
+          "activationChecklist": {
+            "type": "boolean"
+          },
           "sideChats": {
             "type": "boolean"
           },
@@ -34859,6 +35049,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "activationChecklist": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -35053,6 +35300,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise"
@@ -36349,6 +36597,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "activationChecklist": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -36543,6 +36848,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise"
@@ -36808,6 +37114,16 @@
                         ]
                       },
                       "desktopSignInReturn": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "activationChecklist": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -40430,6 +40746,9 @@
                         "desktopSignInReturn": {
                           "type": "boolean"
                         },
+                        "activationChecklist": {
+                          "type": "boolean"
+                        },
                         "connectStandardTools": {
                           "type": "boolean"
                         },
@@ -40468,6 +40787,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
@@ -41674,6 +41994,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "activationChecklist": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -41868,6 +42245,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise"
@@ -42052,6 +42430,9 @@
                         "desktopSignInReturn": {
                           "type": "boolean"
                         },
+                        "activationChecklist": {
+                          "type": "boolean"
+                        },
                         "connectStandardTools": {
                           "type": "boolean"
                         },
@@ -42090,6 +42471,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
@@ -43296,6 +43678,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "activationChecklist": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectStandardTools": {
                           "type": "object",
                           "properties": {
@@ -43490,6 +43929,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise"
@@ -46393,6 +46833,148 @@
             "in": "path",
             "name": "accessId",
             "required": true
+          }
+        ]
+      }
+    },
+    "/v1/me/activation": {
+      "get": {
+        "operationId": "getMyActivation",
+        "tags": [
+          "Users"
+        ],
+        "x-mcp": false,
+        "summary": "Get my Get set up checklist",
+        "description": "The six activation steps for the signed-in member in the active organization (first answer, invite a teammate, use a skill, set up a model provider, share a provider on AI Gateway, connect an app), each checked off only from what actually happened, with who can do a step the caller cannot. Off unless the activationChecklist feature is on.",
+        "responses": {
+          "200": {
+            "description": "The member's checklist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationChecklist"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The checklist is off for this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationChecklistDisabled"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/me/activation/events": {
+      "post": {
+        "operationId": "recordMyActivationEvent",
+        "tags": [
+          "Users"
+        ],
+        "x-mcp": false,
+        "summary": "Report a Get set up step this app observed",
+        "description": "Records a step only the client can see (its first answer, a provider key saved on the device, a local skill run) or that the member hid the checklist. Repeats are ignored. Returns the updated checklist. Off unless the activationChecklist feature is on.",
+        "responses": {
+          "200": {
+            "description": "The updated checklist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationChecklist"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The event is not one a client may report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The checklist is off for this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationChecklistDisabled"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "enum": [
+                      "first_response",
+                      "use_skill",
+                      "own_provider",
+                      "dismiss"
+                    ]
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 86400000
+                  }
+                },
+                "required": [
+                  "step"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
           }
         ]
       }
@@ -114476,6 +115058,223 @@
                 "schema": {
                   "$ref": "#/components/schemas/UnauthorizedError"
                 }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workbot/activation": {
+      "get": {
+        "operationId": "getWorkbotActivation",
+        "tags": [
+          "Workbot"
+        ],
+        "x-mcp": false,
+        "summary": "The member's Get set up checklist, for Workbot",
+        "description": "For the Workbot app only. With a live Workbot member token (read scope), returns the same six activation steps as GET /v1/me/activation for the token's organization and member. Off unless the activationChecklist feature is on.",
+        "responses": {
+          "200": {
+            "description": "The member's checklist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationChecklist"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The token or membership is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The sign-in grant does not allow this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "insufficient_scope"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The checklist is off for this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "feature_disabled"
+                    },
+                    "feature": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "feature"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workbot/activation/events": {
+      "post": {
+        "operationId": "recordWorkbotActivationEvent",
+        "tags": [
+          "Workbot"
+        ],
+        "x-mcp": false,
+        "summary": "Report a Get set up step Workbot observed",
+        "description": "For the Workbot app only. With a live Workbot member token (read and write scopes), records the member's first Workbot answer or that they hid the checklist, then returns the updated checklist. Repeats are ignored. Off unless the activationChecklist feature is on.",
+        "responses": {
+          "200": {
+            "description": "The updated checklist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationChecklist"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The event is not one Workbot may report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The token or membership is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The sign-in grant does not allow this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "insufficient_scope"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The checklist is off for this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "const": "feature_disabled"
+                    },
+                    "feature": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "feature"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "enum": [
+                      "first_response",
+                      "use_skill",
+                      "own_provider",
+                      "dismiss"
+                    ]
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 86400000
+                  }
+                },
+                "required": [
+                  "step"
+                ],
+                "additionalProperties": false
               }
             }
           }

@@ -228,6 +228,16 @@
               ],
               "description": "Desktop: sign-in returns you to the same task: Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact. Renders DEN_FEATURE_DESKTOP_SIGN_IN_RETURN."
             },
+            "activationChecklist": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Get set up checklist: After their first answer, people see a Get set up checklist in Desktop and Workbot: invite a teammate, use a skill, add a model provider, share one on AI Gateway and connect an app, each checked off once it works. Renders DEN_FEATURE_ACTIVATION_CHECKLIST."
+            },
             "connectStandardTools": {
               "enum": [
                 "",

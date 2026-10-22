@@ -1188,6 +1188,7 @@ export type AdminFeature = {
     | "remoteComputers"
     | "remoteSessionSubagents"
     | "desktopSignInReturn"
+    | "activationChecklist"
     | "connectStandardTools"
     | "teamPlan"
     | "selfServeEnterprise";
@@ -1250,6 +1251,7 @@ export type AdminOrganizationsPageResponse = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
       selfServeEnterprise: boolean;
@@ -1453,6 +1455,15 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      activationChecklist: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1564,6 +1575,7 @@ export type AdminOverviewResponse = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
       selfServeEnterprise: boolean;
@@ -1767,6 +1779,15 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      activationChecklist: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1897,6 +1918,21 @@ export type RemovedMemoryGone = {
 export type DeprecatedSkillHubError = {
   error: "deprecated";
   message: "Skill hubs are deprecated. Use plugins instead.";
+};
+
+export type ActivationChecklist = {
+  steps: Array<{
+    id: "first_response" | "invite_teammate" | "use_skill" | "own_provider" | "gateway_provider" | "connector";
+    done: boolean;
+    detail?: string;
+    lockedReason?: string;
+  }>;
+  dismissed: boolean;
+};
+
+export type ActivationChecklistDisabled = {
+  error: "feature_disabled";
+  feature: string;
 };
 
 export type CurrentUserResponse = {
@@ -7573,6 +7609,7 @@ export type WorkbotSession = {
   workspaceAssistant?: boolean;
   guidedNavigation?: boolean;
   usageRecovery?: boolean;
+  activationChecklist?: boolean;
   sideChats: boolean;
   model?: string | null;
   verifyModel?: boolean;
@@ -8105,6 +8142,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      activationChecklist: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8163,6 +8209,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       remoteComputers?: boolean | null;
       remoteSessionSubagents?: boolean | null;
       desktopSignInReturn?: boolean | null;
+      activationChecklist?: boolean | null;
       connectStandardTools?: boolean | null;
       teamPlan?: boolean | null;
       selfServeEnterprise?: boolean | null;
@@ -8385,6 +8432,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      activationChecklist: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9866,6 +9922,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
       selfServeEnterprise: boolean;
@@ -10061,6 +10118,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      activationChecklist: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10168,6 +10234,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
       selfServeEnterprise: boolean;
@@ -10363,6 +10430,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      activationChecklist: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -11873,6 +11949,71 @@ export type DeleteV1SkillHubsBySkillHubIdAccessByAccessIdErrors = {
 
 export type DeleteV1SkillHubsBySkillHubIdAccessByAccessIdError =
   DeleteV1SkillHubsBySkillHubIdAccessByAccessIdErrors[keyof DeleteV1SkillHubsBySkillHubIdAccessByAccessIdErrors];
+
+export type GetMyActivationData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/me/activation";
+};
+
+export type GetMyActivationErrors = {
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * The checklist is off for this organization.
+   */
+  404: ActivationChecklistDisabled;
+};
+
+export type GetMyActivationError = GetMyActivationErrors[keyof GetMyActivationErrors];
+
+export type GetMyActivationResponses = {
+  /**
+   * The member's checklist.
+   */
+  200: ActivationChecklist;
+};
+
+export type GetMyActivationResponse = GetMyActivationResponses[keyof GetMyActivationResponses];
+
+export type RecordMyActivationEventData = {
+  body: {
+    step: "first_response" | "use_skill" | "own_provider" | "dismiss";
+    durationMs?: number;
+  };
+  path?: never;
+  query?: never;
+  url: "/v1/me/activation/events";
+};
+
+export type RecordMyActivationEventErrors = {
+  /**
+   * The event is not one a client may report.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be signed in.
+   */
+  401: UnauthorizedError;
+  /**
+   * The checklist is off for this organization.
+   */
+  404: ActivationChecklistDisabled;
+};
+
+export type RecordMyActivationEventError = RecordMyActivationEventErrors[keyof RecordMyActivationEventErrors];
+
+export type RecordMyActivationEventResponses = {
+  /**
+   * The updated checklist.
+   */
+  200: ActivationChecklist;
+};
+
+export type RecordMyActivationEventResponse = RecordMyActivationEventResponses[keyof RecordMyActivationEventResponses];
 
 export type GetV1MeData = {
   body?: never;
@@ -36681,6 +36822,94 @@ export type GetWorkbotSessionResponses = {
 };
 
 export type GetWorkbotSessionResponse = GetWorkbotSessionResponses[keyof GetWorkbotSessionResponses];
+
+export type GetWorkbotActivationData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/workbot/activation";
+};
+
+export type GetWorkbotActivationErrors = {
+  /**
+   * The token or membership is invalid.
+   */
+  401: UnauthorizedError;
+  /**
+   * The sign-in grant does not allow this.
+   */
+  403: {
+    error: "insufficient_scope";
+  };
+  /**
+   * The checklist is off for this workspace.
+   */
+  404: {
+    error: "feature_disabled";
+    feature: string;
+  };
+};
+
+export type GetWorkbotActivationError = GetWorkbotActivationErrors[keyof GetWorkbotActivationErrors];
+
+export type GetWorkbotActivationResponses = {
+  /**
+   * The member's checklist.
+   */
+  200: ActivationChecklist;
+};
+
+export type GetWorkbotActivationResponse = GetWorkbotActivationResponses[keyof GetWorkbotActivationResponses];
+
+export type RecordWorkbotActivationEventData = {
+  body: {
+    step: "first_response" | "use_skill" | "own_provider" | "dismiss";
+    durationMs?: number;
+  };
+  path?: never;
+  query?: never;
+  url: "/v1/workbot/activation/events";
+};
+
+export type RecordWorkbotActivationEventErrors = {
+  /**
+   * The event is not one Workbot may report.
+   */
+  400: {
+    error: string;
+    message?: string;
+  };
+  /**
+   * The token or membership is invalid.
+   */
+  401: UnauthorizedError;
+  /**
+   * The sign-in grant does not allow this.
+   */
+  403: {
+    error: "insufficient_scope";
+  };
+  /**
+   * The checklist is off for this workspace.
+   */
+  404: {
+    error: "feature_disabled";
+    feature: string;
+  };
+};
+
+export type RecordWorkbotActivationEventError =
+  RecordWorkbotActivationEventErrors[keyof RecordWorkbotActivationEventErrors];
+
+export type RecordWorkbotActivationEventResponses = {
+  /**
+   * The updated checklist.
+   */
+  200: ActivationChecklist;
+};
+
+export type RecordWorkbotActivationEventResponse =
+  RecordWorkbotActivationEventResponses[keyof RecordWorkbotActivationEventResponses];
 
 export type ListWorkbotConnectionsData = {
   body?: never;
