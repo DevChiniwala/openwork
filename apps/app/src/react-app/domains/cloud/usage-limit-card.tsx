@@ -92,7 +92,7 @@ export function UsageLimitLocked({ label, reason }: { label: string; reason: str
   return (
     <Tooltip>
       <TooltipTrigger render={
-        <Button size="sm" variant="outline" disabled focusableWhenDisabled data-testid="usage-limit-locked">
+        <Button size="sm" variant="outline" disabled focusableWhenDisabled data-testid="usage-limit-locked" className="text-muted-foreground">
           <LockKeyhole aria-hidden="true" className="size-3.5" />{label}<span className="sr-only">. {reason}</span>
         </Button>
       } />
