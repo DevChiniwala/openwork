@@ -227,6 +227,7 @@ export function AuditUsageFacts({ usage, captureControl }: { usage: AuditUsageRe
     { label: "Retained operations", value: usage.retainedOperations.toLocaleString() },
     { label: "Recorded events", value: usage.eventCount.toLocaleString() },
     { label: "Oldest available history", value: <AuditTime value={usage.oldestAvailableAt} /> },
+    { label: "Retention", value: policy ? `History is kept for ${policy.retentionDays} ${policy.retentionDays === 1 ? "day" : "days"}` : "Not configured" },
     { label: "Logical storage", value: `${usage.logicalBytes.toLocaleString()} bytes (not disk usage)` },
     // Retained operations, recorded events and logical storage are recomputed by a
     // daily refresh (den-audit-usage), not on every write.
@@ -240,15 +241,15 @@ export function AuditUsageFacts({ usage, captureControl }: { usage: AuditUsageRe
     { label: "Policy revision", value: policy?.revision ?? "Not configured" },
     { label: "Related-request window", value: policy ? `${policy.attachmentWindowSeconds} seconds` : "Not configured" },
     { label: "Billing", value: "Disabled" },
-    { label: "Cleanup", value: "Dry run only — no deletion" },
+    { label: "Cleanup", value: usage.cleanup === "age_based" && policy ? `Deletes history older than ${policy.retentionDays} ${policy.retentionDays === 1 ? "day" : "days"}` : "Off, nothing is deleted" },
     { label: "External drains", value: "Not configured" },
   ];
   const settingsRows = (rows: typeof facts) => rows.map(({ label, value }) => ({ label, value: <span className="block whitespace-normal break-words">{value}</span> }));
   return <div className="flex flex-col gap-3" data-testid="audit-compact-usage">
-    <DetailRows rows={settingsRows(facts.slice(0, 9))} />
+    <DetailRows rows={settingsRows(facts.slice(0, 10))} />
     <details className="group/audit-technical">
       <summary className={auditTechnicalSummaryClass}><AuditChevron technical />Technical details</summary>
-      <DetailRows rows={settingsRows([{ label: "Policy access", value: "Read only" }, ...facts.slice(9)])} />
+      <DetailRows rows={settingsRows([{ label: "Policy access", value: "Read only" }, ...facts.slice(10)])} />
     </details>
   </div>;
 }
