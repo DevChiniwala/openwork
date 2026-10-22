@@ -4,13 +4,13 @@ import { spawn as nativeSpawn } from "node:child_process";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { installProcessLauncher } from "../../packages/child-process/index.mjs";
-import { createManagedOpencodeV2Server, EngineV2StartupTimeoutError } from "../../apps/server/src/managed-opencode-v2.ts";
-import { orphanedPackagedSidecarPids } from "../../apps/desktop/electron/runtime.mjs";
-import { probeEngineV2Path, ENGINE_V2_VERSION_PROBE_TIMEOUT_MS } from "../../apps/server/src/engine-v2-version-probe.ts";
+import { installProcessLauncher } from "../../../packages/child-process/index.mjs";
+import { createManagedOpencodeV2Server, EngineV2StartupTimeoutError } from "../src/managed-opencode-v2.ts";
+import { orphanedPackagedSidecarPids } from "../../desktop/electron/runtime.mjs";
+import { probeEngineV2Path, ENGINE_V2_VERSION_PROBE_TIMEOUT_MS } from "../src/engine-v2-version-probe.ts";
 import { test } from "@openwork/testkit";
-import { createProcessLauncher } from "../../packages/child-process/client.mjs";
-import { windowsCleanupCandidates } from "../../packages/child-process/reaper.mjs";
+import { createProcessLauncher } from "../../../packages/child-process/client.mjs";
+import { windowsCleanupCandidates } from "../../../packages/child-process/reaper.mjs";
 
 function broker(delayMs = 0) {
   // A separate OS process matters for crash/reparenting proof. A worker thread
@@ -18,7 +18,7 @@ function broker(delayMs = 0) {
   const child = nativeSpawn(process.execPath, ["-e", `
     let receiver; const queued = [];
     process.on('message', value => receiver ? receiver(value) : queued.push(value));
-    import(${JSON.stringify(new URL("../../packages/child-process/broker.mjs", import.meta.url).href)}).then(({ serveProcessLauncher }) => {
+    import(${JSON.stringify(new URL("../../../packages/child-process/broker.mjs", import.meta.url).href)}).then(({ serveProcessLauncher }) => {
       serveProcessLauncher({
         send: value => process.send(value),
         subscribe: receive => {

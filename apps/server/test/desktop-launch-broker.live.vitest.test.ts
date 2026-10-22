@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { expect } from "vitest";
 import { z } from "zod";
 import { test } from "@openwork/testkit";
-import { FEATURES } from "../../packages/features/src/registry.ts";
+import { FEATURES } from "../../../packages/features/src/registry.ts";
 
 // Explicitly named live proof: consumes the native sampler, main-thread and
 // real-app receipts from an owned packaged-app run. It never substitutes a

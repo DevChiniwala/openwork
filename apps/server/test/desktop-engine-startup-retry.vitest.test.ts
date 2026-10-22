@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, vi } from "vitest";
 import { test } from "@openwork/testkit";
-import * as managed from "../../apps/server/src/managed-opencode-v2.ts";
-import { createEngineV2Preview, readEngineV2PreviewState } from "../../apps/server/src/engine-v2-preview.ts";
-import type { ServerConfig } from "../../apps/server/src/types.ts";
+import * as managed from "../src/managed-opencode-v2.ts";
+import { createEngineV2Preview, readEngineV2PreviewState } from "../src/engine-v2-preview.ts";
+import type { ServerConfig } from "../src/types.ts";
 
 test("slow v2 readiness retries with visible status and backoff without disabling a forced fresh profile", async ({ evidence }) => {
   const root = await mkdtemp(join(tmpdir(), "openwork-broker-retry-"));
