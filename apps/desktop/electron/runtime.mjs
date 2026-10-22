@@ -287,6 +287,18 @@ export function openworkInstallMarkerPaths({ userDataDir, serverConfigPath, env 
  * @param {{ markerPaths: string[], exists?: (filePath: string) => boolean, env?: NodeJS.ProcessEnv }} input
  * @returns {"v2" | undefined}
  */
+/**
+ * New desktop versions move everyone still on OpenCode v1 to v2 in the
+ * background. An explicitly pinned engine (OPENWORK_ENGINE_V2_PREVIEW, used by
+ * test harnesses and support) or an explicit OPENWORK_ENGINE_AUTO_UPGRADE keeps
+ * today's behavior.
+ * @returns {boolean | undefined}
+ */
+export function resolveDesktopEngineAutoUpgrade(env = process.env) {
+  if (env.OPENWORK_ENGINE_V2_PREVIEW?.trim() || env.OPENWORK_ENGINE_AUTO_UPGRADE !== undefined) return undefined;
+  return true;
+}
+
 export function resolveFreshInstallEngine({ markerPaths, exists = existsSync, env = process.env }) {
   if (env.OPENWORK_ENGINE_V2_PREVIEW?.trim()) return undefined;
   return markerPaths.some((filePath) => exists(filePath)) ? undefined : "v2";
@@ -1976,6 +1988,7 @@ export function createRuntimeManager({
       localManagedMcpVaultKey,
       anonymousInference,
       freshInstallEngine,
+      engineAutoUpgrade: resolveDesktopEngineAutoUpgrade(),
     });
     inProcessServer = handle;
     openworkServerState.managedOpencodeExecution = handle.managedOpencodeExecution ?? null;

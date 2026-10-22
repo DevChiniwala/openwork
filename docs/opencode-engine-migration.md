@@ -11,8 +11,18 @@ standalone servers.
 
 ## Organization-managed rollout
 
-`engineV2ForceUpgrade` ("Upgrade to OpenCode v2") is off by default on cloud
-and self-hosted deployments. When an organization's resolved flag is on, desktop
+Desktop versions from October 2026 move every install still on v1 to v2 in the
+background, signed in or not, using the backup/copy migration below. An install
+whose person explicitly switched back to v1 (a manual choice with a recorded
+time) keeps v1; installs that never chose are moved. A pinned engine
+(`OPENWORK_ENGINE_V2_PREVIEW` or `OPENWORK_ENGINE_AUTO_UPGRADE`, used by test
+harnesses and support) keeps today's behavior.
+
+`engineV2ForceUpgrade` ("Upgrade to OpenCode v2") is on by default on cloud
+and self-hosted deployments and is the off switch: turning it off (kill switch,
+an organization or member override, or a self-hosted Helm lock) tells desktops
+to stop and returns force-moved installs to v1 once idle. Signed-out desktops
+read it from `GET /v1/features`. When an organization's resolved flag is on, desktop
 and web hosts still on v1 reuse the same backup/copy migration in the
 background, wait for idle, and select v2 without consent. Desktop shows only the
 existing non-blocking progress banner; web shows no engine upgrade UI. Fresh

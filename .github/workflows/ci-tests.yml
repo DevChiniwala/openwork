@@ -149,6 +149,7 @@ jobs:
         run: |
           node --test apps/desktop/test/fresh-install-engine.test.mjs
           pnpm --filter openwork-server test:fresh-install-engine
+          bun test apps/server/test/engine-auto-upgrade-boot.test.ts apps/server/test/engine-auto-upgrade.test.ts apps/server/test/engine-auto-upgrade-safety.test.ts
       - name: Setup headless Chrome for locator regression
         uses: ./.github/actions/setup-browser
       - name: Run eval framework tests (spec lint and its fixtures)

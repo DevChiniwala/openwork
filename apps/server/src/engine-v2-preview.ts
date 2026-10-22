@@ -1115,6 +1115,8 @@ export function createEngineV2Preview(options: {
     if (nextEnabled && enabled && running) return status();
     enabled = nextEnabled;
     engineOrigin = "manual";
+    // A recorded time marks an explicit choice, which the background upgrade respects.
+    engineChangedAt = new Date().toISOString();
     engineForced = false;
     await persistState();
     if (!enabled) {
@@ -1441,6 +1443,12 @@ export function createEngineV2Preview(options: {
     await startFailureJob;
   }
 
+  // Someone explicitly switched this install back to OpenCode v1. Installs that
+  // never chose report "manual" too (the default), but have no recorded time.
+  function chosenV1Manually(): boolean {
+    return engineOrigin === "manual" && Boolean(engineChangedAt) && !chatRouting;
+  }
+
   function startWhenReady(): void {
     if (stopping) return;
     if (resumeMigration && !migrationJob) { runMigration(true); return; }
@@ -1449,7 +1457,7 @@ export function createEngineV2Preview(options: {
     // background attempt; off reverts only a force-owned v2 choice.
     if (forceRevert && engineForced && chatRouting && !config.readOnly && !autoRevertJob) {
       autoRevertJob = autoRevert().then(success => { if (success) autoRevertJob = undefined; });
-    } else if (forceUpgrade && !forceRevert && !config.readOnly && !chatRouting && !autoUpgradeJob) {
+    } else if (forceUpgrade && !forceRevert && !config.readOnly && !chatRouting && !autoUpgradeJob && !chosenV1Manually()) {
       autoUpgradeJob = autoUpgrade().then(success => { if (success) autoUpgradeJob = undefined; });
     } else if (enabled && !automaticHistoryCopy && engineOrigin !== "reverted" && !(forceUpgrade && !chatRouting)) void start().catch(recordStartError);
   }

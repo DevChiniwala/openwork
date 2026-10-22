@@ -146,7 +146,7 @@
                 true,
                 false
               ],
-              "description": "Upgrade to OpenCode v2: Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. Renders DEN_FEATURE_ENGINE_V2_FORCE_UPGRADE."
+              "description": "Upgrade to OpenCode v2: Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. On by default; turning it off stops the move and returns force-moved installs to v1. Renders DEN_FEATURE_ENGINE_V2_FORCE_UPGRADE."
             },
             "computerUse": {
               "enum": [

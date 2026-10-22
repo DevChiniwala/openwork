@@ -139,10 +139,10 @@ export const FEATURES = defineFeatures({
   },
   engineV2ForceUpgrade: {
     label: "Upgrade to OpenCode v2",
-    description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle.",
+    description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. On by default; turning it off stops the move and returns force-moved installs to v1.",
     since: "2026-10",
     deployments: everywhere,
-    default: false,
+    default: true,
   },
   computerUse: {
     label: "Computer use",
