@@ -184,7 +184,7 @@ async function openResponse(input: {
       && response.headers.get("X-OpenWork-Error-Code") === "free_allowance_exhausted"
       && response.headers.get("X-OpenWork-Usage-State") === "blocked"
     // Keep this adapter independent of unbuilt workspace runtime exports.
-    const usageLimit = (response.status === 429 && response.headers.get("X-OpenWork-Error-Code") === "openwork_gateway_usage_limit_exceeded" && response.headers.get("X-OpenWork-Usage-State") === "blocked")
+    const usageLimit = (response.status === 429 && ["openwork_gateway_usage_limit_exceeded", "openwork_models_allowance_reached"].includes(response.headers.get("X-OpenWork-Error-Code") ?? "") && response.headers.get("X-OpenWork-Usage-State") === "blocked")
       || (response.status === 429 && modelsRoute && response.headers.has("x-openwork-limit-bucket-id") && response.headers.has("x-openwork-limit-window-type"))
     const recoveryCode = freeLimit ? "model_free_allowance_exhausted" : usageLimit ? "model_usage_limit_exceeded"
       : modelsRoute && response.status === 402 ? "model_payment_required" : null

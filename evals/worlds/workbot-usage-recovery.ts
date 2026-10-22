@@ -13,7 +13,7 @@ export async function workbotUsageRecovery(_seed: Seed, { place }: { place: Plac
   const resources = new AsyncDisposableStack();
   try {
     const cases = new Map<string, { workbot: ReturnType<typeof createWorkbot>; actor: WorkbotActor; runner: Awaited<ReturnType<typeof modelProbeFixture>>; attempts: number; error: string | null; retryable: boolean }>();
-    for (const [key, mode] of new Map<string, ProbeFixtureMode>([["free", "free_limit"], ["reset", "free_limit"], ["usage", "usage_limit"], ["payment", "payment_required"], ["temporary", "rate_limited"], ["access", "answered"]])) {
+    for (const [key, mode] of new Map<string, ProbeFixtureMode>([["free", "free_limit"], ["reset", "free_limit"], ["usage", "usage_limit"], ["allowance", "models_allowance"], ["payment", "payment_required"], ["temporary", "rate_limited"], ["access", "answered"]])) {
       const runner = await modelProbeFixture({ basePath: "/api/v1", protocol: "openai-responses", answer: "Your conversation is still here." });
       resources.defer(() => runner.close());
       const client = createHeadlessRunnerClient({ config: { url: runner.url, token: "r".repeat(32) }, fetch, mintToken: async () => ({ token: "fixture-mcp-token" }), maxTokenTtlMs: 60_000 });

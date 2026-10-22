@@ -258,7 +258,9 @@
         "default": "./src/den/inference.ts"
       },
       "development": "./src/den/inference.ts",
-      "default": "./src/den/inference.ts"
+      "bun": "./src/den/inference.ts",
+      "browser": "./src/den/inference.ts",
+      "default": "./dist/den/inference.js"
     },
     "./den/microsoft-365": {
       "types": {
