@@ -396,7 +396,7 @@ export type DesktopAgentPermissionRule = z.infer<typeof desktopAgentPermissionsS
 
 /**
  * The model new desktop chats start with on the OpenCode v2 engine, chosen by
- * the organization or one of the member's teams (feature `orgDefaultModel`).
+ * the organization or one of the member's teams.
  * Mirrors `desktopDefaultModelSchema` in ./default-model.ts, which owns the
  * resolution rules; kept inline for the same reason as agent permissions.
  */
@@ -422,6 +422,10 @@ export const desktopConfigSchema = desktopPolicyValueSchema
     automationsEnabled: z.boolean().optional(),
     dashboardEnabled: z.boolean().optional(),
     connectEnabled: z.boolean().optional(),
+    /** Whether the server may start the live OpenCode provider engine. Missing means off. */
+    liveProviderSync: z.boolean().optional(),
+    /** OpenCode Zen models (Big Pickle and other free `opencode` models) are removed. Missing means off. */
+    removeOpencodeZen: z.boolean().optional(),
     onboardingPrompts: onboardingPromptsSchema.optional(),
     onboardingPromptDescriptions: onboardingPromptDescriptionsSchema.optional(),
     /** The member's agent permissions, present when the organization has them on. */
@@ -834,6 +838,8 @@ export function normalizeDesktopConfig(value: unknown): DesktopConfig {
     ...(automationsEnabled !== undefined ? { automationsEnabled } : {}),
     ...(dashboardEnabled !== undefined ? { dashboardEnabled } : {}),
     ...(connectEnabled !== undefined ? { connectEnabled } : {}),
+    ...(typeof raw?.liveProviderSync === "boolean" ? { liveProviderSync: raw.liveProviderSync } : {}),
+    ...(typeof raw?.removeOpencodeZen === "boolean" ? { removeOpencodeZen: raw.removeOpencodeZen } : {}),
     ...(onboardingPromptConfig !== undefined ? onboardingPromptConfig : {}),
     ...(agentPermissions.success ? { agentPermissions: agentPermissions.data } : {}),
     ...(defaultModel.success ? { defaultModel: defaultModel.data } : {}),

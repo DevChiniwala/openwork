@@ -6,18 +6,36 @@ import { openworkReadTransport, type OpenworkReadTransport } from "./opencode-pl
 import { createV2ReadAdapter, readV2SessionActivity } from "./opencode-v2-read-adapter.js";
 import { isRecord } from "./workspace-kv-store.js";
 import { createV2BrowserBridge } from "./opencode-v2-browser-bridge.js";
+import { SESSION_GROUP_COMMAND_IDS } from "./opencode-plugins/openwork-session-groups.js";
 
-const requestSchema = z.object({ name: z.enum(["openwork_context", "openwork_query", "openwork_skills"]), input: z.unknown() });
-// Advertise only reads this bridge executes. Native MCP discovery owns remote
+const requestSchema = z.object({
+  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read"]),
+  input: z.unknown(),
+  sessionId: z.string().max(256).optional(),
+});
+// The only commands this bridge runs: sidebar group changes, written through
+// the host's session-group routes and nothing else.
+const commandIds: readonly string[] = SESSION_GROUP_COMMAND_IDS;
+const sessionGroupRoute = /^\/workspace\/[^/]+\/session-groups(?:\/assignments\/[^/]+|\/[^/]+)?$/;
+/** A session-group route as sent: a path the URL parser would normalize (dot segments) is refused. */
+export function isSessionGroupWritePath(path: string): boolean {
+  const url = new URL(path, "http://127.0.0.1");
+  const [rawPath = "", rawQuery] = path.split("?", 2);
+  if (url.pathname !== rawPath || url.hash) return false;
+  if (rawQuery !== undefined && [...url.searchParams.keys()].some(key => key !== "destinationGroupId")) return false;
+  return sessionGroupRoute.test(rawPath);
+}
+// Advertise only what this bridge executes. Native MCP discovery owns remote
 // tool names; v1 executor spellings and unregistered commands do not belong here.
-function readAffordances(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(readAffordances);
+function bridgeAffordances(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(bridgeAffordances);
   if (!isRecord(value)) return value;
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
     key === "affordances" || key === "availableAffordances"
-      ? Array.isArray(entry) ? entry.filter(item => isRecord(item) && item.kind === "query"
+      ? Array.isArray(entry) ? entry.filter(item => isRecord(item)
+        && (item.kind === "query" || commandIds.includes(String(item.id)))
         && (!isRecord(item.executor) || item.executor.kind === "openwork")) : entry
-      : readAffordances(entry)]));
+      : bridgeAffordances(entry)]));
 }
 
 /** Process-local app-read and browser endpoints, closed with their engine.
@@ -45,6 +63,11 @@ export async function createV2ContextBridge(hostRequest: (path: string, init?: R
       if (call.name === "openwork_skills") {
         return Response.json(await read("/experimental/connect/skills"));
       }
+      // Internal plugin read: one listed skill's SKILL.md for native delivery.
+      if (call.name === "openwork_skill_read") {
+        const input = z.object({ url: z.string().startsWith("skill://").max(2_048) }).parse(call.input);
+        return Response.json(await read("/experimental/connect/skills/read", { method: "POST", body: JSON.stringify(input) }));
+      }
       const transport: OpenworkReadTransport = {
         engine: "v2",
         activity: (workspaceId: string, sessionId: string) => readV2SessionActivity(path => read(path), workspaceId, sessionId),
@@ -59,13 +82,24 @@ export async function createV2ContextBridge(hostRequest: (path: string, init?: R
           }
           return read(path, { method: "POST", body: JSON.stringify(body), signal });
         },
+        ...(call.name === "openwork_execute" ? {
+          send: async (method: "POST" | "PATCH" | "DELETE", path: string, body?: Record<string, unknown>) => {
+            if (!isSessionGroupWritePath(path)) throw new Error("Only OpenWork session group changes are available");
+            return read(path, { method, ...(body ? { body: JSON.stringify(body) } : {}) });
+          },
+        } : {}),
       };
       const result = await openworkReadTransport.run(transport, async () => {
         if (call.name === "openwork_query") return plugin.tool.openwork_query.execute(call.input);
+        if (call.name === "openwork_execute") {
+          const id = isRecord(call.input) ? String(call.input.id) : "";
+          if (!commandIds.includes(id)) throw new Error(`${id || "This command"} is not available here; only session group changes are`);
+          return plugin.tool.openwork_execute.execute(call.input, call.sessionId ? { sessionID: call.sessionId } : {});
+        }
         const context: unknown = JSON.parse(await plugin.tool.openwork_context.execute());
-        const filtered = readAffordances(context);
+        const filtered = bridgeAffordances(context);
         return JSON.stringify(isRecord(filtered) ? { ...filtered, instructions: {
-          context: "Use openwork_query for the discovered read-only affordances. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
+          context: "Use openwork_query for the discovered read-only affordances and openwork_execute for the session.group commands. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
         } } : filtered);
       });
       return new Response(result, { headers: { "Content-Type": "application/json" } });

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict"
 import { after, test } from "node:test"
+import { OrganizationFeatureTable } from "@openwork-ee/den-db/schema"
+import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { bootDen, field, startFakeHttpServer, summary, text, type Member } from "./harness.js"
 
 const calls: { method: string; path: string; authorization: string; body: unknown }[] = []
@@ -82,12 +84,6 @@ test("a connected member inspects, searches and edits one native document; flags
   }
   await connect(owner, "owner_account")
   const mcpToken = await den.mintMcpToken(owner, orgId)
-  const disabled = await call("GET", `${path}/outline`)
-  assert.equal(disabled.status, 404, summary(disabled))
-  const hidden = await den.callMcpTool(mcpToken, "search_capabilities", { query: "Google document outline text", limit: 20 })
-  assert.equal(hidden.raw.includes("getGoogleDocumentOutline"), false)
-  assert.equal(calls.length, 0)
-  assert.equal((await den.setFeature(orgId, "googleDocumentTools", true)).status, 200)
   const discovered = await den.callMcpTool(mcpToken, "search_capabilities", { query: "Google document outline", limit: 20 })
   assert.ok(discovered.raw.includes("getGoogleDocumentOutline"), discovered.raw.slice(0, 1000))
   const outline = await den.callMcpTool(mcpToken, "execute_capability", { name: "native:google-workspace:getGoogleDocumentOutline", path: { documentId: "example_doc" } })
@@ -152,17 +148,20 @@ test("a connected member inspects, searches and edits one native document; flags
   assert.ok(uncertain.text.includes("before retrying"), uncertain.text)
   assert.equal(calls.filter(entry => entry.method === "POST").length, attempts + 1, "an uncertain write is not retried")
   failWrite = false
-  onRead = async () => { assert.equal((await den.setFeature(orgId, "googleDocumentTools", false)).status, 200) }
-  const beforeKill = calls.filter(entry => entry.method === "POST").length
-  const killed = await call("POST", `${path}/replace-text`, edit)
-  assert.equal(killed.status, 404, summary(killed))
-  assert.equal(calls.filter(entry => entry.method === "POST").length, beforeKill)
+  const { db } = await import("../../src/db.js")
+  onRead = async () => {
+    await db.insert(OrganizationFeatureTable).values({ organization_id: normalizeDenTypeId("organization", orgId), feature_key: "googleDocumentTools", enabled: false, source: "platform" })
+  }
+  const beforeWrite = calls.filter(entry => entry.method === "POST").length
+  const alwaysAvailable = await call("POST", `${path}/replace-text`, edit)
+  assert.equal(alwaysAvailable.status, 200, summary(alwaysAvailable))
+  assert.equal(calls.filter(entry => entry.method === "POST").length, beforeWrite + 1, "a stale off override cannot disable a write mid-flight")
   onRead = null
   const cached = await den.callMcpTool(mcpToken, "execute_capability", { name: "native:google-workspace:getGoogleDocumentOutline", path: { documentId: "example_doc" } })
-  assert.equal(cached.isError, true)
+  assert.equal(cached.isError, false)
   const existingRead = await call("GET", "/v1/capabilities/google-workspace/drive-file/example_doc")
   assert.equal(existingRead.status, 200, summary(existingRead))
-  assert.equal(field(existingRead.body, "file", "content"), savedText, "existing reads still work with an enabled Drive grant when the new feature is off")
+  assert.equal(field(existingRead.body, "file", "content"), savedText, "existing reads still use the same enabled Drive grant")
   assert.equal((await call("GET", "/v1/capabilities/google-workspace/drive-files?query=budget")).status, 200)
   // Inspect actual storage, not just the audit API's rendering.
   const audit = await den.auditStorageText()

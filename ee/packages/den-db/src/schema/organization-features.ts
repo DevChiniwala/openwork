@@ -33,3 +33,13 @@ export const FeatureRolloutTable = mysqlTable("feature_rollout", {
   created_at: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { fsp: 3 }).notNull().default(sql`CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)`),
 })
+
+/** Overrides belong to an organization membership, never to a user globally. */
+export const MemberFeatureTable = mysqlTable("member_feature", {
+  member_id: denTypeIdColumn("member", "member_id").notNull(),
+  feature_key: varchar("feature_key", { length: 64 }).notNull(),
+  enabled: boolean("enabled").notNull(),
+  set_by_user_id: denTypeIdColumn("user", "set_by_user_id"),
+  created_at: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { fsp: 3 }).notNull().default(sql`CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)`),
+}, (table) => [primaryKey({ name: "member_feature_pk", columns: [table.member_id, table.feature_key] })])

@@ -112,14 +112,15 @@ run "runner_workbot_and_slack" {
       local.environment.DEN_FEATURE_SLACK_ASSISTANT == "true",
       local.environment.DEN_AUTOMATIONS_RUNTIME_ENABLED == "true",
       local.environment.DEN_WORKBOT_URL == "https://chat.openwork.example.com",
-      local.environment.DEN_FEATURE_WORKBOT == "true",
+      # Workbot is generally available; service configuration is still required.
+      !contains(keys(local.environment), "DEN_FEATURE_WORKBOT"),
     ])
     error_message = "Den must be pointed at the runner and Workbot, with their features on."
   }
   assert {
     condition = alltrue([
-      contains([for s in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN"),
-      !contains([for s in jsondecode(aws_ecs_task_definition.web.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN"),
+      contains([for s in jsondecode(aws_ecs_task_definition.api_v1.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN"),
+      !contains([for s in jsondecode(aws_ecs_task_definition.web_v1.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN"),
       !contains(keys(local.secret_values), "HEADLESS_MODEL_API_KEY"),
     ])
     error_message = "Only den-api gets the runner token; the model key stays out of the shared app secret."
@@ -175,7 +176,7 @@ run "workbot_requires_runner" {
     }
   }
 
-  expect_failures = [aws_ecs_task_definition.api]
+  expect_failures = [aws_ecs_task_definition.api_v1]
 }
 
 run "runner_requires_model" {
@@ -204,7 +205,7 @@ run "daytona_computer_uses_separate_image_and_runner_only_key" {
     error_message = "The runner should use Daytona and the computer snapshot, not the Web snapshot."
   }
   assert {
-    condition     = contains(keys(local.runner_secret_values), "DAYTONA_API_KEY") && !contains([for s in jsondecode(aws_ecs_task_definition.web.container_definitions)[0].secrets : s.name], "DAYTONA_API_KEY")
+    condition     = contains(keys(local.runner_secret_values), "DAYTONA_API_KEY") && !contains([for s in jsondecode(aws_ecs_task_definition.web_v1.container_definitions)[0].secrets : s.name], "DAYTONA_API_KEY")
     error_message = "The computer key belongs to the runner secret."
   }
 }
@@ -245,7 +246,7 @@ run "external_cells_have_no_node_runner_or_efs" {
     error_message = "Use the existing fleet token, not a new token or unused model credentials."
   }
   assert {
-    condition     = contains([for s in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN") && contains([for s in jsondecode(aws_ecs_task_definition.workbot[0].container_definitions)[0].secrets : s.name], "WORKBOT_RUNNER_TOKEN") && !contains([for s in jsondecode(aws_ecs_task_definition.web.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN")
+    condition     = contains([for s in jsondecode(aws_ecs_task_definition.api_v1.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN") && contains([for s in jsondecode(aws_ecs_task_definition.workbot[0].container_definitions)[0].secrets : s.name], "WORKBOT_RUNNER_TOKEN") && !contains([for s in jsondecode(aws_ecs_task_definition.web_v1.container_definitions)[0].secrets : s.name], "DEN_HEADLESS_RUNNER_TOKEN")
     error_message = "The external token belongs to den-api and Workbot only."
   }
 }
@@ -255,7 +256,7 @@ run "external_cells_require_token" {
   variables {
     headless_runner = { enabled = true, external_url = "https://cells.example.com" }
   }
-  expect_failures = [aws_ecs_task_definition.api]
+  expect_failures = [aws_ecs_task_definition.api_v1]
 }
 
 run "external_cells_allow_private_single_label_hostname" {

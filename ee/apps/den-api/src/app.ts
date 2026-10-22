@@ -1,6 +1,7 @@
 import "./load-env.js"
 import { registerSlackAssistantRoutes } from "./slack-assistant/routes.js"
 import { registerWorkbotRoutes } from "./workbot/routes.js"
+import { registerHeadlessRunnerRoutes } from "./headless-runner/routes.js"
 import { createDenTypeId, normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { swaggerUI } from "@hono/swagger-ui"
 import { and, eq, isNull, sql } from "@openwork-ee/den-db/drizzle"
@@ -17,6 +18,7 @@ import { getOrganizationFeatures } from "./features.js"
 import { publicRoute } from "./middleware/index.js"
 import { registerAdminMcpRoutes } from "./mcp/admin.js"
 import { registerAgentMcpRoutes } from "./mcp/agent.js"
+import { registerConnectionServerRoutes } from "./mcp/connection-server.js"
 import { registerExternalConnectionProxyRoutes } from "./mcp/external-connection-proxy.js"
 import { registerMcpRoutes } from "./mcp/index.js"
 import type { MemberTeamsContext, OrganizationContextVariables, UserOrganizationsContext } from "./middleware/index.js"
@@ -59,6 +61,7 @@ import { preclaimScopeMiddleware } from "./middleware/preclaim-scope.js"
 import { auditRequestMiddleware } from "./audit/request-capture.js"
 import { isOperationalErrorPath, normalizeOperationalErrorResponse, operationalErrorResponse } from "./operational-errors.js"
 import { sanitizePublicResponseHeaders } from "./public-response-headers.js"
+import { AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER } from "@openwork/types/automations"
 
 type AppVariables = RequestIdVariables & AuthContextVariables & Partial<UserOrganizationsContext> & Partial<OrganizationContextVariables> & Partial<MemberTeamsContext>
 
@@ -191,7 +194,9 @@ if (!env.corsHandledByEdge) {
     cors({
       origin: resolveStrictCorsOrigin,
       credentials: true,
-      allowHeaders: ["Content-Type", "Authorization", "X-Api-Key", "X-Request-Id", "X-OpenWork-Legacy-Org-Id", "X-OpenWork-Org-Id", "X-OpenWork-Audit-Correlation"],
+      // Browser clients (app-web) send the Automation model-attention capability header on create/update/run;
+      // without it here the preflight fails and the request never reaches Den ("Failed to fetch").
+      allowHeaders: ["Content-Type", "Authorization", "X-Api-Key", "X-Request-Id", "X-OpenWork-Legacy-Org-Id", "X-OpenWork-Org-Id", "X-OpenWork-Audit-Correlation", AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       exposeHeaders: ["Content-Length", "Content-Disposition", "X-Audit-Next-Cursor", "X-Audit-Snapshot-Sequence", "X-Audit-Resource-Scope"],
       maxAge: 600,
@@ -292,6 +297,7 @@ registerRemoteSessionRoutes(app)
 registerOrgRoutes(app)
 registerSlackAssistantRoutes(app)
 registerWorkbotRoutes(app)
+registerHeadlessRunnerRoutes(app)
 registerVersionRoutes(app)
 registerFeatureRoutes(app)
 registerWebhookRoutes(app)
@@ -301,6 +307,7 @@ registerMcpTokenRoutes(app)
 registerMcpRoutes(app)
 registerAgentMcpRoutes(app)
 registerExternalConnectionProxyRoutes(app)
+registerConnectionServerRoutes(app)
 registerAdminMcpRoutes(app)
 registerTelemetryRoutes(app)
 
@@ -317,7 +324,7 @@ configureCloudWorkflowExecutor(async ({ organizationId, ownerMemberId, automatio
   )).limit(1)
   const userId = members[0]?.userId
   if (!userId) return { ok: false, message: "The Automation owner is no longer active.", retryable: false }
-  const organizationFeatures = await getOrganizationFeatures(normalizedOrganizationId)
+  const organizationFeatures = await getOrganizationFeatures(normalizedOrganizationId, { userId })
   const member = await resolveMcpMemberIdentity({ userId, organizationId })
   if (!member) return { ok: false, message: "The Automation owner is no longer active.", retryable: false }
   const catalog = await getCatalog(app as unknown as Hono, undefined)
@@ -481,6 +488,11 @@ const openApiOptions: Parameters<typeof generateSpecs>[1] = {
           type: "http",
           scheme: "bearer",
           description: "Deployment maintenance token (DEN_MAINTENANCE_TOKEN) used by scheduled jobs, passed as `Authorization: Bearer <token>`.",
+        },
+        headlessRunnerCallbackToken: {
+          type: "http",
+          scheme: "bearer",
+          description: "Headless runner callback token (DEN_HEADLESS_RUNNER_CALLBACK_TOKEN) the runner presents to exchange a turn's resume grant, passed as `Authorization: Bearer <token>`.",
         },
         workerHeartbeatToken: {
           type: "http",

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { buildRelease, GCP_REPOSITORIES, HEALTH_SOURCE, resolveGcpImages } from "../tools/build-release.mjs";
+import { buildRelease, GCP_REPOSITORIES, HEALTH_SOURCE, resolveGcpImages, resolveAwsImages, validateModuleReferences } from "../tools/build-release.mjs";
 
 const digest = (character) => "sha256:" + character.repeat(64);
 const metadata = (character, os = "linux", architecture = "amd64") => ({
@@ -107,57 +107,38 @@ test("second-update fixture only overrides the non-secret revision default", () 
   assert.match(fixture, /^variable "tls_task_revision"\s*\{\s*default = "second-update"\s*\}$/);
   const main = readFileSync(resolve(root, "infra/managed-deployments/aws/terraform/main.tf"), "utf8");
   assert.match(main, /variable "tls_task_revision"\s*\{\s*type\s*=\s*string\s*default\s*=\s*""/);
-  assert.match(main, /tls_task_revision\s*=\s*var\.tls_task_revision/);
+  assert.match(main, /OPENWORK_MANAGED_TASK_REVISION\s*=\s*var\.tls_task_revision/);
 });
-const modulePath = "infra/managed-deployments/aws/terraform/modules/openwork-aws-ecs";
-// Current dev at 8b586b13ab89b78379fbecd8ddb9c7c7caba31f8, including runner updates.
-// Only the TLS overlay may differ from this complete dev snapshot.
-const baselineTree = "561d5b63514a13df471ad7458eae2b620cfc5803";
-const baselineBlobs = {
-  "main.tf": "879a181b41208c2514a0edf3a3a5b8aab92547c1",
-  "ecs.tf": "376f3f89bd7220eead002a35ab130e2ee3fa95f6",
-  "variables.tf": "311952c9651de29b756815b00ee04ace0c9a049f",
-  "versions.tf": "a5b975afb4a825ad41cf4bda2c75d0f6a8085aed",
-};
+const modulePath = "infra/terraform/modules/openwork-aws-ecs";
+test("new AWS installer versions use independently approved immutable application images", () => {
+  assert.deepEqual(resolveAwsImages(pins, inspect), pins);
+  for (const candidate of [{}, { ...pins, den_api: GCP_REPOSITORIES.den_api + ":latest" }, { ...pins, health: HEALTH_SOURCE }]) {
+    assert.throws(() => resolveAwsImages(candidate, inspect));
+  }
+  assert.throws(() => resolveAwsImages(pins, () => { throw new Error("missing image"); }), /missing image/);
+});
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const objectHash = (kind, bytes) => createHash("sha1")
-  .update(Buffer.from(`${kind} ${bytes.length}\0`)).update(bytes).digest();
+test("missing module-local file references fail the release before packaging", () => {
+  const definition = `${modulePath}/migration.tf`;
+  const code = `${modulePath}/migration.py`;
+  const source = readFileSync(resolve(root, definition), "utf8");
+  assert.throws(() => validateModuleReferences([definition], () => source), /Missing packaged module reference.*migration.py/);
+  assert.doesNotThrow(() => validateModuleReferences([definition, code], () => source));
+});
 
-function treeHash(directory) {
-  const baselineRoot = directory === resolve(root, modulePath);
-  const entries = readdirSync(directory).filter((name) => !baselineRoot || name !== "tls.tf").map((name) => {
-    const path = join(directory, name);
-    const info = lstatSync(path);
-    assert.equal(info.isSymbolicLink(), false, "Frozen sources cannot be symlinks");
-    assert.ok(info.isFile() || info.isDirectory());
-    const directoryEntry = info.isDirectory();
-    return {
-      sortKey: Buffer.from(name + (directoryEntry ? "/" : "")),
-      entry: Buffer.concat([
-        Buffer.from(`${directoryEntry ? "40000" : "100644"} ${name}\0`),
-        directoryEntry ? treeHash(path) : baselineRoot && baselineBlobs[name]
-          ? Buffer.from(baselineBlobs[name], "hex") : objectHash("blob", readFileSync(path)),
-      ]),
-    };
-  }).sort((left, right) => Buffer.compare(left.sortKey, right.sortKey));
-  return objectHash("tree", Buffer.concat(entries.map(({ entry }) => entry)));
-}
-
-test("managed AWS differs from its pinned dev snapshot only in the TLS files", () => {
-  assert.equal(treeHash(resolve(root, modulePath)).toString("hex"), baselineTree,
-    "Outside main.tf, ecs.tf, variables.tf, versions.tf and added tls.tf, every byte must match pinned dev");
-  const tls = readFileSync(resolve(root, modulePath, "tls.tf"), "utf8");
+test("managed AWS explicitly preserves legacy keys while adopting the shared module", () => {
+  const tls = readFileSync(resolve(root, modulePath, "security.tf"), "utf8");
   assert.match(tls, /https:\/\/truststore\.pki\.rds\.amazonaws\.com/);
   assert.match(tls, /NODE_EXTRA_CA_CERTS/);
   assert.doesNotMatch(tls, /insecure\s*=\s*true/);
   const main = readFileSync(resolve(root, "infra/managed-deployments/aws/terraform/main.tf"), "utf8");
-  assert.match(main, /source\s*=\s*"\.\/modules\/openwork-aws-ecs"/);
-  assert.doesNotMatch(main, /source\s*=\s*"\.\.\/\.\.\/\.\.\/terraform\/modules\/openwork-aws-ecs"/);
-  assert.doesNotMatch(main, /write_only_secrets/);
+  assert.match(main, /source\s*=\s*"\.\.\/\.\.\/\.\.\/terraform\/modules\/openwork-aws-ecs"/);
+  assert.match(main, /write_only_secrets\s*=\s*false/);
+  assert.match(main, /managed_legacy_secrets\s*=\s*true/);
 });
 
-test("installer archive contains only the frozen operational module, with identical file bytes", () => {
-  const output = mkdtempSync(join(tmpdir(), "openwork-frozen-installer-test-"));
+test("installer archive contains every shared operational dependency with identical file bytes", () => {
+  const output = mkdtempSync(join(tmpdir(), "openwork-shared-installer-test-"));
   try {
     buildRelease(["aws", "0.18.58", output]);
     const bundle = join(output, "bundle.tar.gz");
@@ -169,13 +150,14 @@ test("installer archive contains only the frozen operational module, with identi
     const archiveNames = JSON.parse(execFileSync("python3", ["-c",
       "import json,sys,tarfile; a=tarfile.open(sys.argv[1]); print(json.dumps([e.name for e in a.getmembers() if e.isfile()]))", bundle], { encoding: "utf8" }));
     assert.deepEqual(archiveNames.sort(), [...names, "release.json"].sort());
-    const expected = readdirSync(resolve(root, modulePath)).filter((name) => name.endsWith(".tf")).map((name) => `${modulePath}/${name}`).sort();
-    assert.equal(expected.length, 11);
+    const expected = readdirSync(resolve(root, modulePath)).filter((name) => name.endsWith(".tf") || name === "migration.py").map((name) => `${modulePath}/${name}`).sort();
+    assert.ok(expected.includes(`${modulePath}/migration.py`));
+    validateModuleReferences(expected);
     assert.deepEqual(names.filter((name) => name.startsWith(modulePath + "/")).sort(), expected);
-    assert.equal(names.some((name) => name.startsWith("infra/terraform/modules/openwork-aws-ecs/")), false);
+    assert.equal(names.some((name) => name.includes("aws/terraform/modules/openwork-aws-ecs/")), false);
     assert.equal(names.some((name) => name.includes("/examples/") || name.includes("/tests/")), false);
     assert.equal(names.some((name) => name.endsWith("second-update_override.tf")), false);
-    assert.match(execFileSync("tar", ["-xOf", bundle, "infra/managed-deployments/aws/runner/runner.py"], { encoding: "utf8" }), /def tls_redeploy\(force=True\):/);
+    assert.match(execFileSync("tar", ["-xOf", bundle, "infra/managed-deployments/aws/runner/runner.py"], { encoding: "utf8" }), /def tls_redeploy\(force=True, cluster=None, expected=None\):/);
     for (const name of expected) {
       const source = readFileSync(resolve(root, name));
       const packaged = execFileSync("tar", ["-xOf", bundle, name]);
@@ -183,7 +165,7 @@ test("installer archive contains only the frozen operational module, with identi
       assert.equal(release.files[name], sha256(source), name);
     }
     const packagedMain = execFileSync("tar", ["-xOf", bundle, "infra/managed-deployments/aws/terraform/main.tf"], { encoding: "utf8" });
-    assert.match(packagedMain, /source\s*=\s*"\.\/modules\/openwork-aws-ecs"/);
+    assert.match(packagedMain, /source\s*=\s*"\.\.\/\.\.\/\.\.\/terraform\/modules\/openwork-aws-ecs"/);
     assert.equal(names.some((name) => /\.(?:tfstate|tfvars|tfplan)(?:\.|$)/.test(name)), false);
   } finally {
     rmSync(output, { recursive: true, force: true });

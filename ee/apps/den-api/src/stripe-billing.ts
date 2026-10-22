@@ -17,8 +17,8 @@ import type { DenOrgMode } from "./env.js"
 import { setInferenceEnabled } from "./inference.js"
 import { assertOrganizationManagedModelsAllowed } from "./organization-metadata.js"
 import { appLogger } from "./observability/logger.js"
-import { isOpenWorkWebAvailable } from "./openwork-web-availability.js"
-import { hasOpenWorkWebComplimentaryAccess, resolveOpenWorkWebAccess } from "./openwork-web-access.js"
+import { complimentaryWebAccessForOrganization, isOpenWorkWebAvailable } from "./openwork-web-availability.js"
+import { resolveOpenWorkWebAccess } from "./openwork-web-access.js"
 
 type OrgId = typeof OrganizationTable.$inferSelect.id
 type MemberId = typeof MemberTable.$inferSelect.id
@@ -233,7 +233,7 @@ async function organizationOpenWorkWebComplimentaryAccess(organizationId: OrgId)
     .from(OrganizationTable)
     .where(eq(OrganizationTable.id, organizationId))
     .limit(1)
-  return hasOpenWorkWebComplimentaryAccess(rows[0]?.metadata)
+  return complimentaryWebAccessForOrganization(organizationId, rows[0]?.metadata)
 }
 
 export function isOpenWorkWebBillableMember(input: { joinedAt: Date | null; removedAt: Date | null }) {
@@ -458,6 +458,12 @@ async function stripeCustomerBelongsToOrganization(customerId: string, organizat
 export async function organizationHasActiveInferenceSubscription(organizationId: OrgId) {
   const row = await findInferenceSubscriptionByOrg(organizationId)
   return Boolean(row && ACTIVE_STATUSES.has(row.status))
+}
+
+/** A payment problem with an existing subscription should lead to billing, not an upgrade offer. */
+export async function organizationHasOngoingInferenceSubscription(organizationId: OrgId) {
+  const row = await findInferenceSubscriptionByOrg(organizationId)
+  return Boolean(row && ONGOING_STATUSES.has(row.status))
 }
 
 export async function organizationHasActiveSeatSubscription(organizationId: OrgId) {

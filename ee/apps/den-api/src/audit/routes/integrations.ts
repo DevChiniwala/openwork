@@ -213,6 +213,8 @@ export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
 
   // Inference providers (reads, member OAuth, uncovered mutations)
   read("/v1/inference-providers", "inference_provider.list", IP, res("provider")),
+  read("/v1/inference-providers/inventory/revision", "inference_provider.inventory.revision", IP, res("provider"), "Read-only opaque member-scoped inventory revision; liveProviderSync gated."),
+  read("/v1/inference-providers/inventory/events", "inference_provider.inventory.watch", IP, res("provider"), "SSE opaque revisions only. Session, membership and rollout revalidated from the database every two seconds; fail closed on revocation or unavailable checks."),
   read("/v1/inference-providers/model-management", "inference_provider.model_management.list", IP, res("provider")),
   read("/v1/inference-providers/member-connections", "inference_provider.member_connection.list", IPO, res("provider_credential")),
   read("/v1/inference-providers/:inferenceProviderId", "inference_provider.read", IP, res("provider", "inferenceProviderId"), "Credential metadata incl. member emails; no secrets."),
@@ -240,15 +242,7 @@ export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
   handlerRoute("tenant_external", "POST", "/v1/inference-providers/oauth/browser-litellm-check", "inference_provider.member_oauth.browser_litellm_check", IPO, res("provider_credential"), { external: LITELLM, notes: "Public route. Attributed like browser-litellm-key once the cookie user matches the entry and the provider/set binding and litellm feature are rechecked; before LiteLLM key creation for that member." }),
 
   // Models analytics
-  read("/v1/inference/analytics/usage", "models_analytics.usage.read", MA, res("inference_usage"), "Shared Models usage limits for the feature-gated analytics dashboard."),
   route("tenant_signal", "POST", "/v1/inference/analytics/events", "models_analytics.events.report", MA, res("models_analytics_event"), "org_context", { notes: "Desktop task metadata for the caller's own OpenWork Models calls; dropped unless the organization opted in. High volume." }),
-  access("GET", "/v1/inference/analytics/activity", "models_analytics.activity.list", MA, res("models_analytics_event"), "Per-member task analytics payloads (tool/skill/model metadata)."),
-  read("/v1/inference/analytics/consumption", "models_analytics.consumption.read", MA, res("models_analytics_event"), "Aggregates only."),
-  read("/v1/inference/analytics/settings", "models_analytics.settings.read", "models_analytics.configuration", res("models_analytics_settings")),
-  change("PATCH", "/v1/inference/analytics/settings", "models_analytics.settings.update", "models_analytics.configuration", res("models_analytics_settings")),
-  change("POST", "/v1/inference/analytics/langfuse/connect", "models_analytics.export.connect", "models_analytics.configuration", res("models_analytics_export"), "Stores Langfuse credentials (write-only) after a test send to Langfuse; enables the export loop."),
-  external("POST", "/v1/inference/analytics/langfuse/test", "models_analytics.export.test", "models_analytics.configuration", res("models_analytics_export"), "Langfuse", "Sends a test event with caller-supplied credentials; no local write."),
-  change("DELETE", "/v1/inference/analytics/langfuse", "models_analytics.export.disconnect", "models_analytics.configuration", res("models_analytics_export")),
 
   // Organization Analytics (desktop adoption telemetry)
   route("tenant_signal", "POST", "/v1/telemetry/ingest", "telemetry.events.ingest", "telemetry.adoption", res("telemetry_event"), "org_context", { notes: "Desktop activity and session/task lifecycle pings for the calling member; identifiers and timings only. High volume." }),
@@ -293,11 +287,13 @@ export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
   change("POST", "/v1/mcp-connections", "mcp_connection.create", MCP, res("mcp_connection"), "May probe the MCP server (initialize) before storing; secrets write-only."),
   change("PUT", "/v1/mcp-connections/:connectionId", "mcp_connection.update", MCP, res("mcp_connection", "connectionId"), "May probe the MCP server when validating; secrets write-only."),
   change("DELETE", "/v1/mcp-connections/:connectionId", "mcp_connection.delete", MCP, res("mcp_connection", "connectionId")),
+  change("POST", "/v1/mcp-connections/:connectionId/removal-request", "mcp_connection.removal_request", MCP, res("mcp_connection", "connectionId"), "Agent prepares a removal; nothing is deleted until the person confirms through DELETE in Den."),
   change("PUT", "/v1/mcp-connections/by-key/:externalKey", "mcp_connection.by_key.upsert", MCP, res("mcp_connection", "externalKey"), "May probe the MCP server when validating."),
   change("DELETE", "/v1/mcp-connections/by-key/:externalKey", "mcp_connection.by_key.delete", MCP, res("mcp_connection", "externalKey")),
   change("PUT", "/v1/mcp-connections/:connectionId/access", "mcp_connection.access.replace", MCP, res("mcp_connection", "connectionId")),
   change("PUT", "/v1/mcp-connections/:connectionId/tool-policy", "mcp_connection.tool_policy.update", MCP, res("mcp_connection", "connectionId")),
-  external("PUT", "/v1/mcp-connections/:connectionId/shared-credential", "mcp_connection.shared_credential.set", MCP, res("mcp_connection", "connectionId"), "Upstream MCP server (initialize with the new key)", "Hidden; signed-in people only (API keys and MCP internal calls get 403); secureSecretFields. Stores the shared key encrypted, keeps a rejected key out, and never returns or logs the key or provider text."),
+  external("PUT", "/v1/mcp-connections/:connectionId/shared-credential", "mcp_connection.shared_credential.set", MCP, res("mcp_connection", "connectionId"), "Upstream MCP server (initialize with the new key)", "Hidden; signed-in people only (API keys and MCP internal calls get 403). Stores the shared key encrypted, keeps a rejected key out, and never returns or logs the key or provider text. With expectedUpdatedAt it also switches a personal-key connection to the shared key, only after the key works and only if the connection is unchanged (recent sign-in required)."),
+  change("POST", "/v1/mcp-connections/:connectionId/credential-prompt", "mcp_connection.credential_prompt.request", MCP, res("mcp_connection", "connectionId"), "No write; returns value-free credential prompt metadata so a person enters the key in OpenWork."),
   change("POST", "/v1/mcp-connections/:connectionId/disconnect", "mcp_connection.disconnect_all", MCPO, res("mcp_connection", "connectionId"), "Removes all stored member credentials; no upstream revocation."),
   change("POST", "/v1/mcp-connections/:connectionId/disconnect-my-account", "mcp_connection.member_account.disconnect", MCPO, res("mcp_connection", "connectionId"), "No upstream revocation."),
   change("PUT", "/v1/mcp-connections/:connectionId/my-credential", "mcp_connection.member_credential.set_own", MCPO, res("mcp_connection", "connectionId"), "Session-only (API keys and MCP internal calls get 403); stores the caller's personal API key encrypted for a member-api-key connection; response is ok only. Removal uses disconnect-my-account."),
@@ -311,6 +307,7 @@ export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
 
   // Native OAuth providers (Google Workspace, Microsoft 365)
   read("/v1/oauth-providers/:providerId/client", "oauth_provider.client.read", "oauth_provider.configuration", res("oauth_client", "providerId"), "Client id only."),
+  external("GET", "/v1/oauth-providers/:providerId/api-check", "oauth_provider.api_check.read", "oauth_provider.configuration", res("oauth_client", "providerId"), "Google Drive, Docs, Sheets, Gmail, Calendar and Chat APIs", "Google Workspace only. One read per needed API with the caller's own connector sign-in; returns only whether each API is turned on, never Google content."),
   change("POST", "/v1/oauth-providers/:providerId/client", "oauth_provider.client.update", "oauth_provider.configuration", res("oauth_client", "providerId"), "Client secret write-only."),
   read("/v1/oauth-providers/:providerId/status", "oauth_provider.connection.status", OAP, res("oauth_provider_connection", "providerId")),
   change("GET", "/v1/oauth-providers/:providerId/connect/start", "oauth_provider.connect.start", OAP, res("oauth_provider_connection", "providerId"), "Writes OAuth state; returns authorize URL."),

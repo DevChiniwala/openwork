@@ -104,7 +104,12 @@ output "database_identifier" {
 
 output "migration_step_identifier" {
   description = "Standalone ECS migration task definition; API replicas never migrate."
-  value       = aws_ecs_task_definition.migrate.arn
+  value       = aws_ecs_task_definition.migrate_v1.arn
+}
+
+output "task_definition_arns" {
+  description = "Intended API-only and web revisions, for completed rollout verification."
+  value       = { den_api = aws_ecs_task_definition.api_v1.arn, den_web = aws_ecs_task_definition.web_v1.arn }
 }
 
 output "migration_result" {

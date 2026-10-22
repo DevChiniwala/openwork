@@ -253,7 +253,7 @@ def unsafe_changes(plan):
     unsafe = []
     changes = plan.get("resource_changes", [])
     for change in changes:
-        if (change.get("address") == "module.platform.aws_secretsmanager_secret_version.tls"
+        if (change.get("address") in ("module.platform.aws_secretsmanager_secret_version.tls", "module.platform.aws_secretsmanager_secret_version.tls[0]")
                 and change.get("change", {}).get("actions") == ["create"]):
             seed = next((item.get("change", {}) for item in changes
                          if item.get("address") == "module.platform.aws_secretsmanager_secret_version.app"), None)
@@ -272,11 +272,93 @@ def unsafe_changes(plan):
     return unsafe
 
 
+def legacy_fence(plan):
+    """Drain installed migration-capable services before Terraform can migrate.
+
+    Inspect live definitions as well as state: a failed adoption may already have
+    forgotten the old definition while the service still uses it. No credentials
+    are rotated and no unrelated service/task in a shared cluster is mutated.
+    A failed fence leaves maintenance in place; never resurrect a legacy writer.
+    """
+    def resources(module):
+        yield from module.get("resources", [])
+        for child in module.get("child_modules", []):
+            yield from resources(child)
+
+    old = list(resources(plan.get("prior_state", {}).get("values", {}).get("root_module", {})))
+    owned = [r for r in old if r.get("address") in (
+        "module.platform.aws_ecs_service.api", "module.platform.aws_ecs_service.web")]
+    if not owned:
+        return False
+    if len(owned) != 2:
+        raise ValueError("incomplete installed service state; maintenance requires inspection")
+    cluster = owned[0]["values"]["cluster"]
+    names = {r["values"]["name"] for r in owned}
+    if len(names) != 2 or any(r["values"]["cluster"] != cluster for r in owned):
+        raise ValueError("invalid installed service ownership")
+    status = aws("ecs", "describe-services", "--cluster", cluster, "--services", *sorted(names))
+    services = status.get("services", [])
+    if status.get("failures") or {s.get("serviceName") for s in services} != names:
+        raise ValueError("installed services unavailable")
+    legacy = False
+    families = set()
+    for service in services:
+        # Inspect every rollback/deployment target, not just the current primary.
+        definitions = {service["taskDefinition"]} | {d["taskDefinition"] for d in service.get("deployments", [])}
+        for arn in definitions:
+            definition = aws("ecs", "describe-task-definition", "--task-definition", arn)["taskDefinition"]
+            families.add(definition["family"])
+            for container in definition["containerDefinitions"]:
+                legacy |= container.get("name") == "migrate" or "bootstrap.js" in json.dumps(container.get("command", []))
+    if not legacy:
+        return False
+    for name in sorted(names):
+        aws("ecs", "update-service", "--cluster", cluster, "--service", name,
+            "--desired-count", "0", "--deployment-configuration",
+            json.dumps({"deploymentCircuitBreaker": {"enable": True, "rollback": False}}))
+    aws("ecs", "wait", "services-stable", "--cluster", cluster, "--services", *sorted(names))
+    deadline = time.monotonic() + 600
+    while True:
+        status = aws("ecs", "describe-services", "--cluster", cluster, "--services", *sorted(names))
+        current = status.get("services", [])
+        if status.get("failures") or {s.get("serviceName") for s in current} != names:
+            raise ValueError("maintenance services unavailable")
+        if any(s.get("desiredCount") != 0 for s in current):
+            raise ValueError("legacy service resumed during maintenance")
+        pending = any(s.get("runningCount") != 0 or s.get("pendingCount") != 0 for s in current)
+        for family in sorted(families):
+            # STOPPED desired status includes tasks still draining. RUNNING also
+            # includes pending tasks; inspect actual terminal status for both.
+            tasks = set()
+            for desired in ("RUNNING", "STOPPED"):
+                tasks.update(aws("ecs", "list-tasks", "--cluster", cluster, "--family", family,
+                                 "--desired-status", desired).get("taskArns", []))
+            ordered = sorted(tasks)
+            for offset in range(0, len(ordered), 100):
+                result = aws("ecs", "describe-tasks", "--cluster", cluster, "--tasks", *ordered[offset:offset + 100])
+                if result.get("failures") or len(result.get("tasks", [])) != len(ordered[offset:offset + 100]):
+                    raise ValueError("legacy task terminal state unknown")
+                pending |= any(t.get("lastStatus") != "STOPPED" for t in result["tasks"])
+        if not pending:
+            return True
+        if time.monotonic() >= deadline:
+            raise ValueError("legacy tasks did not stop; migration is fenced")
+        time.sleep(3)
+
+
 def apply(root, tf_root):
     binary = terraform_binary(root)
     state_key = "deployments/" + os.environ["DEPLOYMENT_ID"] + "/terraform.tfstate"
     inputs = tf_root / "managed.auto.tfvars.json"
-    inputs.write_text(json.dumps(terraform_inputs()))
+    values = terraform_inputs()
+    release = root / "release.json"
+    if release.exists():
+        images = json.loads(release.read_text()).get("images", {})
+        if images:
+            if set(images) != {"den_api", "den_web"}:
+                raise ValueError("invalid AWS release image inventory")
+            values.update(den_api_image=images["den_api"], den_web_image=images["den_web"])
+    inputs.write_text(json.dumps(values))
     inputs.chmod(0o600)
     subprocess.run([binary, "init", "-input=false", "-lockfile=readonly",
                     "-backend-config=bucket=" + os.environ["STATE_BUCKET"],
@@ -293,6 +375,14 @@ def apply(root, tf_root):
     if unsafe:
         print("Refusing to delete or replace data-bearing resources: " + ", ".join(unsafe))
         raise ValueError("data-bearing resource replacement requires manual review")
+    if legacy_fence(planned):
+        # Scaling is deliberately outside Terraform's graph, before its native
+        # migration gate. Refresh/replan so desired counts are restored only by
+        # the API-only rollout after migration, not left at maintenance zero.
+        subprocess.run([binary, "plan", "-input=false", "-lock-timeout=120s", *replace, "-out=" + str(plan)], cwd=tf_root, check=True)
+        planned = json.loads(subprocess.check_output([binary, "show", "-json", str(plan)], cwd=tf_root))
+        if unsafe_changes(planned):
+            raise ValueError("post-fence plan requires manual review; maintenance retained")
     try:
         subprocess.run([binary, "apply", "-input=false", "-lock-timeout=120s", str(plan)], cwd=tf_root, check=True)
     except subprocess.CalledProcessError:
@@ -300,17 +390,22 @@ def apply(root, tf_root):
             raise StepFailure("certificate_failed")
         raise
     raw = subprocess.check_output([binary, "output", "-json"], cwd=tf_root)
-    return {key: value["value"] for key, value in json.loads(raw).items()}
+    outputs = {key: value["value"] for key, value in json.loads(raw).items()}
+    expected = {name: outputs["task_definition_arns"][key] for key, name in outputs["service_names"].items()}
+    tls_redeploy(cluster=outputs["cluster_name"], expected=expected)
+    return outputs
 
 
-def tls_redeploy(force=True):
+def tls_redeploy(force=True, cluster=None, expected=None):
     """Complete the strict phase after Terraform has settled both CA services.
 
     Only existing ECS UpdateService/Describe permissions are used. Never
     deregister a revision, roll back a secret, or hide a failed waiter.
     """
-    cluster = os.environ["TLS_CLUSTER"]
-    expected = json.loads(os.environ["TLS_TASK_DEFINITIONS"])
+    if cluster is None:
+        cluster = os.environ["TLS_CLUSTER"]
+    if expected is None:
+        expected = json.loads(os.environ["TLS_TASK_DEFINITIONS"])
     if (not isinstance(expected, dict) or len(expected) != 2
             or not all(isinstance(name, str) and name and isinstance(arn, str)
                        and arn.startswith("arn:") and ":task-definition/" in arn
@@ -341,22 +436,27 @@ def tls_redeploy(force=True):
                     or primary[0].get("rolloutState") != "COMPLETED"):
                 raise DeploymentPending("managed TLS deployment is not complete")
 
+    def wait_completed():
+        deadline = time.monotonic() + 120
+        while True:
+            try:
+                require_completed()
+                return
+            except DeploymentPending:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(3)
+
     if force:
-        require_completed()
+        # Provider steady-state can precede ECS's COMPLETED rollout marker.
+        # Wait before forcing too; wrong revisions/FAILED still fail immediately.
+        wait_completed()
         for name in names:
             aws("ecs", "update-service", "--cluster", cluster, "--service", name, "--force-new-deployment")
     # Failed waiters propagate. Also require the completed rollout state, not
     # merely runningCount==desiredCount while an old rollback target survives.
     aws("ecs", "wait", "services-stable", "--cluster", cluster, "--services", *names)
-    deadline = time.monotonic() + 120
-    while True:
-        try:
-            require_completed()
-            return
-        except DeploymentPending:
-            if time.monotonic() >= deadline:
-                raise
-            time.sleep(3)
+    wait_completed()
 
 
 def verify_services(outputs):

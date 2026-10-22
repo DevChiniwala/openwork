@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import { useChatEngineClient } from "@/react-app/domains/models/use-chat-engine-client";
 import { useAutoAccess } from "@/react-app/domains/cloud/auto-access-ui";
 import { freeAutoSwitchedOff } from "@/app/lib/inference-access";
 import { openNewSessionDraft } from "@/react-app/domains/session/chat/new-session-destination";
@@ -1156,9 +1157,15 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const handleModelPickerOpen = useCallback(() => {
     void providerAuthStore.runCloudProviderSync("model_picker_open");
   }, [providerAuthStore]);
+  // Model lists here come from the engine chat runs on, so they match the chat's picker.
+  const chatEngine = useChatEngineClient({
+    endpoint: selectedWorkspaceEndpoint,
+    workspaceRoot: selectedWorkspaceRoot,
+    fallback: { client: opencodeClient, baseUrl: opencodeBaseUrl },
+  });
   const modelPicker = useModelPicker({
-    client: opencodeClient,
-    baseUrl: opencodeBaseUrl,
+    client: chatEngine.client,
+    baseUrl: chatEngine.baseUrl,
     workspaceRoot: selectedWorkspaceRoot,
     onOpen: handleModelPickerOpen,
     onLoadError: handleModelPickerLoadError,
@@ -1838,7 +1845,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const restartExtensionLocalServer = useCallback(async () => {
     if (!isDesktopRuntime()) return false;
     try {
-      await openworkServerRestart();
+      await openworkServerRestart({ diagnosticsCause: "settings" });
       await openworkServerStore.reconnectOpenworkServer();
       await refreshRouteState();
       return true;
@@ -2486,8 +2493,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       case "shortcuts":
         return (
           <KeyboardShortcutsView
-            client={opencodeClient}
-            baseUrl={opencodeBaseUrl}
+            client={chatEngine.client}
+            baseUrl={chatEngine.baseUrl}
+            pickerOptions={modelPicker.options}
             directory={selectedWorkspaceRoot}
             onOpenProviders={() => navigateSettingsPath("ai")}
           />

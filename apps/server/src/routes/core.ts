@@ -7,7 +7,7 @@ import {
   writeConnectState,
 } from "../connect-state.js";
 import type { CloudMcpLiveStatusObserver } from "../cloud-mcp-health.js";
-import { readOpenWorkConnectSkillCatalog, renderOpenWorkConnectSkillInstruction } from "../connect-skill-catalog.js";
+import { readOpenWorkConnectSkillContent, readOpenWorkConnectSkillIndex, renderOpenWorkConnectSkillInstruction } from "../connect-skill-catalog.js";
 import { readOpenWorkAutomationCatalog, renderOpenWorkAutomationInstruction } from "../connect-automation-catalog.js";
 import { EnvStoreReadError, InvalidEnvKeyError, isValidEnvKey, type EnvService } from "../env-file.js";
 import { syncManagedProviderAuth, type ManagedProviderAuthResult } from "../managed-provider-auth.js";
@@ -298,13 +298,25 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
 
   addRoute(routes, "GET", "/experimental/connect/skills", "client", async (_ctx) => {
     // Connect skills are server/account-scoped (openwork-cloud on the host), not per-workspace.
-    const skills = await readOpenWorkConnectSkillCatalog(config);
+    const { skills, delivery } = await readOpenWorkConnectSkillIndex(config);
     return jsonResponse({
       ok: true,
       schemaVersion: 1,
       skills,
+      ...(delivery ? { delivery } : {}),
       instruction: renderOpenWorkConnectSkillInstruction(skills),
     });
+  });
+
+  addRoute(routes, "POST", "/experimental/connect/skills/read", "client", async (ctx) => {
+    // One listed skill's SKILL.md for native delivery; Den rechecks access.
+    const body = await readJsonBody(ctx.request);
+    if (typeof body.url !== "string" || !body.url.startsWith("skill://") || body.url.length > 2_048) {
+      return jsonResponse({ ok: false, reason: "invalid_url" }, 400);
+    }
+    const content = await readOpenWorkConnectSkillContent(config, body.url);
+    if (content === null) return jsonResponse({ ok: false, reason: "unavailable" }, 404);
+    return jsonResponse({ ok: true, content });
   });
 
   addRoute(routes, "GET", "/experimental/connect/automations", "client", async (_ctx) => {

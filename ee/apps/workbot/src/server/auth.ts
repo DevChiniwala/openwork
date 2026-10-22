@@ -35,10 +35,17 @@ const SESSION_MAX_AGE_S = 30 * 24 * 60 * 60
  */
 const REFRESHED_REUSE_MS = 2 * 60_000
 
-/** A path on this site to return to after signing in; anything else (another site, `//host`) becomes `/`. */
-function safeReturnPath(value: string | undefined) {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/"
-  return value.slice(0, 1_000)
+/** Validate before sealing: browsers strip controls and interpret backslashes as path separators. */
+function safeReturnPath(value: string | undefined, publicUrl: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || /[\u0000-\u0020\u007f\\]|\s/u.test(value)) return "/"
+  const path = value.slice(0, 1_000)
+  try {
+    const origin = new URL(publicUrl).origin
+    if (new URL(path, origin).origin !== origin) return "/"
+    return path
+  } catch {
+    return "/"
+  }
 }
 
 function page(title: string, message: string, action: { href: string; label: string }) {
@@ -53,7 +60,7 @@ a{display:inline-block;background:#011627;color:#fff;text-decoration:none;font-s
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex")
 
 /** What sign-in needs from Den. */
-export type DenAuth = Pick<Den, "authorizeUrl" | "exchangeCode" | "session" | "refresh" | "revoke">
+export type DenAuth = Pick<Den, "authorizeUrl" | "exchangeCode" | "session" | "refresh" | "revoke"> & Partial<Pick<Den, "recordSignIn">>
 
 export function createAuth(input: { config: Pick<Config, "publicUrl" | "secureCookies" | "sessionSecret">; den: DenAuth; now?: () => number }) {
   const { config, den } = input
@@ -68,7 +75,7 @@ export function createAuth(input: { config: Pick<Config, "publicUrl" | "secureCo
   /** Keyed by the refresh token being spent: Den rotates refresh tokens, so each one is spent once. */
   const refreshing = new Map<string, Promise<Tokens>>()
   const refreshed = new Map<string, { at: number; tokens: Tokens }>()
-  const denSessions = new Map<string, { at: number; value: DenSession }>()
+  const denSessions = new Map<string, { at: number; tokenHash: string; value: DenSession }>()
 
   const readSession = (c: Context) => sealer.open(SESSION_PURPOSE, getCookie(c, sessionCookie), sessionSchema)
   const writeSession = (c: Context, session: Session) => {
@@ -105,17 +112,18 @@ export function createAuth(input: { config: Pick<Config, "publicUrl" | "secureCo
   }
 
   const denSession = async (sessionId: string, accessToken: string) => {
+    const tokenHash = hashToken(accessToken)
     const cached = denSessions.get(sessionId)
-    if (cached && now() - cached.at < DEN_SESSION_CACHE_MS) return cached.value
+    if (cached && cached.tokenHash === tokenHash && now() - cached.at < DEN_SESSION_CACHE_MS) return cached.value
     const value = await den.session(accessToken)
-    denSessions.set(sessionId, { at: now(), value })
+    denSessions.set(sessionId, { at: now(), tokenHash, value })
     if (denSessions.size > 10_000) {
       for (const [entry, cachedValue] of denSessions) if (now() - cachedValue.at >= DEN_SESSION_CACHE_MS) denSessions.delete(entry)
     }
     return value
   }
 
-  /** Requires a signed-in person; 401 `signed_out` sends the page to /auth/login. */
+  /** Requires a current session; a scope-bound tab may only see its original identity. */
   const member: MiddlewareHandler<AppEnv> = async (c, next) => {
     const session = readSession(c)
     if (!session) {
@@ -128,8 +136,19 @@ export function createAuth(input: { config: Pick<Config, "publicUrl" | "secureCo
       const { tokens, changed } = await freshTokens(session)
       stage = "session"
       const current = { ...session, tokens }
-      if (changed) writeSession(c, current)
       const value = await denSession(session.id, tokens.accessToken)
+      if (value.user.id !== session.userId || value.organization.id !== session.organizationId) {
+        return c.json({ error: "identity_changed", message: "The signed-in account or workspace changed. Sign in again before restoring work." }, 401)
+      }
+      if (changed) writeSession(c, current)
+      const expectedUser = c.req.header("x-openwork-client-user")
+      const expectedOrganization = c.req.header("x-openwork-client-organization")
+      if ((expectedUser !== undefined || expectedOrganization !== undefined)
+        && (expectedUser !== value.user.id || expectedOrganization !== value.organization.id)) {
+        // A stale tab cannot receive a newly signed-in person's data. These
+        // claims only restrict the authenticated identity; they never select it.
+        return c.json({ error: "identity_changed", message: "The signed-in account or workspace changed. Check sign-in before restoring work." }, 401)
+      }
       c.set("member", { session: current, accessToken: tokens.accessToken, den: value })
     } catch (error) {
       if (error instanceof DenSignedOutError) {
@@ -157,10 +176,10 @@ export function createAuth(input: { config: Pick<Config, "publicUrl" | "secureCo
       const state = randomToken()
       const verifier = randomToken()
       // Ties the sign-in to this browser, so a link someone else started can't sign it in as them.
-      const login = { state, verifier, returnTo: safeReturnPath(c.req.query("return")), createdAt: now() }
+      const login = { state, verifier, returnTo: safeReturnPath(c.req.query("return"), config.publicUrl), createdAt: now() }
       setCookie(c, loginCookie, sealer.seal(LOGIN_PURPOSE, login), { ...cookieOptions, maxAge: LOGIN_TTL_MS / 1000 })
       try {
-        return c.redirect(await den.authorizeUrl({ state, verifier }), 302)
+        return c.redirect(await den.authorizeUrl({ state, verifier, chooseWorkspace: c.req.query("workspace") === "choose" }), 302)
       } catch (error) {
         console.error("[workbot] sign-in unavailable", { error: error instanceof Error ? error.message : "unknown" })
         reportError("sign_in_unavailable", error)
@@ -179,7 +198,9 @@ export function createAuth(input: { config: Pick<Config, "publicUrl" | "secureCo
       try {
         const tokens = await den.exchangeCode(code, login.verifier)
         const who = await den.session(tokens.accessToken)
-        writeSession(c, { id: randomToken(), userId: who.user.id, organizationId: who.organization.id, tokens, createdAt: now() })
+        const id = randomToken()
+        writeSession(c, { id, userId: who.user.id, organizationId: who.organization.id, tokens, createdAt: now() })
+        void den.recordSignIn?.(tokens.accessToken, id).catch(() => undefined)
         return c.redirect(login.returnTo, 302)
       } catch (error) {
         console.error("[workbot] sign-in failed", { error: error instanceof Error ? error.message : "unknown" })

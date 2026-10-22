@@ -28,10 +28,8 @@ import { createMcpAppActions, type McpAppOrigin } from "./mcp-app-origin"
 import { McpAppSignInPrompts, signInPromptFromToolResult, useMcpAppSignIn } from "./mcp-app-sign-in"
 import { cn } from "@/lib/utils"
 import { McpAppLoading } from "./mcp-app-loading"
-import { useAppBuildProgressEnabled } from "@/react-app/domains/apps/use-app-build-progress-feature"
 import { Button } from "@/components/ui/button"
 import { t } from "@/i18n"
-import { useOfflineRecoveryFeature } from "@/react-app/domains/session/status/use-offline-recovery-feature"
 import {
   formatMcpAppDiagnostic,
   safeMcpAppDiagnosticMessage,
@@ -282,8 +280,7 @@ function isRetiredFirstPartyConfirmation(toolName: string, result: PreservedMcpA
 const CHAT_MCP_APP_UNAVAILABLE_NOTICE = "Interactive view unavailable. The normal tool result is still available."
 
 export function McpAppDiagnosticNotice({ error, notice, onRetry, engine }: { error: McpAppDiagnostic; notice: string; onRetry?: () => void; engine?: "v1" | "v2" }) {
-  const enabled = useOfflineRecoveryFeature(engine === "v2")
-  const compact = enabled && (error.causeCode === "server_unavailable" || error.causeCode === "mcp_unreachable")
+  const compact = engine === "v2" && (error.causeCode === "server_unavailable" || error.causeCode === "mcp_unreachable")
   const [detailsCopied, setDetailsCopied] = useState(false)
   const details = formatMcpAppDiagnostic(error)
   return (
@@ -955,7 +952,6 @@ export function McpAppFrame({ part, origin }: { part: DynamicToolUIPart; origin?
 }
 
 function EmbeddedMcpAppFrame({ part, origin: surfaceOrigin }: { part: DynamicToolUIPart; origin?: McpAppOrigin }) {
-  const stagedLoading = useAppBuildProgressEnabled()
   const context = useOptionalMessageList()
   const nextOrigin = surfaceOrigin ?? context?.mcpAppOrigin ?? null
   const { uiStateOwner, readOnly, getConnectionDecision, onMcpReconnect } = context ?? {}
@@ -1117,7 +1113,7 @@ function EmbeddedMcpAppFrame({ part, origin: surfaceOrigin }: { part: DynamicToo
   if (!origin) return <p role="status">This artifact is missing its conversation origin. Reopen the conversation to use it.</p>
   if (error) return <McpAppDiagnosticNotice error={error} notice={CHAT_MCP_APP_UNAVAILABLE_NOTICE} onRetry={() => setResolveToken((token) => token + 1)} engine={origin.engine} />
   if (!app || resolvedFor.current !== resolution) return launch && resolvedFor.current !== resolution
-    ? stagedLoading ? <McpAppLoading /> : <p role="status">Opening artifact…</p> : null
+    ? <McpAppLoading /> : null
   if (appConnection) return <DashboardConnectionCard toolName={appConnection.toolName} toolCallId={`${part.toolCallId}:app`}
     output={appConnection.output} onConnected={() => { setAppConnection(null); setResolveToken((token) => token + 1) }} />
   return (

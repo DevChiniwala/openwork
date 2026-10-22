@@ -40,20 +40,14 @@ test("a returning Den web member opens their last organization while another acc
   await step("before: a member with two organizations and no preference still chooses where to work", async () => {
     const directory = await probe.api(first.session, "/v1/me/orgs");
     const orgs = denMemoryRecord(directory.body).orgs;
-    const off = await probe.api(world.den.admin, "/v1/org", { headers: { "x-openwork-org-id": a.id } });
-    const on = await probe.api(world.den.admin, "/v1/org", { headers: { "x-openwork-org-id": b.id } });
-    const aEnabled = denMemoryRecord(denMemoryRecord(off.body).features).rememberLastOrganization === true;
-    const bEnabled = denMemoryRecord(denMemoryRecord(on.body).features).rememberLastOrganization === true;
-    expect(directory.response.ok && off.response.ok && on.response.ok).toBe(true);
+    expect(directory.response.ok).toBe(true);
     expect(Array.isArray(orgs) ? orgs.length : 0).toBe(2);
     await signIn(user, first.session);
     await user.see({ role: "heading", label: "Choose an organization" }, { timeoutMs: 60_000 });
     await user.see({ role: "button", label: new RegExp(a.name) });
     await user.see({ role: "button", label: new RegExp(b.name) });
     const chooser = await probe.has("Choose an organization");
-    evidence.recordAssertionEvidence("the first login has no guessed organization", `memberships=${Array.isArray(orgs) ? orgs.length : 0}; memory A=${aEnabled}, B=${bEnabled}; chooser shown=${chooser}`, Array.isArray(orgs) && orgs.length === 2 && !aEnabled && bEnabled && chooser);
-    expect(aEnabled).toBe(false);
-    expect(bEnabled).toBe(true);
+    evidence.recordAssertionEvidence("the first login has no guessed organization", `memberships=${Array.isArray(orgs) ? orgs.length : 0}; no feature overrides; chooser shown=${chooser}`, Array.isArray(orgs) && orgs.length === 2 && chooser);
     await user.screenshot();
   });
 
@@ -66,17 +60,20 @@ test("a returning Den web member opens their last organization while another acc
     await user.screenshot();
   });
 
-  await step("before: returning to A with memory turned off still opens the chooser", async () => {
+  await step("after: returning to A opens the dashboard without a feature override", async () => {
     await signOut(user);
     await signIn(user, first.session);
-    await user.see({ role: "heading", label: "Choose an organization" }, { timeoutMs: 60_000 });
+    await dashboard(user, a.name);
     const chooser = await probe.has("Choose an organization");
-    evidence.recordAssertionEvidence("a disabled rollout never bypasses choosing", `the same member signed in again; A memory off; chooser shown=${chooser}`, chooser);
-    expect(chooser).toBe(true);
+    const displayed = await workspaceName(probe);
+    evidence.recordAssertionEvidence("organization memory is generally available", `the same member signed in again; workspace=${displayed}; chooser shown=${chooser}`, !chooser && displayed.includes(a.name));
+    expect(chooser).toBe(false);
     await user.screenshot();
   });
 
-  await step("when the member chooses B, Den opens the enabled organization", async () => {
+  await step("when the member switches to B, Den opens the explicit choice", async () => {
+    await user.click({ testId: "workspace-switcher-trigger" });
+    await user.see({ testId: "workspace-switcher-menu" });
     await user.click({ role: "button", label: new RegExp(b.name) });
     await dashboard(user, b.name);
     const displayed = await workspaceName(probe);

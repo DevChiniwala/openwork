@@ -10,6 +10,7 @@ import { db } from "./db.js"
 import { env } from "./env.js"
 import { bumpGeneration, readManyThroughGeneration, readThroughGeneration, type GenerationCacheEntry } from "./generation-cache.js"
 import { roleIncludesOwner } from "./organization-member-guards.js"
+import { deploymentServiceReadinessSchema, type DeploymentServiceReadiness } from "@openwork/types/den/service-readiness"
 import { getDenSessionExpiresAt, getDenSessionRefreshCutoff } from "./session-lifetime.js"
 
 type OrgId = typeof OrganizationTable.$inferSelect.id
@@ -656,9 +657,8 @@ function logFeatureCacheError(stage: "get" | "set", child: CacheChild, id: strin
  * generation for all feature rows, bumped by den-api's feature writers
  * (features.ts updateFeatureRollout / updateOrganizationFeatureOverrides) after
  * the write. Successful bumps invalidate every replica immediately; the TTL
- * bounds failed bumps and external writes for ordinary flags. Permission
- * authorization MUST use features.ts, which overrides cached permissions with
- * a live database read regardless of whether invalidation succeeded.
+ * bounds failed bumps and external writes. Permission grants are always read
+ * from the database by permissions/resolve.ts, never from this flag cache.
  */
 const featureRolloutsEntry: GenerationCacheEntry<FeatureRollouts> = {
   entryKey: (generation) => cacheKey({ parent: "features", child: "rollouts", id: generation }),
@@ -1052,6 +1052,25 @@ async function bumpInventoryRevisions(organizationIds: string[]) {
 }
 
 export const cache = {
+  // Optional shared diagnostics only, never authorization. No extra Redis client,
+  // infrastructure requirement or raw errors in this cache path.
+  serviceReadiness: {
+    async load(configurationFingerprint: string): Promise<DeploymentServiceReadiness | null> {
+      if (!activeRedisClient || !/^[a-f0-9]{64}$/.test(configurationFingerprint)) return null
+      try {
+        const raw = await activeRedisClient.get(`cache:service-readiness:v2:${configurationFingerprint}`)
+        if (!raw || raw.length > 32_768) return null
+        // Version-1 snapshots (removed services, no notes or durations) fail the
+        // version-2 schema and are ignored; server facts are never shared.
+        const parsed = deploymentServiceReadinessSchema.safeParse(JSON.parse(raw))
+        return parsed.success ? { ...parsed.data, server: null } : null
+      } catch { return null }
+    },
+    async save(configurationFingerprint: string, snapshot: DeploymentServiceReadiness): Promise<void> {
+      if (!activeRedisClient || !/^[a-f0-9]{64}$/.test(configurationFingerprint)) return
+      try { await activeRedisClient.set(`cache:service-readiness:v2:${configurationFingerprint}`, JSON.stringify({ ...snapshot, server: null }), "EX", 86_400) } catch { /* Best effort, no secrets in errors. */ }
+    },
+  },
   auth: {
     session: getAuthSession,
     sessionResult: getAuthSessionResult,

@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 import { LandingFaq } from "./landing-faq";
 import { LandingHeroPrompt } from "./landing-hero-prompt";
@@ -13,6 +14,7 @@ import { SiteFooter } from "./site-footer";
 import { SiteNav } from "./site-nav";
 import { SocTypeIIBadge } from "./soc-type-ii-badge";
 import { HeroDownloadButton } from "./hero-download-button";
+import { TRUST_CENTER_URL } from "../lib/trust-center";
 
 type Props = {
   stars: string;
@@ -99,7 +101,7 @@ export function LandingHome(props: Props) {
               <div className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-2 text-xs text-[var(--lp-muted)]">
                 <span>Free desktop app</span>
                 <span aria-hidden="true">·</span>
-                <a href="/download" className="underline-offset-4 hover:underline">macOS</a>
+                <Link href="/download" className="underline-offset-4 hover:underline">macOS</Link>
                 <span aria-hidden="true">·</span>
                 <a href={props.windowsDownloadHref} className="underline-offset-4 hover:underline">Windows</a>
                 <span aria-hidden="true">·</span>
@@ -113,7 +115,9 @@ export function LandingHome(props: Props) {
                 <span className="font-medium">Combinator</span>
                 </div>
                 <a
-                  href="/trust"
+                  href={TRUST_CENTER_URL}
+                  target="_blank"
+                  rel="noreferrer"
                   aria-label="SOC 2 Type II audit complete. View Trust Center"
                   className="flex shrink-0 items-center gap-3 border-l border-[var(--lp-border)] pl-4 transition-opacity hover:opacity-80"
                 >

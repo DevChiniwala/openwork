@@ -339,8 +339,8 @@ variable "headless_runner" {
   default = {}
 
   validation {
-    condition     = contains(["anthropic", "openai"], var.headless_runner.model_protocol)
-    error_message = "headless_runner.model_protocol must be anthropic or openai."
+    condition     = contains(["anthropic", "openai", "openai-responses"], var.headless_runner.model_protocol)
+    error_message = "headless_runner.model_protocol must be anthropic, openai or openai-responses."
   }
 
   validation {
@@ -498,7 +498,7 @@ variable "database_url" {
 variable "database" {
   description = "RDS settings."
   type = object({
-    instance_class        = optional(string, "db.t4g.micro")
+    instance_class        = optional(string, "db.t4g.small")
     engine_version        = optional(string, "8.4")
     allocated_storage_gb  = optional(number, 20)
     max_allocated_storage = optional(number, 100)

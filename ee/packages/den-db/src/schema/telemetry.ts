@@ -17,6 +17,14 @@ export const TelemetryEventType = [
   "task.started",
   "task.completed",
   "task.failed",
+  // Server-only Workbot adoption facts. The generic client ingest rejects these.
+  "workbot.signed_in",
+  "workbot.greeting_started",
+  "workbot.greeting_completed",
+  "workbot.greeting_failed",
+  "workbot.message_sent",
+  "workbot.turn_completed",
+  "connection.connected",
 ] as const
 
 /**

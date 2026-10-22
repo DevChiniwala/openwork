@@ -13,6 +13,7 @@ import { updateFeatureRollout, updateOrganizationFeatureOverrides } from "../fea
 import { FEATURE_KEYS, featureAvailableOn, featureDefinition, featureKeySchema, featureRollout, resolveFeature } from "@openwork/features"
 import { updateOrganizationMetadata } from "../organization-metadata.js"
 import { runPlatformAdminPlatformAction, runPlatformAdminServiceAction, type PlatformAdminAuditActor } from "../audit/mcp-service-audit.js"
+import { readWorkbotAdoptionReport, workbotAdoptionInputSchema } from "../workbot/adoption-report.js"
 
 /**
  * den-admin MCP toolset: read-only Den analytics for allowlisted platform
@@ -28,7 +29,7 @@ import { runPlatformAdminPlatformAction, runPlatformAdminServiceAction, type Pla
  * timeout so one expensive SELECT cannot pin an API worker indefinitely.
  */
 
-export const DEN_ADMIN_MCP_VERSION = "0.7.0"
+export const DEN_ADMIN_MCP_VERSION = "0.8.0"
 
 const QUERY_TIMEOUT_MS = 15_000
 const DEFAULT_ROW_LIMIT = 200
@@ -502,7 +503,7 @@ export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAud
     "den_set_org_capability",
     {
       description:
-        "Admin write tool: turn one feature on or off for one organization (an organization override, the same switch as the admin panel), e.g. capability='workbot'. enabled=null removes the override so the feature follows the deployment-wide on/off state again. The kill switch (den_set_feature_rollout) still outranks it.",
+        "Admin write tool: turn one feature on or off for one organization (an organization override, the same switch as the admin panel), e.g. capability='workbotDocuments'. enabled=null removes the override so the feature follows the deployment-wide on/off state again. The kill switch (den_set_feature_rollout) still outranks it.",
       inputSchema: z.object({
         organizationId: z.string().min(1).describe("Organization id, e.g. org_..."),
         capability: featureKeySchema.describe("Feature to set (see packages/features/src/registry.ts)"),
@@ -700,6 +701,21 @@ export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAud
           cohorts: result,
           note: "week0 = signup week; weekN = active N weeks after signup",
         }
+      }),
+  )
+
+  server.registerTool(
+    "den_workbot_adoption",
+    {
+      description:
+        "Platform-admin read-only Workbot adoption funnel, grouped by first recorded sign-in day (UTC) and organization: signed in, greeting completed, first message, at least one connected service. Includes id-only member pages with initial/greeting ready counts, later connection success counts, completion model/source details, and greeting failures by error code/model. Dates are inclusive, at most 90 days; totals cover the full cohort even when breakdowns are truncated. Never reads messages or profile fields.",
+      inputSchema: workbotAdoptionInputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async (input) =>
+      run(async () => {
+        if (!admin) throw new Error("Workbot adoption reports require an authenticated platform admin.")
+        return readWorkbotAdoptionReport(input, rows)
       }),
   )
 

@@ -86,7 +86,7 @@ import {
   type SearchCapabilityType,
 } from "./search.js"
 import { externalToolContent } from "./tool-content.js"
-import { withRemoteSessionReceiptUri } from "./remote-session-resources.js"
+import { capabilityCallInput, capabilityToolMatch, type CapabilityToolMatch } from "./capability-tool.js"
 
 export const CAPABILITY_SOURCE_KINDS = ["catalog", "native", "externalMcp", "marketplace", "builtinSkill", "remoteSession", "admin"] as const
 export type CapabilitySourceKind = (typeof CAPABILITY_SOURCE_KINDS)[number]
@@ -114,6 +114,8 @@ export type CapabilityExecuteInput = {
   requireSchemaMatch?: boolean
   /** Refuse an external tool that its provider no longer marks read-only for this caller. */
   requireReadOnly?: boolean
+  /** One object matching the search match's `inputSchema`; wins over path/query/body. */
+  arguments?: unknown
   path?: unknown
   query?: unknown
   body?: unknown
@@ -128,11 +130,10 @@ export type CapabilityRegistryContext = {
   member: McpMemberIdentity | null
   redirectUriBase: string
   generatedArtifactViewsEnabled: boolean
-  /** Managed deployment planning, launch preparation and status (both rollouts on). */
-  managedDeploymentsMcpEnabled: boolean
-  /** Secure keys in chat: provider creation is offered to agents, never keys. */
-  secureSecretFieldsEnabled: boolean
-  remoteSessionEventsEnabled: boolean
+  /** Managed deployment planning, launch preparation and status (managed deployments enabled). */
+  managedDeploymentsEnabled: boolean
+  /** Removing an organization connection on the user's explicit request (agent connection removal enabled). */
+  agentConnectionRemovalEnabled: boolean
   /** `remote-session:status`, rolled out with the desktop's remote sub-agents. */
   remoteSessionStatusEnabled: boolean
   resolvePlatformAdmin: () => Promise<boolean>
@@ -153,7 +154,7 @@ export type CapabilityRegistryContextInput = {
   redirectUriBase: string
   generatedArtifactViewsEnabled: boolean
   /** Effective features of the organization (see features.ts). */
-  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionEvents" | "remoteSessionSubagents" | "managedDeployments" | "managedDeploymentsMcp" | "secureSecretFields" | "googleDocumentTools">>
+  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionSubagents" | "managedDeployments" | "agentConnectionRemoval">>
   /** MCP transports pass the verified caller; route and Automation contexts omit it (their route records the request). */
   audit?: McpAuditPrincipal | null
   /**
@@ -183,17 +184,14 @@ export function createCapabilityRegistryContext(input: CapabilityRegistryContext
     env: input.env,
     // All capability paths (search, Code Mode, execution, saved Workflows) use this catalog.
     // The route also checks the current rollout so a cached tool cannot bypass a kill switch.
-    catalog: input.catalog.filter(operation => input.organizationFeatures.googleDocumentTools === true
-      || !operation.path.startsWith("/v1/capabilities/google-workspace/documents/")),
+    catalog: input.catalog,
     principal: input.principal,
     organizationId: input.organizationId,
     member: input.member,
     redirectUriBase: input.redirectUriBase,
     generatedArtifactViewsEnabled: input.generatedArtifactViewsEnabled,
-    managedDeploymentsMcpEnabled: input.organizationFeatures.managedDeployments === true
-      && input.organizationFeatures.managedDeploymentsMcp === true,
-    secureSecretFieldsEnabled: input.organizationFeatures.secureSecretFields === true,
-    remoteSessionEventsEnabled: input.organizationFeatures.remoteSessionEvents === true,
+    managedDeploymentsEnabled: input.organizationFeatures.managedDeployments === true,
+    agentConnectionRemovalEnabled: input.organizationFeatures.agentConnectionRemoval === true,
     remoteSessionStatusEnabled: input.organizationFeatures.remoteSessionSubagents === true,
     resolvePlatformAdmin,
     resolveNamespaceContext,
@@ -275,15 +273,16 @@ function textContent(text: string): { text: string; type: "text" }[] {
   return [{ type: "text", text }]
 }
 
-function unknownCapabilityText(name: string): string {
-  return JSON.stringify({
-    error: "unknown_capability",
-    message: `No capability named "${name}". Call search_capabilities to find a valid name.`,
-  })
+/** A tool execution error the model can act on, as text and as structured content. */
+function capabilityErrorResult(payload: Record<string, unknown>): ExecuteCapabilityToolResult {
+  return { isError: true, content: textContent(JSON.stringify(payload)), structuredContent: payload }
 }
 
 function unknownCapabilityResult(name: string): ExecuteCapabilityToolResult {
-  return { isError: true, content: textContent(unknownCapabilityText(name)) }
+  return capabilityErrorResult({
+    error: "unknown_capability",
+    message: `No capability named "${name}". Call search_capabilities to find a valid name.`,
+  })
 }
 
 const externalMcpProviderErrorOutputSchema = z.object({
@@ -342,12 +341,7 @@ export function externalCapabilityErrorToolResult(
       ? { connectionCard: `Execute "${statusCapability}" once to show the member an actionable connection card, then relay the action in text.` }
       : {}),
   })
-  if (!result.connectionStatus) {
-    return {
-      isError: true,
-      content: textContent(JSON.stringify(payload)),
-    }
-  }
+  if (!result.connectionStatus) return capabilityErrorResult(payload)
   return {
     isError: true,
     content: textContent(JSON.stringify(payload)),
@@ -393,11 +387,7 @@ export function externalCapabilitySuccessToolResult(
 function marketplaceCapabilityErrorToolResult(
   result: Exclude<MarketplaceCapabilityExecuteResult, { ok: true }>,
 ): ExecuteCapabilityToolResult {
-  const payload = Object.fromEntries(Object.entries(result).filter(([key]) => key !== "ok"))
-  return {
-    isError: true,
-    content: textContent(JSON.stringify(payload)),
-  }
+  return capabilityErrorResult(Object.fromEntries(Object.entries(result).filter(([key]) => key !== "ok")))
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -616,7 +606,7 @@ const externalMcpSource: CapabilitySource = {
         connectionId: parsed.connectionId,
       })
       if (!probe.ok) {
-        return { isError: true, content: textContent(JSON.stringify({ error: probe.error, message: probe.message })) }
+        return capabilityErrorResult({ error: probe.error, message: probe.message })
       }
       const payload = probe.connected
         ? connectedConnectionActionPayload({ connectionId: probe.connection.id, connectionName: probe.connection.name })
@@ -757,22 +747,19 @@ const remoteSessionSource: CapabilitySource = {
     if (!parsedForKind(parsed, "remoteSession")) return unknownCapabilityResult(input.name)
     if (parsed.action === "status" && !ctx.remoteSessionStatusEnabled) return unknownCapabilityResult(input.name)
     if (!ctx.member) {
-      return {
-        isError: true,
-        content: textContent(JSON.stringify({
-          error: "membership_required",
-          message: "Remote sessions require an active organization membership.",
-        })),
-      }
+      return capabilityErrorResult({
+        error: "membership_required",
+        message: "Remote sessions require an active organization membership.",
+      })
     }
-    const run = async () => withRemoteSessionReceiptUri(await executeRemoteSessionCapability({
+    const run = () => executeRemoteSessionCapability({
       action: parsed.action,
       organizationId: ctx.organizationId,
       userId: ctx.principal.userId,
       hasWriteScope: ctx.principal.scopes.has(DEN_MCP_WRITE_SCOPE),
       body: input.body,
       headlessRunTokenId: headlessRunTokenId(ctx.principal.payload),
-    }), ctx.remoteSessionEventsEnabled)
+    })
     const auditAction = remoteSessionAuditActions[parsed.action]
     if (!auditAction || !ctx.audit) return run()
     try {
@@ -870,7 +857,12 @@ export function createCapabilityRegistry(sources: Record<CapabilitySourceKind, C
       for (const kind of CAPABILITY_SOURCE_KINDS) {
         const source = sources[kind]
         const parsed = source.parseName(input.name)
-        if (parsed) return source.execute(ctx, parsed, input)
+        if (!parsed) continue
+        const call = capabilityCallInput(
+          input.arguments === undefined ? input : { ...input, arguments: normalizeToolBody(input.arguments) },
+          HTTP_ARGUMENT_KINDS.has(kind),
+        )
+        return call.ok ? source.execute(ctx, parsed, call.input) : capabilityErrorResult(call.error)
       }
       return unknownCapabilityResult(input.name)
     },
@@ -897,6 +889,15 @@ export function createCapabilityRegistry(sources: Record<CapabilitySourceKind, C
       }
     },
   }
+}
+
+/** Den API and native connector operations take `{ path, query, body }` as their arguments. */
+const HTTP_ARGUMENT_KINDS: ReadonlySet<CapabilitySourceKind> = new Set(["catalog", "native"])
+
+/** A search match in MCP `Tool` shape, with its `inputSchema` built the way execute reads `arguments`. */
+export function capabilitySearchMatch(match: CapabilityMatch): CapabilityToolMatch {
+  const kind = CAPABILITY_SOURCE_KINDS.find((candidate) => CAPABILITY_SOURCES[candidate].parseName(match.name) !== null)
+  return capabilityToolMatch(match, kind !== undefined && HTTP_ARGUMENT_KINDS.has(kind))
 }
 
 export const CAPABILITY_REGISTRY = createCapabilityRegistry(CAPABILITY_SOURCES)

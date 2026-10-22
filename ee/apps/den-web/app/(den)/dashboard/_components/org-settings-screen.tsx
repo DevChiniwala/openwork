@@ -19,7 +19,6 @@ import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { EnterprisePlanNotice } from "./enterprise-plan-notice";
 import { OrgWebOriginsSection } from "./org-web-origins-section";
 import { OrgDefaultModelSection } from "./default-model-section";
-import { useDefaultModelFeatureOn } from "./default-model-data";
 import {
   allPublishedDesktopVersionsAllowed,
   compareDesktopVersions,
@@ -238,8 +237,8 @@ export function OrgSettingsScreen() {
     orgContext?.currentMember.permissions,
   );
   const canManageSettings = access.canManageSettings;
-  // orgDefaultModel: admins choose the model new desktop chats start with.
-  const defaultModelOn = useDefaultModelFeatureOn();
+  // admins choose the model new desktop chats start with.
+
   const canManageDesktopVersions = access.canManageSettings;
   const canDeleteOrganization = access.canDeleteOrganization;
   const draftAllowedDomains = useMemo(
@@ -816,7 +815,7 @@ export function OrgSettingsScreen() {
         </div>
       </form>
 
-      {defaultModelOn && access.canViewModelsSettings ? (
+      {access.canViewModelsSettings ? (
         <OrgDefaultModelSection canManage={access.canManageModelsSettings} />
       ) : null}
 

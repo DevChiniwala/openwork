@@ -240,6 +240,8 @@ export type CloudProviderSyncOptions = {
   fetchImpl?: typeof globalThis.fetch;
   logger?: CloudProviderSyncLogger;
   intervalMs?: number;
+  /** Resolve Den rollout, then return the selected engine's frozen Gateway owner. */
+  liveProviderSync?: () => Promise<boolean>;
 };
 
 const requestTimeoutMs = 8_000;
@@ -567,13 +569,14 @@ async function fetchProviders(
   fetchImpl: typeof globalThis.fetch,
   session: CloudProviderDenSession,
   signal: AbortSignal,
+  liveProviderSync = false,
 ): Promise<{
   llmProviders: DenProviderConnection[];
   inferenceProviders: DenProviderConnection[] | undefined;
 }> {
   const [llmProviders, inferenceProviders] = await Promise.all([
     fetchLlmProviders(fetchImpl, session, signal),
-    fetchInferenceProviders(fetchImpl, session, signal),
+    liveProviderSync ? Promise.resolve([]) : fetchInferenceProviders(fetchImpl, session, signal),
   ]);
   return { llmProviders, inferenceProviders };
 }
@@ -808,6 +811,7 @@ export class CloudProviderSync {
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly logger?: CloudProviderSyncLogger;
   private readonly intervalMs: number;
+  private readonly liveProviderSync?: () => Promise<boolean>;
   private session: CloudProviderDenSession | null = null;
   private lastRun: CloudProviderSyncStatus["lastRun"] = null;
   private providers: CloudProviderSyncStatusProvider[] = [];
@@ -817,6 +821,7 @@ export class CloudProviderSync {
   private materializationContextHash: string | null = null;
   private ownedEnvKeys = new Map<string, string>();
   private managedProviderIds = new Set<string>();
+  private providerEnvHashes = new Map<string, Record<string, string>>();
   private importedAtByCloudProviderId = new Map<string, number>();
   private reloadPending = false;
   private queue: Promise<void> = Promise.resolve();
@@ -838,7 +843,19 @@ export class CloudProviderSync {
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     this.logger = options.logger;
     this.intervalMs = options.intervalMs ?? configuredIntervalMs();
+    this.liveProviderSync = options.liveProviderSync;
     this.reloadRetryMs = configuredReloadRetryMs();
+  }
+
+  /** Process-local credential handoff. Never expose this through ordinary server status/config. */
+  currentSession(): CloudProviderDenSession | null {
+    return this.session ? { ...this.session } : null;
+  }
+
+  /** Invalidate the credential bridge before asynchronous policy hydration. */
+  suspendForSession(session: CloudProviderDenSession): Promise<void> {
+    return this.session && this.sessionContextKey(this.session) === this.sessionContextKey(session)
+      ? Promise.resolve() : this.suspend();
   }
 
   setSession(session: CloudProviderDenSession): Promise<void> {
@@ -950,6 +967,18 @@ export class CloudProviderSync {
       session,
       reason,
     };
+    // A routing transition changes the provider owner even when the Den
+    // identity is unchanged. Joining an already-running live pass can lose
+    // v1's only restoration request; always reconcile the latest owner after
+    // that pass finishes. Ordinary same-context refreshes still coalesce.
+    if (reason === "engine_routing_changed" && this.activeRun) {
+      if (this.trailingRun) {
+        this.trailingRun.contextKey = request.contextKey;
+        this.trailingRun.request = request;
+        return this.trailingRun.promise;
+      }
+      return this.createTrailingRun(request);
+    }
     if (this.activeRun?.contextKey === request.contextKey) {
       const trailing = this.trailingRun;
       if (trailing && trailing.contextKey !== request.contextKey) {
@@ -1037,6 +1066,7 @@ export class CloudProviderSync {
     this.fingerprint = null;
     this.ownedEnvKeys.clear();
     this.managedProviderIds.clear();
+    this.providerEnvHashes.clear();
     this.importedAtByCloudProviderId.clear();
   }
 
@@ -1179,8 +1209,10 @@ export class CloudProviderSync {
         this.resetMaterializationState();
       }
       if (request.generation !== this.contextGeneration) return { status: "no_session" };
+      const liveProviderSync = await this.liveProviderSync?.() ?? false;
+      if (request.generation !== this.contextGeneration) return { status: "no_session" };
       const [{ llmProviders, inferenceProviders }, storedEnv] = await Promise.all([
-        fetchProviders(this.fetchImpl, session, this.providerFetchController.signal),
+        fetchProviders(this.fetchImpl, session, this.providerFetchController.signal, liveProviderSync),
         this.env.list(),
       ]);
       if (request.generation !== this.contextGeneration) return { status: "no_session" };
@@ -1196,7 +1228,7 @@ export class CloudProviderSync {
       // Ownership follows the apply that can write, not a pending session.
       // Retain it through suspension, including a partially completed apply.
       this.materializationContextKey = request.contextKey;
-      const { changed, detail, reloadError } = await this.apply(prepared);
+      const { changed, detail, reloadError } = await this.apply(prepared, liveProviderSync);
       if (request.generation !== this.contextGeneration) return { status: "no_session" };
       // The materialization itself succeeded (config + env writes landed), so
       // record it even when the engine reload failed: hiding the providers
@@ -1224,6 +1256,7 @@ export class CloudProviderSync {
 
   private async apply(
     prepared: PreparedMaterialization,
+    liveProviderSync = false,
   ): Promise<{ changed: boolean; detail: CloudProviderSyncRunDetail; reloadError?: unknown }> {
     const contextHash = this.materializationContextKey === null ? null : hashString(this.materializationContextKey);
     const desiredProviders = desiredProviderMap(prepared);
@@ -1247,6 +1280,14 @@ export class CloudProviderSync {
         && value !== undefined && hashString(value) === hash;
     }).map(([key]) => key);
     for (const providerId of Object.keys(desiredProviders)) this.managedProviderIds.add(providerId);
+    // Approve only values delivered for this provider, not other Settings
+    // secrets that a remote definition happens to name. Hashes also prevent a
+    // shared env name from leaking another provider's later replacement value.
+    const providerEnvHashes = new Map(prepared.providers.map(entry => [entry.runtimeProviderId,
+      Object.fromEntries(entry.envEntries.map(env => [env.key, hashString(env.value)])),
+    ]));
+    const templateBindingsChanged = stableJson(Object.fromEntries(providerEnvHashes)) !== stableJson(Object.fromEntries(this.providerEnvHashes));
+    this.providerEnvHashes = providerEnvHashes;
     for (const entry of prepared.envEntries) this.ownedEnvKeys.set(entry.key, hashString(entry.value));
     if (this.materializationContextHash !== contextHash) this.materializationContextHash = null;
     // Keep retired rows until auth removal has been persisted by its owner.
@@ -1255,7 +1296,19 @@ export class CloudProviderSync {
     if (providerStateChanged) {
       const patch: JsonRecord = {};
       for (const providerId of Object.keys(currentManagedProviders)) {
-        if (!(providerId in desiredProviders)) patch[providerId] = null;
+        if (providerId in desiredProviders) continue;
+        const previous = currentManagedProviders[providerId];
+        // Retain only catalog preferences when handing Gateway ownership to
+        // the native plugin. No adapter/model/credential config survives. The
+        // v2 renderer strips these rows entirely and feeds the rules only to
+        // its model filter plugin, including after a server restart.
+        const filters: JsonRecord = {};
+        if (liveProviderSync && /^ipr_/i.test(providerId) && isRecord(previous)) {
+          for (const key of ["whitelist", "blacklist"]) {
+            if (Array.isArray(previous[key])) filters[key] = previous[key].filter((id): id is string => typeof id === "string");
+          }
+        }
+        patch[providerId] = Object.keys(filters).length ? filters : null;
       }
       for (const [providerId, providerConfig] of Object.entries(desiredProviders)) patch[providerId] = providerConfig;
       await writeGlobalRuntimeOpencodeConfig(this.config, (current) => ({
@@ -1308,6 +1361,7 @@ export class CloudProviderSync {
     // still reloads. Without a rollover-capable engine pool it is deferred
     // while sessions are live; with one, reloadEngine flips generations.
     this.reloadPending = this.reloadPending
+      || templateBindingsChanged
       || providerStateChanged
       || workspaceCleanup.runtimeChanged
       || runtimeFileChanged
@@ -1359,6 +1413,7 @@ export class CloudProviderSync {
       reloadDeferred,
     };
     const changed = detail.fingerprintChanged
+      || templateBindingsChanged
       || providerStateChanged
       || envUpserts.length > 0
       || envDeletes.length > 0
@@ -1455,6 +1510,7 @@ export class CloudProviderSync {
     });
     this.ownedEnvKeys.clear();
     this.managedProviderIds.clear();
+    this.providerEnvHashes.clear();
     this.materializationContextHash = null;
     await this.persistOwnership();
     this.reloadPending = this.reloadPending
@@ -1481,6 +1537,7 @@ export class CloudProviderSync {
     await writeOpenworkWorkspaceConfig(this.config, "__cloud_provider_ownership__", () => ({
       envHashes: Object.fromEntries(this.ownedEnvKeys),
       providerIds: [...this.managedProviderIds],
+      providerEnvHashes: Object.fromEntries(this.providerEnvHashes),
       ...(this.managedProviderIds.size > 0 && this.materializationContextHash !== null
         ? { materializationContextHash: this.materializationContextHash }
         : {}),
@@ -1499,6 +1556,13 @@ export class CloudProviderSync {
       }
     }
     for (const id of readStringList(saved.providerIds)) this.managedProviderIds.add(id);
+    if (isRecord(saved.providerEnvHashes)) {
+      for (const [id, hashes] of Object.entries(saved.providerEnvHashes)) {
+        if (!isRecord(hashes)) continue;
+        this.providerEnvHashes.set(id, Object.fromEntries(Object.entries(hashes)
+          .filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^[a-f0-9]{64}$/.test(entry[1]))));
+      }
+    }
     // Workspace import baselines are collaborator-writable metadata, not proof
     // of ownership for runtime, credential, or auth cleanup.
     const runtimes = [await readGlobalRuntimeOpencodeConfig(this.config)];

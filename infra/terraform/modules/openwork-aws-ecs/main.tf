@@ -109,7 +109,7 @@ locals {
     DAYTONA_SHARED_VOLUME_NAME  = local.provisioner_mode == "daytona" ? "${local.daytona_prefix}-workers" : ""
   }
 
-  # Feature locks (DEN_FEATURE_*) turn each capability on for the organization.
+  # Runner and Workbot service configuration. Slack retains its opt-in feature lock.
   agent_environment = {
     # With the runner set, Automations on plans that include it run there.
     DEN_HEADLESS_RUNNER_URL = local.runner_enabled ? local.runner_url : ""
@@ -118,7 +118,6 @@ locals {
     # Work a Slack reply hands to a member's desktop needs the automations runtime.
     DEN_AUTOMATIONS_RUNTIME_ENABLED = var.slack_assistant_enabled ? "true" : ""
     DEN_WORKBOT_URL                 = local.workbot_enabled ? local.workbot_url : ""
-    DEN_FEATURE_WORKBOT             = local.workbot_enabled ? "true" : ""
   }
 
   environment_list = [for k, v in local.environment : { name = k, value = v } if v != ""]
@@ -180,7 +179,7 @@ resource "aws_secretsmanager_secret" "app" {
 
 resource "aws_secretsmanager_secret_version" "app" {
   secret_id                = aws_secretsmanager_secret.app.id
-  secret_string            = var.write_only_secrets ? null : jsonencode(local.secret_values)
+  secret_string            = var.write_only_secrets ? null : jsonencode(var.managed_legacy_secrets ? local.managed_seed_values : local.secret_values)
   secret_string_wo         = var.write_only_secrets ? jsonencode(local.secret_values_wo) : null
   secret_string_wo_version = var.write_only_secrets ? var.secrets_version : null
 }

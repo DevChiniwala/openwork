@@ -30,6 +30,7 @@ import { McpStoryTiles, mcpStoryCopy } from "../mcp-story";
 import { useLocationQuery } from "../use-location-query";
 import { FIRST_PARTY_APP_CLIENT_IDS } from "../client-trust-constants";
 import { useMcpClient } from "../use-mcp-client";
+import { isWorkbotSignIn } from "../workbot-sign-in";
 
 type Organization = {
   id: string;
@@ -45,6 +46,7 @@ type FlowState =
   | "empty"
   | "expired"
   | "signed_out"
+  | "error"
   | "cancelled"
   | "submitting"
   | "redirecting";
@@ -138,6 +140,7 @@ export default function McpSelectOrganizationPage() {
   const params = useMemo(() => new URLSearchParams(oauthQuery), [oauthQuery]);
   const requestedScope = params.get("scope") ?? "openid profile email mcp:read";
   const client = useMcpClient(oauthQuery);
+  const workbot = isWorkbotSignIn(oauthQuery);
   // OpenWork's own apps (Workbot): choosing a workspace is all there is to it.
   const firstParty = client.clientId !== null && FIRST_PARTY_APP_CLIENT_IDS.has(client.clientId);
   const redirect = useMcpRedirect(oauthQuery);
@@ -164,14 +167,16 @@ export default function McpSelectOrganizationPage() {
       if (cancelled) return;
       setEmail(me.response.ok ? parseEmail(me.payload) : null);
       if (!directory.response.ok) {
-        setFlowState("signed_out");
+        setFlowState(directory.response.status === 401 ? "signed_out" : "error");
         return;
       }
       const list = parseOrgs(directory.payload);
       setOrgs(list);
       setSelectedOrgId(list.find((org) => org.isActive)?.id ?? list[0]?.id ?? "");
       setFlowState(list.length ? "ready" : "empty");
-    })();
+    })().catch(() => {
+      if (!cancelled) setFlowState("error");
+    });
     return () => {
       cancelled = true;
     };
@@ -256,6 +261,7 @@ export default function McpSelectOrganizationPage() {
 
   const frame = (children: ReactNode) => (
     <SetupFrame
+      workbot={workbot}
       title={story.title}
       description={story.description}
       aside={<McpStoryTiles client={client} workspaceName={storyWorkspace} appHost={redirect?.host ?? null} />}
@@ -270,7 +276,7 @@ export default function McpSelectOrganizationPage() {
       <SetupPanelBody gap="md">
         <SetupPanelTitle>This sign-in link expired</SetupPanelTitle>
         <div className="flex flex-col gap-1.5">
-          <SetupLine>Start sign-in again from your agent.</SetupLine>
+          <SetupLine>{workbot ? "Start sign-in again from Workbot." : "Start sign-in again from your agent."}</SetupLine>
           <SetupLine muted>Nothing was authorized.</SetupLine>
         </div>
       </SetupPanelBody>,
@@ -281,12 +287,21 @@ export default function McpSelectOrganizationPage() {
     return frame(<SetupStatus icon={<X className="size-5" strokeWidth={1.5} />} title="Nothing was authorized" line="You can close this tab." />);
   }
 
+  if (flowState === "error") {
+    return frame(
+      <SetupPanelBody gap="md">
+        <SetupPanelTitle>Couldn’t reach your workspaces</SetupPanelTitle>
+        <SetupQuietButton onClick={() => window.location.reload()}>Try again</SetupQuietButton>
+      </SetupPanelBody>,
+    );
+  }
+
   if (flowState === "signed_out") {
     return frame(
       <SetupPanelBody gap="md">
         <SetupPanelTitle>Sign in to continue</SetupPanelTitle>
-        <SetupLine>Sign in to OpenWork, then {appName} can finish connecting.</SetupLine>
-        <a className="den-button-primary w-full" href={`/?${oauthQuery}`}>Sign in to OpenWork</a>
+        {workbot ? null : <SetupLine>Sign in to OpenWork, then {appName} can finish connecting.</SetupLine>}
+        <a className="den-button-primary w-full" href={`/?${oauthQuery}`}>{workbot ? "Sign in to Workbot" : "Sign in to OpenWork"}</a>
       </SetupPanelBody>,
     );
   }
@@ -305,7 +320,7 @@ export default function McpSelectOrganizationPage() {
       {flowState === "loading" ? <SetupSkeletonRows /> : null}
 
       {creating ? (
-        <form id="mcp-create-workspace" className="flex flex-col gap-2" onSubmit={(event) => void createWorkspaceAndContinue(event)}>
+        <form id="mcp-create-workspace" className="flex flex-col gap-2" onSubmit={(event) => void createWorkspaceAndContinue(event).catch(() => setFlowState("error"))}>
           <label htmlFor="mcp-workspace-name" className="den-label">Workspace name</label>
           <input
             id="mcp-workspace-name"
@@ -369,7 +384,7 @@ export default function McpSelectOrganizationPage() {
         </div>
       ) : null}
 
-      <SetupFacts rows={facts} />
+      <SetupFacts rows={workbot ? [{ label: "Account", value: <span className="min-w-0 truncate" title={email ?? undefined}>{email ?? "…"}</span>, testId: "mcp-account-email" }] : facts} />
 
       {firstParty ? null : <McpConsentPermissions scope={requestedScope} actor={actor} />}
 
@@ -384,13 +399,13 @@ export default function McpSelectOrganizationPage() {
             className="den-button-primary w-full"
             disabled={isBusy || workspaceName.trim().length < 2}
           >
-            {isBusy ? (firstParty ? "Opening…" : "Authorizing…") : firstParty ? "Create workspace and continue" : "Create workspace and authorize"}
+            {isBusy ? (firstParty ? "Opening…" : "Authorizing…") : workbot ? "Create workspace and open Workbot" : firstParty ? "Create workspace and continue" : "Create workspace and authorize"}
           </button>
         ) : (
           <button
             type="button"
             className="den-button-primary w-full"
-            onClick={() => void continueFlow()}
+            onClick={() => void continueFlow().catch(() => setFlowState("error"))}
             disabled={isBusy || flowState === "loading" || !selectedOrgId}
           >
             {isBusy ? (firstParty ? "Opening…" : "Authorizing…") : firstParty ? `Continue to ${client.name ?? "OpenWork"}` : client.name ? `Authorize ${client.name}` : "Authorize this app"}
@@ -398,7 +413,7 @@ export default function McpSelectOrganizationPage() {
         )}
         <div className="flex items-start justify-between gap-4">
           <McpTechnicalDetails scope={requestedScope} clientId={client.clientId} redirect={redirect} />
-          <SetupQuietButton onClick={() => void cancelFlow()} disabled={isBusy || flowState === "loading"}>
+          <SetupQuietButton onClick={() => void cancelFlow().catch(() => setFlowState("error"))} disabled={isBusy || flowState === "loading"}>
             Cancel
           </SetupQuietButton>
         </div>

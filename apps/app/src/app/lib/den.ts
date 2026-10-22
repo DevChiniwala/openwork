@@ -8,6 +8,12 @@ import {
   AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER,
 } from "@openwork/types/automations";
 import type { GatewayProviderSummary } from "@openwork/types/den/gateway";
+import type { DesktopStartupReport } from "@openwork/types/den/diagnostics";
+import {
+  parseModelRemovalInventory,
+  type ModelRemovalInventory,
+} from "../../react-app/domains/session/surface/model-removal-inventory";
+export type { ModelRemovalInventory } from "../../react-app/domains/session/surface/model-removal-inventory";
 import { workbotSettingsSchema } from "@openwork/types/den/workbot-settings";
 import {
   remoteSessionStatusResultSchema,
@@ -31,6 +37,7 @@ import type {
   UpdateAutomation,
 } from "@openwork/types/automations";
 import { generatedArtifactViewSchema, savedAppDetailSchema, savedAppSummarySchema, type SaveApp, type WorkflowDetail } from "@openwork/types/workflows";
+import { canScheduleWorkflow, type WorkflowAccessRole } from "./workflow-run-access";
 import { gatewayUsageStatusSchema, gatewayUsageResetRequestSchema } from "@openwork/types/den/gateway-usage-limits";
 
 // Re-export the shared schema under the local alias so React consumers
@@ -2788,6 +2795,7 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 
 type DenRequestOptions = {
   method?: string;
+  cache?: RequestCache;
   token?: string | null;
   body?: unknown;
   timeoutMs?: number;
@@ -2795,6 +2803,8 @@ type DenRequestOptions = {
   automationModelAttentionCapable?: boolean;
   /** Cancels the request, e.g. a waiting status call when the window hides. */
   signal?: AbortSignal;
+  /** Leave the request out of connection diagnostics: its failure is not a connection problem. */
+  unobserved?: boolean;
 };
 
 async function fetchWithTimeout(fetchImpl: FetchLike, url: string, init: RequestInit, timeoutMs: number, onTimeout?: () => void) {
@@ -2855,7 +2865,7 @@ async function requestJsonRaw<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  return observeDenRequest(async (onTimeout) => {
+  const send = async (onTimeout?: () => void): Promise<RawJsonResponse<T>> => {
     const response = await fetchWithTimeout(
       resolveFetch(url),
       url,
@@ -2864,6 +2874,7 @@ async function requestJsonRaw<T>(
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         credentials: "include",
+        ...(options.cache ? { cache: options.cache } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
       },
       options.timeoutMs ?? DEFAULT_DEN_TIMEOUT_MS,
@@ -2878,7 +2889,8 @@ async function requestJsonRaw<T>(
       json = null;
     }
     return { ok: response.ok, status: response.status, json };
-  });
+  };
+  return options.unobserved ? send() : observeDenRequest(send);
 }
 
 async function requestJson<T>(
@@ -3010,6 +3022,27 @@ export function createDenClient(options: {
         throw new DenApiError(500, "invalid_session_payload", "Session response did not include a user.");
       }
       return user;
+    },
+
+    /**
+     * Sends this launch's startup report (one per launch, idempotent by
+     * attemptId) and resolves to the HTTP status. Rejects when the request
+     * does not complete. Telemetry: never retried here and never recorded as
+     * a connection failure.
+     */
+    async reportDesktopStartup(
+      report: DesktopStartupReport,
+      options: { organizationId?: string | null; timeoutMs?: number } = {},
+    ): Promise<number> {
+      const response = await requestJsonRaw<unknown>(baseUrls, "/v1/diagnostics/desktop-startup", {
+        method: "POST",
+        token,
+        body: report,
+        organizationId: options.organizationId ?? null,
+        timeoutMs: options.timeoutMs,
+        unobserved: true,
+      });
+      return response.status;
     },
 
     async getAppVersionMetadata(): Promise<DenAppVersionMetadata> {
@@ -3251,6 +3284,19 @@ export function createDenClient(options: {
       return providers;
     },
 
+    /** Never treats unsupported endpoints, auth failures, or partial parsing as absence. */
+    async getModelRemovalInventory(orgId: string): Promise<ModelRemovalInventory> {
+      const [legacy, gateway] = await Promise.all([
+        requestJson<unknown>(baseUrls, "/v1/llm-providers", {
+          method: "GET", token, organizationId: orgId, cache: "no-store",
+        }),
+        requestJson<unknown>(baseUrls, "/v1/inference-providers?scope=usable", {
+          method: "GET", token, organizationId: orgId, cache: "no-store",
+        }),
+      ]);
+      return parseModelRemovalInventory(legacy, gateway);
+    },
+
     async listOrgGatewayProviders(orgId: string): Promise<DenOrgGatewayProvider[]> {
       try {
         const payload = await requestJson<unknown>(baseUrls, "/v1/inference-providers?scope=usable", {
@@ -3359,13 +3405,13 @@ export function createDenClient(options: {
       });
     },
 
-    async getWorkflow(orgId: string, configObjectId: string): Promise<WorkflowDetail> {
-      const payload = await requestJson<{ script: WorkflowDetail }>(
+    async getWorkflow(orgId: string, configObjectId: string): Promise<WorkflowDetail & { canSchedule: boolean }> {
+      const payload = await requestJson<{ script: WorkflowDetail; workflow: { role: WorkflowAccessRole } }>(
         baseUrls,
         `/v1/workflows/${encodeURIComponent(configObjectId)}?maxAgeMs=86400000`,
         { method: "GET", token, organizationId: orgId },
       );
-      return payload.script;
+      return { ...payload.script, canSchedule: canScheduleWorkflow(payload.workflow?.role) };
     },
 
     async getAutomation(orgId: string, automationId: string): Promise<AutomationDetail> {
@@ -3629,12 +3675,16 @@ export function createDenClient(options: {
       );
     },
 
-    /** Private field in chat: a person saves an organization connection's shared key. */
-    async saveMcpConnectionSharedKey(orgId: string, connectionId: string, apiKey: string): Promise<void> {
+    /**
+     * Private field in chat: a person saves an organization connection's shared key.
+     * With expectedUpdatedAt the key replaces each person's own key, only if the
+     * connection is unchanged since then.
+     */
+    async saveMcpConnectionSharedKey(orgId: string, connectionId: string, apiKey: string, options: { expectedUpdatedAt?: string } = {}): Promise<void> {
       await requestJson<unknown>(
         baseUrls,
         `/v1/mcp-connections/${encodeURIComponent(connectionId)}/shared-credential`,
-        { method: "PUT", token, organizationId: orgId, body: { apiKey } },
+        { method: "PUT", token, organizationId: orgId, body: { apiKey, ...(options.expectedUpdatedAt ? { expectedUpdatedAt: options.expectedUpdatedAt } : {}) } },
       );
     },
 

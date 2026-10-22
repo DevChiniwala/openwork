@@ -57,7 +57,7 @@ async function signOut(user: User, probe: Probe) {
 }
 
 test("a returning member reaches their last organization without choosing twice, but another account still chooses", async ({ world, user, probe, step, evidence }) => {
-  const { organizationA: a, organizationB: b, organizationC: c, first, featureOff, restored, anotherAccount } = world;
+  const { organizationA: a, organizationB: b, organizationC: c, first, returningLogin, restored, anotherAccount } = world;
 
   await step("before: a member with several organizations and no preference chooses where to work", async () => {
     const directory = await probe.api(first.session, "/v1/me/orgs");
@@ -65,13 +65,6 @@ test("a returning member reaches their last organization without choosing twice,
     const orgs = memberships.orgs;
     expect(directory.response.ok).toBe(true);
     expect(Array.isArray(orgs) && orgs.length).toBe(3);
-    const off = await probe.api(world.den.admin, "/v1/org", { headers: { "x-openwork-org-id": a.id } });
-    const on = await probe.api(world.den.admin, "/v1/org", { headers: { "x-openwork-org-id": b.id } });
-    const aEnabled = memoryRecord(memoryRecord(off.body).features).rememberLastOrganization === true;
-    const bEnabled = memoryRecord(memoryRecord(on.body).features).rememberLastOrganization === true;
-    expect(off.response.ok && on.response.ok).toBe(true);
-    expect(aEnabled).toBe(false);
-    expect(bEnabled).toBe(true);
     await pasteSignIn(user, probe, first.grant);
     await user.see({ role: "heading", label: "Choose your organization" }, { timeoutMs: 60_000 });
     await user.see({ text: a.name });
@@ -79,8 +72,8 @@ test("a returning member reaches their last organization without choosing twice,
     const chooser = await probe.has("Choose your organization");
     evidence.recordAssertionEvidence(
       "multiple memberships still require a first choice",
-      `memberships=${Array.isArray(orgs) ? orgs.length : 0}; memory A=${aEnabled}, B=${bEnabled}; chooser shown=${chooser}`,
-      Array.isArray(orgs) && orgs.length === 3 && !aEnabled && bEnabled && chooser,
+      `memberships=${Array.isArray(orgs) ? orgs.length : 0}; no feature overrides; chooser shown=${chooser}`,
+      Array.isArray(orgs) && orgs.length === 3 && chooser,
     );
     await user.screenshot();
   });
@@ -94,23 +87,29 @@ test("a returning member reaches their last organization without choosing twice,
     await user.screenshot();
   });
 
-  await step("before: returning to an organization with memory off still shows the chooser", async () => {
+  await step("after: returning to Organization A goes straight to chat without a feature override", async () => {
     await signOut(user, probe);
-    await pasteSignIn(user, probe, featureOff.grant);
-    await user.see({ role: "heading", label: "Choose your organization" }, { timeoutMs: 60_000 });
-    const directory = await probe.api(featureOff.session, "/v1/me/orgs");
+    await pasteSignIn(user, probe, returningLogin.grant);
+    await user.see("composer", { timeoutMs: 60_000 });
+    await user.see({ role: "button", label: "Returning Member — account and status" });
+    await dismissAccountMenu(user, probe);
+    await user.notSee({ role: "heading", label: "Choose your organization" });
+    const directory = await probe.api(returningLogin.session, "/v1/me/orgs");
     const activeId = memoryRecord(directory.body).activeOrgId;
     const chooser = await probe.has("Choose your organization");
-    evidence.recordAssertionEvidence("the default-off organization does not bypass the choice", `same account=${featureOff.userId === first.userId}; new session=${featureOff.session.token !== first.session.token}; server remains in A=${activeId === a.id}; chooser shown=${chooser}`, featureOff.userId === first.userId && activeId === a.id && chooser);
+    evidence.recordAssertionEvidence("organization memory is generally available", `same account=${returningLogin.userId === first.userId}; new session=${returningLogin.session.token !== first.session.token}; server remains in A=${activeId === a.id}; chooser shown=${chooser}`, returningLogin.userId === first.userId && directory.response.ok && activeId === a.id && !chooser);
     expect(activeId).toBe(a.id);
     await user.screenshot();
   });
 
-  await step("when the member chooses Organization C, chat opens in C", async () => {
+  await step("when the member switches to Organization C, chat opens in C", async () => {
+    await openAccountSettings(user);
+    await user.click({ role: "button", label: "Switch organization" });
+    await user.see({ role: "heading", label: "Choose your organization" });
     await chooseOrganization(user, c.name);
-    const selected = await probe.api(featureOff.session, "/v1/me/orgs");
+    const selected = await probe.api(returningLogin.session, "/v1/me/orgs");
     const activeId = memoryRecord(selected.body).activeOrgId;
-    evidence.recordAssertionEvidence("the enabled organization is active", `chat visible; active organization is C=${activeId === c.id}`, selected.response.ok && activeId === c.id);
+    evidence.recordAssertionEvidence("the explicitly selected organization is active", `chat visible; active organization is C=${activeId === c.id}`, selected.response.ok && activeId === c.id);
     expect(activeId).toBe(c.id);
     await user.screenshot();
   });
@@ -133,7 +132,7 @@ test("a returning member reaches their last organization without choosing twice,
     await user.click({ role: "button", label: "Cancel" });
     await user.see({ text: c.name }, { timeoutMs: 30_000 });
     await user.see({ role: "button", label: "Switch organization" });
-    const selected = await probe.api(featureOff.session, "/v1/me/orgs");
+    const selected = await probe.api(returningLogin.session, "/v1/me/orgs");
     const activeId = memoryRecord(selected.body).activeOrgId;
     const chooser = await probe.has("Choose your organization");
     evidence.recordAssertionEvidence("an unconfirmed choice never replaces C", `draft choice was B; after Cancel, C remains active=${activeId === c.id}; chooser shown=${chooser}`, selected.response.ok && activeId === c.id && !chooser);
@@ -144,11 +143,11 @@ test("a returning member reaches their last organization without choosing twice,
   await step("when the member switches from C to B, chat opens in B", async () => {
     await user.click({ role: "button", label: "Switch organization" });
     await user.see({ role: "heading", label: "Choose your organization" });
-    const beforeChoice = await probe.api(featureOff.session, "/v1/me/orgs");
+    const beforeChoice = await probe.api(returningLogin.session, "/v1/me/orgs");
     const preservedId = memoryRecord(beforeChoice.body).activeOrgId;
     expect(preservedId).toBe(c.id);
     await chooseOrganization(user, b.name);
-    const selected = await probe.api(featureOff.session, "/v1/me/orgs");
+    const selected = await probe.api(returningLogin.session, "/v1/me/orgs");
     const activeId = memoryRecord(selected.body).activeOrgId;
     const fresh = await probe.api(restored.session, "/v1/me/orgs");
     const freshActiveId = memoryRecord(fresh.body).activeOrgId;
@@ -170,7 +169,7 @@ test("a returning member reaches their last organization without choosing twice,
       return { ok: result.response.ok, activeId: memoryRecord(result.body).activeOrgId };
     }, { within: 30_000, label: "the fresh server session follows the remembered organization", until: result => result.ok && result.activeId === b.id });
     const chooser = await probe.has("Choose your organization");
-    evidence.recordAssertionEvidence("a fresh login restores B without another organization click", `same account=${restored.userId === first.userId}; new session=${restored.session.token !== featureOff.session.token}; fresh session moved A → B=${selected.activeId === b.id}; chooser shown=${chooser}`, restored.userId === first.userId && selected.activeId === b.id && !chooser);
+    evidence.recordAssertionEvidence("a fresh login restores B without another organization click", `same account=${restored.userId === first.userId}; new session=${restored.session.token !== returningLogin.session.token}; fresh session moved A → B=${selected.activeId === b.id}; chooser shown=${chooser}`, restored.userId === first.userId && selected.activeId === b.id && !chooser);
     expect(selected.activeId).toBe(b.id);
     await user.screenshot();
   });

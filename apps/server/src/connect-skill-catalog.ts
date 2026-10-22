@@ -23,25 +23,33 @@ const skillIndexSchema = z.object({
     type: z.literal("skill-md"),
     title: z.string().max(1_024).optional(),
     description: z.string().max(1_024),
-    // Den resolves the default-off rollout; older servers never opt in.
+    // Compatibility metadata for clients that still read the discovery marker.
     modelDiscovery: z.boolean().optional(),
     marketplaceName: z.string().max(1_024).optional(),
     pluginName: z.string().max(1_024).optional(),
     url: z.string().startsWith("skill://"),
     capability: z.string().regex(/^(?:skill:[^:]+|plugin:[^:]+:[^:]+)$/),
+    // Native delivery only: the SKILL.md digest and size, or why it is withheld.
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+    size: z.number().int().nonnegative().optional(),
+    setup: z.object({ status: z.string().max(64), message: z.string().max(4_000) }).optional(),
   }).passthrough()),
+  // Delivery metadata retained for older clients.
+  delivery: z.enum(["native"]).optional(),
 }).passthrough();
 
 export type OpenWorkConnectSkill = z.infer<typeof skillIndexSchema>["skills"][number];
-const catalogCache = new Map<string, { expiresAt: number; value: Promise<OpenWorkConnectSkill[] | null> }>();
+export type OpenWorkConnectSkillIndex = { skills: OpenWorkConnectSkill[]; delivery?: "native" };
+type CloudIndex = { cloud: Record<string, unknown>; index: OpenWorkConnectSkillIndex };
+const catalogCache = new Map<string, { expiresAt: number; value: Promise<OpenWorkConnectSkillIndex | null> }>();
 
 /**
  * Read the standards-shaped skill index through one openwork-cloud config.
- * Returns the skill list on success (possibly empty), or null when the config
+ * Returns the index on success (possibly empty), or null when the config
  * is unusable (invalid URL, disabled, auth rejected, transport/protocol error)
  * so callers can fall back to another candidate config.
  */
-export async function readMcpSkillIndex(config: Record<string, unknown>, fetcher: McpFetch): Promise<OpenWorkConnectSkill[] | null> {
+export async function readMcpSkillIndex(config: Record<string, unknown>, fetcher: McpFetch): Promise<OpenWorkConnectSkillIndex | null> {
   const text = await readMcpResourceText({
     config,
     fetcher,
@@ -49,10 +57,11 @@ export async function readMcpSkillIndex(config: Record<string, unknown>, fetcher
     clientName: "openwork-server-skill-catalog",
   });
   if (typeof text !== "string") return null;
-  return skillIndexSchema.parse(JSON.parse(text)).skills;
+  const index = skillIndexSchema.parse(JSON.parse(text));
+  return { skills: index.skills, ...(index.delivery ? { delivery: index.delivery } : {}) };
 }
 
-async function readIndexCached(cloud: Record<string, unknown>, fetcher: McpFetch): Promise<OpenWorkConnectSkill[] | null> {
+async function readIndexCached(cloud: Record<string, unknown>, fetcher: McpFetch): Promise<OpenWorkConnectSkillIndex | null> {
   const cacheKey = createHash("sha256").update(JSON.stringify(cloud)).digest("hex");
   const cached = catalogCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return await cached.value;
@@ -69,38 +78,76 @@ async function readIndexCached(cloud: Record<string, unknown>, fetcher: McpFetch
  * of shadowing a valid config, and the winning workspace copy is promoted to
  * server scope so Connect stays account-level.
  */
+async function readWorkingCloudIndex(config: ServerConfig, fetcher: McpFetch): Promise<CloudIndex | null> {
+  const serverCloud = await readConnectCloudMcp(config);
+  const candidates: Array<{ cloud: Record<string, unknown>; source: "server" | "workspace" }> = [];
+  const globalCloud = await readGlobalRuntimeMcpConfig(config, OPENWORK_CLOUD_MCP_NAME);
+  if (globalCloud) candidates.push({ cloud: globalCloud, source: "server" });
+  if (serverCloud) candidates.push({ cloud: serverCloud, source: "server" });
+  for (const workspace of config.workspaces) {
+    const cloud = await readRuntimeMcpConfig(config, workspace.id, OPENWORK_CLOUD_MCP_NAME);
+    if (cloud) candidates.push({ cloud, source: "workspace" });
+  }
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const key = JSON.stringify(candidate.cloud);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const index = await readIndexCached(candidate.cloud, fetcher);
+    if (index === null) continue;
+    if (candidate.source === "workspace") {
+      await writeConnectCloudMcp(config, candidate.cloud).catch(() => {
+        // Catalog reads should still succeed even if promotion fails.
+      });
+    }
+    return { cloud: candidate.cloud, index };
+  }
+  return null;
+}
+
+/**
+ * Resolve the skill index from the first *working* openwork-cloud config.
+ * Candidates are tried in order: the global runtime row, the server-scoped
+ * connect-state cache, then each workspace runtime row (legacy scope). Stale rows — e.g. a revoked token
+ * or a dead local Den URL left behind by an old session — are skipped instead
+ * of shadowing a valid config, and the winning workspace copy is promoted to
+ * server scope so Connect stays account-level.
+ */
+export async function readOpenWorkConnectSkillIndex(
+  config: ServerConfig,
+  fetcher: McpFetch = externalFetch,
+): Promise<OpenWorkConnectSkillIndex> {
+  try {
+    return (await readWorkingCloudIndex(config, fetcher))?.index ?? { skills: [] };
+  } catch {
+    return { skills: [] };
+  }
+}
+
 export async function readOpenWorkConnectSkillCatalog(
   config: ServerConfig,
   fetcher: McpFetch = externalFetch,
 ): Promise<OpenWorkConnectSkill[]> {
-  try {
-    const serverCloud = await readConnectCloudMcp(config);
-    const candidates: Array<{ cloud: Record<string, unknown>; source: "server" | "workspace" }> = [];
-    const globalCloud = await readGlobalRuntimeMcpConfig(config, OPENWORK_CLOUD_MCP_NAME);
-    if (globalCloud) candidates.push({ cloud: globalCloud, source: "server" });
-    if (serverCloud) candidates.push({ cloud: serverCloud, source: "server" });
-    for (const workspace of config.workspaces) {
-      const cloud = await readRuntimeMcpConfig(config, workspace.id, OPENWORK_CLOUD_MCP_NAME);
-      if (cloud) candidates.push({ cloud, source: "workspace" });
-    }
+  return (await readOpenWorkConnectSkillIndex(config, fetcher)).skills;
+}
 
-    const seen = new Set<string>();
-    for (const candidate of candidates) {
-      const key = JSON.stringify(candidate.cloud);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const skills = await readIndexCached(candidate.cloud, fetcher);
-      if (skills === null) continue;
-      if (candidate.source === "workspace") {
-        await writeConnectCloudMcp(config, candidate.cloud).catch(() => {
-          // Catalog reads should still succeed even if promotion fails.
-        });
-      }
-      return skills;
-    }
-    return [];
+/**
+ * Read one listed skill's SKILL.md through the same working openwork-cloud
+ * config. Only URLs in the current index are read, so this cannot be used to
+ * fetch arbitrary resources. Den rechecks access on every read.
+ */
+export async function readOpenWorkConnectSkillContent(
+  config: ServerConfig,
+  url: string,
+  fetcher: McpFetch = externalFetch,
+): Promise<string | null> {
+  try {
+    const working = await readWorkingCloudIndex(config, fetcher);
+    if (!working || !working.index.skills.some((skill) => skill.url === url)) return null;
+    return await readMcpResourceText({ config: working.cloud, fetcher, uri: url, clientName: "openwork-server-skill-content" });
   } catch {
-    return [];
+    return null;
   }
 }
 

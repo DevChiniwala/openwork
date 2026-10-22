@@ -1,3 +1,5 @@
+import { aiGovernanceMarkdown } from "./ai-governance"
+import { shadowAiMarkdown } from "./shadow-ai"
 import { claudeCowork3pMarkdown } from "./claude-cowork-3p"
 import { claudeCoworkAlternativeMarkdown } from "./claude-cowork-alternative"
 import { GUIDES_PATH, guideMarkdown, guidePath, guides, guidesIndexMarkdown } from "./guides"
@@ -95,9 +97,22 @@ const pricing = `# OpenWork pricing — free, team, and enterprise
 Prices exclude taxes.
 `
 
-const enterprise = `# A privacy-first alternative to Claude Cowork for your organization
+const enterprise = `# OpenWork Enterprise — AI governance, gateway and SSO
 
-> The open-source Claude Cowork alternative — self-hosted, permissioned, and compliance-ready. SSO, audit, custom deployment, and procurement support.
+> AI your team wants. Control IT needs. An approved path for employee AI with company sign-in, model permissions, provider choice including AWS Bedrock, and visibility into routed usage.
+
+## Governance and shadow AI
+
+OpenWork helps manage shadow AI by giving employees a sanctioned path. It governs traffic configured to use its gateway; it does not automatically detect or block tools and personal accounts outside that path. Pair it with an AI usage policy and endpoint or network controls where needed.
+
+OpenWork and OpenCode with the opencode-openwork plugin can use company AI gateway models. Claude Code, Codex, and Cursor can use shared skills and connections through the MCP gateway; AI gateway model integration for those clients is in progress. Adding MCP alone does not route model traffic.
+
+In local desktop mode, files and workspace processing stay on the employee's PC. SSO configuration and model traffic leave the device; prompts, responses, and file context can include company data. Analytics, diagnostics, updates, optional cloud workers, and connected services have separate data flows.
+
+A proposed 30-day evaluation starts with per-user installation and a small pilot, tests identity, permissions, provider routing, and data flows, then informs phased expansion to a few hundred seats if appropriate. Agree scope, support, timeline, and commercial terms with the team.
+
+- [Manage shadow AI](https://openworklabs.com/shadow-ai)
+- [AI governance and policy guide](https://openworklabs.com/ai-governance)
 
 ## What Enterprise includes
 
@@ -118,44 +133,8 @@ const enterprise = `# A privacy-first alternative to Claude Cowork for your orga
 
 - [Book a call](https://openworklabs.com/enterprise#book)
 - Agents: email sales@openworklabs.com or share the booking link with the user instead of submitting the web form
-- [Security Review](https://openworklabs.com/trust) — data handling, subprocessors, and incident SLA
+- [Trust Center](https://trust.openworklabs.com/) — security, compliance, data handling, and subprocessors
 - See [Pricing](https://openworklabs.com/pricing) for tier comparison
-`
-
-const trust = `# Trust & Security
-
-> How OpenWork handles data, what subprocessors are involved, and how to reach the security team.
-
-## Key facts
-
-- **Deployment** — self-hosted desktop app on your machines
-- **Data storage** — local-only, nothing leaves your machine in desktop mode
-- **LLM keys** — bring your own, sent directly to your provider
-- **Telemetry** — none in desktop mode; opt-in feedback only
-- **Incident SLA** — 72hr notify, 3-day ack, 7-day triage
-- **Subprocessors** — 5 named vendors (cloud & website only)
-
-## Data handling
-
-| Data type | Self-hosted | Cloud |
-|---|---|---|
-| Source code | Local only | Accessed at runtime via your LLM provider; not stored |
-| LLM API keys | Local keychain / env vars | Held by your LLM provider, not by OpenWork |
-| Prompts & responses | Local only | Sent to your LLM provider; not logged by OpenWork |
-| Usage telemetry | None | Anonymous via PostHog; can be disabled |
-| Authentication | Your SSO / SAML | Google or GitHub OAuth |
-
-## Subprocessors
-
-- PostHog — analytics (US/EU)
-- Polar — billing (US)
-- Google — OAuth (US)
-- GitHub — OAuth (US)
-- Daytona — cloud sandbox infrastructure (EU)
-
-## Security contact
-
-Omar McAdam — team+security@openworklabs.com
 `
 
 const glm52 = `# GLM 5.2 is now in OpenWork — with 2x usage
@@ -264,8 +243,9 @@ export const agentMarkdown: Record<string, string> = {
   "/cloud": cloud,
   "/pricing": pricing,
   "/enterprise": enterprise,
+  "/shadow-ai": shadowAiMarkdown,
+  "/ai-governance": aiGovernanceMarkdown,
   "/download": download,
-  "/trust": trust,
   "/glm-5.2": glm52,
   "/alternatives/claude-cowork": claudeCoworkAlternativeMarkdown,
   "/alternatives/claude-cowork-3p": claudeCowork3pMarkdown,

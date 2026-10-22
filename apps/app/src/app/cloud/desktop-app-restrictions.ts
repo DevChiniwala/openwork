@@ -17,7 +17,16 @@ export const DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID = "opencode";
 export function checkDesktopAppRestriction(input: {
   config: DenDesktopConfig | null | undefined;
   restriction: DesktopAppRestrictionKey;
+  /** The `removeOpencodeZen` feature as read signed out (`GET /v1/features`). */
+  opencodeZenRemoved?: boolean;
 }) {
+  // Removing OpenCode Zen is a product rollout, not an organization policy, so it
+  // applies even while desktop policy enforcement is off. It reuses the Zen
+  // restriction so every surface that already honors it (model list, Connect,
+  // Automations, the engine's disabled providers) drops Zen in one place.
+  if (input.restriction === "allowZenModel" && (input.opencodeZenRemoved === true || input.config?.removeOpencodeZen === true)) {
+    return true;
+  }
   return desktopPolicyKeyEnforced(input.restriction) && input.config?.[input.restriction] === false;
 }
 

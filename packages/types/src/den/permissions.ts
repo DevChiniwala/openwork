@@ -12,8 +12,8 @@ import { z } from "zod"
  * - `defaultOn` reproduces the role checks from before Permissions: a key is
  *   `["admin"]` only when every action it gates was open to plain admins.
  *   Actions that needed super-admin (now removed) are owner-only by default:
- *   `defaultOn: []`. The owner holds every key, and with the Permissions
- *   feature on can grant owner-only keys to Admin or team permissions.
+ *   `defaultOn: []`. The owner holds every key and can grant owner-only
+ *   keys to Admin or team permissions.
  * - `sensitive` matches the old recent sign-in requirement of what it gates.
  */
 

@@ -35,7 +35,7 @@ import { revokeUpstreamCredentials, revokeInferenceCredentialsForMembers } from 
 import { ensureMemberGatewayKey } from "./gateway-keys.js"
 import { db } from "./db.js"
 import { env } from "./env.js"
-import { getOrganizationFeatures, readOrganizationWithPermissions, type FeatureMap } from "./features.js"
+import { getOrganizationFeatures, readOrganizationForAuthorization, type FeatureMap } from "./features.js"
 import {
   getRoleValueAfterOwnershipTransfer,
   roleIncludesAdmin,
@@ -1522,8 +1522,7 @@ export async function getOrganizationContextForUser(input: {
   userId: UserId
   organizationId: OrgId
 }) {
-  // The live permissions flag comes back with the organization row.
-  const organizationRead = await readOrganizationWithPermissions(input.organizationId)
+  const organizationRead = await readOrganizationForAuthorization(input.organizationId)
   if (!organizationRead) {
     return null
   }
@@ -1538,7 +1537,7 @@ export async function getOrganizationContextForUser(input: {
       .from(MemberTable)
       .where(and(eq(MemberTable.organizationId, organization.id), eq(MemberTable.userId, input.userId), isNull(MemberTable.removedAt)))
       .limit(1),
-    getOrganizationFeatures(organization.id, { permissions: organizationRead.permissions }),
+    getOrganizationFeatures(organization.id, { userId: input.userId }),
   ])
 
   const currentMember = currentMemberRows[0]
@@ -2042,7 +2041,7 @@ export async function removeOrganizationMember(input: {
 
     if (actorPermissions) {
       const targetIsDirectAdmin = organizationRoleValueIncludes(member.role, ORGANIZATION_ADMIN_ROLE)
-      const targetIsAdminViaTeam = !targetIsDirectAdmin && actorPermissions.featureEnabled && !actorPermissions.isOwner && !actorPermissions.isAdmin
+      const targetIsAdminViaTeam = !targetIsDirectAdmin && !actorPermissions.isOwner && !actorPermissions.isAdmin
         && (await listAuthoritativeTeamMemberships(tx, { organizationId: input.organizationId, memberId: member.id, adminTeamsOnly: true, lock: "share" })).length > 0
       const adminRemovalDenial = decideMemberRemoval({
         actor: actorPermissions,

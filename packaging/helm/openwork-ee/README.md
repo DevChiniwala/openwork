@@ -348,56 +348,24 @@ config:
 ```
 
 - `""` (the default) follows `/admin`, which starts from the default listed
-  below.
+  in `values.yaml`.
 - `"true"` or `"false"` locks the feature for everyone. `/admin` shows "Set by
   deployment config" for it. The `/admin` kill switch still turns it off.
 
 Each key renders `DEN_FEATURE_<KEY>` for den-api. Features that are not part
 of self-hosted installs have no key, so they can't be turned on here. A key
-that isn't listed below fails `helm install` through `values.schema.json`.
+that isn't declared in `values.schema.json` fails `helm install`.
 
 `config.deployment` (`DEN_DEPLOYMENT`) is `self_hosted` unless this is
 OpenWork Cloud. Don't change it on a customer install.
 
-<!-- BEGIN GENERATED features (pnpm features:sync) -->
-| `config.features.*` | Environment variable | Default | What it does |
-| --- | --- | --- | --- |
-| `googleDocumentTools` | `DEN_FEATURE_GOOGLE_DOCUMENT_TOOLS` | default off | Connected assistants inspect document tabs and headings, read or search bounded passages, and replace text against the revision they read. |
-| `offlineRecovery` | `DEN_FEATURE_OFFLINE_RECOVERY` | default off | Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations. |
-| `rememberLastOrganization` | `DEN_FEATURE_REMEMBER_LAST_ORGANIZATION` | default off | Return to the last organization used by the same account on this server after signing in again. Invite and installation links keep their selected organization. |
-| `secureSecretFields` | `DEN_FEATURE_SECURE_SECRET_FIELDS` | default off | When an agent sets up a connection, plugin or AI Gateway provider that needs keys, people enter them in private fields in the chat and the agent continues once they are saved. Key fields across OpenWork and OpenWork Cloud can be shown while typing and show saved keys as Replace rows. |
-| `memberListToolbars` | `DEN_FEATURE_MEMBER_LIST_TOOLBARS` | default off | Filter members, teams and roles beside their add action, with compact member rows and secondary actions in the list menu. |
-| `appBuildProgress` | `DEN_FEATURE_APP_BUILD_PROGRESS` | default off | While an agent creates or changes an MCP App, the chat shows each stage it goes through (finding and checking tools, writing the App, building and verifying it) as a checklist with a progress bar. |
-| `modelsAnalyticsUi` | `DEN_FEATURE_MODELS_ANALYTICS_UI` | default off | Organization admins can view Models & usage analytics and shared model usage limits. Deprecated 2026-10-14: UI hidden behind modelsAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it. |
-| `taskAnalyticsUi` | `DEN_FEATURE_TASK_ANALYTICS_UI` | default off | Members with analytics access can view task activity and consumption, and admins can configure analytics integrations. Deprecated 2026-10-14: UI hidden behind taskAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it. |
-| `desktopPolicyScreenRemoval` | `DEN_FEATURE_DESKTOP_POLICY_SCREEN_REMOVAL` | default off | Manage prompt suggestions in Everyone and team Desktop tabs instead of Advanced Desktop policies. Requires team page tabs; turning off restores the policy screens without changing stored policies. |
-| `teamMembershipCache` | `DEN_FEATURE_TEAM_MEMBERSHIP_CACHE` | default off | Reduce repeated team lookups while keeping access changes immediate. Enable only after every API instance runs revision-aware team writes. |
-| `managedDeploymentsGcp` | `DEN_FEATURE_MANAGED_DEPLOYMENTS_GCP` | default off (cloud only) | Organization admins approve OpenWork installations in their own Google Cloud project and track health and updates. |
-| `managedDeploymentsMcp` | `DEN_FEATURE_MANAGED_DEPLOYMENTS_MCP` | default off (cloud only) | Agents connected to OpenWork can check deployment readiness, create deployments, prepare the cloud approval link or command, and follow progress until the deployment is ready. |
-| `managedDeployments` | `DEN_FEATURE_MANAGED_DEPLOYMENTS` | default off (cloud only) | Organization admins install OpenWork in their own cloud account (AWS first) and see its health and updates in OpenWork. |
-| `slackAssistant` | `DEN_FEATURE_SLACK_ASSISTANT` | default off | Answers Slack mentions and DMs for the organization after the Slack connector is set up. |
-| `slackWorkbotReplies` | `DEN_FEATURE_SLACK_WORKBOT_REPLIES` | default off | OpenWork in Slack writes its reply as it works, reacts to messages with an emoji, and takes bigger jobs into the background, posting the result in the thread when done. |
-| `workbot` | `DEN_FEATURE_WORKBOT` | default off | Members can use Workbot, with side chats, a Calendar tab of its scheduled work and the option to run stopped tasks again, and organization admins choose the default model Workbot, the Slack assistant and cloud Automations answer with. Needs the deployment's Workbot app. |
-| `workbotDocuments` | `DEN_FEATURE_WORKBOT_DOCUMENTS` | default off | Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive. |
-| `workbotWorkspaceAssistant` | `DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT` | default off | Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. |
-| `automationCalendar` | `DEN_FEATURE_AUTOMATION_CALENDAR` | default off | Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar. |
-| `permissions` | `DEN_FEATURE_PERMISSIONS` | default off | Organization admins choose what members, admins and each team can do, instead of the fixed Member and Admin defaults. |
-| `teamRoles` | `DEN_FEATURE_TEAM_ROLES` | default off | Members › Teams shows each team's role (Member, Admin or Custom) with one Change role action, and Members gets a Roles tab to see and create roles. |
-| `sharedRoles` | `DEN_FEATURE_SHARED_ROLES` | default off | A custom role can be given to more than one team: Change role lists every role, each role's page lists its teams, and a role can be created before any team has it. Needs Team roles and Permissions. |
-| `agentPermissions` | `DEN_FEATURE_AGENT_PERMISSIONS` | default off | Organization admins choose what agents can do on members' computers: run commands, edit files, open websites and use local skills and MCP servers, for everyone or per team. |
-| `engineV2Upgrade` | `DEN_FEATURE_ENGINE_V2_UPGRADE` | default off | Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines. |
-| `remoteSessionEvents` | `DEN_FEATURE_REMOTE_SESSION_EVENTS` | default off | MCP clients can subscribe to changes in their remote session receipts and read the current state after reconnecting. |
-| `backgroundShellTasks` | `DEN_FEATURE_BACKGROUND_SHELL_TASKS` | default off | The desktop chat shows how many commands the agent left running in the background, and adds a short row when each one finishes. |
-| `orgDefaultModel` | `DEN_FEATURE_ORG_DEFAULT_MODEL` | default off | Organization admins choose the model new desktop chats start with, for everyone or per team. Applies to the OpenCode v2 engine only; members can still change the model in each chat. |
-| `gatewayProviderUsageLimits` | `DEN_FEATURE_GATEWAY_PROVIDER_USAGE_LIMITS` | default off | Admins can attach a spend limit to one AI provider. Spend on that provider counts toward its own limit instead of the default limit, and members see which provider ran out. |
-| `teamAccessRows` | `DEN_FEATURE_TEAM_ACCESS_ROWS` | default off | Team plugin access shows compact rows with clear access sources and a confirmation before revoking a team grant. |
-| `teamPageTabs` | `DEN_FEATURE_TEAM_PAGE_TABS` | default off | Each team's page, and Everyone's, gets a Browser tab for the pages agents and the built-in browser can open, and a Models tab with the AI providers the team can use, its spend limits and its default model. |
-| `inviteLinkVerifiesEmail` | `DEN_FEATURE_INVITE_LINK_VERIFIES_EMAIL` | default off | Creating an account from an invitation link, emailed or shared by an admin, counts as verifying that email, so the invited person joins without entering an emailed code. |
-| `remoteSessionSubagents` | `DEN_FEATURE_REMOTE_SESSION_SUBAGENTS` | default off | A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. |
-<!-- END GENERATED features -->
+See [`config.features` in values.yaml](./values.yaml) for supported keys,
+defaults and descriptions. The
+[feature registry](../../../packages/features/src/registry.ts) is the source
+of truth.
 
-The table and the `config.features` block are generated: run `pnpm features:sync`
-after changing the registry.
+The `config.features` block and values schema are generated: run
+`pnpm features:sync` after changing the registry.
 
 ### Automations rollout
 

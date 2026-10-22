@@ -58,11 +58,24 @@ and are unchanged. Custom MCP servers and other connectors are also unchanged.
 
 The Google Workspace connector uses your organization's own Google Cloud OAuth
 client. In the Google Cloud project that owns that client, open **APIs &
-Services › Library** and enable the API for each permission you turn on: Gmail
-API, Google Calendar API, Google Drive API, Google Sheets API, and Google Chat
-API. Until an API is enabled, its actions fail with a message such as “Google
-Sheets API has not been used in project … or it is disabled”, and reconnecting
-does not help.
+Services › Library** and enable the API for each permission you turn on:
+
+| Permission | Google APIs to enable |
+|---|---|
+| Calendar | Google Calendar API |
+| Gmail | Gmail API |
+| Drive | Google Drive API, Google Docs API, Google Sheets API |
+| Sheets | Google Sheets API |
+| Chat | Google Chat API |
+
+Drive permissions need the Docs and Sheets APIs because Documents opens Google
+Docs and Sheets through them. Until an API is enabled, its actions fail with a
+message such as “Google Sheets API has not been used in project … or it is
+disabled”, and reconnecting does not help.
+
+To check, open the connector's **Settings** and select **Check APIs** under
+**Google APIs**. It uses your own sign-in on the connector and lists each API
+the saved permissions need, with a **Turn on** link for any that are off.
 
 ## Ask your agent to use it
 

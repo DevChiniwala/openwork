@@ -42,9 +42,9 @@ import { hasPermission, idParamSchema, orgAccessFailureStatus, permissionDeniedM
 import type { OrgRouteVariables } from "./shared.js"
 import { registerOrgGatewayUsageRoutes } from "./gateway-usage.js"
 import { registerOrgGatewayUsageLimitRoutes } from "./gateway-usage-limits.js"
+import { registerOrgProviderInventoryRoutes } from "./provider-inventory.js"
 import { credentialPromptSchema } from "@openwork/types/den/credential-prompt"
 import { credentialPromptResponseFields, gatewayCredentialShape, gatewayProviderCredentialPrompt, gatewayUpstreamDestination } from "../../credential-prompt.js"
-import { organizationFeatureEnabled } from "../../features.js"
 
 const paramsSchema = idParamSchema("inferenceProviderId", "inferenceProvider")
 const groupParams = paramsSchema.extend(idParamSchema("groupId", "gatewayModelGroup").shape)
@@ -99,6 +99,7 @@ const summarySchema = z.object({
   modelIds: universeSchema, pinnedModelIds: z.array(z.string()).describe("Ordered catalog model IDs in management responses; only caller-usable gwm aliases in public list/connect responses. Pins never grant access."), catalogWarning: z.string().optional(),
   id: denTypeIdSchema("inferenceProvider"), providerId: z.string(), name: z.string(), source: z.literal("openwork_gateway"), credentialMode: z.enum(GATEWAY_PROVIDER_CREDENTIAL_MODES), credentialStatus, authUrl: z.string().nullable(), status: z.enum(GATEWAY_PROVIDER_STATUSES), createdAt: z.string().datetime().optional(), updatedAt: z.string().datetime(), providerConfig: z.record(z.string(), z.unknown()),
   models: z.array(modelSchema),
+  modelAssignmentsComplete: z.boolean().describe("True only when models and authorizationRequests.models represent every effective active grant's model alias within the provider universe. False for credential, catalog, or model configuration omissions, even when aggregate credentialStatus is ready. Only true permits absence to establish model removal."),
   authorizationRequests: z.array(z.object({ credentialSetId: denTypeIdSchema("gatewayCredentialSet"), name: z.string(), authUrl: z.string(), models: z.array(modelSchema).optional() })),
   migration: z.object({ llmProviderId: denTypeIdSchema("llmProvider"), runtimeEnvNames: z.array(z.string()) }).optional(),
 }).meta({ ref: "GatewayProviderSummary" })
@@ -157,14 +158,14 @@ const managementWrite: MiddlewareHandler<{ Variables: OrgRouteVariables }> = asy
     }
     const unavailable = gatewayManagementUnavailable()
     if (unavailable) { status = 403; return c.json(unavailable, 403) }
-    // Entering a key is human-only: the agent never may, and with secure keys
-    // in chat on, neither may an API key. They leave it out and a person adds it.
+    // Entering a key is human-only: neither the agent nor an API key may.
+    // They leave it out and a person adds it.
     const agent = c.get("session")?.id === "mcp_internal"
     if (agent || c.get("apiKey")) {
       const body: unknown = await c.req.raw.clone().json().catch(() => null)
       const carriesKey = typeof body === "object" && body !== null
         && ["credential", "apiKeys", "apiKey", "oauthClientSecret"].some((key) => Object.getOwnPropertyDescriptor(body, key)?.value !== undefined)
-      if (carriesKey && (agent || !actor || await organizationFeatureEnabled(actor.organization.id, "secureSecretFields"))) {
+      if (carriesKey) {
         status = 400
         return c.json({ error: "secure_entry_required", message: "Do not send keys through the agent or an API key. Leave the key out; the person adds it in a private field in OpenWork." }, 400)
       }
@@ -180,7 +181,6 @@ const managementWrite: MiddlewareHandler<{ Variables: OrgRouteVariables }> = asy
 async function pendingKeyPrompt(provider: GatewayProvider, setId: string | null) {
   const shape = gatewayCredentialShape(provider.provider_id, readProviderEnvNames(provider.provider_config))
   if (!setId || !shape) return null
-  if (!await organizationFeatureEnabled(provider.organization_id, "secureSecretFields")) return null
   const [set] = await db.select({ mode: GatewayCredentialSetTable.credential_mode }).from(GatewayCredentialSetTable)
     .where(and(eq(GatewayCredentialSetTable.id, normalizeDenTypeId("gatewayCredentialSet", setId)), eq(GatewayCredentialSetTable.gateway_provider_id, provider.id)))
   if (set?.mode !== "org") return null
@@ -407,6 +407,7 @@ function awsSsoWriteError(error: unknown): unknown {
 }
 
 export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRouteVariables }>(app: Hono<T>) {
+  registerOrgProviderInventoryRoutes(app)
   registerOrgGatewayUsageRoutes(app)
   registerOrgGatewayUsageLimitRoutes(app)
   // Agent-facing management reads never refresh or change the catalog. The existing provider summaries do.
@@ -536,11 +537,10 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
     } catch (error) { return respond(c, error) }
   })
 
-  app.post("/v1/inference-providers", route("Create inference gateway provider", "Creates an organization Gateway provider from the trusted catalog and returns its management details. Empty modelIds follows all supported catalog models; a nonempty list restricts the provider universe. Creates an initial model group; legacy credential and audience fields can also create a default credential set and grants. Agents never send keys: with secure keys in chat on, request access (allMembers, memberIds or teamIds) without a credential and the response carries credentialPrompt; a person then adds the shared API key in OpenWork. Requires the Manage Gateway providers permission and enabled Gateway management; session callers must recently reauthenticate.", detailsResponse.extend({ credentialPrompt: credentialPromptSchema.optional(), nextStep: z.string().optional() }), 201, false, { "x-mcp": true, "x-mcp-search-aliases": ["add AI gateway provider", "connect our AI gateway", "add OpenAI or Anthropic API provider"] }), orgMemberRoute(), managementWrite, jsonValidator(createSchema), async (c) => {
+  app.post("/v1/inference-providers", route("Create inference gateway provider", "Creates an organization Gateway provider from the trusted catalog and returns its management details. Empty modelIds follows all supported catalog models; a nonempty list restricts the provider universe. Creates an initial model group; legacy credential and audience fields can also create a default credential set and grants. Agents never send keys: request access (allMembers, memberIds or teamIds) without a credential and the response carries credentialPrompt; a person then adds the shared API key in OpenWork. Requires the Manage Gateway providers permission and enabled Gateway management; session callers must recently reauthenticate.", detailsResponse.extend({ credentialPrompt: credentialPromptSchema.optional(), nextStep: z.string().optional() }), 201, false, { "x-mcp": true, "x-mcp-search-aliases": ["add AI gateway provider", "connect our AI gateway", "add OpenAI or Anthropic API provider"] }), orgMemberRoute(), managementWrite, jsonValidator(createSchema), async (c) => {
     try {
       const actor = c.get("organizationContext")
       const input = c.req.valid("json")
-      const awaitKey = await organizationFeatureEnabled(actor.organization.id, "secureSecretFields")
       let defaultSetId: string | null = null
       const catalog = await gatewayCatalog(input.providerId, input.modelIds)
       validateGatewaySettings(catalog.config, input.settings ?? {})
@@ -555,10 +555,10 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
           await tx.insert(GatewayProviderTable).values(provider)
           await writeGatewayModels(tx, provider, catalog.models)
           const credential = input.reuseCredentialFrom === undefined ? input.credential : await reusableAwsCredential(tx, provider, input.reuseCredentialFrom)
-          defaultSetId = (await defaultMatrix(tx, provider, { ...input, credential }, member.id, { awaitKey })).setId
+          defaultSetId = (await defaultMatrix(tx, provider, { ...input, credential }, member.id, { awaitKey: true })).setId
         })
       })
-      const prompt = awaitKey ? await pendingKeyPrompt(provider, defaultSetId) : null
+      const prompt = await pendingKeyPrompt(provider, defaultSetId)
       return c.json({ inferenceProvider: await gatewaySummary(provider, actor.currentMember.id, publicBase(c.req.raw), true, { managerDetails: await hasPermission(c, MANAGE) }), ...prompt }, 201)
     } catch (error) { return respond(c, error) }
   })

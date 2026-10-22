@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Check, CircleAlert, Copy, FileText, Lock, Pencil } from "lucide-react";
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
 import { OpenWorkMark } from "./mark";
 import { ChatsButton, ChatsDrawer, chatTitle, RemoveChatButton, SideChatTitle, useChatLocation } from "./chats";
@@ -16,42 +16,41 @@ import {
   useWorkbotLive,
   useWorkbotThread,
   WorkbotChatProvider,
+  WorkbotSendError,
   workbotFilesKey,
+  uploadWorkbotFile,
   type LiveText,
   type WorkbotAttachment,
   type WorkbotStep,
   type WorkbotTask,
   type WorkbotTurn,
 } from "./data";
-import { AppMark, AttachButton, FileBadge, FilesButton, FilesPanel, ImageThumb, isImage, kindLabel, SentAttachments, UploadTray, useFileDrop, useUploads, type Upload } from "./files";
+import { AppMark, AttachButton, FileBadge, FilesButton, FilesPanel, ImageThumb, isImage, kindLabel, SentAttachments, UploadTray, useFileDrop, type Upload } from "./files";
+import { createComposerState, type ComposerState, type Pending } from "./composer-state";
 import { initials } from "./format";
-import { WorkbotMarkdown } from "./markdown";
+import { documentLinks, WorkbotMarkdown } from "./markdown";
 import { OpenFileContext } from "./open-file";
 import { PreviewPanel } from "./preview";
 import { Welcome } from "./welcome";
+import { ModelRecovery, AccessRecovery } from "./model-recovery";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
-import { workbotViewContextSchema, type WorkbotViewContext } from "@openwork/types/workbot-context";
-import type { DocumentOpenRequest } from "@openwork/documents";
-import { SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
+import { WorkbotComputer } from "./computer";
+import { readBrowserSkillRunPrompt, type BrowserTeachingContext } from "@openwork/types/browser-demonstration";
+import { readWorkbotCorrectionPrompt, workbotCorrectionPrompt, workbotViewContextSchema, type WorkbotViewContext } from "@openwork/types/workbot-context";
+import type { DocumentOpenOutcome, DocumentOpenRequest } from "@openwork/documents";
+import { ComputerNavigationContext, ComputerOffer, DocumentNavigationContext, DocumentNavigationStatus, DocumentOffers, type DocumentNavigationState, OpenDocumentContext, SentContext, WorkspaceAssistant, WorkspaceMenu, WorkspaceNavigationContext } from "./workspace";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNativeDictation } from "@openwork/ui/react";
+import { WorkbotDictation } from "./native-dictation";
 
 /**
  * Workbot: one thread, instant. Layout and values follow the Paper file "WorkBot — one chat, set up once",
  * page v4 (screens 1–4) for the thread and v5 (screens 5–8) for files.
  */
 
-type Pending = {
-  id: string;
-  text: string;
-  context?: WorkbotViewContext;
-  sentAt: number;
-  /** Files still uploading, shown from the tray until the turn exists. */
-  uploads: Upload[];
-  failed: string | null;
-};
-
 const PAGE_TURNS = 30;
+const MAX_TURNS = 200;
 const COLUMN = "min-w-0 w-full max-w-[640px]";
 
 function newMessageId() {
@@ -71,6 +70,8 @@ type ChatNavigation = {
 export function WorkbotScreen({ host }: { host: WorkbotHost }) {
   setWorkbotHost(host);
   const sideChats = host.sideChats === true;
+  const composers = useMemo(() => new Map<string | null, ComposerState>(), [host.identity?.organizationId, host.identity?.principalId]);
+  useEffect(() => () => { for (const owner of composers.values()) owner.dispose(); }, [composers]);
   const [workspaceDrafts, setWorkspaceDrafts] = useState(false);
   const [chat, openChat] = useChatLocation(sideChats, workspaceDrafts ? () => false : undefined);
   const [chatsOpen, setChatsOpen] = useState(false);
@@ -83,10 +84,15 @@ export function WorkbotScreen({ host }: { host: WorkbotHost }) {
   const navigation: ChatNavigation | null = sideChats
     ? { chat, title: chat ? chatTitle(chats.data?.side.find((entry) => entry.id === chat)?.title) : "Main chat", openChats: () => setChatsOpen(true), openChat }
     : null;
+  let composer = composers.get(chat);
+  if (!composer) {
+    composer = createComposerState((file, progress, signal) => uploadWorkbotFile(file, progress, signal, chat));
+    composers.set(chat, composer);
+  }
   return (
     <WorkbotChatProvider value={chat}>
-      {/* Each chat starts fresh: its own unsent messages, files to send and open file. */}
-      <ChatScreen key={`${host.identity?.organizationId ?? ""}:${host.identity?.principalId ?? ""}:${chat ?? "main"}`} host={host} navigation={navigation} onDraftsChange={setWorkspaceDrafts} />
+      {/* Screen lifecycles never own a person's unsent work. */}
+      <ChatScreen key={`${host.identity?.organizationId ?? ""}:${host.identity?.principalId ?? ""}:${chat ?? "main"}`} host={host} composerState={composer} navigation={navigation} onDraftsChange={setWorkspaceDrafts} />
       {sideChats ? (
         <ChatsDrawer
           open={chatsOpen}
@@ -104,16 +110,18 @@ export function WorkbotScreen({ host }: { host: WorkbotHost }) {
 }
 
 /** One chat: the main chat, or one of the person's side chats. */
-function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; navigation: ChatNavigation | null; onDraftsChange(dirty: boolean): void }) {
+function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host: WorkbotHost; composerState: ComposerState; navigation: ChatNavigation | null; onDraftsChange(dirty: boolean): void }) {
   const { user } = host;
   const side = navigation?.chat != null;
   const queryClient = useQueryClient();
-  const [pending, setPending] = useState<Pending[]>([]);
+  const draft = useSyncExternalStore(composerState.subscribe, composerState.getSnapshot, composerState.getSnapshot);
+  const { pending } = draft;
   const [turnWindow, setTurnWindow] = useState(PAGE_TURNS);
   const [filesOpen, setFilesOpen] = useState(false);
   // Once activated, keep this shell mounted even when the flag is revoked: draft editors must survive.
-  const [workspaceShell, setWorkspaceShell] = useState(host.workspaceAssistant === true);
-  useEffect(() => { if (host.workspaceAssistant) setWorkspaceShell(true); }, [host.workspaceAssistant]);
+  const [teaching, setTeaching] = useState<BrowserTeachingContext>();
+  const [workspaceShell, setWorkspaceShell] = useState(host.workspaceAssistant === true || host.browserDemonstrations === true);
+  useEffect(() => { if (host.workspaceAssistant || host.browserDemonstrations) setWorkspaceShell(true); }, [host.workspaceAssistant, host.browserDemonstrations]);
   const [documentContext, setDocumentContext] = useState<WorkbotViewContext | null>(null);
   const [calendarContext, setCalendarContext] = useState<WorkbotViewContext | null>(null);
   const [includeContext, setIncludeContext] = useState(true);
@@ -126,15 +134,60 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
     if (!workspaceShell && documentsDirty && next !== "documents") { setLeavingDocuments(next); return false; }
     return true;
   }, workspaceShell);
+  const [computerVisited, setComputerVisited] = useState(tab === "computer");
+  useEffect(() => { if (tab === "computer") setComputerVisited(true); }, [tab]);
   const [documentsVisited, setDocumentsVisited] = useState(tab === "documents");
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
   useEffect(() => { if (tab === "documents") setDocumentsVisited(true); if (tab === "calendar") setCalendarVisited(true); }, [tab]);
   const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : null;
+  // Den reports guidedNavigation only with the workspace assistant; each destination keeps its own switch.
+  const guided = host.workspaceAssistant === true && host.guidedNavigation === true;
+  const [revealChat, setRevealChat] = useState(0);
+  // Which reply asked for each open request, and what became of it. Kept for this page only: history never replays.
+  const [navigationStatus, setNavigationStatus] = useState<Readonly<Record<string, DocumentNavigationState>>>({});
+  const navigationRequests = useRef(new Map<string, string>());
+  const currentRequest = useRef<string | null>(null);
+  const settleNavigation = useCallback((requestId: string, outcome: DocumentOpenOutcome) => {
+    const receipt = navigationRequests.current.get(requestId);
+    if (!receipt) return;
+    // Only a request still opening can be set aside; one that opened or failed keeps saying so.
+    setNavigationStatus(current => outcome === "superseded" && current[receipt] !== "opening" ? current : { ...current, [receipt]: outcome });
+  }, []);
   const navigateDocument = (fileId: string) => {
-    if (!host.workspaceAssistant || !host.documents) return;
-    setOpenDocument({ fileId, requestId: newMessageId() });
+    if (!host.workspaceAssistant || !host.documents) return null;
+    const requestId = newMessageId();
+    // A newer request replaces one still opening; that one never opens.
+    if (currentRequest.current) settleNavigation(currentRequest.current, "superseded");
+    currentRequest.current = requestId;
+    setOpenDocument({ fileId, requestId });
     setTab("documents");
+    return requestId;
   };
+  // Guided navigation from a conversation: the same chat stays open beside the document, sharing that view.
+  const navigateFromChat = (fileId: string) => {
+    const requestId = navigateDocument(fileId);
+    if (!guided) return requestId;
+    setIncludeContext(true);
+    setRevealChat(count => count + 1);
+    return requestId;
+  };
+  const followNavigation = (receipt: { id: string; fileId: string }) => {
+    const requestId = navigateFromChat(receipt.fileId);
+    if (!requestId) return;
+    navigationRequests.current.set(requestId, receipt.id);
+    setNavigationStatus(current => ({ ...current, [receipt.id]: "opening" }));
+  };
+  // What the person is looking at, so a late answer only navigates if they are still where they asked from.
+  const view = tab !== "documents" ? tab : documentContext?.kind === "document" ? `documents:${documentContext.fileId}` : documentContext?.kind === "documents" ? `documents:${documentContext.folderId}:${documentContext.query}` : "documents";
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  // Turns sent from this page, with the view they were sent from. Receipts on any other turn are never followed.
+  const sentFrom = useRef(new Map<string, string>());
+  const followed = useRef(new Set<string>());
+  // The same move for Workbot's computer: open it and keep the conversation beside it. Null while it is on screen.
+  const navigateComputerFromChat = guided && host.computer === true && tab !== "computer"
+    ? () => { setTab("computer"); setRevealChat(count => count + 1); }
+    : null;
   const [preview, setPreview] = useState<WorkbotAttachment | null>(null);
   // The welcome shows once, while there's no conversation yet; leaving it, Workbot starts the conversation itself.
   // "pending" until the conversation is first read: then it shows (no conversation yet) or never does. Side chats
@@ -148,10 +201,19 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
   const retry = useRetryWorkbotMessage();
   const stop = useStopWorkbot();
   const editMessage = useEditWorkbotMessage();
-  // Messages replaced by an edit leave the page at once; the conversation catches up on its next read.
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
-  const uploads = useUploads();
+  const uploads = { uploads: draft.uploads, add: composerState.add, remove: composerState.removeUpload, retry: composerState.retryUpload };
   const data = thread.data?.available ? thread.data : null;
+  useEffect(() => {
+    if (!guided || !host.documents || !data) return;
+    for (const turn of data.turns) {
+      const from = sentFrom.current.get(turn.id);
+      const target = turn.navigation.at(-1);
+      if (from === undefined || !target || followed.current.has(target.id)) continue;
+      for (const receipt of turn.navigation) followed.current.add(receipt.id);
+      if (from === viewRef.current) followNavigation(target);
+      else setNavigationStatus(current => ({ ...current, [target.id]: "superseded" }));
+    }
+  });
   // The open file at its newest version: when Workbot revises it, the preview follows (same id, newer updatedAt).
   const previewFile = useMemo(() => {
     if (!preview || !data) return preview;
@@ -179,76 +241,45 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
     if (welcome === "done" && hello?.greeting && hello.sentAt) rememberWelcomed(hello.sentAt);
   }, [data, welcome]);
 
-  // Once the conversation no longer has a hidden message, it needn't be hidden any more.
+  // Acceptance is witnessed by the server conversation, not by hiding/recreating local messages.
   useEffect(() => {
-    if (!data || hidden.size === 0) return;
-    const present = new Set(data.turns.map((turn) => turn.id));
-    if ([...hidden].some((id) => !present.has(id))) setHidden((current) => new Set([...current].filter((id) => present.has(id))));
-  }, [data, hidden]);
+    if (data) composerState.acknowledge(new Set(data.turns.map(turn => turn.id)));
+  }, [data, composerState]);
 
-  // A sent message stays on screen as written until the conversation shows it.
-  useEffect(() => {
-    if (!data) return;
-    const known = new Set(data.turns.map((turn) => turn.id));
-    setPending((current) => (current.some((entry) => known.has(entry.id)) ? current.filter((entry) => !known.has(entry.id)) : current));
-  }, [data]);
-
-  const submit = (text: string, retry?: Pending) => {
+  const sendPending = (id: string, again = false) => {
+    sentFrom.current.set(id, viewRef.current);
+    return composerState.send(id, async (entry, attachments) => {
+      const input = { text: entry.text, context: entry.context, attachments };
+      if (entry.correctionOf) await editMessage.mutateAsync({ ...input, id: entry.correctionOf, newId: entry.id });
+      else await send.mutateAsync({ ...input, id: entry.id, ...(entry.teachingId ? { teachingId: entry.teachingId, teachingStepId: entry.teachingStepId } : {}) });
+      void queryClient.invalidateQueries({ queryKey: workbotFilesKey });
+    }, again);
+  };
+  const submit = (text: string, retry?: Pending, runSkill = false) => {
+    if (retry) { sendPending(retry.id, true); return; }
     const trimmed = text.trim();
-    const id = retry?.id ?? newMessageId();
-    const candidate = retry ? retry.context : includeContext ? currentContext : undefined;
-    const parsed = workbotViewContextSchema.safeParse(candidate);
+    if (!trimmed && draft.uploads.length === 0) return;
+    const parsed = workbotViewContextSchema.safeParse(includeContext ? currentContext : undefined);
     const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || host.documents) ? parsed.data : undefined;
-    const fromTray = retry ? { taken: retry.uploads, settled: Promise.resolve(retry.uploads.flatMap((upload) => (upload.saved ? [upload.saved] : []))) } : uploads.take();
-    if (!trimmed && fromTray.taken.length === 0) return;
-    setPending((current) => [...current.filter((entry) => entry.id !== id), { id, text: trimmed, context, sentAt: Date.now(), uploads: fromTray.taken, failed: null }]);
-    const fail = (message: string) => setPending((current) => current.map((entry) => (entry.id === id ? { ...entry, failed: message } : entry)));
-    // The message waits for its files, then goes out with their ids.
-    void fromTray.settled.then((saved) => {
-      if (fromTray.taken.length > 0 && saved.length < fromTray.taken.length) {
-        fail("A file didn't upload.");
-        return;
-      }
-      send.mutate({ id, text: trimmed, context, attachments: saved.map((file) => file.id) }, {
-        onError: (error) => fail(error.message),
-        onSuccess: () => void queryClient.invalidateQueries({ queryKey: workbotFilesKey }),
-      });
+    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, ...(!runSkill && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
+    const delivery = sendPending(id);
+    if (runSkill) return delivery.then(() => {
+      const failure = composerState.getSnapshot().pending.find(entry => entry.id === id)?.failed;
+      if (failure) throw new Error(failure);
     });
   };
 
-  /**
-   * Why an edit didn't go through, by message. Kept here rather than in the message: the message leaves the page while
-   * its edit is sent and comes back new if the edit fails, so its own state wouldn't survive to say why.
-   */
-  const [editErrors, setEditErrors] = useState<Readonly<Record<string, string>>>({});
+  /** Failed answer retries are reported on their original message. Unaccepted sends stay with their pending owner. */
+  const [editErrors, setEditErrors] = useState<Readonly<Record<string, Error | string>>>({});
 
-  /** Sends an edited message in place of the old one: it and everything after it make way for the new answer. */
+  /** A correction is an ordinary new message. Earlier messages and answers stay truthful and recoverable. */
   const editTurn = (turn: WorkbotTurn, text: string) => {
     const trimmed = text.trim();
     if (!trimmed && turn.attachments.length === 0) return;
-    const turns = data?.turns ?? [];
-    const from = turns.findIndex((entry) => entry.id === turn.id);
-    const replaced = from === -1 ? [turn.id] : turns.slice(from).map((entry) => entry.id);
-    const id = newMessageId();
     const context = host.workspaceAssistant && (turn.context?.kind === "calendar" || host.documents) ? turn.context : undefined;
-    setEditErrors((current) => {
-      if (!(turn.id in current)) return current;
-      const next = { ...current };
-      delete next[turn.id];
-      return next;
-    });
-    setHidden((current) => new Set([...current, ...replaced]));
-    setPending((current) => [...current, { id, text: trimmed, context, sentAt: Date.now(), uploads: [], failed: null }]);
-    editMessage.mutate(
-      { id: turn.id, newId: id, text: trimmed, context, attachments: turn.attachments.map((file) => file.id) },
-      {
-        onError: (error) => {
-          setHidden((current) => new Set([...current].filter((entry) => !replaced.includes(entry))));
-          setPending((current) => current.filter((entry) => entry.id !== id));
-          setEditErrors((current) => ({ ...current, [turn.id]: error.message }));
-        },
-      },
-    );
+    const correctionReference = { messageId: `wb_${turn.id}`, quote: readWorkbotCorrectionPrompt(turn.text).text.slice(0, 1000), sentAt: turn.sentAt };
+    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, correctionOf: turn.id, correctionReference, attachments: turn.attachments });
+    sendPending(id);
   };
 
   if (workspaceShell) {
@@ -257,18 +288,21 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
     const empty = !data?.turns.length && !pending.length;
     const starting = empty && (start.isPending || greetingAwaited);
     const conversation = data ? <Conversation
-      turns={hidden.size ? data.turns.filter(turn => !hidden.has(turn.id)) : data.turns}
+      turns={data.turns}
       canChange={!busy} onEdit={editTurn} editErrors={editErrors} pending={pending} live={stream.live}
-      hasEarlier={data.hasEarlier} loadingEarlier={thread.isFetching && turnWindow > data.turns.length}
-      onLoadEarlier={() => setTurnWindow(current => Math.min(200, current + PAGE_TURNS))}
+      hasEarlier={data.hasEarlier} earlierLimit={turnWindow >= MAX_TURNS && !thread.isPlaceholderData} loadingEarlier={thread.isFetching && thread.isPlaceholderData}
+      onLoadEarlier={() => setTurnWindow(current => Math.min(MAX_TURNS, current + PAGE_TURNS))}
       onRetry={entry => submit(entry.text, entry)}
       onRetryTurn={turn => {
         if (turn.greeting) { setGreetingAwaited(true); start.mutate(); return; }
-        retry.mutate(turn.id, { onError: error => setEditErrors(current => ({ ...current, [turn.id]: error.message })) });
+        // A retry may ask again; what it asked before is never replayed.
+        for (const receipt of turn.navigation) followed.current.add(receipt.id);
+        sentFrom.current.set(turn.id, viewRef.current);
+        retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: error => setEditErrors(current => ({ ...current, [turn.id]: error })) });
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
     /> : null;
-    const composer = <Composer name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled}
+    const composer = <WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
       onSend={text => submit(text)} onStop={() => stop.mutate()} autoFocus={false} disabled={!data} />;
     const firstName = user?.name?.trim().split(/\s+/)[0] ?? null;
@@ -276,38 +310,48 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
       : !data ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 text-center text-[13px] text-[var(--wb-muted)]" role="status"><p>Couldn't load your conversation.</p><button type="button" className="rounded-lg px-3 py-2 underline focus-visible:shadow-[var(--wb-focus)]" onClick={() => void thread.refetch()}>Try again</button></div>
       : welcome === "showing" ? <Welcome name={name} firstName={firstName} onBegin={() => { if (start.isIdle) { setGreetingAwaited(true); start.mutate(); } }} onDone={() => setWelcome("done")} />
       : empty && side ? <SideChatStart name={name} organizationName={data.organizationName}>{composer}</SideChatStart>
-      : empty && !starting ? <FirstOpen name={name} organizationName={data.organizationName} firstName={firstName} onSuggestion={text => submit(text)} error={start.isError ? <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}>{composer}</FirstOpen>
+      : empty && !starting ? <FirstOpen name={name} organizationName={data.organizationName} firstName={firstName} onSuggestion={text => submit(text)} error={start.isError ? start.error instanceof WorkbotSendError && start.error.accessReason ? <AccessRecovery reason={start.error.accessReason} onRetry={() => { setGreetingAwaited(true); start.mutate(); }} /> : <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}>{composer}</FirstOpen>
       : <>{conversation}<div className="flex shrink-0 justify-center px-3 pb-4 pt-3"><div className={COLUMN}>{composer}</div></div></>;
     return <OpenFileContext.Provider value={setPreview}>
-      <WorkspaceNavigationContext.Provider value={host.workspaceAssistant && host.documents ? navigateDocument : null}>
+      <OpenDocumentContext.Provider value={tab === "documents" && documentContext?.kind === "document" ? documentContext.fileId : null}>
+      <WorkspaceNavigationContext.Provider value={host.workspaceAssistant && host.documents ? navigateFromChat : null}>
+      <ComputerNavigationContext.Provider value={navigateComputerFromChat}>
+      <DocumentNavigationContext.Provider value={guided && host.documents ? { status: navigationStatus, open: followNavigation } : null}>
         <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased" data-workbot-workspace>
           <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null}
             files={filesEnabled ? <FilesButton open={filesOpen} onOpen={() => setFilesOpen(true)} /> : null}
             chats={host.workspaceAssistant ? <WorkspaceMenu page={tab} onPage={setTab} onDocument={navigateDocument} drafts={documentsDirty} onChats={navigation?.openChats} /> : navigation ? <ChatsButton onOpen={navigation.openChats} /> : null}
             nav={host.workspaceAssistant ? null : <WorkbotNav tab={tab} onTab={setTab} />}
-            remove={navigation?.chat && data && data.turns.length > 0 ? <RemoveChatButton disabled={documentsDirty} chatId={navigation.chat} title={navigation.title} onRemoved={() => navigation.openChat(null)} /> : null}
+            remove={navigation?.chat && data && data.turns.length > 0 ? <RemoveChatButton disabled={documentsDirty} chatId={navigation.chat} title={navigation.title} onRemoved={() => { composerState.dispose(); navigation.openChat(null); }} /> : null}
             title={navigation?.chat ? <SideChatTitle title={navigation.title} disabled={documentsDirty} onBack={() => navigation.openChat(null)} /> : undefined}
           />
           <div className="flex min-h-0 min-w-0 flex-1">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ display: tab === "home" ? undefined : "none" }} hidden={tab !== "home"}>{home}</div>
           <div className="flex min-h-0 min-w-0 flex-1 border-t border-[var(--wb-hairline)]" style={{ display: tab === "documents" ? undefined : "none" }} hidden={tab !== "documents"}>
-            {(documentsVisited || tab === "documents") && <WorkbotDocuments onDirtyChange={reportDocumentDirty} onContextChange={setDocumentContext} openDocument={openDocument} />}
+            {(documentsVisited || tab === "documents") && <WorkbotDocuments onDirtyChange={reportDocumentDirty} onContextChange={setDocumentContext} openDocument={openDocument} onOpenSettled={settleNavigation} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 border-t border-[var(--wb-hairline)]" style={{ display: tab === "calendar" ? undefined : "none" }} hidden={tab !== "calendar"}>
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
+          <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
+            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} />}
+          </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
           </div>
-          <div hidden={!host.workspaceAssistant || tab === "home"}><WorkspaceAssistant name={name} context={currentContext} includeContext={includeContext} onIncludeContext={setIncludeContext}
-            composer={composer} conversation={conversation} onDocument={navigateDocument} unavailable={!data} sentCount={pending.length} active={host.workspaceAssistant === true && tab !== "home"} /></div>
+          <div hidden={!(host.workspaceAssistant || host.browserDemonstrations && tab === "computer") || tab === "home"}><WorkspaceAssistant name={name} context={currentContext} includeContext={includeContext} onIncludeContext={setIncludeContext}
+            composer={composer} conversation={conversation} onDocument={navigateFromChat} onComputer={navigateComputerFromChat} unavailable={!data} active={(host.workspaceAssistant === true || host.browserDemonstrations === true && tab === "computer") && tab !== "home"}
+            reveal={revealChat} stayOpen={guided} /></div>
           {filesEnabled && <FilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
         </div>
+      </DocumentNavigationContext.Provider>
+      </ComputerNavigationContext.Provider>
       </WorkspaceNavigationContext.Provider>
+      </OpenDocumentContext.Provider>
     </OpenFileContext.Provider>;
   }
-  if ((tab === "calendar" && host.calendar) || tab === "documents") {
+  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && host.computer)) {
     return (
       <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased">
         <WorkbotHeader
@@ -319,7 +363,7 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );
@@ -368,7 +412,10 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
   // Right after the welcome: the conversation, with Workbot typing its hello. If that can't start, the drawn greeting.
   const starting = empty && (start.isPending || (greetingAwaited && start.data?.started === true));
   const composer = (
-    <Composer
+    <WorkbotComposer
+      nativeDictation={host.nativeDictation}
+      text={draft.text}
+      onText={composerState.setText}
       name={data.name}
       busy={busy}
       stopping={stop.isPending}
@@ -393,7 +440,7 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
         files={filesEnabled ? <FilesButton open={filesOpen} onOpen={() => setFilesOpen(true)} /> : null}
         chats={navigation && !chatId ? <ChatsButton onOpen={navigation.openChats} /> : null}
         title={navigation && chatId ? <SideChatTitle title={navigation.title} onBack={() => navigation.openChat(null)} /> : null}
-        remove={navigation && chatId && data.turns.length > 0 ? <RemoveChatButton chatId={chatId} title={navigation.title} onRemoved={() => navigation.openChat(null)} /> : null}
+        remove={navigation && chatId && data.turns.length > 0 ? <RemoveChatButton chatId={chatId} title={navigation.title} onRemoved={() => { composerState.dispose(); navigation.openChat(null); }} /> : null}
         nav={!chatId ? <WorkbotNav tab={tab} onTab={setTab} /> : null}
       />
       <div className="flex min-h-0 flex-1">
@@ -406,22 +453,23 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
           organizationName={data.organizationName}
           firstName={firstName}
           onSuggestion={(text) => submit(text)}
-          error={start.isError ? <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}
+          error={start.isError ? start.error instanceof WorkbotSendError && start.error.accessReason ? <AccessRecovery reason={start.error.accessReason} onRetry={() => { setGreetingAwaited(true); start.mutate(); }} /> : <ErrorLine action={{ label: "Try again", onClick: () => { setGreetingAwaited(true); start.mutate(); } }}>{HELLO_FAILED}</ErrorLine> : null}
         >
           {composer}
         </FirstOpen>
       ) : (
         <>
           <Conversation
-            turns={hidden.size ? data.turns.filter((turn) => !hidden.has(turn.id)) : data.turns}
+            turns={data.turns}
             canChange={!busy}
             onEdit={editTurn}
             editErrors={editErrors}
             pending={pending}
             live={stream.live}
             hasEarlier={data.hasEarlier}
-            loadingEarlier={thread.isFetching && turnWindow > data.turns.length}
-            onLoadEarlier={() => setTurnWindow((current) => Math.min(200, current + PAGE_TURNS))}
+            earlierLimit={turnWindow >= MAX_TURNS && !thread.isPlaceholderData}
+            loadingEarlier={thread.isFetching && thread.isPlaceholderData}
+            onLoadEarlier={() => setTurnWindow((current) => Math.min(MAX_TURNS, current + PAGE_TURNS))}
             onRetry={(entry) => submit(entry.text, entry)}
             onRetryTurn={(turn) => {
               if (turn.greeting) {
@@ -430,7 +478,7 @@ function ChatScreen({ host, navigation, onDraftsChange }: { host: WorkbotHost; n
                 return;
               }
               // The same message is answered again in place, so the conversation keeps one copy of it.
-              retry.mutate(turn.id, { onError: (error) => setEditErrors((current) => ({ ...current, [turn.id]: error.message })) });
+              retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: (error) => setEditErrors((current) => ({ ...current, [turn.id]: error })) });
             }}
             onSuggestion={(text) => submit(text)}
             starting={starting}
@@ -546,11 +594,11 @@ function useConnectedApps() {
   return workbotHost().useConnectedApps();
 }
 
-type WorkbotTab = "home" | "calendar" | "documents";
+type WorkbotTab = "home" | "calendar" | "documents" | "computer";
 
 function tabFromLocation(): WorkbotTab {
   const path = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") : "";
-  return path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
+  return path === "/computer" || path === "/browser" ? "computer" : path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
 }
 
 /** Home (the conversation) and Calendar, as paths so a reload or a shared link opens the same tab. */
@@ -558,6 +606,10 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
   const beforeLeaveRef = useRef(beforeLeave);
   beforeLeaveRef.current = beforeLeave;
   const [tab, setTabState] = useState<WorkbotTab>(tabFromLocation);
+  const computerEnabled = workbotHost().computer === true;
+  useEffect(() => {
+    if (!computerEnabled && tab === "computer") { window.history.replaceState(null, "", `/${preserveSearch ? window.location.search : ""}`); setTabState("home"); }
+  }, [computerEnabled, tab, preserveSearch]);
   useEffect(() => {
     const sync = () => {
       const next = tabFromLocation();
@@ -570,7 +622,8 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
   const setTab = (next: WorkbotTab, discard = false) => {
     if (next === tab) return;
     if (!discard && beforeLeaveRef.current?.(next) === false) return;
-    window.history.pushState(null, "", `${next === "home" ? "/" : `/${next}`}${preserveSearch ? window.location.search : ""}`);
+    // The Computer tab opens on its Browser view, which has its own path (see WorkbotComputer).
+    window.history.pushState(null, "", `${next === "home" ? "/" : next === "computer" ? "/browser" : `/${next}`}${preserveSearch ? window.location.search : ""}`);
     setTabState(next);
   };
   return [tab, setTab] as const;
@@ -580,7 +633,7 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
 function WorkbotNav({ tab, onTab }: { tab: WorkbotTab; onTab: (tab: WorkbotTab) => void }) {
   return (
     <nav className="ml-4 flex items-center gap-0.5" aria-label="Workbot">
-      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : [])] as const).map((entry) => (
+      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : []), ...(workbotHost().computer ? ["computer" as const] : [])] as const).map((entry) => (
         <button
           key={entry}
           type="button"
@@ -588,7 +641,7 @@ function WorkbotNav({ tab, onTab }: { tab: WorkbotTab; onTab: (tab: WorkbotTab) 
           onClick={() => onTab(entry)}
           className={`flex h-8 items-center rounded-lg px-3 text-[13px] leading-4 transition-colors duration-150 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)] ${tab === entry ? "bg-[#EDF0F2] font-semibold text-[#11181C]" : "font-medium text-[#687076] hover:text-[#11181C]"}`}
         >
-          {entry === "home" ? "Home" : entry === "calendar" ? "Calendar" : "Documents"}
+          {entry === "home" ? "Home" : entry === "calendar" ? "Calendar" : entry === "documents" ? "Documents" : "Computer"}
         </button>
       ))}
     </nav>
@@ -770,6 +823,7 @@ function Conversation(props: {
   pending: Pending[];
   live: Record<string, LiveText>;
   hasEarlier: boolean;
+  earlierLimit: boolean;
   loadingEarlier: boolean;
   onLoadEarlier: () => void;
   onRetry: (entry: Pending) => void;
@@ -784,7 +838,7 @@ function Conversation(props: {
   canChange: boolean;
   onEdit: (turn: WorkbotTurn, text: string) => void;
   /** Why an edit of a message didn't go through, by message id. */
-  editErrors: Readonly<Record<string, string>>;
+  editErrors: Readonly<Record<string, Error | string>>;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -850,7 +904,9 @@ function Conversation(props: {
     >
       <div ref={content} className="flex min-h-full flex-col items-center justify-end px-4 pb-2 pt-6 sm:px-10">
         <div className={`${COLUMN} flex flex-col`}>
-          {props.hasEarlier ? (
+          {props.hasEarlier && props.earlierLimit ? (
+            <p className="mb-6 text-center text-[12px] text-[var(--wb-muted)]" role="status">History limit reached. Earlier messages aren&apos;t available here.</p>
+          ) : props.hasEarlier ? (
             <button
               type="button"
               onClick={() => {
@@ -929,7 +985,8 @@ function Reaction({ emoji }: { emoji: string }) {
 }
 
 function UserBubble({ text, muted = false, reaction = null, action }: { text: string; muted?: boolean; reaction?: string | null; action?: ReactNode }) {
-  if (!text) {
+  const visible = readWorkbotCorrectionPrompt(text);
+  if (!visible.text && !visible.correction) {
     return reaction ? (
       <div className="flex justify-end">
         <Reaction emoji={reaction} />
@@ -939,8 +996,12 @@ function UserBubble({ text, muted = false, reaction = null, action }: { text: st
   return (
     <div className="flex justify-end">
       <div className="group/own relative max-w-[85%] sm:max-w-[480px]">
+        {visible.correction && <div className="mb-1 px-3 text-[12px] text-[var(--wb-muted)]" data-workbot-correction-reference>
+          <p>Correction to your message{visible.correction.sentAt !== null ? ` from ${new Date(visible.correction.sentAt).toLocaleString()}` : ""}</p>
+          {visible.correction.quote && <blockquote className="line-clamp-3 border-l-2 border-[var(--wb-hairline)] pl-2" title={visible.correction.quote}>{visible.correction.quote}{visible.correction.quote.length === 1000 ? "…" : ""}</blockquote>}
+        </div>}
         <p className={`whitespace-pre-wrap break-words rounded-[20px] bg-[var(--wb-user-bubble)] px-4 py-2.5 text-[15px] leading-[22px] text-[var(--wb-text)] transition-opacity duration-150 ${muted ? "opacity-60" : ""}`}>
-          {text}
+          {visible.text}
         </p>
         {action ? <span className={ownAction}>{action}</span> : null}
         {reaction ? (
@@ -970,7 +1031,7 @@ const ownAction =
  */
 function EditButton({ disabled, onClick }: { disabled: boolean; onClick?: () => void }) {
   return (
-    <button type="button" aria-label="Edit message" title="Edit" disabled={disabled} onClick={onClick} className={`${iconButton} disabled:hover:bg-transparent disabled:hover:text-[var(--wb-muted)] [@media(hover:none)]:-my-2 [@media(hover:none)]:-mr-2 [@media(hover:none)]:size-11`}>
+    <button type="button" aria-label="Correct message" title="Send a correction" disabled={disabled} onClick={onClick} className={`${iconButton} disabled:hover:bg-transparent disabled:hover:text-[var(--wb-muted)] [@media(hover:none)]:-my-2 [@media(hover:none)]:-mr-2 [@media(hover:none)]:size-11`}>
       <Pencil size={14} strokeWidth={1.75} aria-hidden />
     </button>
   );
@@ -985,8 +1046,9 @@ function OwnMessage(props: {
   error: string | null;
 }) {
   const { turn, error } = props;
+  const originalText = readWorkbotCorrectionPrompt(turn.text).text;
   const [mode, setMode] = useState<"idle" | "editing">("idle");
-  const [draft, setDraft] = useState(turn.text);
+  const [draft, setDraft] = useState(originalText);
   const field = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
@@ -1006,7 +1068,7 @@ function OwnMessage(props: {
     const text = draft.trim();
     if (!text) return;
     setMode("idle");
-    if (text === turn.text.trim()) return;
+    if (text === originalText.trim()) return;
     props.onEdit(turn, text);
   };
 
@@ -1014,16 +1076,17 @@ function OwnMessage(props: {
     return (
       <div className="flex justify-end">
         <div className="flex w-full max-w-[85%] flex-col gap-2 sm:max-w-[480px]">
+          <blockquote className="line-clamp-3 border-l-2 border-[var(--wb-hairline)] pl-2 text-[12px] text-[var(--wb-muted)]" title={originalText}>Correcting: {originalText}</blockquote>
           <textarea
             ref={field}
             value={draft}
             rows={1}
-            aria-label="Edit your message"
+            aria-label="Correct your message"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();
-                setDraft(turn.text);
+                setDraft(originalText);
                 setMode("idle");
               } else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
@@ -1032,11 +1095,12 @@ function OwnMessage(props: {
             }}
             className="w-full resize-none rounded-[20px] bg-[var(--wb-surface)] px-4 py-2.5 text-[15px] leading-[22px] text-[var(--wb-text)] shadow-[var(--wb-composer-shadow)] outline-none"
           />
+          <p className="text-right text-[12px] text-[var(--wb-muted)]">Earlier messages stay in the conversation.</p>
           <div className="flex items-center justify-end gap-1.5">
             <button
               type="button"
               onClick={() => {
-                setDraft(turn.text);
+                setDraft(originalText);
                 setMode("idle");
               }}
               className="h-8 rounded-full px-3 text-[13px] font-medium text-[var(--wb-muted)] transition-colors duration-150 hover:bg-[var(--wb-chip)] hover:text-[var(--wb-text)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
@@ -1049,7 +1113,7 @@ function OwnMessage(props: {
               disabled={!draft.trim()}
               className="h-8 rounded-full bg-[var(--wb-ink)] px-3.5 text-[13px] font-medium text-[var(--wb-on-ink)] transition-opacity duration-150 hover:opacity-90 disabled:opacity-40 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
             >
-              Send
+              Send correction
             </button>
           </div>
         </div>
@@ -1163,7 +1227,7 @@ function pendingAttachments(entry: Pending): { attachments: WorkbotAttachment[];
     urls[id] = upload.previewUrl;
     return { id, name: upload.file.name, mediaType: upload.file.type || "application/octet-stream", size: upload.file.size };
   });
-  return { attachments, urls };
+  return { attachments: [...entry.attachments, ...attachments], urls };
 }
 
 /** `waiting`: this message's answer comes next, so it shows the waiting dots its turn will show. */
@@ -1175,9 +1239,9 @@ function PendingView({ entry, onRetry, waiting }: { entry: Pending; onRetry: () 
       <SentAttachments attachments={attachments} localUrls={urls} />
       {/* Holds Edit's place while sending, so the bubble doesn't move when its turn arrives. */}
       <SentContext context={entry.context} />
-      <UserBubble text={entry.text} muted={Boolean(entry.failed)} action={entry.failed ? undefined : <EditButton disabled />} />
+      <UserBubble text={entry.correctionReference ? workbotCorrectionPrompt(readBrowserSkillRunPrompt(entry.text), entry.correctionReference) : readBrowserSkillRunPrompt(entry.text)} muted={Boolean(entry.failed)} action={entry.failed ? undefined : <EditButton disabled />} />
       {entry.failed ? (
-        <ErrorLine align="end" action={{ label: "Send again", onClick: onRetry }}>{entry.failed}</ErrorLine>
+        entry.accessIssue ? <AccessRecovery reason={entry.accessIssue} onRetry={onRetry} /> : <ErrorLine align="end" action={{ label: "Send again", onClick: onRetry }}>{entry.failed}</ErrorLine>
       ) : uploading || waiting ? (
         // The rows its turn will show, so nothing moves when the turn arrives.
         <>
@@ -1459,7 +1523,7 @@ type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; k
 function TurnView(props: {
   canChange: boolean;
   onEdit: (turn: WorkbotTurn, text: string) => void;
-  editError: string | null;
+  editError: Error | string | null;
   turn: WorkbotTurn;
   live: LiveText | null;
   latest: boolean;
@@ -1513,11 +1577,14 @@ function TurnView(props: {
   }, [dots, running, answering, liveText]);
   const slot = answering && !liveText && (dots || held || running);
   const copyText = parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n\n");
+  const offers = useMemo(() => (turn.status === "done" ? documentLinks(copyText) : []), [turn.status, copyText]);
+  // One computer, so only the newest reply that used it offers to open it, already while it works.
+  const usedComputer = props.latest && (Boolean(startingCard) || parts.some((part) => part.kind === "steps" && part.steps.some((step) => step.icon === "computer")));
   return (
     <>
       <SentAttachments attachments={turn.attachments} localUrls={props.previews} />
       {turn.text && !turn.greeting ? (
-        <OwnMessage turn={turn} canChange={props.canChange && turn.status !== "queued"} onEdit={props.onEdit} error={props.editError} />
+        <OwnMessage turn={turn} canChange={props.canChange && turn.status !== "queued"} onEdit={props.onEdit} error={props.editError instanceof WorkbotSendError && props.editError.accessReason ? null : props.editError instanceof Error ? props.editError.message : props.editError} />
       ) : (
         <UserBubble text={turn.text} reaction={turn.reaction} />
       )}
@@ -1537,6 +1604,9 @@ function TurnView(props: {
         {startingCard ? <StepsSegment steps={[{ label: "Using my computer", icon: "computer", status: "running", app: null, startedAt: null, finishedAt: null, updates: [] }]} live /> : null}
         {slot ? <WaitingSlot>{runningApps ? <StepsSegment steps={runningApps.steps} live /> : dots ? <TypingDots /> : null}</WaitingSlot> : null}
       </div>
+      <DocumentOffers links={offers} />
+      <DocumentNavigationStatus receipts={turn.navigation} />
+      {usedComputer ? <ComputerOffer /> : null}
       {turn.outputs.length ? <OutputFiles files={turn.outputs} /> : null}
       {turn.tasks.length ? <TaskCards tasks={turn.tasks} canRetry={props.canChange} onRetry={(task) => props.onSuggestion(`Try the "${task.title}" background task again.`)} /> : null}
       {/* Workbot's hello offers what to ask next, only while it is still the latest message. */}
@@ -1555,7 +1625,11 @@ function TurnView(props: {
           ))}
         </ul>
       ) : null}
-      {turn.status === "failed" ? (
+      {turn.status === "failed" && props.editError instanceof WorkbotSendError && props.editError.accessReason ? (
+        <AccessRecovery reason={props.editError.accessReason} onRetry={props.latest ? props.onRetry : undefined} />
+      ) : turn.status === "failed" && turn.modelIssue && workbotHost().usageRecovery ? (
+        <ModelRecovery issue={turn.modelIssue} onRetry={props.latest ? props.onRetry : undefined} />
+      ) : turn.status === "failed" ? (
         <ErrorLine action={props.latest && (turn.greeting || turn.retryable) ? { label: "Try again", onClick: props.onRetry } : null}>{turn.greeting ? HELLO_FAILED : turn.error}</ErrorLine>
       ) : null}
       {/* Natural replies: an answer cut short by a follow-up or by Stop just ends where it was. */}
@@ -1716,7 +1790,11 @@ function OutputFiles({ files }: { files: WorkbotAttachment[] }) {
   );
 }
 
-function Composer(props: {
+export function WorkbotComposer(props: {
+  teaching?: BrowserTeachingContext;
+  nativeDictation?: boolean;
+  text: string;
+  onText: (text: string) => void;
   name: string;
   autoFocus?: boolean;
   disabled?: boolean;
@@ -1730,26 +1808,40 @@ function Composer(props: {
   onSend: (text: string) => void;
   onStop: () => void;
 }) {
-  const [text, setText] = useState("");
+  const { text } = props;
   const input = useRef<HTMLTextAreaElement>(null);
+  const dictation = useNativeDictation({ enabled: props.nativeDictation === true, text, onText: props.onText,
+    selection: () => ({ start: input.current?.selectionStart ?? text.length, end: input.current?.selectionEnd ?? text.length }),
+    focusInput: () => input.current?.focus() });
   const hasFiles = props.uploads.length > 0;
   const canSend = text.trim().length > 0 || (hasFiles && props.uploads.every((upload) => upload.status !== "failed"));
 
   useLayoutEffect(() => {
     const node = input.current;
     if (!node) return;
-    node.style.height = "auto";
-    node.style.height = `${Math.min(node.scrollHeight, 200)}px`;
+    const fit = () => {
+      node.style.height = "auto";
+      node.style.height = `${Math.min(node.scrollHeight, 200)}px`;
+    };
+    fit();
+    let width = node.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const next = node.getBoundingClientRect().width;
+      if (next === width) return;
+      width = next;
+      fit();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [text]);
 
   const sendNow = () => {
     if (!canSend || props.disabled) return;
-    props.onSend(text);
-    setText("");
+    props.onSend(props.nativeDictation === true ? dictation.commit() : text);
     input.current?.focus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
       event.preventDefault();
       sendNow();
     } else if (event.key === "Escape" && props.busy) {
@@ -1765,7 +1857,11 @@ function Composer(props: {
   const showStop = props.busy && !canSend;
   const multiline = hasFiles || text.includes("\n") || text.length > 70;
 
-  return (
+  return <>
+    {props.teaching && <div role="status" className="mb-2 flex flex-col gap-0.5 px-3 text-[12px] text-[var(--wb-muted)]" data-workbot-teaching-context>
+      <span>{props.teaching.phase === "recording" ? `Teaching ${props.name}` : props.teaching.phase === "paused" ? "Recording paused · Still teaching" : "Reviewing the skill"}</span>
+      <span className="truncate">{props.teaching.label}</span>
+    </div>}
     <div
       data-workbot-composer
       className={`flex bg-[var(--wb-surface)] shadow-[var(--wb-composer-shadow)] transition-[border-radius] duration-150 ${
@@ -1773,7 +1869,7 @@ function Composer(props: {
       }`}
     >
       {hasFiles ? <UploadTray uploads={props.uploads} onRemove={props.onRemoveUpload} onRetry={props.onRetryUpload} /> : null}
-      <div className={hasFiles ? "flex min-w-0 flex-1 items-end gap-1" : "contents"}>
+      <div className={hasFiles ? "flex w-full min-w-0 flex-1 items-end gap-1" : "contents"}>
         <AttachButton enabled={props.filesEnabled} onFiles={props.onFiles} />
         <textarea
           ref={input}
@@ -1781,13 +1877,14 @@ function Composer(props: {
           rows={1}
           autoFocus={props.autoFocus ?? true}
           disabled={props.disabled}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => dictation.edit(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          placeholder={`Message ${props.name}`}
+          placeholder={props.teaching ? "Explain this step or ask a question" : `Message ${props.name}`}
           aria-label={`Message ${props.name}`}
           className="max-h-[200px] min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-[7px] text-[16px] leading-[22px] text-[var(--wb-text)] outline-none placeholder:text-[var(--wb-faint)] sm:py-[9px] sm:text-[14px] sm:leading-[18px]"
         />
+        {props.nativeDictation === true ? <WorkbotDictation dictation={dictation} disabled={props.disabled} text={text} /> : null}
         <button
           type="button"
           onClick={showStop ? props.onStop : sendNow}
@@ -1801,5 +1898,5 @@ function Composer(props: {
         </button>
       </div>
     </div>
-  );
+  </>;
 }

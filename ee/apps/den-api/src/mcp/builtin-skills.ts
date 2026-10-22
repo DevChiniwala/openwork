@@ -49,6 +49,18 @@ Produce one complete \`SKILL.md\` with:
 - non-empty Markdown instruction body
 - no secrets
 
+## Make it replayable
+
+When the skill captures work you just finished in this conversation, write it so the next run can go straight to the result instead of rediscovering it:
+
+- **Inputs:** the few values that change per use (for example customer, use case, recipient) and how to read them from a short request.
+- **Sources:** the exact pages, files or records you used (titles plus IDs or links). Tell the next run to read them directly instead of searching.
+- **Steps:** the shortest sequence of calls that worked, in order.
+- **Assets:** if you wrote a script or template that produced the output, save it in the workspace (for example \`tools/<skill-name>.py\`) and include a verbatim copy in a fenced code block, with how to run it on new inputs. The next run reuses the workspace file when it exists.
+- **Output:** file name pattern, location and format, any reply or draft template, and the one check to run before reporting.
+
+Keep it general: don't present one customer's results as facts for another.
+
 ## Workflow
 
 1. Draft the complete \`SKILL.md\`.

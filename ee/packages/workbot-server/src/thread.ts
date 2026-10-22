@@ -1,5 +1,6 @@
+import { readBrowserTeachingPrompt, readBrowserSkillRunPrompt } from "@openwork/types/browser-demonstration"
 import type { RunnerMessage, RunnerSnapshot, RunnerTurn } from "@openwork-ee/headless-protocol"
-import { readWorkbotContextPrompt, type WorkbotViewContext } from "@openwork/types/workbot-context"
+import { readWorkbotContextPrompt, workbotDocumentNavigationSchema, type WorkbotViewContext } from "@openwork/types/workbot-context"
 
 /**
  * Workbot is one conversation per person. The runner keeps the transcript;
@@ -87,6 +88,8 @@ export type WorkbotTurn = {
   id: string
   text: string
   context?: WorkbotViewContext
+  /** Accepted requests to open a document beside the chat. Only requests: whether one opened is the page's to say. */
+  navigation?: Array<{ id: string; fileId: string }>
   sentAt: number | null
   finishedAt: number | null
   status: WorkbotTurnStatus
@@ -104,6 +107,8 @@ export type WorkbotTurn = {
    */
   modelSteps: number
   error: string | null
+  /** A closed recovery vocabulary; no provider text, account identifiers or credentials. */
+  modelIssue?: "free_limit" | "usage_limit" | "payment_required"
   /** A failed turn that can work if sent again: the page offers "Try again", which answers it again in place. */
   retryable: boolean
   /** Background tasks this message started, oldest first. */
@@ -160,7 +165,14 @@ const MISCONFIGURED = /^model_(credentials_missing|http_(401|402|403|404)|stream
  */
 export function retryableError(code: string | null): boolean {
   if (!code) return true
-  return !REFUSED.test(code) && !MISCONFIGURED.test(code) && code !== "max_steps_exceeded" && code !== "stuck_repeating"
+  return !REFUSED.test(code) && !MISCONFIGURED.test(code) && !modelIssue(code) && code !== "max_steps_exceeded" && code !== "stuck_repeating"
+}
+
+function modelIssue(code: string | null): WorkbotTurn["modelIssue"] {
+  if (code === "model_free_allowance_exhausted") return "free_limit"
+  if (code === "model_usage_limit_exceeded") return "usage_limit"
+  if (code === "model_payment_required") return "payment_required"
+  return undefined
 }
 
 /**
@@ -226,7 +238,7 @@ function appOf(name: string, input: Record<string, unknown>): string | null {
 /** The conversation's kept files, so the ones Workbot made show under the answer that made them. */
 export type FileNames = ReadonlyMap<string, { name: string; createdAt: number; updatedAt?: number; mediaType?: string; size?: number; source?: "user" | "agent" }>
 
-const COMPUTER_TOOLS: ReadonlySet<string> = new Set(["bash", "look"])
+const COMPUTER_TOOLS: ReadonlySet<string> = new Set(["bash", "look", "desktop"])
 
 /**
  * Work on Workbot's computer reads as one step, however many commands it took: the person sees that it is using
@@ -317,6 +329,7 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
     const results = new Map(messages.flatMap((message) => (message.role === "tool" ? [[message.callId, message] as const] : [])))
 
     const parts: WorkbotPart[] = []
+    const navigation: Array<{ id: string; fileId: string }> = []
     let reaction: string | null = null
     let modelSteps = 0
     const greeting = isGreetingRunnerId(turn.messageId)
@@ -328,6 +341,12 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
       // stored. The greeting follows the same streaming contract as other replies.
       if (text) parts.push({ kind: "text", text, step: modelSteps - 1 })
       for (const call of message.toolCalls) {
+        if (call.name === "open_document") {
+          const target = workbotDocumentNavigationSchema.safeParse(call.input)
+          const result = results.get(call.id)
+          if (turn.kind === undefined && !greeting && target.success && result?.role === "tool" && !result.isError) navigation.push({ id: call.id, fileId: target.data.fileId })
+          continue
+        }
         if (call.name === "react") {
           const result = results.get(call.id)
           const emoji = reactionOf(call.input)
@@ -373,7 +392,7 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
     const outputs = outputsOf(files, turn.createdAt ?? null, working ? null : (turn.updatedAt ?? null))
     // A report is Workbot speaking first: the task's notes to it stay hidden, and it brings back what the task made.
     const task = turn.kind === "report" ? snapshot.turns.find((entry) => entry.messageId === turn.parent) : undefined
-    const visible = readWorkbotContextPrompt(user.text)
+    const visible = readWorkbotContextPrompt(readBrowserSkillRunPrompt(readBrowserTeachingPrompt(user.text)))
     turns.push({
       id: turn.messageId.slice(WORKBOT_MESSAGE_PREFIX.length),
       text: turn.kind === "report" || greeting ? "" : visible.text,
@@ -386,9 +405,11 @@ export function buildWorkbotTurns(snapshot: RunnerSnapshot, files: FileNames = n
         ? [...new Map([...outputsOf(files, task.createdAt ?? null, task.updatedAt ?? null), ...outputs].map((file) => [file.id, file])).values()]
         : outputs,
       reaction,
+      ...(navigation.length ? { navigation } : {}),
       parts,
       modelSteps,
       error: status === "failed" ? friendlyError(turn.error) : null,
+      ...(status === "failed" && modelIssue(turn.error) ? { modelIssue: modelIssue(turn.error) } : {}),
       retryable: status === "failed" && retryableError(turn.error),
       tasks: turn.kind === undefined ? tasksOf(snapshot, turn.messageId, byTurn) : [],
       greeting,

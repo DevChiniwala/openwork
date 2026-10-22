@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, Laptop, Compass, Layers, ShieldCheck, SquareTerminal } from "lucide-react";
 import { type TabItem, UnderlineTabs } from "../../_components/ui/tabs";
-import { getMembersTeamsRoute, getOrgAccessFlags, getPermissionSetRoute, orgFeatureEnabled } from "../../_lib/den-org";
+import { getMembersTeamsRoute, getOrgAccessFlags, getPermissionSetRoute } from "../../_lib/den-org";
 import { desktopPolicyScreenRemoved } from "../_lib/desktop-policy-screen-rollout";
 import { DesktopSuggestionsPanel } from "./desktop-suggestions-panel";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
@@ -26,9 +26,9 @@ export function EveryoneScreen({ initialTab }: { initialTab: EveryoneTab | null 
     ? getOrgAccessFlags(orgContext.currentMember.role, orgContext.currentMember.isOwner, orgContext.currentMember.permissions)
     : null;
   const showAgents = agentsTabVisible(orgContext);
-  // teamPageTabs: Browser and Models hold the organization's defaults, as each team's page does.
-  const pageTabs = orgContext ? orgFeatureEnabled(orgContext, "teamPageTabs") : false;
-  const showBrowser = pageTabs && showAgents;
+  // Browser and Models hold the organization's defaults, as each team's page does.
+
+  const showBrowser = showAgents;
   const showDesktop = desktopPolicyScreenRemoved(orgContext);
   const showModels = modelsTabVisible(orgContext);
   const [chosenTab, setChosenTab] = useState<EveryoneTab | null>(initialTab);
@@ -44,7 +44,7 @@ export function EveryoneScreen({ initialTab }: { initialTab: EveryoneTab | null 
       : chosenTab === "models" && showModels ? "models"
         : chosenTab === "desktop" && showDesktop ? "desktop" : "role";
   const memberCount = orgContext?.members.length ?? 0;
-  const canViewSets = Boolean(orgContext && orgFeatureEnabled(orgContext, "permissions") && access?.canViewPermissions);
+  const canViewSets = Boolean(orgContext && access?.canViewPermissions);
   const setsQuery = usePermissionSets(orgId, canViewSets);
   const memberSet = setsQuery.data?.find((set) => set.kind === "member_default");
   const tabs: readonly TabItem<EveryoneTab>[] = [
@@ -100,7 +100,7 @@ export function EveryoneScreen({ initialTab }: { initialTab: EveryoneTab | null 
           </div>
         ) : (
           <div role="tabpanel" aria-label="Agents">
-            <AgentsPanel team={null} area={showBrowser ? "agents" : "all"} />
+            <AgentsPanel team={null} area="agents" />
           </div>
         )}
       </div>

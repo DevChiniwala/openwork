@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import { googleDriveFileId } from "@openwork/types/workbot-context";
 import { WorkspaceLink } from "./workspace";
 import { Lexer, type MarkedToken, type Token } from "marked";
 
@@ -147,6 +148,27 @@ function block(token: Token, index: number): ReactNode {
     default:
       return <p key={index}>{inlineToken(token)}</p>;
   }
+}
+
+/** Google Drive files a reply links to, in order and once each, labelled with the reply's own link text. */
+export function documentLinks(text: string): Array<{ fileId: string; label: string }> {
+  const found = new Map<string, string>();
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) return value.forEach(visit);
+    if (typeof value !== "object" || value === null) return;
+    const token = value as { type?: unknown; href?: unknown; text?: unknown; tokens?: unknown; items?: unknown };
+    if (token.type === "link" && typeof token.href === "string") {
+      const href = safeHref(token.href);
+      const fileId = href ? googleDriveFileId(href) : null;
+      const label = typeof token.text === "string" ? token.text.trim() : "";
+      if (fileId && label && !found.has(fileId)) found.set(fileId, label);
+      return;
+    }
+    visit(token.tokens);
+    visit(token.items);
+  };
+  visit(Lexer.lex(text, { gfm: true, breaks: true }));
+  return [...found].map(([fileId, label]) => ({ fileId, label }));
 }
 
 export function WorkbotMarkdown({ text }: { text: string }) {

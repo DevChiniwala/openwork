@@ -302,6 +302,18 @@ const REMOTE_SESSION_DEFINITIONS: RemoteSessionDefinition[] = [
 
 export type RemoteSessionCapabilityMatch = CapabilityMatch & { kind: "remote_session" }
 
+/** Every remote-session capability with its summary and arguments schema, as search returns them. */
+export function listRemoteSessionCapabilities(options: { status?: boolean } = {}) {
+  return REMOTE_SESSION_DEFINITIONS
+    .filter((definition) => definition.action !== "status" || options.status)
+    .map((definition) => ({
+      action: definition.action,
+      name: remoteSessionCapabilityName(definition.action),
+      summary: definition.summary,
+      argumentsSchema: definition.argumentsSchema,
+    }))
+}
+
 export function searchRemoteSessionCapabilities(query: string, limit = 5, options: { status?: boolean } = {}): RemoteSessionCapabilityMatch[] {
   const queryTokens = tokenize(query)
   if (queryTokens.length === 0) return []
