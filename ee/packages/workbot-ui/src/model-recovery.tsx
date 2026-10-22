@@ -2,9 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { workbotModelRecoverySchema, type WorkbotAccessReason } from "@openwork/types/den/workbot-settings";
-import { ExternalLink, Lock } from "lucide-react";
+import { Clock, ExternalLink, FileText, Lock } from "lucide-react";
 import type { WorkbotTurn } from "./data";
 import { workbotHost } from "./host";
+import { modelRecoveryView } from "./model-recovery-state";
 
 function useRecoveryOptions() {
   const host = workbotHost();
@@ -29,40 +30,47 @@ function managementUrl(path: string) {
   return destination ? `${destination.denUrl}/dashboard/${path}${path.includes("?") ? "&" : "?"}workbotOrganizationId=${encodeURIComponent(destination.organizationId)}` : null;
 }
 
-/** Desktop Auto intent, after login: confirm the allowance and a usable paid route before offering checkout. */
+const primaryClass = "inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--wb-ink)] px-3 text-[12px] font-medium text-[var(--wb-on-ink)] transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]";
+const secondaryClass = "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-[var(--wb-text)] shadow-[inset_0_0_0_1px_var(--wb-ring)] transition-colors duration-150 hover:bg-[var(--wb-chip)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]";
+
+function resetPhrase(resetsAt: string) {
+  return new Date(resetsAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+}
+
+/**
+ * The usage-limit card, the same anatomy as the desktop: what ran out, when it resets, that the message is saved,
+ * one primary action for the person's role (an upgrade only when Den says they can buy), and a way to keep working.
+ */
 export function ModelRecovery({ issue, onRetry }: { issue: NonNullable<WorkbotTurn["modelIssue"]>; onRetry?: () => void }) {
   const host = workbotHost();
   const recovery = useRecoveryOptions();
   if (!host.usageRecovery || host.documentAuthorization !== undefined) return null;
   const options = recovery.isError ? undefined : recovery.data;
-  const confirmedFree = issue === "free_limit" && options?.freeExhausted === true;
-  const offerUpgrade = confirmedFree && options?.canUpgrade && options.purchaseEligible && options.paidContinuation === "after_upgrade" && options.upgradeBlockedReason === null;
-  const paidReady = issue === "free_limit" && options?.managedLuna && options.paidContinuation === "authorized";
-  const action = offerUpgrade ? { label: "Upgrade models", path: "ai-gateway?tab=openwork-models" }
-    : issue === "payment_required" && options?.canManageBilling ? { label: "Manage billing", path: "billing" }
-    : !options?.managedLuna && options?.canManageModels ? { label: "Change Workbot's model", path: "workbot-settings" } : null;
-  const url = action ? managementUrl(action.path) : null;
-  const reset = issue === "free_limit" && options?.freeExhausted && options.freeResetsAt
-    ? new Date(options.freeResetsAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : null;
-  const message = issue === "free_limit" ? confirmedFree ? `You've used the free model allowance for now.${reset ? ` It resets ${reset}.` : ""}` : "Workbot's model access needs checking."
-    : issue === "usage_limit" ? "Your workspace's model usage limit has been reached. Ask a workspace admin for more allowance or another model."
-    : "OpenWork Models needs a billing update before this answer can continue.";
-  return <div role="status" data-testid="workbot-model-recovery" className="mt-3 flex items-start gap-2 text-[13px] text-[var(--wb-muted)]">
-    <Lock size={14} className="mt-1 shrink-0" aria-hidden />
-    <div className="min-w-0">
-      <p>{message}</p>
-      {issue === "free_limit" && options && <p className="mt-1 text-[12px]">{paidReady ? "Paid Luna is ready. Your next message in this conversation uses your Models subscription. Auto’s free allowance stays separate." : offerUpgrade ? "Upgrade to keep using Luna through your Models subscription. Return here and check access before continuing." : options.managedLuna && options.hasModelsSubscription ? "Your Models access isn’t ready yet. Check access again shortly, or ask someone with billing access to review your subscription." : options.managedLuna ? "Ask someone with billing access to upgrade Models, or wait for Auto’s free allowance to reset." : "Ask a workspace admin to choose an available model to keep going."}</p>}
-      {!options?.managedLuna && options?.canManageModels && <p className="mt-1 text-[12px]">After changing models, send a new message in this conversation. Retrying an answer keeps its original model.</p>}
-      {issue === "payment_required" && options && !action && <p className="mt-1 text-[12px]">Someone with billing access can update the payment details.</p>}
-      <div className="-ml-2 mt-1 flex flex-wrap items-center gap-1">
-        {action && url && <a className={linkClass} href={url} target="_blank" rel="noopener noreferrer">{action.label}<ExternalLink size={12} aria-label="Opens in a new tab" /></a>}
-        {recovery.isError ? <button type="button" className={linkClass} onClick={() => void recovery.refetch()}>Check recovery options</button>
-          : onRetry && options && (issue === "free_limit" && options.freeExhausted
-            ? <button type="button" className={linkClass} disabled={recovery.isFetching} onClick={() => void recovery.refetch()}>Check access</button>
-            : <button type="button" className={linkClass} onClick={onRetry}>Try again</button>)}
-      </div>
-      {recovery.isError && <p className="text-[12px]">Couldn't check your recovery options.</p>}
+  const view = modelRecoveryView(issue, options);
+  const primaryUrl = view.primary?.kind === "link" ? managementUrl(view.primary.path) : null;
+  const changeModelUrl = view.changeModel ? managementUrl(view.changeModel.path) : null;
+  return <div role="status" data-testid="workbot-model-recovery" data-issue={issue}
+    className="mt-3 flex flex-col gap-2 rounded-xl bg-[var(--wb-surface)] px-3.5 py-3 text-[13px] text-[var(--wb-muted)] shadow-[0_0_0_1px_var(--wb-ring)]">
+    <div className="flex flex-col gap-0.5">
+      <p className="font-medium text-[var(--wb-text)]">{view.title}</p>
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px]">
+        {view.resetsAt && <span className="inline-flex items-center gap-1"><Clock size={12} aria-hidden />Resets {resetPhrase(view.resetsAt)}</span>}
+        <span className="inline-flex items-center gap-1"><FileText size={12} aria-hidden />Your message is saved</span>
+      </p>
     </div>
+    {view.note && <p className="text-[12px]">{view.note}</p>}
+    <div className="flex flex-wrap items-center gap-1.5">
+      {view.primary?.kind === "link" && primaryUrl && <a className={primaryClass} href={primaryUrl} target="_blank" rel="noopener noreferrer">{view.primary.label}<ExternalLink size={12} aria-label="Opens in a new tab" /></a>}
+      {view.primary?.kind === "locked" && <span data-testid="workbot-model-recovery-locked" title={view.primary.reason}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-[var(--wb-muted)] shadow-[inset_0_0_0_1px_var(--wb-ring)]">
+        <Lock size={12} aria-hidden />{view.primary.label}<span className="sr-only">. {view.primary.reason}</span></span>}
+      {view.changeModel && changeModelUrl && <a className={secondaryClass} href={changeModelUrl} target="_blank" rel="noopener noreferrer">{view.changeModel.label}<ExternalLink size={12} aria-label="Opens in a new tab" /></a>}
+      {recovery.isError ? <button type="button" className={linkClass} onClick={() => void recovery.refetch()}>Check recovery options</button>
+        : onRetry && options && (view.check === "check"
+          ? <button type="button" className={linkClass} disabled={recovery.isFetching} onClick={() => void recovery.refetch()}>Check access</button>
+          : <button type="button" className={linkClass} onClick={onRetry}>Try again</button>)}
+    </div>
+    {recovery.isError && <p className="text-[12px]">Couldn't check your recovery options.</p>}
   </div>;
 }
 
