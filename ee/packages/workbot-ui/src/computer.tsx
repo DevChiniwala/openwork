@@ -98,15 +98,20 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
         candidate.background = "#f5f6f7";
         candidate.addEventListener("connect", () => {
           if (disposed || next !== candidate) { candidate.disconnect(); return; }
-          layer.style.visibility = "visible";
-          const previous = client;
-          client = candidate; next = null;
-          previous?.disconnect();
-          failures = 0; setConnected(true); setReconnecting(false); setError(null);
-          // The computer closes each connection after a minute and renewal goes through
-          // membership and flags again, so renew early instead of going blank.
-          clearTimeout(renewal);
-          renewal = setTimeout(() => void connect(true), 45_000);
+          // noVNC reports the connection before its first frame arrives, so keep the current
+          // picture until the new one is drawn; otherwise every renewal flashes an empty screen.
+          void firstFrame(layer).then(() => {
+            if (disposed || next !== candidate) return;
+            layer.style.visibility = "visible";
+            const previous = client;
+            client = candidate; next = null;
+            previous?.disconnect();
+            failures = 0; setConnected(true); setReconnecting(false); setError(null);
+            // The computer closes each connection after a minute and renewal goes through
+            // membership and flags again, so renew early instead of going blank.
+            clearTimeout(renewal);
+            renewal = setTimeout(() => void connect(true), 45_000);
+          });
         });
         candidate.addEventListener("securityfailure", () => {
           if (!disposed && client === null) setError("Couldn't connect to your computer. Try reconnecting.");
@@ -183,6 +188,22 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
       </div> : null}
     </div>
   </section>;
+}
+
+/** Resolves once noVNC has drawn into the layer's canvas (its pixels start transparent), or after `limit` ms. */
+function firstFrame(layer: HTMLElement, limit = 5_000) {
+  const started = performance.now();
+  return new Promise<void>(resolve => {
+    const check = () => {
+      const canvas = layer.querySelector("canvas");
+      const alpha = canvas && canvas.width > 0 && canvas.height > 0
+        ? canvas.getContext("2d")?.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data[3] ?? 0
+        : 0;
+      if (alpha > 0 || !layer.isConnected || performance.now() - started > limit) resolve();
+      else setTimeout(check, 50);
+    };
+    check();
+  });
 }
 
 /** Replaces a computer that won't connect with a fresh one from the current image. Its disk is erased, so ask first. */
