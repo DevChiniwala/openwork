@@ -102,6 +102,7 @@ export async function startFakeStripe(options) {
   const customers = new Map();
   const sessions = new Map();
   const subscriptions = new Map();
+  const declinedSubscriptionPayments = new Set();
   const invoices = new Map();
   const setupIntents = new Map();
   const portalSessions = new Map();
@@ -242,6 +243,14 @@ export async function startFakeStripe(options) {
         return { status: 200, body: subscription };
       }
       if (method === "POST") {
+        if (form.proration_behavior === "always_invoice" && declinedSubscriptionPayments.has(subscription.id)) {
+          // Stripe rejects the entire update with error_if_incomplete; price,
+          // quantity and metadata remain unchanged when collection fails.
+          if (form.payment_behavior === "error_if_incomplete") {
+            return { status: 402, body: { error: { type: "card_error", code: "card_declined", message: "Your card was declined." } } };
+          }
+          subscription.status = "past_due";
+        }
         for (const change of form.items ?? []) {
           const item = subscription.items.data.find((entry) => entry.id === change.id);
           if (!item) return notFound("subscription_item", change.id);
@@ -346,7 +355,7 @@ ${setup ? "" : `<ul>${rows}</ul><div class="total" data-testid="fake-stripe-tota
       }
       const apiPath = url.pathname.startsWith("/stripe/v1/") ? url.pathname.slice("/stripe".length) : url.pathname;
       if (!apiPath.startsWith("/v1/")) return void response.writeHead(404).end();
-      requests.push({ method, path: apiPath });
+      requests.push({ method, path: apiPath, form: parseStripeForm(text) });
       response.setHeader("content-type", "application/json");
       if (request.headers.authorization !== `Bearer ${secretKey}`) {
         return void response.writeHead(401).end(JSON.stringify({ error: { type: "invalid_request_error", message: "Invalid API key provided" } }));
@@ -396,6 +405,12 @@ ${setup ? "" : `<ul>${rows}</ul><div class="total" data-testid="fake-stripe-tota
       if (!subscription) throw new Error(`No fake subscription ${subscriptionId}`);
       subscription.status = status;
       return subscription;
+    },
+    /** Make immediate invoice collection fail or succeed for subscription updates. */
+    setSubscriptionPaymentDeclined(subscriptionId, declined) {
+      if (!subscriptions.has(subscriptionId)) throw new Error(`No fake subscription ${subscriptionId}`);
+      if (declined) declinedSubscriptionPayments.add(subscriptionId);
+      else declinedSubscriptionPayments.delete(subscriptionId);
     },
     close() {
       return new Promise((resolve) => {

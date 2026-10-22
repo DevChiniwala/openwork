@@ -1229,8 +1229,9 @@ export class PlanSubscriptionExistsError extends Error {
 
 /**
  * Moves a paid plan to another tier on its existing subscription: the price
- * and quantity change with prorations on the next invoice, the metadata names
- * the new plan, and the sync sets the organization plan immediately.
+ * and quantity change only after Stripe collects any proration immediately.
+ * A declined payment (including required authentication) leaves the existing
+ * subscription and plan unchanged; only a successful update is synced.
  */
 async function changePlanOnExistingSubscription(input: {
   organizationId: OrgId
@@ -1256,8 +1257,12 @@ async function changePlanOnExistingSubscription(input: {
   const quantity = quotePlan({ plan: input.plan, people: await activeMemberCount(input.organizationId), addPeople: input.addPeople }).people
   const updated = await stripe().subscriptions.update(subscription.id, {
     items: [{ id: item.id, price: requirePlanPriceId(input.plan), quantity }],
-    proration_behavior: "create_prorations",
+    proration_behavior: "always_invoice",
+    payment_behavior: "error_if_incomplete",
     metadata: planSubscriptionMetadata(input),
+  }).catch((error: unknown) => {
+    if (error instanceof Stripe.errors.StripeCardError) throw new PlanSubscriptionExistsError("payment_pending")
+    throw error
   })
   await upsertOrgSubscriptionFromStripe(updated, `plan-change:${subscription.id}:${input.plan}`)
   return { kind: "updated" }

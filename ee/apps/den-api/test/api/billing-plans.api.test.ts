@@ -148,6 +148,22 @@ test("Team moves to Enterprise on the same subscription and the plan follows imm
 
   assert.equal((await den.setFeature(acme.orgId, "selfServeEnterprise", true)).status, 200)
   const sessionsBefore = stripe.state().sessions.length
+  const teamSubscription = stripe.state().subscriptions.find((entry) => entry.metadata.org_id === acme.orgId)
+  assert.ok(teamSubscription)
+  stripe.setSubscriptionPaymentDeclined(teamSubscription.id, true)
+  const declined = await acme.call("POST", "/v1/billing/stripe/checkout", { type: "plan", plan: "enterprise" })
+  assert.equal(declined.status, 409, summary(declined))
+  assert.equal(field(declined.body, "error"), "stripe_subscription_exists")
+  assert.equal(teamSubscription.metadata.plan_tier, "team", "Stripe must not save an unpaid tier")
+  assert.equal(teamSubscription.items.data[0]?.price.id, PRICES.seat, "the paid Team price remains")
+  assert.deepEqual((await orgPlan(acme.owner, acme.orgId)).plan, { tier: "team", source: "stripe" })
+  assert.equal((await postStripeEvent("customer.subscription.updated", teamSubscription)).status, 200)
+  assert.deepEqual((await orgPlan(acme.owner, acme.orgId)).plan, { tier: "team", source: "stripe" }, "a later webhook cannot grant the unpaid upgrade")
+  const update = stripe.state().requests.filter((entry) => entry.method === "POST" && entry.path === `/v1/subscriptions/${teamSubscription.id}`).at(-1)
+  assert.equal(update?.form?.proration_behavior, "always_invoice", "collect upgrade prorations now, not next month")
+  assert.equal(update?.form?.payment_behavior, "error_if_incomplete", "only save the new tier after collection succeeds")
+
+  stripe.setSubscriptionPaymentDeclined(teamSubscription.id, false)
   const moved = await acme.call("POST", "/v1/billing/stripe/checkout", { type: "plan", plan: "enterprise", returnTo: "/dashboard/sso" })
   assert.equal(moved.status, 200, summary(moved))
   assert.equal(field(moved.body, "completed"), true)
