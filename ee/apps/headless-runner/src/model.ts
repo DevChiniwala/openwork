@@ -104,7 +104,35 @@ const defaultSleep: Sleep = (ms, signal) =>
 
 const RETRYABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529])
 const MAX_ATTEMPTS = 3
+/**
+ * A model call's time limit. A non-streamed call must finish within it; a streamed one must start within it and then
+ * never go this long without sending anything, so a long reply that keeps writing isn't cut off by the clock.
+ */
 const CALL_TIMEOUT_MS = 180_000
+
+/** A timer that never keeps a Node process alive by itself (a no-op where timers are plain numbers). */
+function unref<T>(timer: T): T {
+  ;(timer as { unref?: () => void }).unref?.()
+  return timer
+}
+
+/** Hands back a streamed response whose body fails after `CALL_TIMEOUT_MS` without a chunk (through `deadline`). */
+function abortWhenIdle(response: Response, deadline: AbortController): Response {
+  if (!response.body) return response
+  const abort = () => deadline.abort(new Error("The model stream went quiet."))
+  let idle = unref(setTimeout(abort, CALL_TIMEOUT_MS))
+  const body = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        clearTimeout(idle)
+        idle = unref(setTimeout(abort, CALL_TIMEOUT_MS))
+        controller.enqueue(chunk)
+      },
+      flush: () => clearTimeout(idle),
+    }),
+  )
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers })
+}
 
 function retryAfterMs(response: Response): number | undefined {
   const header = response.headers.get("retry-after")
@@ -126,17 +154,25 @@ async function openResponse(input: {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     if (lastError) await input.sleep(lastError.retryAfterMs ?? 1000 * 2 ** (attempt - 2), input.signal)
     let response: Response
+    const deadline = new AbortController()
+    const started = unref(setTimeout(() => deadline.abort(new Error("The model call timed out.")), CALL_TIMEOUT_MS))
     try {
       response = await input.fetch(input.url, {
         method: "POST",
         headers: { "content-type": "application/json", ...input.headers },
         body: JSON.stringify(input.body),
-        signal: AbortSignal.any([input.signal, AbortSignal.timeout(CALL_TIMEOUT_MS)]),
+        signal: AbortSignal.any([input.signal, deadline.signal]),
       })
     } catch (error) {
+      clearTimeout(started)
       if (input.signal.aborted) throw error
       lastError = new ModelError("model_unreachable", "The AI gateway could not be reached.", true)
       continue
+    }
+    const streamed = (input.body as { stream?: unknown } | null)?.stream === true
+    if (response.ok && streamed) {
+      clearTimeout(started)
+      return abortWhenIdle(response, deadline)
     }
     if (response.ok) return response
     const body = await response.text().catch(() => "")

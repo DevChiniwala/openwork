@@ -317,7 +317,7 @@ Nothing on celld changes, so pointing the URLs back is the rollback.
 | `HEADLESS_MAX_STEPS` | `0` | Model calls per turn. `0` means no limit: a long task ends with its answer, Stop, or the stuck check |
 | `HEADLESS_TURN_TIMEOUT_MS` | `0` | `0` means no limit. Otherwise at least `10000`, applied to each stretch between credential refreshes |
 | `HEADLESS_CREDENTIAL_REFRESH_MS` | `3000000` | A turn with an MCP token pauses between steps after this long so the caller resumes it with a fresh one. Keep it under the token lifetime (60 minutes for Den) |
-| `HEADLESS_MAX_OUTPUT_TOKENS` | `8192` | Output cap per model call: Anthropic `max_tokens`, OpenAI `max_completion_tokens`. A reply cut off there never ends a turn: a call it was writing gets an error, a reply with no complete call is dropped, and the next step asks for less |
+| `HEADLESS_MAX_OUTPUT_TOKENS` | `16384` | Output cap per model call: Anthropic `max_tokens`, OpenAI `max_completion_tokens`. A streamed call has no total time limit, only 180 s without any data; a non-streamed call must finish in 180 s. A reply cut off there never ends a turn: a call it was writing gets an error, a reply with no complete call is dropped, and the next step asks for less |
 | `HEADLESS_CONTEXT_CHAR_BUDGET` | `400000` | Past this, the oldest whole turns are left out, down to 60% of it (see [Long conversations](#long-conversations)). A turn that outgrows it alone replaces its oldest large tool outputs with a short note, in blocks of eight |
 | `HEADLESS_SYSTEM_PROMPT` | built-in | |
 | `HEADLESS_FILES` | `off` | Saved files: `off`, `disk`, or `s3`. Only sessions created with `files: true` use them. Off means the file routes answer `files_not_configured` |
