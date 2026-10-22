@@ -302,6 +302,14 @@
       "development": "./src/den/default-model.ts",
       "default": "./src/den/default-model.ts"
     },
+    "./den/environment-variables": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/environment-variables.d.ts",
+        "default": "./src/den/environment-variables.ts"
+      },
+      "development": "./src/den/environment-variables.ts",
+      "default": "./src/den/environment-variables.ts"
+    },
     "./den/credential-prompt": {
       "types": {
         "openwork-build": "./dist/types/src/den/credential-prompt.d.ts",

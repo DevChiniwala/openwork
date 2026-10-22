@@ -132,6 +132,9 @@ export const idTypesMapNameToPrefix = {
   headlessResumeGrant: "hrsg",
   desktopStartupReport: "dsr",
   accountFollowUpAction: "afa",
+  environmentVariable: "evr",
+  environmentVariableAccess: "eva",
+  environmentVariableMemberSetting: "evm",
 } as const
 
 export const denTypeIdPrefixes = idTypesMapNameToPrefix

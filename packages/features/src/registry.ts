@@ -232,6 +232,13 @@ export const FEATURES = defineFeatures({
     deployments: ["cloud"],
     default: false,
   },
+  environmentVariables: {
+    label: "Environment variables",
+    description: "Admins deploy environment variables to people's desktop agents: a value for everyone, a team or one person, or a value each person sets for themselves.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES
