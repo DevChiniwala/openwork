@@ -1,6 +1,6 @@
 import { workflowRunPreviewSchema, type WorkflowRunPreview } from "@openwork/types/workflows";
 import { seatPlanQuoteSchema, type SeatPlanQuote } from "@openwork/types/den/billing-plans";
-import { denApiCredentials, denBrowserEndpoint } from "./den-api-origin";
+import { denApiCredentials, denBrowserEndpoint, isSameOriginBrowserRequest } from "./den-api-origin";
 import { getAuthResumeUrl } from "./auth-resume";
 import { ORG_SCOPE_HEADER, getRequestOrgScope, shouldPinOrgScopePath } from "./org-scope";
 import { getRuntimeConfig } from "./runtime-config";
@@ -467,7 +467,9 @@ export async function requestJson(path: string, init: RequestInit = {}, timeoutM
 
   let response: Response;
   try {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && !isSameOriginBrowserRequest(path)) {
+      // Only cross-origin Den API URLs depend on the runtime API origin. Waiting
+      // for it on same-origin requests would serialize every page load behind it.
       await getRuntimeConfig();
     }
     const endpoint = path.startsWith("/api/auth/") ? path : denBrowserEndpoint(path);
