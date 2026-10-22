@@ -1181,7 +1181,6 @@ export type AdminFeature = {
     | "usageLimitUpgrade"
     | "automationCalendar"
     | "removeOpencodeZen"
-    | "engineV2ForceUpgrade"
     | "computerUse"
     | "browserDemonstrations"
     | "browserLiveView"
@@ -1189,7 +1188,9 @@ export type AdminFeature = {
     | "remoteComputers"
     | "remoteSessionSubagents"
     | "desktopSignInReturn"
-    | "connectStandardTools";
+    | "connectStandardTools"
+    | "teamPlan"
+    | "selfServeEnterprise";
   label: string;
   description: string;
   since: string;
@@ -1242,7 +1243,6 @@ export type AdminOrganizationsPageResponse = {
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
-      engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserLiveView: boolean;
@@ -1251,6 +1251,8 @@ export type AdminOrganizationsPageResponse = {
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
       connectStandardTools: boolean;
+      teamPlan: boolean;
+      selfServeEnterprise: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1388,15 +1390,6 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       computerUse: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1461,6 +1454,24 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      teamPlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      selfServeEnterprise: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1546,7 +1557,6 @@ export type AdminOverviewResponse = {
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
-      engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserLiveView: boolean;
@@ -1555,6 +1565,8 @@ export type AdminOverviewResponse = {
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
       connectStandardTools: boolean;
+      teamPlan: boolean;
+      selfServeEnterprise: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1692,15 +1704,6 @@ export type AdminOverviewResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       computerUse: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1765,6 +1768,24 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      teamPlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      selfServeEnterprise: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -2526,10 +2547,16 @@ export type OrganizationContextResponse = {
     [key: string]: unknown;
   };
   /**
-   * Effective on/off for every OpenWork feature in this organization. Treat a missing key as off.
+   * Effective on/off for every OpenWork feature in this organization, plus fixed deprecated client compatibility values. Treat a missing key as off.
    */
   features: {
-    [key: string]: boolean;
+    /**
+     * Fixed compatibility value for published desktop clients. Automatic OpenCode v2 migration is always on; this is not a configurable feature.
+     *
+     * @deprecated
+     */
+    engineV2ForceUpgrade: true;
+    [key: string]: boolean | true;
   };
   /**
    * Whether this caller may open installation diagnostics: a self-hosted installation administrator (local allowlist), signed in or using an API key they own. Organization ownership and permissions never grant it. False on hosted deployments and when the lookup fails.
@@ -3138,6 +3165,10 @@ export type InferenceStatus = {
   proxyBaseUrl: string;
   upstreamProviderConfigured: boolean;
   subscribed?: boolean;
+  /**
+   * Whether this deployment sells OpenWork Models (Stripe key and price configured). False: there is no checkout; teams add their own providers instead.
+   */
+  billingConfigured?: boolean;
   buckets: Array<{
     windowType: "five_hour" | "weekly" | "monthly";
     windowStartAt: string;
@@ -3403,6 +3434,20 @@ export type InvitePaymentRequiredError = {
    * Open in a browser to start seat billing; an owner can finish it there, then retry the invitation.
    */
   billingUrl: string;
+  /**
+   * The Team plan with this person added: every person at the Team price. `available` is false when Team checkout is off for this organization or not sold on this deployment.
+   */
+  quote: {
+    plan: "team";
+    people: number;
+    joined: number;
+    invited: number;
+    unitAmount: number;
+    monthlyTotal: number;
+    currency: string;
+    interval: string;
+    available: boolean;
+  };
 };
 
 export type InviteEmailDomainNotAllowedError = {
@@ -7560,7 +7605,13 @@ export type PublicFeatures = {
   version: 1;
   deployment: "cloud" | "self_hosted";
   features: {
-    [key: string]: boolean;
+    /**
+     * Fixed compatibility value for published desktop clients. Automatic OpenCode v2 migration is always on; this is not a configurable feature.
+     *
+     * @deprecated
+     */
+    engineV2ForceUpgrade: true;
+    [key: string]: boolean | true;
   };
 };
 
@@ -7991,15 +8042,6 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
-      engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       computerUse: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8072,6 +8114,24 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      teamPlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      selfServeEnterprise: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
     };
   };
 };
@@ -8096,7 +8156,6 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       usageLimitUpgrade?: boolean | null;
       automationCalendar?: boolean | null;
       removeOpencodeZen?: boolean | null;
-      engineV2ForceUpgrade?: boolean | null;
       computerUse?: boolean | null;
       browserDemonstrations?: boolean | null;
       browserLiveView?: boolean | null;
@@ -8105,6 +8164,8 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       remoteSessionSubagents?: boolean | null;
       desktopSignInReturn?: boolean | null;
       connectStandardTools?: boolean | null;
+      teamPlan?: boolean | null;
+      selfServeEnterprise?: boolean | null;
     };
   };
   path: {
@@ -8269,15 +8330,6 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
-      engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       computerUse: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8342,6 +8394,24 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      teamPlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      selfServeEnterprise: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9789,7 +9859,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
-      engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserLiveView: boolean;
@@ -9798,6 +9867,8 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
       connectStandardTools: boolean;
+      teamPlan: boolean;
+      selfServeEnterprise: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -9935,15 +10006,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       computerUse: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -10008,6 +10070,24 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      teamPlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      selfServeEnterprise: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10081,7 +10161,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
-      engineV2ForceUpgrade: boolean;
       computerUse: boolean;
       browserDemonstrations: boolean;
       browserLiveView: boolean;
@@ -10090,6 +10169,8 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
       connectStandardTools: boolean;
+      teamPlan: boolean;
+      selfServeEnterprise: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -10227,15 +10308,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      engineV2ForceUpgrade: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       computerUse: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -10300,6 +10372,24 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       connectStandardTools: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      teamPlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      selfServeEnterprise: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;

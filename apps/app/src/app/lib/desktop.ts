@@ -228,6 +228,8 @@ declare global {
         setControlEnabled?: (enabled: boolean) => Promise<boolean>;
         /** The size tabs lay out at while the agent controls them, drawn scaled to fit the panel. */
         setAgentViewport?: (key: AgentViewportKey) => Promise<AgentViewportKey>;
+        /** The conversation started a new turn: tabs the person took over go back to the agent. */
+        startAgentTurn?: (sessionId: string) => Promise<boolean>;
         /** The conversation's turn ended: its tabs fit the panel again. */
         endAgentTurn?: (sessionId: string) => Promise<boolean>;
         /** The member's agent permission rules for websites, applied to every page the built-in browser opens; null while they are being verified for an organization that uses them, which opens none. */

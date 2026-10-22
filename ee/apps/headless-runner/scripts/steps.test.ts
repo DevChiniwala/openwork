@@ -8,6 +8,7 @@ import { test } from "node:test"
 import { z } from "zod"
 import { denResumeClient, RESUME_EXCHANGE_PATH } from "../src/den-resume.js"
 import type { ErrorReport, ErrorReporter } from "../src/error-reporting.js"
+import { readPart } from "../src/files.js"
 import type { McpConnector } from "../src/mcp.js"
 import type { ModelClient, ModelRequest } from "../src/model.js"
 import { nodeSqlite } from "../src/node-sqlite.js"
@@ -447,6 +448,54 @@ test("background tasks and their reports run in step mode like the message that 
     ["m1.t1", "task", "steps", "completed"],
     ["m1.t1.r", "report", "steps", "completed"],
   ])
+})
+
+test("a task works from files it is handed, and its report reads just the part it needs", async () => {
+  using temp = tempDir()
+  const script = Array.from({ length: 3000 }, (_, index) => (index === 2400 ? "bpy.ops.render.render(write_still=True)" : `line_${index} = ${index}`)).join("\n")
+  const requests: ModelRequest[] = []
+  const model: ModelClient = {
+    async complete(request) {
+      requests.push(request)
+      const results = resultsOf(request)
+      if (request.system.includes("Only deliver the background task's result")) {
+        if (!request.messages.some((message) => message.role === "tool" && message.output.startsWith("2401:"))) return { text: "", toolCalls: [{ id: "call_find", name: "read_file", input: { path: "out/scene.py", find: "render(" } }], usage }
+        return { text: "It renders at line 2401.", toolCalls: [], usage }
+      }
+      if (request.system.includes("# Your background task")) {
+        if (results.length === 0) return { text: "", toolCalls: [{ id: "call_write", name: "write_file", input: { path: "out/scene.py", content: script } }], usage }
+        return { text: "Wrote the scene to out/scene.py.", toolCalls: [], usage }
+      }
+      const done = request.messages.filter((message) => message.role === "tool").length
+      if (done === 0) return { text: "", toolCalls: [{ id: "call_notes", name: "write_file", input: { path: "plan.md", content: "two rooms" } }], usage }
+      if (done === 1) return { text: "", toolCalls: [{ id: "call_task", name: "start_task", input: { title: "Scene", brief: "Build the scene from the plan", files: ["plan.md"] } }], usage }
+      return { text: "Started it.", toolCalls: [], usage }
+    },
+  }
+  const { store, runner } = world(temp.directory, { model })
+  const session = store.createSession({ tasks: true })
+  runner.send({ sessionId: session.id, messageId: "m1", prompt: "Build my apartment", credentials: {} })
+  await runner.idle()
+  assert.deepEqual(store.listTurns(session.id).map((turn) => [turn.messageId, turn.status]), [["m1", "completed"], ["m1.t1", "completed"], ["m1.t1.r", "completed"]])
+  assert.match(promptOf(requests.find((request) => request.system.includes("# Your background task"))!), /Files for this task, in your scratch workspace:\n- plan\.md \(9 bytes\)/)
+  const report = requests.find((request) => request.system.includes("Only deliver the background task's result"))!
+  const delivered = report.messages.find((message): message is Extract<Message, { role: "user" }> => message.role === "user" && message.text.includes('Background task "Scene" finished'))?.text ?? ""
+  assert.match(delivered, /Scratch files it wrote[^\n]*\n- out\/scene\.py \(\d+ KB\)/)
+  assert.doesNotMatch(delivered, /plan\.md/, "files it was handed are not results")
+  assert.deepEqual(report.tools.map((tool) => tool.name), ["list_files", "read_file"])
+  assert.equal(store.getTurn(session.id, "m1.t1.r")?.status, "completed")
+  assert.ok(transcript(store, session.id, "m1.t1.r").some((message) => message.role === "tool" && message.output === "2401: bpy.ops.render.render(write_still=True)"))
+})
+
+test("read_file reads a long file in numbered parts", () => {
+  const content = Array.from({ length: 10 }, (_, index) => `row ${index + 1}`).join("\n")
+  assert.equal(readPart(content, {}), content)
+  assert.equal(readPart(content, { start: 4, lines: 2 }), "[lines 4-5 of 10]\n4: row 4\n5: row 5\n[continues at line 6]")
+  assert.equal(readPart(content, { start: 9 }), "[lines 9-10 of 10]\n9: row 9\n10: row 10")
+  assert.equal(readPart(content, { find: "ROW 1" }), "1: row 1\n10: row 10")
+  assert.equal(readPart(content, { find: "nope" }), 'No line contains "nope" (10 lines).')
+  const long = Array.from({ length: 5000 }, () => "x".repeat(20)).join("\n")
+  assert.match(readPart(long, {}), /^\[lines 1-\d+ of 5000\][\s\S]*\[continues at line \d+\]$/)
 })
 
 test("stopping a step-mode turn between steps ends it at once; a follow-up wraps up an answer between steps", async () => {

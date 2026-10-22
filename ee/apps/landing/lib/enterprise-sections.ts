@@ -1,84 +1,136 @@
-import { Cloud, KeyRound, Monitor, Split, Users, type LucideIcon } from "lucide-react";
+/**
+ * Copy for /enterprise. Keep claims in step with lib/enterprise.ts (FAQ),
+ * lib/agent-markdown.ts (crawler view) and the public roadmap.
+ */
 
-export type EnterpriseCard = {
-  icon: LucideIcon;
+export type EnterpriseFact = {
   title: string;
   detail: string;
 };
 
-export const enterpriseControls: EnterpriseCard[] = [
+/** Shown under the AI gateway preview in the hero. */
+export const enterpriseControls: EnterpriseFact[] = [
   {
-    icon: KeyRound,
     title: "Company identity",
-    detail: "Use SAML or OIDC single sign-on. Provision and deprovision access through SCIM, instead of managing another set of personal accounts."
+    detail: "SAML or OIDC single sign-on. Provision and deprovision access through SCIM, not another set of personal accounts."
   },
   {
-    icon: Users,
     title: "Explicit permissions",
-    detail: "Assign access to models, skills, and connections by role and team. Keep administration separate from the access employees need to do their work."
+    detail: "Assign models, skills, and connections by role and team. Administration stays separate from everyday access."
   },
   {
-    icon: Cloud,
     title: "Your approved providers",
-    detail: "Configure providers centrally, including AWS Bedrock. Give supported clients an organizational model path rather than distributing personal provider keys."
+    detail: "Configure providers centrally, including AWS Bedrock. Supported clients get a company model path, not personal keys."
   },
   {
-    icon: Split,
     title: "Visibility into routed usage",
-    detail: "Review model usage and spend through the gateway. Understand the approved traffic without claiming visibility into tools that bypass it."
+    detail: "Review model usage and spend through the gateway, without claiming visibility into tools that bypass it."
   }
 ];
 
-export const enterpriseRollout = [
+export const enterpriseShadowAi = {
+  without: [
+    "Personal AI accounts",
+    "Unmanaged API keys",
+    "Company context sent to unapproved providers",
+    "No record of what was used"
+  ],
+  with: [
+    "Company sign-in with SSO and SCIM",
+    "Approved providers, including AWS Bedrock",
+    "Models, skills, and connections by team",
+    "Usage and spend for routed traffic"
+  ],
+  boundary:
+    "OpenWork governs model traffic routed through your gateway. It does not find or block personal accounts and tools that bypass it."
+};
+
+export type EnterpriseAgentId = "openwork" | "opencode" | "claude-code" | "codex" | "cursor";
+export type EnterpriseAccess = "ready" | "in-progress";
+
+export type EnterpriseAgent = {
+  id: EnterpriseAgentId;
+  name: string;
+  via: string;
+  skills: EnterpriseAccess;
+  models: EnterpriseAccess;
+};
+
+export const enterpriseAgents: EnterpriseAgent[] = [
+  { id: "openwork", name: "OpenWork", via: "Desktop app", skills: "ready", models: "ready" },
+  { id: "opencode", name: "OpenCode", via: "With the opencode-openwork plugin", skills: "ready", models: "ready" },
+  { id: "claude-code", name: "Claude Code", via: "Through the MCP gateway", skills: "ready", models: "in-progress" },
+  { id: "codex", name: "Codex", via: "Through the MCP gateway", skills: "ready", models: "in-progress" },
+  { id: "cursor", name: "Cursor", via: "Through the MCP gateway", skills: "ready", models: "in-progress" }
+];
+
+export const enterpriseAgentsNote =
+  "AI gateway model integration for Claude Code, Codex, and Cursor is in progress. Connecting an MCP server alone does not route a client’s model traffic.";
+
+export const enterpriseDataPath = {
+  local: ["Files and folders", "Workspace processing"],
+  provider: ["Prompts and responses", "File content selected as context"]
+};
+
+export const enterpriseDataBoundary: EnterpriseFact[] = [
   {
-    step: "Start with a person",
-    body: "Install per user. Connect company sign-in and an approved provider, then test one useful workflow with a small pilot group."
+    title: "On the employee’s computer",
+    detail: "In the local desktop setup, files and the workspace stay on the computer. SSO configuration and model traffic leave it, not a copy of the workspace."
   },
   {
-    step: "Plan a 30-day trial",
-    body: "A proposed evaluation: validate permissions, review data flows, test identity lifecycle, and collect feedback from employees and IT."
+    title: "Through the model path",
+    detail: "Prompts, responses, and file content selected as context travel through the gateway to your provider. Local-first does not mean a remote model never sees company data."
   },
   {
-    step: "Expand in phases",
-    body: "Use the pilot findings to plan a few hundred seats, with the deployment path, support, and scope agreed before expansion."
+    title: "Other data flows",
+    detail: "Product analytics, diagnostics, update checks, optional cloud workers, and connected services have their own flows. Review them with your deployment."
   }
 ];
 
-export const enterpriseDeployments: (EnterpriseCard & { href: string; link: string })[] = [
+export type EnterpriseDeployment = EnterpriseFact & {
+  label: string;
+  href: string;
+  link: string;
+};
+
+export const enterpriseDeployments: EnterpriseDeployment[] = [
   {
-    icon: Monitor,
+    label: "macOS, Windows, and Linux",
     title: "Local-first desktop",
-    detail: "An agent workspace for macOS, Windows, and Linux. Start with a per-user install and connect the organization’s approved services.",
+    detail: "Start with a per-user install and connect the organization’s approved services.",
     href: "/download",
     link: "Download OpenWork"
   },
   {
-    icon: Cloud,
+    label: "OpenWork Cloud",
     title: "Cloud management",
-    detail: "Manage organizational access, models, shared skills, and connections from OpenWork’s control plane.",
+    detail: "Manage access, models, shared skills, and connections from OpenWork’s control plane.",
     href: "/cloud",
     link: "Explore OpenWork Cloud"
   },
   {
-    icon: KeyRound,
-    title: "Managed private or self-hosted",
-    detail: "Discuss a managed private deployment, or review self-hosting requirements. Agree on infrastructure, operations, and responsibility boundaries before rollout.",
+    label: "Your infrastructure",
+    title: "Private or self-hosted",
+    detail: "A managed private deployment, or self-host it. Agree on operations and responsibility boundaries first.",
     href: "https://github.com/different-ai/openwork/blob/dev/docs/managed-deployments.md",
-    link: "Review deployment documentation"
+    link: "Review deployment docs"
   }
 ];
 
-export const enterpriseDataBoundary = [
+export const enterpriseRollout: EnterpriseFact[] = [
   {
-    title: "On the employee’s computer.",
-    body: "In the local desktop model-gateway setup, files and the workspace stay on the computer. Workspace processing sends SSO configuration and model traffic, not a copy of the workspace."
+    title: "Start with a person",
+    detail: "Install per user. Connect company sign-in and an approved provider, then test one workflow with a small pilot group."
   },
   {
-    title: "Through the model path.",
-    body: "Prompts, responses, and file content selected as context travel through the gateway to your configured provider. Local-first does not mean a remote model never sees company data."
+    title: "Plan a 30-day trial",
+    detail: "Validate permissions, review data flows, test the identity lifecycle, and collect feedback from employees and IT."
   },
   {
-    title: "Review separately.",
-    body: "Product analytics, diagnostics, update checks, optional cloud workers, and connected services have their own data flows. Review those alongside your provider and deployment configuration."
+    title: "Expand in phases",
+    detail: "Use the pilot findings to plan a few hundred seats, with deployment, support, and scope agreed first."
   }
 ];
+
+export const enterpriseRolloutNote =
+  "An evaluation plan, not a deployment guarantee. Timeline, scope, support, and commercial terms are agreed with your team.";

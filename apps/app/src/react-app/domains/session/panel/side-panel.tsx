@@ -363,7 +363,7 @@ export function BrowserPanelContent({
         <div data-browser-shortcut-tab={tab.id} className="flex min-h-9 shrink-0 items-center gap-2 border-b border-border px-3 text-xs">
           <span className="shrink-0 font-medium">Built-in browser</span>
           <span role="status" className="min-w-0 flex-1 truncate text-muted-foreground">
-            {tab.browserTask?.status === "paused" ? "You have control · resume when finished" : tab.browserTask?.status === "running" ? browserOperationLabels[tab.browserTask.operation ?? ""] ?? "Working on this page" : tab.browserTask?.status === "needs_attention" ? browserOperationLabels[tab.browserTask.operation ?? ""] ?? "Review this page" : "This conversation's tab"}
+            {tab.browserTask?.status === "paused" ? "You have control · your next message hands it back" : tab.browserTask?.status === "running" ? browserOperationLabels[tab.browserTask.operation ?? ""] ?? "Working on this page" : tab.browserTask?.status === "needs_attention" ? browserOperationLabels[tab.browserTask.operation ?? ""] ?? "Review this page" : "This conversation's tab"}
           </span>
           <AgentViewportMenu viewport={tab.agentViewport ?? null} />
           <Button variant="outline" size="sm" className="h-6 px-2 text-xs"

@@ -40,7 +40,6 @@ config:
     usageLimitUpgrade: ""         # default off · When free Auto, OpenWork Models or an AI Gateway budget runs out in the desktop app, one card says what ran out, when it resets and that the message is saved, with the upgrade or request that fits the person’s role and a way to keep working with another model.
     automationCalendar: ""        # default off · Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.
     removeOpencodeZen: ""         # default off · Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.
-    engineV2ForceUpgrade: ""      # default on · Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. On by default; turning it off stops the move and returns force-moved installs to v1.
     computerUse: ""               # default off · Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.
     browserDemonstrations: ""     # default off · Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.
     browserLiveView: ""           # default off · Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.
@@ -49,6 +48,8 @@ config:
     remoteSessionSubagents: ""    # default off · A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.
     desktopSignInReturn: ""       # default off · Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.
     connectStandardTools: ""      # default off · Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.
+    teamPlan: ""                  # default off (cloud only) · Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.
+    selfServeEnterprise: ""       # default off (cloud only) · Owners can buy Enterprise by card at the planned per-person price.
   # END GENERATED features
   tenancy:
     mode: single_org

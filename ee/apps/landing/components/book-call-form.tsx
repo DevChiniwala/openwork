@@ -84,11 +84,11 @@ export function BookCallForm() {
     <section
       id="book"
       aria-labelledby={`${id}-heading`}
-      className="border-t border-[var(--lp-border)] py-8"
+      className="scroll-mt-28 rounded-[14px] bg-white p-5 shadow-[0_0_0_1px_rgba(1,22,39,0.08),0_12px_24px_-16px_rgba(1,22,39,0.2)] md:p-7"
     >
       <h3
         id={`${id}-heading`}
-        className="mb-6 text-xl font-medium tracking-tight text-[var(--lp-ink)]"
+        className="mb-5 text-[17px] font-medium tracking-[-0.015em] text-[var(--lp-ink)]"
       >
         Tell us what you need
       </h3>

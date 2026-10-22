@@ -1307,7 +1307,6 @@ export class DenClient extends HeyApiClient {
         usageLimitUpgrade?: boolean | null;
         automationCalendar?: boolean | null;
         removeOpencodeZen?: boolean | null;
-        engineV2ForceUpgrade?: boolean | null;
         computerUse?: boolean | null;
         browserDemonstrations?: boolean | null;
         browserLiveView?: boolean | null;
@@ -1316,6 +1315,8 @@ export class DenClient extends HeyApiClient {
         remoteSessionSubagents?: boolean | null;
         desktopSignInReturn?: boolean | null;
         connectStandardTools?: boolean | null;
+        teamPlan?: boolean | null;
+        selfServeEnterprise?: boolean | null;
       };
     },
     options?: Options<never, ThrowOnError>,

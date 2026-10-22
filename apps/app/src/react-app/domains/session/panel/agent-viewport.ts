@@ -27,7 +27,8 @@ export function chooseAgentViewport(key: AgentViewportKey) {
 }
 
 /**
- * Tells the desktop browser the saved agent size, and releases a
+ * Tells the desktop browser the saved agent size, hands tabs the person took
+ * over back to the agent when a new turn starts, and releases a
  * conversation's tabs back to the panel's width as soon as its turn ends.
  */
 export function useBrowserAgentTurns(statusById: Record<string, string>) {
@@ -35,10 +36,17 @@ export function useBrowserAgentTurns(statusById: Record<string, string>) {
     void getElectronBrowser()?.setAgentViewport?.(storedAgentViewport())?.catch(() => {});
   }, []);
 
-  const previous = useRef<Record<string, string>>({});
+  const previous = useRef<Record<string, string> | null>(null);
   useEffect(() => {
     const before = previous.current;
     previous.current = statusById;
+    // Statuses already running when the window opens are not new turns.
+    if (!before) return;
+    for (const [sessionId, status] of Object.entries(statusById)) {
+      if (isActiveWorkSessionStatus(status) && !isActiveWorkSessionStatus(before[sessionId])) {
+        void getElectronBrowser()?.startAgentTurn?.(sessionId)?.catch(() => {});
+      }
+    }
     for (const [sessionId, status] of Object.entries(before)) {
       if (isActiveWorkSessionStatus(status) && !isActiveWorkSessionStatus(statusById[sessionId])) {
         void getElectronBrowser()?.endAgentTurn?.(sessionId)?.catch(() => {});

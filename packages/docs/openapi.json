@@ -4860,7 +4860,6 @@
               "usageLimitUpgrade",
               "automationCalendar",
               "removeOpencodeZen",
-              "engineV2ForceUpgrade",
               "computerUse",
               "browserDemonstrations",
               "browserLiveView",
@@ -4868,7 +4867,9 @@
               "remoteComputers",
               "remoteSessionSubagents",
               "desktopSignInReturn",
-              "connectStandardTools"
+              "connectStandardTools",
+              "teamPlan",
+              "selfServeEnterprise"
             ]
           },
           "label": {
@@ -5085,9 +5086,6 @@
                     "removeOpencodeZen": {
                       "type": "boolean"
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "boolean"
-                    },
                     "computerUse": {
                       "type": "boolean"
                     },
@@ -5112,6 +5110,12 @@
                     "connectStandardTools": {
                       "type": "boolean"
                     },
+                    "teamPlan": {
+                      "type": "boolean"
+                    },
+                    "selfServeEnterprise": {
+                      "type": "boolean"
+                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -5134,7 +5138,6 @@
                     "usageLimitUpgrade",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserLiveView",
@@ -5143,6 +5146,8 @@
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
                     "connectStandardTools",
+                    "teamPlan",
+                    "selfServeEnterprise",
                     "gatewayDashboard"
                   ]
                 },
@@ -5947,63 +5952,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "computerUse": {
                       "type": "object",
                       "properties": {
@@ -6459,6 +6407,120 @@
                         "override",
                         "overrideApplies"
                       ]
+                    },
+                    "teamPlan": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
+                    "selfServeEnterprise": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
                     }
                   },
                   "required": [
@@ -6476,7 +6538,6 @@
                     "usageLimitUpgrade",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserLiveView",
@@ -6484,7 +6545,9 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
-                    "connectStandardTools"
+                    "connectStandardTools",
+                    "teamPlan",
+                    "selfServeEnterprise"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -6896,9 +6959,6 @@
                     "removeOpencodeZen": {
                       "type": "boolean"
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "boolean"
-                    },
                     "computerUse": {
                       "type": "boolean"
                     },
@@ -6923,6 +6983,12 @@
                     "connectStandardTools": {
                       "type": "boolean"
                     },
+                    "teamPlan": {
+                      "type": "boolean"
+                    },
+                    "selfServeEnterprise": {
+                      "type": "boolean"
+                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -6945,7 +7011,6 @@
                     "usageLimitUpgrade",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserLiveView",
@@ -6954,6 +7019,8 @@
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
                     "connectStandardTools",
+                    "teamPlan",
+                    "selfServeEnterprise",
                     "gatewayDashboard"
                   ]
                 },
@@ -7758,63 +7825,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "computerUse": {
                       "type": "object",
                       "properties": {
@@ -8270,6 +8280,120 @@
                         "override",
                         "overrideApplies"
                       ]
+                    },
+                    "teamPlan": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
+                    "selfServeEnterprise": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
                     }
                   },
                   "required": [
@@ -8287,7 +8411,6 @@
                     "usageLimitUpgrade",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserLiveView",
@@ -8295,7 +8418,9 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
-                    "connectStandardTools"
+                    "connectStandardTools",
+                    "teamPlan",
+                    "selfServeEnterprise"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -11378,13 +11503,21 @@
           },
           "features": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "engineV2ForceUpgrade": {
+                "type": "boolean",
+                "const": true,
+                "deprecated": true,
+                "description": "Fixed compatibility value for published desktop clients. Automatic OpenCode v2 migration is always on; this is not a configurable feature."
+              }
             },
+            "required": [
+              "engineV2ForceUpgrade"
+            ],
             "additionalProperties": {
               "type": "boolean"
             },
-            "description": "Effective on/off for every OpenWork feature in this organization. Treat a missing key as off."
+            "description": "Effective on/off for every OpenWork feature in this organization, plus fixed deprecated client compatibility values. Treat a missing key as off."
           },
           "canManageDeploymentServices": {
             "type": "boolean",
@@ -14188,6 +14321,10 @@
           "subscribed": {
             "type": "boolean"
           },
+          "billingConfigured": {
+            "description": "Whether this deployment sells OpenWork Models (Stripe key and price configured). False: there is no checkout; teams add their own providers instead.",
+            "type": "boolean"
+          },
           "buckets": {
             "type": "array",
             "items": {
@@ -15539,6 +15676,61 @@
             "type": "string",
             "format": "uri",
             "description": "Open in a browser to start seat billing; an owner can finish it there, then retry the invitation."
+          },
+          "quote": {
+            "type": "object",
+            "properties": {
+              "plan": {
+                "type": "string",
+                "const": "team"
+              },
+              "people": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "joined": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "invited": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "unitAmount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "monthlyTotal": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "currency": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "string"
+              },
+              "available": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "plan",
+              "people",
+              "joined",
+              "invited",
+              "unitAmount",
+              "monthlyTotal",
+              "currency",
+              "interval",
+              "available"
+            ],
+            "description": "The Team plan with this person added: every person at the Team price. `available` is false when Team checkout is off for this organization or not sold on this deployment."
           }
         },
         "required": [
@@ -15548,7 +15740,8 @@
           "currentCount",
           "freeSeatCount",
           "message",
-          "billingUrl"
+          "billingUrl",
+          "quote"
         ]
       },
       "InviteEmailDomainNotAllowedError": {
@@ -32527,9 +32720,17 @@
           },
           "features": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "engineV2ForceUpgrade": {
+                "type": "boolean",
+                "const": true,
+                "deprecated": true,
+                "description": "Fixed compatibility value for published desktop clients. Automatic OpenCode v2 migration is always on; this is not a configurable feature."
+              }
             },
+            "required": [
+              "engineV2ForceUpgrade"
+            ],
             "additionalProperties": {
               "type": "boolean"
             }
@@ -34259,63 +34460,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -34771,6 +34915,120 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "teamPlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
+                        "selfServeEnterprise": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -34788,7 +35046,6 @@
                         "usageLimitUpgrade",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserLiveView",
@@ -34796,7 +35053,9 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
-                        "connectStandardTools"
+                        "connectStandardTools",
+                        "teamPlan",
+                        "selfServeEnterprise"
                       ]
                     }
                   },
@@ -35691,63 +35950,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -36203,6 +36405,120 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "teamPlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
+                        "selfServeEnterprise": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -36220,7 +36536,6 @@
                         "usageLimitUpgrade",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserLiveView",
@@ -36228,7 +36543,9 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
-                        "connectStandardTools"
+                        "connectStandardTools",
+                        "teamPlan",
+                        "selfServeEnterprise"
                       ]
                     }
                   },
@@ -36430,16 +36747,6 @@
                           }
                         ]
                       },
-                      "engineV2ForceUpgrade": {
-                        "anyOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
                       "computerUse": {
                         "anyOf": [
                           {
@@ -36511,6 +36818,26 @@
                         ]
                       },
                       "connectStandardTools": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "teamPlan": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "selfServeEnterprise": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -40082,9 +40409,6 @@
                         "removeOpencodeZen": {
                           "type": "boolean"
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "boolean"
-                        },
                         "computerUse": {
                           "type": "boolean"
                         },
@@ -40109,6 +40433,12 @@
                         "connectStandardTools": {
                           "type": "boolean"
                         },
+                        "teamPlan": {
+                          "type": "boolean"
+                        },
+                        "selfServeEnterprise": {
+                          "type": "boolean"
+                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -40131,7 +40461,6 @@
                         "usageLimitUpgrade",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserLiveView",
@@ -40140,6 +40469,8 @@
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
                         "connectStandardTools",
+                        "teamPlan",
+                        "selfServeEnterprise",
                         "gatewayDashboard"
                       ]
                     },
@@ -40944,63 +41275,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -41456,6 +41730,120 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "teamPlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
+                        "selfServeEnterprise": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -41473,7 +41861,6 @@
                         "usageLimitUpgrade",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserLiveView",
@@ -41481,7 +41868,9 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
-                        "connectStandardTools"
+                        "connectStandardTools",
+                        "teamPlan",
+                        "selfServeEnterprise"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }
@@ -41642,9 +42031,6 @@
                         "removeOpencodeZen": {
                           "type": "boolean"
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "boolean"
-                        },
                         "computerUse": {
                           "type": "boolean"
                         },
@@ -41669,6 +42055,12 @@
                         "connectStandardTools": {
                           "type": "boolean"
                         },
+                        "teamPlan": {
+                          "type": "boolean"
+                        },
+                        "selfServeEnterprise": {
+                          "type": "boolean"
+                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -41691,7 +42083,6 @@
                         "usageLimitUpgrade",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserLiveView",
@@ -41700,6 +42091,8 @@
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
                         "connectStandardTools",
+                        "teamPlan",
+                        "selfServeEnterprise",
                         "gatewayDashboard"
                       ]
                     },
@@ -42504,63 +42897,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -43016,6 +43352,120 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "teamPlan": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
+                        "selfServeEnterprise": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -43033,7 +43483,6 @@
                         "usageLimitUpgrade",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserLiveView",
@@ -43041,7 +43490,9 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
-                        "connectStandardTools"
+                        "connectStandardTools",
+                        "teamPlan",
+                        "selfServeEnterprise"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }

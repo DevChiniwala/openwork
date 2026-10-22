@@ -151,13 +151,6 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  engineV2ForceUpgrade: {
-    label: "Upgrade to OpenCode v2",
-    description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. On by default; turning it off stops the move and returns force-moved installs to v1.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: true,
-  },
   computerUse: {
     label: "Computer use",
     description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
@@ -216,6 +209,20 @@ export const FEATURES = defineFeatures({
     description: "Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.",
     since: "2026-10",
     deployments: everywhere,
+    default: false,
+  },
+  teamPlan: {
+    label: "Team plan checkout",
+    description: "Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
+  selfServeEnterprise: {
+    label: "Self-serve Enterprise",
+    description: "Owners can buy Enterprise by card at the planned per-person price.",
+    since: "2026-10",
+    deployments: ["cloud"],
     default: false,
   },
 })
