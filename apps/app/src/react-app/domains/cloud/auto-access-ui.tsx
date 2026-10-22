@@ -16,6 +16,7 @@ import { toast } from "@/components/ui/sonner";
 import { beginRejectedTurnRecovery, claimRejectedTurnRecovery, type RejectedTurnOwner } from "../session/sync/draft-store";
 import { suspendRejectedQueueForSignIn } from "../session/sync/rejected-turn";
 import { useUpdateCheckRequestStore } from "../settings/state/update-check-request";
+import { useCloudSignIn, type CloudSignInRequest } from "./sign-in-return";
 
 export function AutoRejectedTurnRecoveryBridge() {
   const auth = useDenAuth();
@@ -35,14 +36,31 @@ export function openAutoUpdate() {
   window.location.hash = `${workspace}/settings/updates`;
 }
 
-export function openAutoSignIn(recovery?: { owner: RejectedTurnOwner; id: string }) {
+function openCloudAccountSettings() {
+  const workspace = window.location.hash.match(/^#(\/workspace\/[^/]+)/)?.[1] ?? "";
+  window.location.hash = `${workspace}/settings/cloud-account`;
+}
+
+/**
+ * Auto's "Sign in". Off, it opens Cloud account settings as before; with
+ * `desktopSignInReturn` the conversation stays on screen while the browser
+ * finishes, and the unsent message resends when sign-in returns here.
+ */
+export function openAutoSignIn(
+  recovery?: { owner: RejectedTurnOwner; id: string },
+  signIn?: (request: CloudSignInRequest) => unknown,
+  conversation?: { workspaceId?: string | null; sessionId?: string | null },
+) {
   if (recovery && !beginRejectedTurnRecovery(recovery.owner, recovery.id)) {
     toast.error("Your unsent message could not be prepared for sign-in. Copy it before continuing.");
     return;
   }
   if (recovery) suspendRejectedQueueForSignIn(recovery.owner);
-  const workspace = window.location.hash.match(/^#(\/workspace\/[^/]+)/)?.[1] ?? "";
-  window.location.hash = `${workspace}/settings/cloud-account`;
+  if (!signIn) {
+    openCloudAccountSettings();
+    return;
+  }
+  signIn({ pendingTurn: Boolean(recovery), fallback: openCloudAccountSettings, ...conversation });
 }
 
 export function autoAccessStatusQueryKey(auth: Pick<DenAuthStore, "status" | "verifiedIdentity">, baseUrl?: string, workspaceId?: string) {
@@ -75,6 +93,7 @@ export function AutoPickerRecovery({ state, code, resetsAt, onRetry, onReload, h
   const auth = useDenAuth();
   const workspace = useWorkspaceMaybe();
   const client = useQueryClient();
+  const signIn = useCloudSignIn();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const checkRestriction = useCheckDesktopRestriction();
@@ -94,7 +113,7 @@ export function AutoPickerRecovery({ state, code, resetsAt, onRetry, onReload, h
   const reload = reloadWorkspace ? async () => { await reloadWorkspace(); await retry(); } : undefined;
   if (state === "ready" || freeAutoSwitchedOff(observed)) return null;
   return <PickerNotice testId="auto-picker-recovery" action={<>
-    {copy.action === "Sign in" ? <Button size="sm" onClick={() => openAutoSignIn()}>Sign in</Button> : null}
+    {copy.action === "Sign in" ? <Button size="sm" onClick={() => openAutoSignIn(undefined, signIn)}>Sign in</Button> : null}
     {copy.action === "Update" ? <Button size="sm" onClick={openAutoUpdate}>Update</Button> : null}
     {copy.action === "Retry" ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(retry)}>Retry</Button> : null}
     {copy.action === "Reload" ? <Button size="sm" variant="outline" disabled={!reload || busy || activeWork || checkRestriction({ restriction: "allowControlSettings" })} title={activeWork ? "Wait for this workspace’s active tasks to finish" : undefined} onClick={() => { if (reload) void run(reload); }}>Reload</Button> : null}
@@ -133,18 +152,20 @@ export function useAutoAccess(available: boolean, override?: AutoAccessWorkspace
 
 function AutoAccessFooterContent({ available, syncing = false }: { available: boolean; syncing?: boolean }) {
   const { query, auth } = useAutoAccess(available);
+  const signIn = useCloudSignIn();
   if ((!available && !syncing) || freeAutoSwitchedOff(query.data) || autoQuietlyUnavailable(query.data)) return null;
   // Every other Auto state has its own notice above the picker footer (Paper "Availability and recovery").
   const status = !syncing && query.data?.state === "ready" && auth.status === "signed_out" ? "Auto is free on this device" : null;
   if (!status) return null;
   return <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
     <span role="status">{status}</span>
-    {auth.status === "signed_out" ? <Button size="sm" variant="ghost" onClick={() => openAutoSignIn()}>Sign in to sync</Button> : null}
+    {auth.status === "signed_out" ? <Button size="sm" variant="ghost" onClick={() => openAutoSignIn(undefined, signIn)}>Sign in to sync</Button> : null}
   </div>;
 }
 
 export function AutoAccessNotice({ wall, sessionId, workspaceId, recovery }: { wall: AutoAccessWall; sessionId: string; workspaceId?: string; recovery?: { owner: RejectedTurnOwner; id: string } }) {
   const auth = useDenAuth();
+  const signIn = useCloudSignIn();
   const copy = autoWallCopy(wall, auth.isSignedIn);
   // Signing in raises the free limit; offer it wherever the notice reads as the limit.
   const offerSignIn = auth.status === "signed_out" && ["limit", "update", "not_offered"].includes(wall.state)
@@ -152,7 +173,7 @@ export function AutoAccessNotice({ wall, sessionId, workspaceId, recovery }: { w
   return <div data-testid="auto-access-wall" data-state={wall.state}>
     <TaskRecovery compact state="paused" title={copy.title} description={copy.detail} technicalDetails={copy.technicalDetails}
       actions={<>
-        {offerSignIn ? <Button size="xs" variant="outline" onClick={() => openAutoSignIn(recovery)}>Sign in</Button> : null}
+        {offerSignIn ? <Button size="xs" variant="outline" onClick={() => openAutoSignIn(recovery, signIn, { workspaceId, sessionId })}>Sign in</Button> : null}
         <Button size="xs" variant="ghost" onClick={() => openAlternativeModelPicker(sessionId)}>Choose a model</Button>
       </>} />
   </div>;

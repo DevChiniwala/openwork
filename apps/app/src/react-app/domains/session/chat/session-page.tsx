@@ -11,8 +11,7 @@ import { ArrowLeft, Cloud, FileText, Globe, Maximize2, MoreHorizontal, PanelRigh
 
 import { resolveExtensionIconSrc } from "@/react-app/design-system/extension-icon-src";
 import { t } from "../../../../i18n";
-import { buildDenAuthUrl, readDenBootstrapConfig } from "../../../../app/lib/den";
-import { markDesktopSignInInitiated } from "../../../../app/lib/den-sign-in-intent";
+import { useCloudSignIn } from "../../cloud/sign-in-return";
 import { type OpenworkServerClient, type OpenworkServerStatus } from "../../../../app/lib/openwork-server";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
@@ -50,7 +49,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
-import { usePlatform } from "../../../kernel/platform";
 import { useDenAuth } from "../../cloud/den-auth-provider";
 import { WorkbenchPanelGroup, PRIMARY_PANEL_ID, SECONDARY_PANEL_ID } from "./workbench-panel-group";
 import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connections/provider-auth/provider-auth-modal";
@@ -453,7 +451,6 @@ export function SessionPage(props: SessionPageProps) {
     return session ? Boolean(session.time?.archived) : undefined;
   };
   const { config: shellConfig } = useShellConfig();
-  const platform = usePlatform();
   const denAuth = useDenAuth();
   const isMobile = useIsMobile();
   const bootOverlayVisible = useBootOverlayVisible();
@@ -490,12 +487,12 @@ export function SessionPage(props: SessionPageProps) {
   const browserRailActive = panelRailActive && activePanelTab?.type === "browser";
   const filesRailActive = panelRailActive && activePanelTab?.type !== "browser";
   const showCloudSignIn = shellConfig.cloudSignin && !denAuth.isSignedIn && denAuth.status !== "checking";
+  const cloudSignIn = useCloudSignIn();
+  // The browser opens on Den's sign-up tab (label stays "Sign in"); with
+  // `desktopSignInReturn` this conversation stays on screen and sign-in returns to it.
   const openCloudSignIn = useCallback(() => {
-    const baseUrl = readDenBootstrapConfig().baseUrl;
-    markDesktopSignInInitiated();
-    // Label stays "Sign in"; opens the sign-up tab so new users aren't defaulted into sign-in.
-    platform.openLink(buildDenAuthUrl(baseUrl, "sign-up"));
-  }, [platform]);
+    cloudSignIn({ workspaceId: props.selectedWorkspaceId, sessionId: props.selectedSessionId });
+  }, [cloudSignIn, props.selectedSessionId, props.selectedWorkspaceId]);
 
   useReactRenderWatchdog("SessionPage", {
     selectedSessionId: props.selectedSessionId,

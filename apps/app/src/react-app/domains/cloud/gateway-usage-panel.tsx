@@ -40,7 +40,8 @@ function longestBlock(buckets: GatewayUsageBucket[]) {
   return [...buckets].sort((a, b) => Date.parse(b.resetAt) - Date.parse(a.resetAt))[0];
 }
 
-function UsageCard({ icon, title, detail, actions, children, testId }: {
+/** The notice card above the composer: what is true, one line of detail, its actions, and an optional inline form. */
+export function ComposerNoticeCard({ icon, title, detail, actions, children, testId }: {
   icon: ReactNode; title: ReactNode; detail?: ReactNode; actions?: ReactNode; children?: ReactNode; testId?: string;
 }) {
   return (
@@ -102,7 +103,7 @@ export function GatewayUsageNotice({ state, status, stale, providerName = null, 
 
   if (state === "over_limit") {
     return (
-      <UsageCard testId="gateway-usage-notice" icon={<Gauge />}
+      <ComposerNoticeCard testId="gateway-usage-notice" icon={<Gauge />}
         title={`${formatGatewayMoney(bucket.usedMicroUsd - bucket.allowanceMicroUsd)} over ${gatewayPeriodPossessives[bucket.timeframe]} ${formatGatewayMoney(bucket.allowanceMicroUsd)}${forProvider}`}
         detail={staleNote ?? <>You can keep working. <GatewayResetTime value={bucket.resetAt} /></>}
         actions={seeUsage} />
@@ -112,7 +113,7 @@ export function GatewayUsageNotice({ state, status, stale, providerName = null, 
   const pendingBucket = buckets.find((item) => item.resetRequestStatus === "pending");
   if (pendingBucket) {
     return (
-      <UsageCard testId="gateway-usage-notice" icon={<Clock />}
+      <ComposerNoticeCard testId="gateway-usage-notice" icon={<Clock />}
         title={`Asked for ${formatGatewayMoney(gatewayIncreaseMicroUsd(pendingBucket))} more ${gatewayPeriodLabels[pendingBucket.timeframe].toLowerCase()}${forProvider}`}
         detail={staleNote ?? <>Waiting for an admin{switchNote ? "." : null}{switchNote}</>}
         actions={seeUsage} />
@@ -123,7 +124,7 @@ export function GatewayUsageNotice({ state, status, stale, providerName = null, 
   const amount = askable ? formatGatewayMoney(gatewayIncreaseMicroUsd(askable)) : null;
   if (asking && askable && amount) {
     return (
-      <UsageCard testId="gateway-usage-notice" icon={<LockKeyhole />}
+      <ComposerNoticeCard testId="gateway-usage-notice" icon={<LockKeyhole />}
         title={`Ask for ${amount} more ${gatewayPeriodLabels[askable.timeframe].toLowerCase()}${forProvider}`}
         detail="An admin reviews it">
         <div className="ps-7">
@@ -131,12 +132,12 @@ export function GatewayUsageNotice({ state, status, stale, providerName = null, 
             onCancel={() => { usage.reset.reset(); setAsking(false); }}
             onSubmit={(reason) => usage.reset.mutate({ bucketId: askable.id, reason }, { onSuccess: () => setAsking(false) })} />
         </div>
-      </UsageCard>
+      </ComposerNoticeCard>
     );
   }
 
   return (
-    <UsageCard testId="gateway-usage-notice" icon={<LockKeyhole />}
+    <ComposerNoticeCard testId="gateway-usage-notice" icon={<LockKeyhole />}
       title={`You’ve used ${gatewayPeriodPossessives[bucket.timeframe]} ${formatGatewayMoney(bucket.allowanceMicroUsd)}${forProvider}`}
       detail={staleNote ?? <><GatewayResetTime value={bucket.resetAt} />{askable ? (switchNote ? "." : null) : ". An admin can raise it."}{switchNote}</>}
       actions={<>
@@ -162,7 +163,7 @@ export function GatewayUsageApprovalNotice() {
   const [first] = approved;
   return (
     <div role="status">
-      <UsageCard testId="gateway-usage-approved-notice" icon={<CheckCircle2 className="text-green-11" />}
+      <ComposerNoticeCard testId="gateway-usage-approved-notice" icon={<CheckCircle2 className="text-green-11" />}
         title={`You got ${formatGatewayMoney(first.extensionMicroUsd)} more ${gatewayPeriodLabels[first.timeframe].toLowerCase()}`}
         detail={<>{formatGatewayMoney(first.allowanceMicroUsd)} for {gatewayPeriodLabels[first.timeframe].toLowerCase()}, <GatewayResetTime value={first.resetAt} midSentence /></>}
         actions={<Button size="sm" variant="ghost" className="text-muted-foreground" aria-label="Dismiss usage increase approval" onClick={() => dismiss(approved.map((bucket) => gatewayApprovalKey(JSON.stringify([scopeKey, bucket.extensionMicroUsd]), bucket)))}>Dismiss</Button>} />
