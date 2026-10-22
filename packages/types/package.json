@@ -276,6 +276,14 @@
       "development": "./src/den/organization-web-origins.ts",
       "default": "./src/den/organization-web-origins.ts"
     },
+    "./den/activation": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/activation.d.ts",
+        "default": "./src/den/activation.ts"
+      },
+      "development": "./src/den/activation.ts",
+      "default": "./src/den/activation.ts"
+    },
     "./den/workbot-settings": {
       "types": {
         "openwork-build": "./dist/types/src/den/workbot-settings.d.ts",

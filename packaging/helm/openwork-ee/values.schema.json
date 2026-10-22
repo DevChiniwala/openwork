@@ -218,6 +218,16 @@
               ],
               "description": "Desktop: standard Connect tools: OpenCode agents, including OpenWork Desktop, discover connection actions, Workflows and Apps as individual tools. Turning this off restores capability search without changing the connection URL. Renders DEN_FEATURE_DESKTOP_CONNECT_STANDARD_TOOLS."
             },
+            "activationChecklist": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Get set up checklist: After their first answer, people see a Get set up checklist in Desktop and Workbot: invite a teammate, use a skill, add a model provider, share one on AI Gateway and connect an app, each checked off once it works. Renders DEN_FEATURE_ACTIVATION_CHECKLIST."
+            },
             "connectStandardTools": {
               "enum": [
                 "",

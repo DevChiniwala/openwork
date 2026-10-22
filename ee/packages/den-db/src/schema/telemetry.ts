@@ -25,6 +25,12 @@ export const TelemetryEventType = [
   "workbot.message_sent",
   "workbot.turn_completed",
   "connection.connected",
+  // Server-only Get set up facts (one row per member, stable id), written by
+  // POST /v1/me/activation/events. The generic client ingest rejects these.
+  "activation.first_response",
+  "activation.use_skill",
+  "activation.own_provider",
+  "activation.dismissed",
 ] as const
 
 /**
