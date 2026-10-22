@@ -59,6 +59,7 @@ You are doing this in the background. The person isn't watching and can't answer
 const REASONS: Record<string, string> = {
   max_steps_exceeded: "it needed more steps than it can take at once",
   stuck_repeating: "it kept getting the same result",
+  output_limit: "its replies kept getting too long to finish",
   turn_timeout: "it took too long",
   mcp_unavailable: "their connected apps couldn't be reached",
 }

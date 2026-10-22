@@ -175,7 +175,7 @@ const MISCONFIGURED = /^model_(credentials_missing|http_(401|402|403|404)|stream
  */
 export function retryableError(code: string | null): boolean {
   if (!code) return true
-  return !REFUSED.test(code) && !MISCONFIGURED.test(code) && !modelIssue(code) && code !== "max_steps_exceeded" && code !== "stuck_repeating"
+  return !REFUSED.test(code) && !MISCONFIGURED.test(code) && !modelIssue(code) && code !== "max_steps_exceeded" && code !== "stuck_repeating" && code !== "output_limit"
 }
 
 function modelIssue(code: string | null): WorkbotTurn["modelIssue"] {
@@ -198,6 +198,7 @@ function friendlyError(code: string | null): string {
   if (code === "turn_timeout") return "That took too long, so I stopped."
   if (code === "max_steps_exceeded") return "That needed more steps than I can take at once. Try a smaller piece of it."
   if (code === "stuck_repeating") return "I kept getting the same result, so I stopped. Try asking a different way."
+  if (code === "output_limit") return "My answer kept getting too long to finish. Try a smaller piece of it."
   return "Something went wrong on my side."
 }
 
