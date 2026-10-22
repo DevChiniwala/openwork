@@ -5,7 +5,7 @@ import { subscribeSharedInventory } from "./inventory-events.ts"
 import { inventoryRetry } from "./inventory-retry.ts"
 import type { Json, PluginDefinition } from "./opencode.ts"
 import { parseInventory, readOptions, snapshotFrom, type Inventory } from "./plugin.ts"
-import { fetchSharedGatewayInventory } from "./inventory-fetch.ts"
+import { fetchSharedGatewayInventory, inventoryRequestTicket } from "./inventory-fetch.ts"
 import type { ProviderRecord } from "./providers.ts"
 
 const CACHE_KEY = "desktop/provider-inventory"
@@ -166,11 +166,11 @@ export function createDesktopProviderPlugin(deps: { fetch?: Fetch; now?: () => n
         const accountKey = key
         const generation = epoch
         const current = () => !lifetime.signal.aborted && generation === epoch
-        const requestedAt = now()
+        const ticket = inventoryRequestTicket()
         running = (async () => {
           try {
             // Deliberately no 30s freshness shortcut: every event/reconnect is authoritative.
-            const gateway = await fetchSharedGatewayInventory({ fetch: inventoryFetch(source), session: inventorySession(source), scope: "desktop", requestedAt, signal: refreshController.signal, now })
+            const gateway = await fetchSharedGatewayInventory({ fetch: inventoryFetch(source), session: inventorySession(source), scope: "desktop", ticket, signal: refreshController.signal })
             if (!current()) return
             const next: Inventory = { version: 1, connectionKey: accountKey, apiBaseUrl: source.apiBaseUrl, fetchedAt: now(), gateway, mcp: null }
             inventory = next

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { fetchSharedGatewayInventory } from "./inventory-fetch.ts"
+import { fetchSharedGatewayInventory, inventoryRequestTicket } from "./inventory-fetch.ts"
 import { API, createFakeDen, GATEWAY_KEY, PROVIDER_ID, SESSION_TOKEN } from "./test-den.ts"
 import type { Fetch } from "./den.ts"
 
@@ -25,8 +25,9 @@ const lists = (calls: readonly string[]) => calls.filter((call) => call.includes
 test("Locations that ask together share one inventory fetch", async () => {
   const session = sessionFor()
   const { den, fetch, release } = gatedDen()
-  const requests = Array.from({ length: 5 }, () =>
-    fetchSharedGatewayInventory({ fetch, session, scope: "den", requestedAt: 1_000, now: () => 1_000 }))
+  // One change reaches every Location; each takes its ticket before its own setup.
+  const tickets = Array.from({ length: 5 }, () => inventoryRequestTicket())
+  const requests = tickets.map((ticket) => fetchSharedGatewayInventory({ fetch, session, scope: "den", ticket }))
   release()
   const inventories = await Promise.all(requests)
   assert.equal(lists(den.calls), 1)
@@ -40,31 +41,31 @@ test("Locations that ask together share one inventory fetch", async () => {
 test("a Location that asks after a fetch started gets its own fetch", async () => {
   const session = sessionFor()
   const { den, fetch, release } = gatedDen()
-  const first = fetchSharedGatewayInventory({ fetch, session, scope: "den", requestedAt: 1_000, now: () => 1_000 })
+  const first = fetchSharedGatewayInventory({ fetch, session, scope: "den", ticket: inventoryRequestTicket() })
   // A change arrived after the first fetch began reading Den.
-  const later = fetchSharedGatewayInventory({ fetch, session, scope: "den", requestedAt: 1_001, now: () => 1_001 })
+  const later = fetchSharedGatewayInventory({ fetch, session, scope: "den", ticket: inventoryRequestTicket() })
   release()
   await Promise.all([first, later])
   assert.equal(lists(den.calls), 2)
 })
 
-test("a finished fetch is reused only by Locations that asked before it started", async () => {
+test("a finished fetch is never reused", async () => {
   const session = sessionFor()
   const den = createFakeDen()
-  await fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "den", requestedAt: 1_000, now: () => 1_000 })
-  await fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "den", requestedAt: 999, now: () => 1_010 })
-  assert.equal(lists(den.calls), 1, "a slow Location that asked before the fetch started reuses it")
-  await fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "den", requestedAt: 1_020, now: () => 1_020 })
-  assert.equal(lists(den.calls), 2, "a later request reads Den again")
+  const ticket = inventoryRequestTicket()
+  await fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "den", ticket })
+  await fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "den", ticket })
+  assert.equal(lists(den.calls), 2)
 })
 
 test("different credentials or credential scopes never share a fetch", async () => {
   const session = sessionFor()
   const den = createFakeDen()
+  const ticket = inventoryRequestTicket()
   await Promise.all([
-    fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "den", requestedAt: 1_000, now: () => 1_000 }),
-    fetchSharedGatewayInventory({ fetch: den.fetch, session: { ...session, orgId: `${session.orgId}_other` }, scope: "den", requestedAt: 1_000, now: () => 1_000 }),
-    fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "desktop", requestedAt: 1_000, now: () => 1_000 }),
+    fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "den", ticket }),
+    fetchSharedGatewayInventory({ fetch: den.fetch, session: { ...session, orgId: `${session.orgId}_other` }, scope: "den", ticket }),
+    fetchSharedGatewayInventory({ fetch: den.fetch, session, scope: "desktop", ticket }),
   ])
   assert.equal(lists(den.calls), 3)
 })
@@ -73,8 +74,9 @@ test("one Location giving up does not cancel the fetch the others are waiting fo
   const session = sessionFor()
   const { den, fetch, release } = gatedDen()
   const leaving = new AbortController()
-  const gone = fetchSharedGatewayInventory({ fetch, session, scope: "den", requestedAt: 1_000, signal: leaving.signal, now: () => 1_000 })
-  const staying = fetchSharedGatewayInventory({ fetch, session, scope: "den", requestedAt: 1_000, now: () => 1_000 })
+  const ticket = inventoryRequestTicket()
+  const gone = fetchSharedGatewayInventory({ fetch, session, scope: "den", ticket, signal: leaving.signal })
+  const staying = fetchSharedGatewayInventory({ fetch, session, scope: "den", ticket })
   leaving.abort()
   await assert.rejects(gone)
   release()
@@ -90,7 +92,8 @@ test("a failed fetch is not handed to the next Location", async () => {
     if (failNext) { failNext = false; return new Response("unavailable", { status: 503 }) }
     return den.fetch(url, init)
   }
-  await assert.rejects(fetchSharedGatewayInventory({ fetch, session, scope: "den", requestedAt: 1_000, now: () => 1_000 }))
-  const retried = await fetchSharedGatewayInventory({ fetch, session, scope: "den", requestedAt: 999, now: () => 1_001 })
+  const ticket = inventoryRequestTicket()
+  await assert.rejects(fetchSharedGatewayInventory({ fetch, session, scope: "den", ticket }))
+  const retried = await fetchSharedGatewayInventory({ fetch, session, scope: "den", ticket })
   assert.equal(retried.apiKey, GATEWAY_KEY)
 })
