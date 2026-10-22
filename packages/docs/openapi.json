@@ -21189,6 +21189,26 @@
                 "type": "null"
               }
             ]
+          },
+          "failure": {
+            "description": "Why the check did not pass. sign_in_* means a person must sign in again; the others are not sign-in problems. Null when Ready or for checks recorded before this field existed.",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "sign_in_required",
+                  "sign_in_rejected",
+                  "setup_required",
+                  "unavailable",
+                  "timed_out",
+                  "settings_changed",
+                  "tools_unreadable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -21242,6 +21262,18 @@
         "type": "object",
         "properties": {
           "readiness": {
+            "description": "The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizationReadiness": {
+            "description": "scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
@@ -21703,6 +21735,58 @@
         "required": [
           "allDisabled",
           "disabledTools"
+        ]
+      },
+      "ExternalMcpReadinessChecksResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "connectionId": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "copied_from_member",
+                    "checked",
+                    "already_checked",
+                    "not_checkable",
+                    "not_found"
+                  ],
+                  "description": "copied_from_member: a member's Ready check was copied to the connector. checked: a check ran and was recorded (Ready or not). not_checkable: nobody with a working sign-in has checked it and the caller cannot check it themselves."
+                }
+              },
+              "required": [
+                "connectionId",
+                "outcome"
+              ]
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "ExternalMcpReadinessChecksRequest": {
+        "type": "object",
+        "properties": {
+          "connectionIds": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        },
+        "required": [
+          "connectionIds"
         ]
       },
       "ExternalMcpConnectionNotReadyError": {
@@ -22338,6 +22422,18 @@
         "type": "object",
         "properties": {
           "readiness": {
+            "description": "The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizationReadiness": {
+            "description": "scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
@@ -23038,6 +23134,18 @@
         "type": "object",
         "properties": {
           "readiness": {
+            "description": "The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "organizationReadiness": {
+            "description": "scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ExternalMcpConnectionReadiness"
@@ -97832,6 +97940,76 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ExternalMcpConnectionToolPolicyInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/mcp-connections/readiness-checks": {
+      "post": {
+        "operationId": "postV1McpConnectionsReadinessChecks",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "Check connectors that have no stored status",
+        "description": "For an admin's connector list. For each listed connector with no stored status: copies any member's still-valid Ready check onto a per-member connector, otherwise checks it (initialize and tools/list, no tools executed) with the shared credential or the caller's own sign-in. Connectors that already have a status are left alone; use the per-connection check to re-check one. Requires connections.manage.",
+        "responses": {
+          "200": {
+            "description": "What happened to each connector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalMcpReadinessChecksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Connection management permission required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalMcpReadinessChecksRequest"
               }
             }
           }

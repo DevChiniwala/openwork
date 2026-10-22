@@ -143,6 +143,7 @@ import type {
   ExternalMcpConnectionToolPolicyInput,
   ExternalMcpConnectionToolRunInput,
   ExternalMcpIssuerReviewInput,
+  ExternalMcpReadinessChecksRequest,
   ExternalMcpRequirementsDiscoveryInput,
   ExternalMcpResolveInput,
   GetApiAuthOauth2AuthorizeErrors,
@@ -891,6 +892,8 @@ import type {
   PostV1McpConnectionsDiscoverErrors,
   PostV1McpConnectionsDiscoverResponses,
   PostV1McpConnectionsErrors,
+  PostV1McpConnectionsReadinessChecksErrors,
+  PostV1McpConnectionsReadinessChecksResponses,
   PostV1McpConnectionsResolveErrors,
   PostV1McpConnectionsResolveResponses,
   PostV1McpConnectionsResponses,
@@ -12590,6 +12593,37 @@ export class DenClient extends HeyApiClient {
       ThrowOnError
     >({
       url: "/v1/mcp-connections/{connectionId}/tool-policy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Check connectors that have no stored status
+   *
+   * For an admin's connector list. For each listed connector with no stored status: copies any member's still-valid Ready check onto a per-member connector, otherwise checks it (initialize and tools/list, no tools executed) with the shared credential or the caller's own sign-in. Connectors that already have a status are left alone; use the per-connection check to re-check one. Requires connections.manage.
+   */
+  public postV1McpConnectionsReadinessChecks<ThrowOnError extends boolean = false>(
+    parameters: {
+      externalMcpReadinessChecksRequest: ExternalMcpReadinessChecksRequest;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "externalMcpReadinessChecksRequest", map: "body" }] }],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1McpConnectionsReadinessChecksResponses,
+      PostV1McpConnectionsReadinessChecksErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/readiness-checks",
       ...options,
       ...params,
       headers: {

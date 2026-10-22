@@ -4943,6 +4943,18 @@ export type ExternalMcpConnectionReadiness = {
   checkedAt: string;
   lastSuccessfulAt: string | null;
   reason: string | null;
+  /**
+   * Why the check did not pass. sign_in_* means a person must sign in again; the others are not sign-in problems. Null when Ready or for checks recorded before this field existed.
+   */
+  failure?:
+    | "sign_in_required"
+    | "sign_in_rejected"
+    | "setup_required"
+    | "unavailable"
+    | "timed_out"
+    | "settings_changed"
+    | "tools_unreadable"
+    | null;
 };
 
 export type ExternalMcpConnectionRequiredBy = {
@@ -4957,7 +4969,14 @@ export type ExternalMcpConnectionAccessSummary = {
 };
 
 export type ExternalMcpConnectionResponse = {
+  /**
+   * The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).
+   */
   readiness?: ExternalMcpConnectionReadiness | null;
+  /**
+   * scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.
+   */
+  organizationReadiness?: ExternalMcpConnectionReadiness | null;
   id: string;
   name: string;
   externalKey: string | null;
@@ -5037,6 +5056,20 @@ export type ExternalMcpConnectionToolPolicyResponse = {
 export type ExternalMcpConnectionToolPolicyInput = {
   allDisabled: boolean;
   disabledTools: Array<string>;
+};
+
+export type ExternalMcpReadinessChecksResponse = {
+  results: Array<{
+    connectionId: string;
+    /**
+     * copied_from_member: a member's Ready check was copied to the connector. checked: a check ran and was recorded (Ready or not). not_checkable: nobody with a working sign-in has checked it and the caller cannot check it themselves.
+     */
+    outcome: "copied_from_member" | "checked" | "already_checked" | "not_checkable" | "not_found";
+  }>;
+};
+
+export type ExternalMcpReadinessChecksRequest = {
+  connectionIds: Array<string>;
 };
 
 export type ExternalMcpConnectionNotReadyError = {
@@ -5238,7 +5271,14 @@ export type ExternalMcpConnectionToolRunInput = {
 };
 
 export type ExternalMcpConnectionCreatedResponse = {
+  /**
+   * The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).
+   */
   readiness?: ExternalMcpConnectionReadiness | null;
+  /**
+   * scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.
+   */
+  organizationReadiness?: ExternalMcpConnectionReadiness | null;
   id: string;
   name: string;
   externalKey: string | null;
@@ -5371,7 +5411,14 @@ export type ExternalMcpConnectionAccessInput = {
 };
 
 export type ExternalMcpConnectionUpdatedResponse = {
+  /**
+   * The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since).
+   */
   readiness?: ExternalMcpConnectionReadiness | null;
+  /**
+   * scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet.
+   */
+  organizationReadiness?: ExternalMcpConnectionReadiness | null;
   id: string;
   name: string;
   externalKey: string | null;
@@ -29711,6 +29758,41 @@ export type PutV1McpConnectionsByConnectionIdToolPolicyResponses = {
 
 export type PutV1McpConnectionsByConnectionIdToolPolicyResponse =
   PutV1McpConnectionsByConnectionIdToolPolicyResponses[keyof PutV1McpConnectionsByConnectionIdToolPolicyResponses];
+
+export type PostV1McpConnectionsReadinessChecksData = {
+  body: ExternalMcpReadinessChecksRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/mcp-connections/readiness-checks";
+};
+
+export type PostV1McpConnectionsReadinessChecksErrors = {
+  /**
+   * Invalid request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Connection management permission required.
+   */
+  403: ForbiddenError;
+};
+
+export type PostV1McpConnectionsReadinessChecksError =
+  PostV1McpConnectionsReadinessChecksErrors[keyof PostV1McpConnectionsReadinessChecksErrors];
+
+export type PostV1McpConnectionsReadinessChecksResponses = {
+  /**
+   * What happened to each connector.
+   */
+  200: ExternalMcpReadinessChecksResponse;
+};
+
+export type PostV1McpConnectionsReadinessChecksResponse =
+  PostV1McpConnectionsReadinessChecksResponses[keyof PostV1McpConnectionsReadinessChecksResponses];
 
 export type PostV1McpConnectionsByConnectionIdCheckData = {
   body?: never;

@@ -110,7 +110,7 @@ jobs:
           pnpm --filter @openwork-ee/workbot test:service-readiness
           # Den web does not install tsx in CI; keep its JSX config with the API-owned loader.
           TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/diagnostics/*.test.ts' '../den-web/components/diagnostics/*.test.tsx' '../den-web/components/admin/services/*.test.ts' '../den-web/components/services/*.test.tsx' '../den-web/app/(den)/dashboard/_lib/diagnostics-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts'
-          bun test apps/app/tests/deployment-service-readiness.test.ts apps/app/tests/opencode-zen-removal.test.ts
+          bun test apps/app/tests/deployment-service-readiness.test.ts apps/app/tests/opencode-zen-removal.test.ts apps/app/tests/connector-readiness.test.ts
       - name: Boot the app provider tree
         run: pnpm test:boot
       - name: Test native dictation focus and draft boundaries
@@ -165,7 +165,7 @@ jobs:
           pnpm --filter @openwork-ee/utils test
           pnpm --filter @openwork/automations test
           pnpm --filter @openwork-ee/den-api test
-          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts" "../den-web/app/(den)/dashboard/_lib/workbot-entry.test.ts"
+          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts" "../den-web/app/(den)/dashboard/_components/connector-readiness.test.ts" "../den-web/app/(den)/dashboard/_lib/workbot-entry.test.ts"
           pnpm --filter @openwork-ee/workbot test:model
       # Security rules (roles, tenants, keys, OAuth, audit) against the real
       # den-api app and a throwaway database on MySQL (root:password).
