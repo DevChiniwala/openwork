@@ -77,6 +77,41 @@ turn keys off on the Permissions tab or choose Delete role in Members › Roles
 The deterministic IDs and preserved history make a rerun a no-op, including
 after a permission is revoked or the role/team link is removed.
 
+### Observed automatic-recovery limits and pending design decision
+
+The independent published-upgrade matrix covers MariaDB 11.4.13 and MySQL
+8.4.11. Its candidate-0155 SQL-only column used commit `30c971e8ee`
+(restore evidenced former administrator capabilities) against the published
+0.18.59 API and real 0.18.57-upgraded MySQL data. It observed both:
+
+- **Wrong restoration:** an accepted super-admin invitation survived, but the
+  later intentional demotion history was lost. Migration 0155 automatically
+  granted all fourteen capabilities to that now-plain Admin. Historical access
+  plus no surviving revocation record is not proof that access should return.
+- **Missed restoration:** a MySQL demotion and re-promotion shared a persisted
+  second. Legacy 0.18.57 MySQL audit inserts had whole-second timestamps, and
+  the conservative `>=` tie veto excluded the re-promoted person. Do not infer
+  event order from equal timestamps or silently weaken the veto.
+
+Direct roles/defaults stayed unchanged and rerun stayed idempotent; neither
+invariant proves that the effective-permission cohort is safe. This was SQL on
+published upgraded data, **not a full locally built PR-image validation**.
+Evidence pointer: `reports/admin-superadmin-upgrade-matrix-2026-10-22.md`
+(private maintainer report, not a file shipped in this public repository),
+sections **Product PR implications** and **MySQL same-second timeline**.
+
+The following are decision options, **not implemented behavior or new flags**:
+
+| Option | Proposed policy | Consequence |
+| --- | --- | --- |
+| A | Create the restored team/set disabled or pending; an owner reviews and explicitly enables it. | No automatic effective grant before approval; requires an enable/review flow and owner availability. |
+| B | Require stricter evidence: ignore accepted-invitation-only evidence when no role-change history exists. | Reduces that false-positive path but misses legitimate invitation-only administrators; surviving partial history and timestamp ties still need review. |
+| C | Keep the automatic migration as it is, with the demonstrated risks documented. | Explicitly accepts possible restoration of a deliberately demoted admin and missed same-second re-promotions. |
+| D | Remove the automatic migration and use only an explicit CLI after roster review. | Requires a reviewed-roster apply path; the existing `--all-admins` CLI is broader and is not equivalent to a reviewed, selected roster. |
+
+The merge/rollout decision is reserved to the maintainers. No option is selected
+by these documentation notes; migration behavior is unchanged.
+
 ### Separate, opt-in all-admins alternative
 
 The automatic migration does **not** run this alternative. Only after a separate
