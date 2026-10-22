@@ -97,7 +97,7 @@ async function fixture(overrides: Partial<ProxyInput> = {}) {
 
 for (const enabled of [undefined, false, true]) {
   test(`proxy search and advertised execution schema use ${enabled === true ? "modern" : "legacy"} view (flag ${enabled})`, async (t) => {
-    const { client, close } = await fixture({ connectCapabilityToolShapes: enabled })
+    const { client, close } = await fixture({ connectToolShapes: enabled })
     t.after(close)
     const { tools } = await client.listTools()
     assert.deepEqual(tools.map(({ name }) => name), ["search_capabilities", "execute_capability"])
@@ -118,7 +118,7 @@ for (const enabled of [undefined, false, true]) {
   })
 
   test(`both cached execute input forms work with flag ${enabled}`, async (t) => {
-    const { client, calls, close } = await fixture({ connectCapabilityToolShapes: enabled })
+    const { client, calls, close } = await fixture({ connectToolShapes: enabled })
     t.after(close)
     for (const field of ["body", "arguments"]) {
       await client.callTool({ name: "execute_capability", arguments: { name: issueTool.name, [field]: { state: "open" } } })
@@ -136,7 +136,7 @@ for (const enabled of [false, true]) {
       context,
       operation: { connection, member, redirectUri: "https://den.test/callback", diagnosticReferenceId: "proxy-unit-test" },
       scopes: new Set(),
-      connectCapabilityToolShapes: enabled,
+      connectToolShapes: enabled,
       dependencies: {
         describe: async () => ({ capabilities: { tools: {} } }),
         serve: async (server) => {
@@ -161,7 +161,7 @@ for (const enabled of [false, true]) {
   })
 
   test(`App host gets the selected gateway view and keeps App metadata with flag ${enabled}`, async (t) => {
-    const { client, close } = await fixture({ connectCapabilityToolShapes: enabled, appHostClient: true })
+    const { client, close } = await fixture({ connectToolShapes: enabled, appHostClient: true })
     t.after(close)
     const { tools } = await client.listTools()
     assert.deepEqual(tools[1]?._meta, { ui: { visibility: ["app"] } })
@@ -176,7 +176,7 @@ for (const enabled of [false, true]) {
   test(`direct exposure and write scope remain unchanged with flag ${enabled}`, async (t) => {
     const directConnection = { ...connection, exposeDirectly: true }
     const operation = { connection: directConnection, member, redirectUri: "https://den.test/callback", diagnosticReferenceId: "proxy-unit-test" }
-    const { client, calls, close } = await fixture({ connectCapabilityToolShapes: enabled, directExposureEnabled: true, operation, scopes: new Set() })
+    const { client, calls, close } = await fixture({ connectToolShapes: enabled, directExposureEnabled: true, operation, scopes: new Set() })
     t.after(close)
     assert.deepEqual((await client.listTools()).tools, [issueTool])
     const result = await client.callTool({ name: issueTool.name, arguments: { state: "open" } })

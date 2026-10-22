@@ -107,7 +107,7 @@ test("capability tool shapes are opt-in and turning them off preserves cached ex
   // still describe arguments in body, not require the newly shipped format.
   for (const enabled of [undefined, true, false]) {
     if (enabled !== undefined) {
-      const rollout = await den.setFeature(orgId, "connectCapabilityToolShapes", enabled)
+      const rollout = await den.setFeature(orgId, "connectToolShapes", enabled)
       assert.ok(rollout.status < 300, summary(rollout))
     }
     const listed = await rpc(rileyToken, "tools/list", {})

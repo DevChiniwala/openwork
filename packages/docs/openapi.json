@@ -4559,7 +4559,7 @@
               "browserFloatingView",
               "remoteComputers",
               "remoteSessionSubagents",
-              "connectCapabilityToolShapes",
+              "connectToolShapes",
               "connectStandardTools"
             ]
           },
@@ -4786,7 +4786,7 @@
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
-                    "connectCapabilityToolShapes": {
+                    "connectToolShapes": {
                       "type": "boolean"
                     },
                     "connectStandardTools": {
@@ -4817,7 +4817,7 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectCapabilityToolShapes",
+                    "connectToolShapes",
                     "connectStandardTools",
                     "gatewayDashboard"
                   ]
@@ -5794,7 +5794,7 @@
                         "overrideApplies"
                       ]
                     },
-                    "connectCapabilityToolShapes": {
+                    "connectToolShapes": {
                       "type": "object",
                       "properties": {
                         "enabled": {
@@ -5927,7 +5927,7 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectCapabilityToolShapes",
+                    "connectToolShapes",
                     "connectStandardTools"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -6349,7 +6349,7 @@
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
-                    "connectCapabilityToolShapes": {
+                    "connectToolShapes": {
                       "type": "boolean"
                     },
                     "connectStandardTools": {
@@ -6380,7 +6380,7 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectCapabilityToolShapes",
+                    "connectToolShapes",
                     "connectStandardTools",
                     "gatewayDashboard"
                   ]
@@ -7357,7 +7357,7 @@
                         "overrideApplies"
                       ]
                     },
-                    "connectCapabilityToolShapes": {
+                    "connectToolShapes": {
                       "type": "object",
                       "properties": {
                         "enabled": {
@@ -7490,7 +7490,7 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectCapabilityToolShapes",
+                    "connectToolShapes",
                     "connectStandardTools"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -33452,7 +33452,7 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectCapabilityToolShapes": {
+                        "connectToolShapes": {
                           "type": "object",
                           "properties": {
                             "enabled": {
@@ -33585,7 +33585,7 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectCapabilityToolShapes",
+                        "connectToolShapes",
                         "connectStandardTools"
                       ]
                     }
@@ -34652,7 +34652,7 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectCapabilityToolShapes": {
+                        "connectToolShapes": {
                           "type": "object",
                           "properties": {
                             "enabled": {
@@ -34785,7 +34785,7 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectCapabilityToolShapes",
+                        "connectToolShapes",
                         "connectStandardTools"
                       ]
                     }
@@ -35018,7 +35018,7 @@
                           }
                         ]
                       },
-                      "connectCapabilityToolShapes": {
+                      "connectToolShapes": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -37991,7 +37991,7 @@
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
-                        "connectCapabilityToolShapes": {
+                        "connectToolShapes": {
                           "type": "boolean"
                         },
                         "connectStandardTools": {
@@ -38022,7 +38022,7 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectCapabilityToolShapes",
+                        "connectToolShapes",
                         "connectStandardTools",
                         "gatewayDashboard"
                       ]
@@ -38999,7 +38999,7 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectCapabilityToolShapes": {
+                        "connectToolShapes": {
                           "type": "object",
                           "properties": {
                             "enabled": {
@@ -39132,7 +39132,7 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectCapabilityToolShapes",
+                        "connectToolShapes",
                         "connectStandardTools"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
@@ -39303,7 +39303,7 @@
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
-                        "connectCapabilityToolShapes": {
+                        "connectToolShapes": {
                           "type": "boolean"
                         },
                         "connectStandardTools": {
@@ -39334,7 +39334,7 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectCapabilityToolShapes",
+                        "connectToolShapes",
                         "connectStandardTools",
                         "gatewayDashboard"
                       ]
@@ -40311,7 +40311,7 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectCapabilityToolShapes": {
+                        "connectToolShapes": {
                           "type": "object",
                           "properties": {
                             "enabled": {
@@ -40444,7 +40444,7 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectCapabilityToolShapes",
+                        "connectToolShapes",
                         "connectStandardTools"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."

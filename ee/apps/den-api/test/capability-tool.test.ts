@@ -19,7 +19,7 @@ const apiMatch: CapabilityMatch = {
 const externalMatch: CapabilityMatch = {
   name: "mcp:emc_linear:list_issues",
   method: "MCP",
-  path: "https://mcp.example.test/sse",
+  path: "https://mcp.example.test/sse?api_key=secret",
   score: 9,
   summary: "[Linear] List issues in the workspace.",
   pathParams: [],
@@ -35,6 +35,7 @@ const externalMatch: CapabilityMatch = {
 test("an API operation match becomes an MCP tool whose arguments hold path, query, and body", () => {
   const tool = capabilityToolMatch(apiMatch, true)
   assert.deepEqual(tool, {
+    ...apiMatch,
     name: "getOrgWorkers",
     description: "List the organization's workers.",
     inputSchema: {
@@ -51,14 +52,15 @@ test("an API operation match becomes an MCP tool whose arguments hold path, quer
   })
 })
 
-test("a connection tool keeps its provider schema and annotations and drops the old transport fields", () => {
+test("a connection tool keeps its provider schema and annotations, and the older fields for released desktops", () => {
   const tool = capabilityToolMatch(externalMatch, false)
   assert.deepEqual(tool.inputSchema, externalMatch.argumentsSchema)
   assert.deepEqual(tool.annotations, { readOnlyHint: true, openWorldHint: true })
   assert.equal(tool.description, "[Linear] List issues in the workspace.")
   assert.equal(tool.schemaDigest, externalMatch.schemaDigest)
-  for (const field of ["method", "path", "score", "summary", "argumentsSchema", "invocation", "readOnly", "hasBody", "pathParams", "queryParams"]) {
-    assert.equal(field in tool, false, field)
+  assert.equal("path" in tool, false, "a connection's server URL can carry credentials")
+  for (const field of ["method", "summary", "argumentsSchema", "invocation", "readOnly", "hasBody", "pathParams", "queryParams"] as const) {
+    assert.deepEqual(tool[field], externalMatch[field], field)
   }
   assert.deepEqual(capabilityToolMatch({ ...externalMatch, argumentsSchema: undefined, hasBody: false }, false).inputSchema,
     { type: "object", additionalProperties: false })

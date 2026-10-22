@@ -175,9 +175,9 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  connectCapabilityToolShapes: {
-    label: "Connect: MCP-shaped capability search",
-    description: "Capability search returns standard MCP tool schemas and calls use one arguments object. Off keeps the legacy search fields and path/query/body guidance for older Desktop clients.",
+  connectToolShapes: {
+    label: "Connect: MCP tool shapes in capability search",
+    description: "Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

@@ -213,8 +213,17 @@ until curl --fail --silent --max-time 2 http://127.0.0.1:9222/json/version >/dev
 done
 if [ "${WORKBOT_DESKTOP_VNC:-0}" = 1 ]; then
   command -v x11vnc >/dev/null
-  window=$(xdotool search --onlyvisible --class chromium | head -n 1)
-  [ -n "$window" ] || { echo "The browser window is unavailable" >&2; exit 1; }
+  # Chromium opens and closes windows while it starts, and a search that walks the
+  # window tree then fails with BadWindow. Retry briefly instead of failing a cold boot.
+  window=
+  attempt=0
+  until [ -n "$window" ]; do
+    window=$(xdotool search --onlyvisible --class chromium 2>/dev/null | head -n 1) || window=
+    [ -n "$window" ] && break
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 25 ] || { echo "The browser window is unavailable" >&2; exit 1; }
+    sleep 0.2
+  done
   # Root's guest starts one inetd-mode viewer over private stdio. A process
   # binding a local VNC port can never substitute itself for that transport.
   printf '%s\n' "$window" > "$1/browser-window"

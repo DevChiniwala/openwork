@@ -233,7 +233,7 @@ export function createApp(input: {
         return c.json(await input.computer.desktopViewer(session.id, body.data))
       }
       if (c.req.param("operation") === "action" && input.computer?.desktopAction) {
-        const body = z.object({ action: z.enum(["continue", "pause", "resume"]) }).strict().safeParse(raw)
+        const body = z.object({ action: z.enum(["continue", "pause", "resume", "rebuild"]) }).strict().safeParse(raw)
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         return c.json(await input.computer.desktopAction(session.id, body.data.action))
       }

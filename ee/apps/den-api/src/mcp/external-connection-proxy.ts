@@ -178,7 +178,7 @@ export function createExternalConnectionProxyServer(input: {
   runtime?: ExternalMcpProxyRuntime
   appHostClient?: boolean
   /** Opt in to the modern search results and execute arguments schema; defaults to legacy. */
-  connectCapabilityToolShapes?: boolean
+  connectToolShapes?: boolean
   /**
    * Whether the organization currently allows member-facing MCP connections.
    * Direct exposure is fail-closed: the provider catalog is served only when
@@ -188,7 +188,7 @@ export function createExternalConnectionProxyServer(input: {
 }) {
   const { connection } = input.operation
   const runtime = input.runtime ?? externalMcpProxyRuntime
-  const gatewayTools = input.connectCapabilityToolShapes === true ? boundedGatewayTools : legacyBoundedGatewayTools
+  const gatewayTools = input.connectToolShapes === true ? boundedGatewayTools : legacyBoundedGatewayTools
   const appGatewayTools = gatewayTools.map((tool) => ({
     ...tool,
     _meta: { ui: { visibility: ["app"] } },
@@ -292,7 +292,7 @@ export function createExternalConnectionProxyServer(input: {
           const resourceUri = input.appHostClient ? externalMcpAppResourceUri(tool) : null
           return [{
             score,
-            match: input.connectCapabilityToolShapes === true
+            match: input.connectToolShapes === true
               ? {
                 name: tool.name,
                 description: summary,
@@ -438,7 +438,7 @@ export async function handleExternalConnectionProxyRequest(input: {
   scopes: ReadonlySet<string>
   appHostClient?: boolean
   /** Opt in to the modern search results and execute arguments schema; defaults to legacy. */
-  connectCapabilityToolShapes?: boolean
+  connectToolShapes?: boolean
   directExposureEnabled?: boolean
   runtime?: ExternalMcpProxyRuntime
   dependencies?: Partial<ExternalMcpProxyRequestDependencies>
@@ -456,7 +456,7 @@ export async function handleExternalConnectionProxyRequest(input: {
       runtime: input.runtime,
       appHostClient: input.appHostClient === true,
       directExposureEnabled: input.directExposureEnabled === true,
-      connectCapabilityToolShapes: input.connectCapabilityToolShapes === true,
+      connectToolShapes: input.connectToolShapes === true,
     })
     const response = await dependencies.serve(server, input.context)
     return response ?? new Response(null, { status: 204 })
@@ -532,7 +532,7 @@ export function registerExternalConnectionProxyRoutes<T extends { Variables: Req
     }
 
     const directExposureEnabled = connection.exposeDirectly
-    const connectCapabilityToolShapes = await organizationFeatureEnabled(organizationId, "connectCapabilityToolShapes", {
+    const connectToolShapes = await organizationFeatureEnabled(organizationId, "connectToolShapes", {
       userId: principal.userId,
     })
 
@@ -551,7 +551,7 @@ export function registerExternalConnectionProxyRoutes<T extends { Variables: Req
       scopes: principal.scopes,
       appHostClient: principal.scopes.has(DEN_MCP_APP_HOST_SCOPE),
       directExposureEnabled,
-      connectCapabilityToolShapes,
+      connectToolShapes,
     })
   })
 }

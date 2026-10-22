@@ -1,7 +1,8 @@
 /// <reference path="./novnc.d.ts" />
 "use client";
 
-import { Maximize2, Monitor, Pause, Play, RotateCw } from "lucide-react";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
+import { Maximize2, Monitor, Pause, Play, RotateCw, Wrench } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
@@ -45,6 +46,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [changing, setChanging] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
   const identity = host.identity ? `${host.identity.organizationId}:${host.identity.principalId}` : "";
 
   useEffect(() => {
@@ -135,18 +137,18 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
     return () => { disposed = true; controller.abort(); clearTimeout(retry); clearTimeout(renewal); next?.disconnect(); client?.disconnect(); target.replaceChildren(); };
   }, [host, identity, view, control, paused, revision]);
 
-  const action = async (next: "pause" | "resume" | "continue") => {
+  const action = async (next: "pause" | "resume" | "continue" | "rebuild") => {
     if (changing) return false;
-    setChanging(true); setError(null);
+    setChanging(true); setError(null); setRebuilding(next === "rebuild");
     try {
       const { response, payload } = await host.requestJson("/v1/workbot/computer/action", { method: "POST", body: JSON.stringify({ action: next }) }, 195_000);
       if (!response.ok) throw new Error(errorMessage(payload, "Your computer didn't respond. Try again."));
-      if (next === "continue") { setControl(false); setAgentPaused(false); }
+      if (next === "continue" || next === "rebuild") { setControl(false); setAgentPaused(false); }
       setPaused(next === "pause");
       setRevision(current => current + 1);
       return true;
     } catch (error) { setError(error instanceof Error ? error.message : "Your computer didn't respond."); }
-    finally { setChanging(false); }
+    finally { setChanging(false); setRebuilding(false); }
   };
 
   return <section ref={container} className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Computer">
@@ -169,15 +171,34 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { 
       <div ref={screen} className={`relative h-full w-full ${paused || error ? "hidden" : ""}`} aria-label={`${view === "browser" ? "Browser" : "Computer"} live view`} />
       {!paused && !error && !connected ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <ComputerLoading />
-        <span className="workbot-shimmer text-[13px]">{reconnecting ? "Reconnecting" : view === "browser" ? "Connecting to the browser" : "Connecting to your computer"}</span>
+        <span className="workbot-shimmer text-[13px]">{rebuilding ? "Rebuilding your computer" : reconnecting ? "Reconnecting" : view === "browser" ? "Connecting to the browser" : "Connecting to your computer"}</span>
       </div> : null}
       {paused || error ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <Monitor size={24} strokeWidth={1.5} className="text-[var(--wb-muted)]" aria-hidden />
         <p className="text-[14px] text-[var(--wb-text)]">{error ?? "Your computer is paused."}</p>
-        <button type="button" className={button} disabled={changing} onClick={() => paused ? void action("resume") : setRevision(current => current + 1)}>{paused ? <Play size={14} aria-hidden /> : <RotateCw size={14} aria-hidden />}{paused ? "Resume" : "Reconnect"}</button>
+        <div className="flex flex-wrap items-center justify-center gap-1">
+          <button type="button" className={button} disabled={changing} onClick={() => paused ? void action("resume") : setRevision(current => current + 1)}>{paused ? <Play size={14} aria-hidden /> : <RotateCw size={14} aria-hidden />}{paused ? "Resume" : "Reconnect"}</button>
+          {paused ? null : <RebuildComputer disabled={changing} onRebuild={() => void action("rebuild")} />}
+        </div>
       </div> : null}
     </div>
   </section>;
+}
+
+/** Replaces a computer that won't connect with a fresh one from the current image. Its disk is erased, so ask first. */
+function RebuildComputer({ disabled, onRebuild }: { disabled: boolean; onRebuild(): void }) {
+  const [open, setOpen] = useState(false);
+  return <AlertDialog.Root open={open} onOpenChange={setOpen}>
+    <AlertDialog.Trigger className={button} disabled={disabled}><Wrench size={14} aria-hidden />Rebuild computer</AlertDialog.Trigger>
+    <AlertDialog.Portal>
+      <AlertDialog.Backdrop className="workbot fixed inset-0 z-50 bg-[var(--wb-ink)]/20" />
+      <AlertDialog.Popup className="workbot fixed left-1/2 top-1/2 z-50 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-[var(--wb-surface)] p-5 text-[var(--wb-text)] shadow-[var(--wb-panel-shadow)] outline-none">
+        <AlertDialog.Title className="text-[15px] font-semibold">Rebuild your computer?</AlertDialog.Title>
+        <AlertDialog.Description className="mt-2 text-[13px] text-[var(--wb-muted)]">Workbot replaces this computer with a fresh one. Its open apps, browser tabs and files are erased. Your chat and the files in Files are kept.</AlertDialog.Description>
+        <div className="mt-4 flex justify-end gap-2"><AlertDialog.Close className={button}>Cancel</AlertDialog.Close><button type="button" className={button} onClick={() => { setOpen(false); onRebuild(); }}>Rebuild</button></div>
+      </AlertDialog.Popup>
+    </AlertDialog.Portal>
+  </AlertDialog.Root>;
 }
 
 /** Workbot's computer glyph at the size of the empty screen; its lines write while the view connects (V6). */

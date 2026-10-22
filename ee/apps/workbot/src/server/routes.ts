@@ -227,7 +227,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   /** The runner's desktop codes in the person's words; anything else reads as a reconnectable outage. */
   const desktopFailure = (c: Context<AppEnv>, operation: string, code: string) => {
     console.error("[workbot] desktop unavailable", { operation, code })
-    if (code === "desktop_outdated") return c.json({ error: code, message: "Your computer needs an update before it can connect. Ask your workspace admin to update Workbot's computer." }, 409)
+    if (code === "desktop_outdated") return c.json({ error: code, message: "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." }, 409)
     return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
   }
 
@@ -240,7 +240,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     if (operation !== "viewer" && operation !== "action") return c.json({ error: "not_found" }, 404)
     const raw: unknown = await c.req.json().catch(() => null)
     const viewer = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean().default(false) }).strict().safeParse(raw)
-    const action = z.object({ action: z.enum(["continue", "pause", "resume"]) }).strict().safeParse(raw)
+    const action = z.object({ action: z.enum(["continue", "pause", "resume", "rebuild"]) }).strict().safeParse(raw)
     if (operation === "viewer" ? !viewer.success : !action.success) return c.json({ error: "invalid_request" }, 400)
     const workbot = workbotFor(member)
     const client = runnerClientFor(member)
@@ -271,7 +271,8 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       const body = action
       if (!body.success) return c.json({ error: "invalid_request" }, 400)
       if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
-      if (body.data.action === "pause") await workbot.stop(actorOf(member))
+      // Rebuilding deletes the VM under any running turn, so stop the turn first, as pausing does.
+      if (body.data.action === "pause" || body.data.action === "rebuild") await workbot.stop(actorOf(member))
       const result = await client.desktopAction(sessionId, body.data.action)
       return result.ok ? c.json({ ok: true }) : desktopFailure(c, operation, result.error)
     } catch (error) {

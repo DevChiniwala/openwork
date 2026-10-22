@@ -82,8 +82,8 @@ type EditorProps = {
   placeholder: string;
   onChange: (value: string) => void;
   onMentionQueryChange?: (query: string | null) => void;
-  /** The `#query` at the caret (task picker), or null. Omit to leave `#` as plain text. */
-  onSessionReferenceQueryChange?: (query: string | null) => void;
+  /** The `#query` at the caret (task picker) and the draft offset of its `#`, or null. Omit to leave `#` as plain text. */
+  onSessionReferenceQueryChange?: (trigger: { query: string; offset: number } | null) => void;
   /** A task reference chip was clicked. */
   onOpenSessionReference?: (reference: { workspaceId: string; sessionId: string }) => void;
   onSubmit: (options: { queue: boolean }) => void | Promise<void>;
@@ -997,9 +997,10 @@ function setPrompt(
 
 const TRIGGER_QUERY_RE = {
   "@": { before: /(?<!\S)@([^\s@]*)$/, after: /^[^\s@]*/ },
-  // `#` only opens the task picker at a word start and closes on a space, so
-  // Markdown headings (`# Title`, `## Title`) and plain `#` text stay text.
-  "#": { before: /(?<!\S)#([^\s#]*)$/, after: /^[^\s#]*/ },
+  // `#` opens the task picker at a word start. Task names have spaces, so the
+  // query may too, but not right after `#`: Markdown headings (`# Title`,
+  // `## Title`) stay text.
+  "#": { before: /(?<!\S)#((?:[^\s#][^#\n]*)?)$/, after: /^[^\s#]*/ },
 } as const;
 
 /** The `@query` or `#query` the caret is in, if any. */
@@ -1020,7 +1021,7 @@ function triggerQueryAtSelection(trigger: keyof typeof TRIGGER_QUERY_RE) {
   const match = text.slice(0, end).match(patterns.before);
   if (!match) return null;
   const remaining = text.slice(end).match(patterns.after)?.[0] ?? "";
-  return { node, start: end - match[0].length, end: end + remaining.length, query: match[1] ?? "" };
+  return { node, start: end - match[0].length, end: end + remaining.length, caret: end, query: match[1] ?? "" };
 }
 
 function mentionAtSelection() {
@@ -1029,6 +1030,14 @@ function mentionAtSelection() {
 
 function sessionReferenceQueryAtSelection() {
   return triggerQueryAtSelection("#");
+}
+
+/** The `#query` at the caret and where its `#` sits in the draft, so a dismissed list stays dismissed for that `#` only. */
+function sessionReferenceTriggerAtSelection() {
+  const match = sessionReferenceQueryAtSelection();
+  if (!match) return null;
+  const caret = $draftOffsetAtSelection();
+  return { query: match.query, offset: caret === null ? -1 : caret - (match.caret - match.start) };
 }
 
 /** Replace the `#query` at the caret with a task reference chip and a space. */
@@ -1787,7 +1796,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
     (state: Parameters<NonNullable<React.ComponentProps<typeof OnChangePlugin>["onChange"]>>[0]) => {
       state.read(() => {
         onMentionQueryChangeRef.current?.(mentionAtSelection()?.query ?? null);
-        onSessionReferenceQueryChangeRef.current?.(sessionReferenceQueryAtSelection()?.query ?? null);
+        onSessionReferenceQueryChangeRef.current?.(sessionReferenceTriggerAtSelection());
         const next = serializePromptFromRoot();
         if (next === valueRef.current) return;
         valueRef.current = next;

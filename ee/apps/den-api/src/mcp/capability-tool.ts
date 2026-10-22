@@ -5,23 +5,29 @@ import type { CapabilityMatch, CapabilityToolAnnotations } from "./search.js"
  * `inputSchema` for `execute_capability`'s `arguments`, optional
  * `outputSchema` and `annotations`, plus the Den details a client acts on
  * (kind, connection status, App binding, script path).
+ *
+ * It also keeps the older fields (method, path, summary, pathParams,
+ * queryParams, hasBody, bodySchema, querySchema, argumentsSchema, invocation,
+ * readOnly) because desktop releases from before `inputSchema` still read
+ * them and pass path, query, and body. Remove them once those have updated.
+ * A connection's `path` is its server URL, which can carry credentials, so it
+ * is left out; API route templates stay.
  */
-export type CapabilityToolMatch = Omit<CapabilityMatch, (typeof TRANSPORT_FIELDS)[number]> & {
+export type CapabilityToolMatch = Omit<CapabilityMatch, "annotations" | "path"> & {
+  path?: string
   description: string
   inputSchema: Record<string, unknown>
   annotations?: CapabilityToolAnnotations
 }
 
-/** How Den once described calling a match; `inputSchema` replaces all of them. */
-const TRANSPORT_FIELDS = [
-  "method", "path", "score", "summary", "pathParams", "queryParams", "hasBody",
-  "bodySchema", "querySchema", "argumentsSchema", "invocation", "readOnly", "annotations",
-] as const
-
 const NO_ARGUMENTS = { type: "object", additionalProperties: false }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isServerUrl(path: string): boolean {
+  return URL.canParse(path)
 }
 
 /**
@@ -58,9 +64,10 @@ function annotationsFor(match: CapabilityMatch): CapabilityToolAnnotations | und
 
 export function capabilityToolMatch(match: CapabilityMatch, httpArguments: boolean): CapabilityToolMatch {
   const annotations = annotationsFor(match)
-  const details = Object.fromEntries(Object.entries(match).filter(([key]) => !(TRANSPORT_FIELDS as readonly string[]).includes(key)))
+  const { annotations: _providerAnnotations, path, ...details } = match
   return {
     ...details,
+    ...(isServerUrl(path) ? {} : { path }),
     name: match.name,
     description: match.summary,
     inputSchema: inputSchemaFor(match, httpArguments),

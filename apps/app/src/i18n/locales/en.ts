@@ -100,6 +100,8 @@ export default {
   "composer.mentions_label": "Mentions",
   "composer.session_references_label": "Tasks",
   "composer.session_reference_archived": "Archived",
+  "composer.session_references_no_match": "No tasks match. Keep typing, or press Esc to close.",
+  "composer.session_references_empty": "No other tasks yet.",
   "composer.connections_mcps_label": "Connections (MCPs)",
   "composer.source_local": "Local",
   "composer.no_commands": "No commands found.",
