@@ -284,6 +284,10 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         .orderBy(desc(InvitationTable.createdAt))
         .for("update")
       const existingInvitation = existingInvitationRows.find((row) => row.status === "pending") ?? null
+      const now = new Date()
+      // An expired invitation stops counting as a user; resending it makes it
+      // count again, so it needs a seat like a new invitation.
+      const reactivatesExpiredInvitation = Boolean(existingInvitation && existingInvitation.expiresAt <= now)
 
       const existingMembers = await tx
         .select({ id: MemberTable.id })
@@ -313,7 +317,8 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         if (!refreshRole.ok) {
           return { status: "role_error" as const, validation: refreshRole }
         }
-      } else {
+      }
+      if (!existingInvitation || reactivatesExpiredInvitation) {
         const seatEligibility = await getOrganizationSeatAddEligibility(payload.organization.id)
         if (!seatEligibility.allowed) {
           return { status: "payment_required" as const, seatEligibility }
@@ -342,7 +347,6 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         }
       }
 
-      const now = new Date()
       const expiresAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 7)
       const invitationId = existingInvitation?.id ?? createInvitationId()
       const inviteToken = existingInvitation?.inviteToken && existingInvitation.expiresAt > now
@@ -442,6 +446,7 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         invitationId,
         invitationOrgMemberId,
         inviteToken,
+        reactivatesExpiredInvitation,
         refreshed: Boolean(existingInvitation),
       }
     })
@@ -478,7 +483,7 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         subscriptionType: "seat",
         currentCount: seatEligibility.currentCount,
         freeSeatCount: seatEligibility.freeSeatCount,
-        message: `This workspace includes ${seatEligibility.freeSeatCount} free seats. Start seat billing at ${invitationBillingUrl()} to invite more people.`,
+        message: `The Free plan is limited to ${seatEligibility.freeSeatCount} users, counting pending invitations. Upgrade to the Team plan at ${invitationBillingUrl()} to invite more people.`,
         billingUrl: invitationBillingUrl(),
       }, 402)
     }
@@ -490,12 +495,15 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
       invitationId,
       invitationOrgMemberId,
       inviteToken,
+      reactivatesExpiredInvitation,
       refreshed,
     } = invitationWrite
     addAuditRequestResource(c, { type: "invitation", id: invitationId })
 
-    if (createdOrgMemberId) {
-      await runPostOrganizationMemberChangeHooks({ organizationId: payload.organization.id, memberId: createdOrgMemberId, change: "added" })
+    // A new pending invitation, or a resent expired one, counts as a user again.
+    const billingMemberId = createdOrgMemberId ?? (reactivatesExpiredInvitation ? invitationOrgMemberId : null)
+    if (billingMemberId) {
+      await runPostOrganizationMemberChangeHooks({ organizationId: payload.organization.id, memberId: billingMemberId, change: "added" })
     }
 
     await finishLegacyAuditAction(capture, {

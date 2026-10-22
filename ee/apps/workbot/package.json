@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Workbot on its own address: one ongoing chat per member, signed in with Den, answered on the headless runner.",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=24.22.1 <25"
   },
   "scripts": {
     "dev": "WORKBOT_DEV=1 NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" tsx watch --ignore 'src/client/**' src/server/main.ts",
@@ -18,6 +18,7 @@
     "test:gateway-models": "tsx --conditions=development --test scripts/gateway-models.test.ts",
     "test:context": "tsx --conditions=development --test scripts/context.test.ts",
     "test:events": "tsx --conditions=development --test scripts/events.test.ts",
+    "test:steps": "tsx --conditions=development --test scripts/steps.test.ts",
     "test:session-cells": "tsx --conditions=development --test scripts/session-cells.test.ts",
     "test:activation": "tsx --conditions=development --test scripts/activation.test.ts"
   },

@@ -63,9 +63,13 @@ export async function createV2ContextBridge(hostRequest: (path: string, init?: R
       if (call.name === "openwork_skills") {
         return Response.json(await read("/experimental/connect/skills"));
       }
-      // Internal plugin read: one listed skill's SKILL.md for native delivery.
+      // Internal plugin read: listed skills' SKILL.md for native delivery.
       if (call.name === "openwork_skill_read") {
-        const input = z.object({ url: z.string().startsWith("skill://").max(2_048) }).parse(call.input);
+        const url = z.string().startsWith("skill://").max(2_048);
+        const input = z.union([
+          z.object({ url }).strict(),
+          z.object({ urls: z.array(url).min(1).max(150), use: z.boolean().optional() }).strict(),
+        ]).parse(call.input);
         return Response.json(await read("/experimental/connect/skills/read", { method: "POST", body: JSON.stringify(input) }));
       }
       const transport: OpenworkReadTransport = {

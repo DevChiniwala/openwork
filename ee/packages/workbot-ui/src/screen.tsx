@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Check, CircleAlert, Copy, FileText, Lock, Pencil } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Pencil } from "lucide-react";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
 import { OpenWorkMark } from "./mark";
@@ -22,6 +22,7 @@ import {
   type LiveText,
   type WorkbotAttachment,
   type WorkbotStep,
+  type WorkbotPage,
   type WorkbotTask,
   type WorkbotTurn,
 } from "./data";
@@ -36,7 +37,7 @@ import { ModelRecovery, AccessRecovery } from "./model-recovery";
 import { hasAnsweredTurn, WorkbotSetupChip } from "./activation";
 import { WorkbotCalendar } from "./calendar";
 import { WorkbotDocuments } from "./documents";
-import { WorkbotComputer } from "./computer";
+import { LiveGlimpse, openBrowserPage, WorkbotComputer } from "./computer";
 import { readBrowserSkillRunPrompt, type BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { readWorkbotCorrectionPrompt, workbotCorrectionPrompt, workbotViewContextSchema, type WorkbotViewContext } from "@openwork/types/workbot-context";
 import type { DocumentOpenOutcome, DocumentOpenRequest } from "@openwork/documents";
@@ -204,6 +205,12 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const editMessage = useEditWorkbotMessage();
   const uploads = { uploads: draft.uploads, add: composerState.add, remove: composerState.removeUpload, retry: composerState.retryUpload };
   const data = thread.data?.available ? thread.data : null;
+  // The pages Workbot opened in this chat's browser, oldest first: the Browser view lists them, each with its own link.
+  const browserPages = useMemo(() => {
+    const seen = new Map<string, WorkbotPage>();
+    for (const turn of data?.turns ?? []) for (const part of turn.parts) if (part.kind === "steps") for (const step of part.steps) for (const page of step.pages ?? []) { seen.delete(page.id); seen.set(page.id, page); }
+    return [...seen.values()];
+  }, [data?.turns]);
   useEffect(() => {
     if (!guided || !host.documents || !data) return;
     for (const turn of data.turns) {
@@ -336,7 +343,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} />}
+            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
@@ -365,7 +372,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );
@@ -601,7 +608,7 @@ type WorkbotTab = "home" | "calendar" | "documents" | "computer";
 
 function tabFromLocation(): WorkbotTab {
   const path = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") : "";
-  return path === "/computer" || path === "/browser" ? "computer" : path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
+  return path === "/computer" || path === "/browser" || path.startsWith("/browser/") ? "computer" : path === "/documents" ? "documents" : path === "/calendar" ? "calendar" : "home";
 }
 
 /** Home (the conversation) and Calendar, as paths so a reload or a shared link opens the same tab. */
@@ -1383,7 +1390,8 @@ function usedApps(steps: WorkbotStep[], starting: LiveText["working"] | null): U
     if (!used.some((existing) => existing.key === entry.key)) used.push(entry);
   };
   for (const step of steps) {
-    if (step.icon === "computer") add({ key: "computer", name: "my computer", computer: true });
+    if (step.icon === "computer" && step.surface === "browser") add({ key: "browser", name: "the browser", computer: true });
+    else if (step.icon === "computer") add({ key: "computer", name: "my computer", computer: true });
     else if (step.app) add({ key: step.app, name: step.app, computer: false });
   }
   if (starting?.on === "computer") add({ key: "computer", name: "my computer", computer: true });
@@ -1426,25 +1434,22 @@ const UPDATE_HOLD_MS = 1_600;
  */
 function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) {
   const used = usedApps(steps, null);
-  const computer = steps.filter((step) => step.icon === "computer");
-  const updates = computer.flatMap((step) => step.updates);
-  const latest = updates.at(-1) ?? null;
-  const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
   if (used.length === 0) return null;
   const others = used.filter((app) => !app.computer);
-  if (computer.length > 0) {
+  // The browser and the rest of its computer are separate cards, in the order Workbot used them; the newest is live.
+  const surfaces = [...new Set(steps.filter((step) => step.icon === "computer").map((step) => (step.surface === "browser" ? "browser" : "computer") as ComputerSurface))];
+  if (surfaces.length > 0) {
     return (
-      <div className="py-1 pl-1">
-        <WorkCard
-          title={live ? "Using my computer" : "Used my computer"}
-          detail={(live ? update : latest) ?? (live ? "Getting started" : "Done")}
-          running={live}
-          outcome={live ? null : "done"}
-          startedAt={computer.find((step) => step.startedAt)?.startedAt ?? null}
-          finishedAt={live ? null : ([...computer].reverse().find((step) => step.finishedAt)?.finishedAt ?? null)}
-          updates={live ? [] : updates}
-          action={<AppLogos apps={others} />}
-        />
+      <div className="flex flex-col gap-2 py-1 pl-1">
+        {surfaces.map((surface, index) => (
+          <SurfaceCard
+            key={surface}
+            surface={surface}
+            steps={steps.filter((step) => step.icon === "computer" && (step.surface === "browser") === (surface === "browser"))}
+            live={live && index === surfaces.length - 1}
+            others={index === surfaces.length - 1 ? others : []}
+          />
+        ))}
       </div>
     );
   }
@@ -1464,6 +1469,67 @@ function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) 
       </span>
       <span key={label} className={`truncate ${live ? "workbot-shimmer text-[13px]" : ""}`}>{label}</span>
     </p>
+  );
+}
+
+type ComputerSurface = "browser" | "computer";
+
+/** Opens the full view of Workbot's browser or computer, without reloading Workbot. */
+function openSurface(surface: ComputerSurface) {
+  window.history.pushState(null, "", `/${surface}${window.location.search}`);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+/**
+ * Work in Workbot's browser or on the rest of its computer, as one card: what it is doing now in its own words, and
+ * while it works a small live view of the screen (when the computer is on for the person). The browser card links
+ * the pages it opened.
+ */
+function SurfaceCard({ surface, steps, live, others }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[] }) {
+  const updates = steps.flatMap((step) => step.updates);
+  const latest = updates.at(-1) ?? null;
+  const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
+  const pages = steps.flatMap((step) => step.pages ?? []).filter((page, index, all) => all.findIndex((entry) => entry.id === page.id) === index);
+  const watchable = workbotHost().computer === true;
+  const name = surface === "browser" ? "the browser" : "my computer";
+  return (
+    <WorkCard
+      title={`${live ? "Using" : "Used"} ${name}`}
+      detail={(live ? update : latest) ?? (live ? (surface === "browser" ? "Opening the browser" : "Starting up") : "Done")}
+      running={live}
+      outcome={live ? null : "done"}
+      startedAt={steps.find((step) => step.startedAt)?.startedAt ?? null}
+      finishedAt={live ? null : ([...steps].reverse().find((step) => step.finishedAt)?.finishedAt ?? null)}
+      updates={live ? [] : updates}
+      action={<AppLogos apps={others} />}
+      footer={
+        <>
+          {live && watchable ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
+          {watchable && pages.length > 0 ? <BrowserPageLinks pages={pages} /> : null}
+        </>
+      }
+    />
+  );
+}
+
+/** The pages Workbot opened, each opening in its Browser view (/browser/<id>). */
+function BrowserPageLinks({ pages }: { pages: WorkbotPage[] }) {
+  return (
+    <ul aria-label="Pages Workbot opened" className="flex flex-wrap gap-1 px-2.5 pb-2.5 pt-2">
+      {pages.map((page) => (
+        <li key={page.id} className="min-w-0">
+          <a
+            href={`/browser/${page.id}${window.location.search}`}
+            title={page.url}
+            onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; event.preventDefault(); openBrowserPage(page.id); }}
+            className="inline-flex h-7 max-w-[15rem] items-center gap-1.5 rounded-full bg-[var(--wb-chip)] px-2.5 text-[12px] text-[var(--wb-text)] hover:bg-[var(--wb-bubble)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
+          >
+            <Globe size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" />
+            <span className="truncate">{page.title}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1669,6 +1735,8 @@ function WorkCard(props: {
   finishedAt: number | null;
   updates: string[];
   action?: ReactNode;
+  /** Shown under the card's row: a live view, links. */
+  footer?: ReactNode;
 }) {
   const now = useNow();
   const [open, setOpen] = useState(false);
@@ -1724,6 +1792,7 @@ function WorkCard(props: {
           ))}
         </ol>
       ) : null}
+      {props.footer}
     </div>
   );
 }

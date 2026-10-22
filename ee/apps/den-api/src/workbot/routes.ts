@@ -60,6 +60,8 @@ const sessionSchema = z.object({
   canSchedule: z.boolean(),
   computer: z.boolean().optional(),
   browserDemonstrations: z.boolean().optional(),
+  /** The Browser view streams the page with Chromium's screencast; off on older Dens. */
+  browserLiveView: z.boolean().optional(),
   /** Workbot shows its Calendar tab: Workbot is on. Older Dens omit it. */
   calendar: z.boolean().optional(),
   /** Connected document browsing; off on older Dens. */
@@ -383,6 +385,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         enabled: true,
         computer: features.computerUse && features.remoteComputers,
         browserDemonstrations: features.browserDemonstrations && features.computerUse && features.remoteComputers,
+        browserLiveView: features.browserLiveView && features.computerUse && features.remoteComputers,
         canSchedule,
         calendar: true,
         documents: features.workbotDocuments,

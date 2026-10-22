@@ -62,9 +62,15 @@ export function registerAdminOrganizationDetailRoutes<T extends { Variables: Aut
         c.header("Cache-Control", "no-store")
         const id = c.req.param("organizationId")
         if (!isDenTypeId("organization", id)) return c.json({ error: "invalid_request", message: "Invalid organization id." }, 400)
-        const detail = await organizationDetail(id, normalizeAdminPageRequest(c.req.valid("query")))
+        const request = normalizeAdminPageRequest(c.req.valid("query"))
+        if (insights) {
+          // Insights do not depend on the member page, so read both at once.
+          const [detail, report] = await Promise.all([organizationDetail(id, request), readAdminOrganizationInsights(id)])
+          if (!detail) return c.json({ error: "not_found", message: "Organization not found." }, 404)
+          return c.json({ ...detail, insights: report })
+        }
+        const detail = await organizationDetail(id, request)
         if (!detail) return c.json({ error: "not_found", message: "Organization not found." }, 404)
-        if (insights) return c.json({ ...detail, insights: await readAdminOrganizationInsights(id) })
         if (!usage) return c.json(detail)
         return c.json({ ...detail, usage: await readAdminOrganizationUsage(id, detail.members.map((member) => member.id)) })
       })
