@@ -182,20 +182,6 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  connectToolShapes: {
-    label: "Connect: MCP tool shapes in capability search",
-    description: "Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  desktopConnectStandardTools: {
-    label: "Desktop: standard Connect tools",
-    description: "OpenCode agents, including OpenWork Desktop, discover connection actions, Workflows and Apps as individual tools. Turning this off restores capability search without changing the connection URL.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
   desktopSignInReturn: {
     label: "Desktop: sign-in returns you to the same task",
     description: "Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.",
@@ -204,8 +190,8 @@ export const FEATURES = defineFeatures({
     default: false,
   },
   connectStandardTools: {
-    label: "Connect: standard tools for tool-search clients",
-    description: "Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.",
+    label: "Connect: standard tools",
+    description: "Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

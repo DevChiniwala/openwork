@@ -4814,8 +4814,6 @@
               "browserFloatingView",
               "remoteComputers",
               "remoteSessionSubagents",
-              "connectToolShapes",
-              "desktopConnectStandardTools",
               "desktopSignInReturn",
               "connectStandardTools"
             ]
@@ -5046,12 +5044,6 @@
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
-                    "connectToolShapes": {
-                      "type": "boolean"
-                    },
-                    "desktopConnectStandardTools": {
-                      "type": "boolean"
-                    },
                     "desktopSignInReturn": {
                       "type": "boolean"
                     },
@@ -5084,8 +5076,6 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "desktopSignInReturn",
                     "connectStandardTools",
                     "gatewayDashboard"
@@ -6120,120 +6110,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "connectToolShapes": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
-                    "desktopConnectStandardTools": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "desktopSignInReturn": {
                       "type": "object",
                       "properties": {
@@ -6368,8 +6244,6 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "desktopSignInReturn",
                     "connectStandardTools"
                   ],
@@ -6795,12 +6669,6 @@
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
-                    "connectToolShapes": {
-                      "type": "boolean"
-                    },
-                    "desktopConnectStandardTools": {
-                      "type": "boolean"
-                    },
                     "desktopSignInReturn": {
                       "type": "boolean"
                     },
@@ -6833,8 +6701,6 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "desktopSignInReturn",
                     "connectStandardTools",
                     "gatewayDashboard"
@@ -7869,120 +7735,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "connectToolShapes": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
-                    "desktopConnectStandardTools": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "desktopSignInReturn": {
                       "type": "object",
                       "properties": {
@@ -8117,8 +7869,6 @@
                     "browserFloatingView",
                     "remoteComputers",
                     "remoteSessionSubagents",
-                    "connectToolShapes",
-                    "desktopConnectStandardTools",
                     "desktopSignInReturn",
                     "connectStandardTools"
                   ],
@@ -34141,120 +33891,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "desktopSignInReturn": {
                           "type": "object",
                           "properties": {
@@ -34389,8 +34025,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "desktopSignInReturn",
                         "connectStandardTools"
                       ]
@@ -35515,120 +35149,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "desktopSignInReturn": {
                           "type": "object",
                           "properties": {
@@ -35763,8 +35283,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "desktopSignInReturn",
                         "connectStandardTools"
                       ]
@@ -35999,26 +35517,6 @@
                         ]
                       },
                       "remoteSessionSubagents": {
-                        "anyOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "connectToolShapes": {
-                        "anyOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "desktopConnectStandardTools": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -39171,12 +38669,6 @@
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
-                        "connectToolShapes": {
-                          "type": "boolean"
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "boolean"
-                        },
                         "desktopSignInReturn": {
                           "type": "boolean"
                         },
@@ -39209,8 +38701,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "desktopSignInReturn",
                         "connectStandardTools",
                         "gatewayDashboard"
@@ -40245,120 +39735,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "desktopSignInReturn": {
                           "type": "object",
                           "properties": {
@@ -40493,8 +39869,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "desktopSignInReturn",
                         "connectStandardTools"
                       ],
@@ -40669,12 +40043,6 @@
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
-                        "connectToolShapes": {
-                          "type": "boolean"
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "boolean"
-                        },
                         "desktopSignInReturn": {
                           "type": "boolean"
                         },
@@ -40707,8 +40075,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "desktopSignInReturn",
                         "connectStandardTools",
                         "gatewayDashboard"
@@ -41743,120 +41109,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "connectToolShapes": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
-                        "desktopConnectStandardTools": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "desktopSignInReturn": {
                           "type": "object",
                           "properties": {
@@ -41991,8 +41243,6 @@
                         "browserFloatingView",
                         "remoteComputers",
                         "remoteSessionSubagents",
-                        "connectToolShapes",
-                        "desktopConnectStandardTools",
                         "desktopSignInReturn",
                         "connectStandardTools"
                       ],
