@@ -1,10 +1,18 @@
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 
 import { BookCallForm } from "./book-call-form";
-import { LpSectionHeader } from "./lp-primitives";
+import { CoworkComparison } from "./cowork-comparison";
+import { LpArrowLink, LpSectionHeader } from "./lp-primitives";
 import { SiteFooter } from "./site-footer";
 import { SiteNav } from "./site-nav";
 import { enterpriseFaq } from "../lib/enterprise";
+import {
+  enterpriseControls,
+  enterpriseDataBoundary,
+  enterpriseDeployments,
+  enterpriseRollout,
+  type EnterpriseCard
+} from "../lib/enterprise-sections";
 import { TRUST_CENTER_URL } from "../lib/trust-center";
 
 type Props = {
@@ -12,65 +20,42 @@ type Props = {
   calUrl: string;
 };
 
-const controls = [
-  {
-    number: "01",
-    title: "Company identity",
-    detail: "Use SAML or OIDC single sign-on. Provision and deprovision access through SCIM, instead of managing another set of personal accounts."
-  },
-  {
-    number: "02",
-    title: "Explicit permissions",
-    detail: "Assign access to models, skills, and connections by role and team. Keep administration separate from the access employees need to do their work."
-  },
-  {
-    number: "03",
-    title: "Your approved providers",
-    detail: "Configure providers centrally, including AWS Bedrock. Give supported clients an organizational model path rather than distributing personal provider keys."
-  },
-  {
-    number: "04",
-    title: "Visibility into routed usage",
-    detail: "Review model usage and spend through the gateway. Understand the approved traffic without claiming visibility into tools that bypass it."
-  }
-];
+const body = "text-[15px] leading-[23px] text-[var(--lp-body)]";
+const section = "mt-28 scroll-mt-24 md:mt-36";
 
-const rollout = [
-  {
-    step: "Start with a person",
-    body: "Install per user. Connect company sign-in and an approved provider, then test one useful workflow with a small pilot group."
-  },
-  {
-    step: "Plan a 30-day trial",
-    body: "A proposed evaluation: validate permissions, review data flows, test identity lifecycle, and collect feedback from employees and IT."
-  },
-  {
-    step: "Expand in phases",
-    body: "Use the pilot findings to plan a few hundred seats, with the deployment path, support, and scope agreed before expansion."
-  }
-];
+/** Tonal icon card, same pattern as CompareCards on the compare pages. */
+function IconCard({ card, children }: { card: EnterpriseCard; children?: React.ReactNode }) {
+  const Icon = card.icon;
+  return (
+    <li className="flex flex-col rounded-[20px] bg-[var(--lp-tonal)] p-6">
+      <Icon aria-hidden="true" strokeWidth={1.5} className="h-5 w-5 text-[var(--lp-ink)]" />
+      <h3 className="mt-8 text-[17px] font-medium leading-[24px] tracking-[-0.01em]">{card.title}</h3>
+      <p className="mt-2 flex-1 text-[14.5px] leading-[22px] text-[var(--lp-body)]">{card.detail}</p>
+      {children}
+    </li>
+  );
+}
 
 /** Architecture, not a simulated product dashboard: no invented usage or states. */
 function EnterpriseArchitecture() {
+  const step = "flex min-h-[64px] flex-col justify-center rounded-[10px] bg-white px-4 py-3";
+  const hop = "flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--lp-muted)]";
   return (
-    <figure className="rounded-[24px] bg-[var(--lp-tonal)] p-6 sm:p-8">
-      <figcaption className="text-sm font-medium text-[var(--lp-muted)]">The approved model path</figcaption>
-      <div className="mt-7 border-b border-[var(--lp-border)] pb-6">
-        <p className="text-xl font-medium tracking-tight">Employee workspace</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--lp-body)]">OpenWork or OpenCode + plugin</p>
-        <p className="mt-3 text-xs text-[var(--lp-muted)]">Local files stay on the computer</p>
+    <figure className="flex w-full flex-col gap-2 rounded-[24px] bg-[var(--lp-tonal)] p-5 lg:w-[420px] lg:shrink-0">
+      <figcaption className="px-1 pb-1.5 text-sm text-[var(--lp-muted)]">The approved model path</figcaption>
+      <div className={step}>
+        <span className="text-[14px] font-medium text-[var(--lp-ink)]">Employee workspace</span>
+        <span className="text-xs text-[var(--lp-muted)]">OpenWork or OpenCode + plugin · Local files stay on the computer</span>
       </div>
-      <div className="ml-4 border-l border-[var(--lp-muted)] py-5 pl-5 text-xs leading-5 text-[var(--lp-body)]">
-        Prompts, responses, and selected file context
+      <div className={hop}><span aria-hidden="true">↓</span>Prompts, responses, and selected file context</div>
+      <div className="flex min-h-[64px] flex-col justify-center rounded-[10px] bg-[var(--lp-ink)] px-4 py-3 text-[var(--lp-page)]">
+        <span className="text-[14px] font-medium">OpenWork AI gateway</span>
+        <span className="text-xs opacity-80">Company SSO · Permissions · Usage</span>
       </div>
-      <div className="rounded-2xl bg-[var(--lp-ink)] px-6 py-5 text-[var(--lp-page)]">
-        <p className="text-lg font-medium">OpenWork AI gateway</p>
-        <p className="mt-2 text-sm leading-6">Company SSO · Permissions · Usage</p>
-      </div>
-      <div className="ml-4 border-l border-[var(--lp-muted)] py-5 pl-5 text-xs text-[var(--lp-body)]">Routed model requests</div>
-      <div className="border-t border-[var(--lp-border)] pt-5">
-        <p className="text-lg font-medium tracking-tight">Your approved model provider</p>
-        <p className="mt-2 text-sm text-[var(--lp-body)]">AWS Bedrock or another configured provider</p>
+      <div className={hop}><span aria-hidden="true">↓</span>Routed model requests</div>
+      <div className={step}>
+        <span className="text-[14px] font-medium text-[var(--lp-ink)]">Your approved model provider</span>
+        <span className="text-xs text-[var(--lp-muted)]">AWS Bedrock or another configured provider</span>
       </div>
     </figure>
   );
@@ -78,153 +63,135 @@ function EnterpriseArchitecture() {
 
 export function LandingEnterprise(props: Props) {
   const calHref = props.calUrl || "#book";
-  const calExternal = /^https?:\/\//.test(calHref);
+  const calProps = /^https?:\/\//.test(calHref) ? { target: "_blank", rel: "noreferrer" } : {};
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[var(--lp-page)] text-[var(--lp-ink)]">
       <SiteNav stars={props.stars} callUrl={props.calUrl} active="enterprise" mobilePrimaryHref="#book" mobilePrimaryLabel="Contact sales" />
       <main id="main-content" className="mx-auto w-full max-w-[1176px] px-6 pb-8">
-        <section aria-labelledby="enterprise-heading" className="grid gap-12 pb-16 pt-12 md:pt-20 lg:grid-cols-[1.2fr_1fr] lg:items-center lg:gap-16 lg:pb-24">
-          <div>
-            <p className="text-sm text-[var(--lp-muted)]">OpenWork Enterprise</p>
-            <h1 id="enterprise-heading" className="mt-5 text-[44px] font-light leading-[1.06] tracking-[-0.04em] sm:text-[56px] lg:text-[64px]">
-              AI your team wants.<br />
-              <span className="font-pixel">Control IT needs.</span>
+        <section aria-labelledby="enterprise-heading" className="flex flex-col gap-12 pb-4 pt-12 md:pt-20 lg:flex-row lg:items-end lg:gap-16">
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] text-[var(--lp-muted)]">OpenWork Enterprise</p>
+            <h1 id="enterprise-heading" className="mt-5 text-[clamp(2.5rem,4.4vw,3.25rem)] font-medium leading-[1.08] tracking-[-0.045em]">
+              <span className="block">AI your team wants.</span>
+              <span className="block">Control IT needs.</span>
             </h1>
-            <p className="mt-7 max-w-xl text-lg leading-7 text-[var(--lp-body)]">
-              Give employees an approved way to work with AI. Bring model traffic under company sign-in, permissions, and provider choice—without forcing everyone into the same agent.
+            <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-[var(--lp-body)] lg:text-lg">
+              Give employees an approved way to work with AI. Bring model traffic under company sign-in, permissions, and provider choice, without forcing everyone into the same agent.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <a href={calHref} target={calExternal ? "_blank" : undefined} rel={calExternal ? "noreferrer" : undefined} className="lp-pill-primary">Book a demo</a>
+              <a href={calHref} {...calProps} className="lp-pill-primary">Book a demo</a>
               <a href="#controls" className="lp-pill-secondary">Explore the controls</a>
             </div>
-            <div className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[var(--lp-muted)]">
-              <span>SAML / OIDC + SCIM</span>
-              <span>AWS Bedrock</span>
-              <span>Local-first desktop</span>
-            </div>
+            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-3">
+              {["SAML / OIDC + SCIM", "AWS Bedrock", "Local-first desktop"].map(item => (
+                <li key={item} className="flex items-center gap-2 text-[13px] text-[var(--lp-muted)]">
+                  <Check size={13} strokeWidth={2.6} className="shrink-0 text-[#047857]" aria-hidden="true" />
+                  {item}
+                </li>
+              ))}
+            </ul>
           </div>
           <EnterpriseArchitecture />
         </section>
 
-        <section aria-labelledby="shadow-ai-heading" className="grid gap-8 border-y border-[var(--lp-border)] py-12 md:grid-cols-[1fr_1.5fr] md:gap-20 md:py-16">
-          <div>
-            <p className="text-sm text-[var(--lp-muted)]">The shadow AI problem</p>
-            <h2 id="shadow-ai-heading" className="mt-4 text-[30px] font-light leading-tight tracking-tight md:text-[36px]">The work is already happening.<br />Give it an approved path.</h2>
+        <section aria-labelledby="shadow-ai-heading" className={section}>
+          <div id="shadow-ai-heading">
+            <LpSectionHeader label="The shadow AI problem" heading="The work is already happening. Give it an approved path." headingLines={["The work is already happening.", "Give it an approved path."]} />
           </div>
-          <div>
-            <p className="text-lg leading-8 text-[var(--lp-body)]">Personal AI accounts. Unmanaged API keys. Company context sent to providers IT never approved. Banning the tools doesn’t give people a better way to work.</p>
-            <p className="mt-5 text-base leading-7 text-[var(--lp-body)]">OpenWork connects practical agent workflows with organizational controls. Govern model traffic routed through your gateway, with clear visibility into what that path covers—and what it does not.</p>
-            <a href="/shadow-ai" className="mt-6 inline-block text-sm font-medium underline underline-offset-4">Understand shadow AI</a>
+          <div className="mt-6 grid max-w-[960px] gap-6 md:grid-cols-2 md:gap-10">
+            <p className={body}>Personal AI accounts. Unmanaged API keys. Company context sent to providers IT never approved. Banning the tools doesn’t give people a better way to work.</p>
+            <p className={body}>OpenWork connects practical agent workflows with organizational controls. Govern model traffic routed through your gateway, with clear visibility into what that path covers, and what it does not.</p>
           </div>
+          <div className="mt-6"><LpArrowLink href="/shadow-ai">Understand shadow AI</LpArrowLink></div>
         </section>
 
-        <section id="controls" aria-labelledby="controls-heading" className="mt-20 scroll-mt-8 md:mt-28">
-          <div className="grid gap-10 lg:grid-cols-[0.85fr_1.5fr] lg:gap-20">
-            <div>
-              <p className="text-sm text-[var(--lp-muted)]">One organizational control plane</p>
-              <h2 id="controls-heading" className="mt-4 text-[36px] font-light leading-tight tracking-tight md:text-[44px]">Choose the access.<br />Choose the models.</h2>
-              <a href="/ai-governance" className="mt-7 inline-block text-sm font-medium underline underline-offset-4">Explore AI governance</a>
+        <section id="controls" aria-labelledby="controls-heading" className={section}>
+          <div id="controls-heading">
+            <LpSectionHeader label="One organizational control plane" heading="Choose the access. Choose the models." headingLines={["Choose the access.", "Choose the models."]} right={<LpArrowLink href="/ai-governance">Explore AI governance</LpArrowLink>} />
+          </div>
+          <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {enterpriseControls.map(card => <IconCard key={card.title} card={card} />)}
+          </ul>
+        </section>
+
+        <section aria-labelledby="agents-heading" className={section}>
+          <div id="agents-heading">
+            <LpSectionHeader label="Agent choice, with clear boundaries" heading="Keep the tools. Know what’s connected." headingLines={["Keep the tools.", "Know what’s connected."]} right={<a href="/connect" className="lp-pill-secondary lp-pill-sm">Explore the MCP gateway</a>} />
+          </div>
+          <div className="mt-10 grid gap-6 md:grid-cols-2">
+            <div className="flex flex-col gap-3 rounded-[24px] bg-[var(--lp-tonal)] p-6 md:p-8">
+              <span className="inline-flex h-[22px] w-fit items-center rounded-full bg-[#E7F6EE] px-[9px] text-xs font-semibold text-[#047857]">AI gateway model access</span>
+              <h3 className="mt-2 text-[20px] font-medium tracking-[-0.01em]">OpenWork &amp; OpenCode</h3>
+              <p className={body}>Use organizational AI gateway models in OpenWork, or in OpenCode with the <code className="mono text-[13px]">opencode-openwork</code> plugin.</p>
             </div>
-            <ol>
-              {controls.map(control => (
-                <li key={control.number} className="grid grid-cols-[28px_1fr] gap-x-4 border-t border-[var(--lp-border)] py-6 first:pt-0 first:border-t-0">
-                  <span aria-hidden="true" className="mono pt-1 text-xs text-[var(--lp-muted)]">{control.number}</span>
-                  <div>
-                    <h3 className="text-lg font-medium tracking-tight">{control.title}</h3>
-                    <p className="mt-2 text-[15px] leading-7 text-[var(--lp-body)]">{control.detail}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <div className="flex flex-col gap-3 rounded-[24px] bg-[var(--lp-tonal)] p-6 md:p-8">
+              <span className="inline-flex h-[22px] w-fit items-center rounded-full px-[9px] text-xs font-semibold text-[#5E6877] shadow-[inset_0_0_0_1px_#D3DAE4]">MCP access is not model routing</span>
+              <h3 className="mt-2 text-[20px] font-medium tracking-[-0.01em]">Claude Code, Codex &amp; Cursor</h3>
+              <p className={body}>Connect shared skills and connections through the MCP gateway. AI gateway model integration for these clients is in progress.</p>
+            </div>
           </div>
         </section>
 
-        <section aria-labelledby="agents-heading" className="mt-20 rounded-[24px] bg-[var(--lp-tonal)] px-6 py-10 sm:p-10 md:mt-28 md:p-12">
-          <p className="text-sm text-[var(--lp-muted)]">Agent choice, with clear boundaries</p>
-          <h2 id="agents-heading" className="mt-4 max-w-2xl text-[36px] font-light leading-tight tracking-tight md:text-[44px]">Keep the tools.<br />Know what’s connected.</h2>
-          <div className="mt-10 divide-y divide-[var(--lp-border)]">
-            <div className="grid gap-4 pb-7 md:grid-cols-[1fr_1.5fr] md:gap-12">
-              <h3 className="text-xl font-medium">OpenWork &amp; OpenCode</h3>
-              <div>
-                <p className="text-[15px] leading-7 text-[var(--lp-body)]">Use organizational AI gateway models in OpenWork, or in OpenCode with the <code className="mono text-[13px]">opencode-openwork</code> plugin.</p>
-                <p className="mt-3 text-sm font-medium">AI gateway model access</p>
+        <CoworkComparison id="enterprise-comparison-heading" label="OpenWork vs Claude Cowork" heading="Feature parity. Zero lock-in." className="mt-28 block md:mt-36" />
+
+        <section aria-labelledby="data-heading" className={section}>
+          <div id="data-heading">
+            <LpSectionHeader label="A boundary you can explain" heading="Local files. A clear data boundary." headingLines={["Local files.", "A clear data boundary."]} right={<LpArrowLink href="/privacy">Read the privacy policy</LpArrowLink>} />
+          </div>
+          <div className="mt-10 grid gap-8 md:grid-cols-3 md:gap-10">
+            {enterpriseDataBoundary.map(item => (
+              <div key={item.title} className="border-t border-[var(--lp-ink)] pt-5">
+                <h3 className="text-[17px] font-medium tracking-[-0.01em]">{item.title}</h3>
+                <p className={`mt-3 ${body}`}>{item.body}</p>
               </div>
-            </div>
-            <div className="grid gap-4 pt-7 md:grid-cols-[1fr_1.5fr] md:gap-12">
-              <h3 className="text-xl font-medium">Claude Code, Codex &amp; Cursor</h3>
-              <div>
-                <p className="text-[15px] leading-7 text-[var(--lp-body)]">Connect shared skills and connections through the MCP gateway. AI gateway model integration for these clients is in progress.</p>
-                <p className="mt-3 text-sm font-medium">MCP access is not model routing</p>
-              </div>
-            </div>
-          </div>
-          <a href="/connect" className="lp-pill-secondary mt-8">Explore the MCP gateway</a>
-        </section>
-
-        <section aria-labelledby="data-heading" className="mt-20 grid gap-8 md:mt-28 md:grid-cols-[1fr_1.5fr] md:gap-20">
-          <div>
-            <p className="text-sm text-[var(--lp-muted)]">A boundary you can explain</p>
-            <h2 id="data-heading" className="mt-4 text-[36px] font-light leading-tight tracking-tight md:text-[44px]">Local files.<br />A clear data boundary.</h2>
-            <a href="/privacy" className="mt-7 inline-block text-sm font-medium underline underline-offset-4">Read the privacy policy</a>
-          </div>
-          <div className="space-y-6 text-[15px] leading-7 text-[var(--lp-body)]">
-            <p><strong className="font-medium text-[var(--lp-ink)]">On the employee’s computer.</strong> In the local desktop model-gateway setup, files and the workspace stay on the computer. Workspace processing sends SSO configuration and model traffic, not a copy of the workspace.</p>
-            <p><strong className="font-medium text-[var(--lp-ink)]">Through the model path.</strong> Prompts, responses, and file content selected as context travel through the gateway to your configured provider. Local-first does not mean a remote model never sees company data.</p>
-            <p><strong className="font-medium text-[var(--lp-ink)]">Review separately.</strong> Product analytics, diagnostics, update checks, optional cloud workers, and connected services have their own data flows. Review those alongside your provider and deployment configuration.</p>
+            ))}
           </div>
         </section>
 
-        <section aria-labelledby="deployment-heading" className="mt-20 border-t border-[var(--lp-border)] pt-10 md:mt-28">
-          <div className="grid gap-10 md:grid-cols-[1fr_1.5fr] md:gap-20">
-            <div>
-              <p className="text-sm text-[var(--lp-muted)]">Deployment, on your terms</p>
-              <h2 id="deployment-heading" className="mt-4 text-[36px] font-light leading-tight tracking-tight">Start on the laptop.<br />Choose the control plane.</h2>
-            </div>
-            <div className="divide-y divide-[var(--lp-border)]">
-              {[
-                { title: "Local-first desktop", body: "An agent workspace for macOS, Windows, and Linux. Start with a per-user install and connect the organization’s approved services.", href: "/download", link: "Download OpenWork" },
-                { title: "Cloud management", body: "Manage organizational access, models, shared skills, and connections from OpenWork’s control plane.", href: "/cloud", link: "Explore OpenWork Cloud" },
-                { title: "Managed private or self-hosted", body: "Discuss a managed private deployment, or review self-hosting requirements. Agree on infrastructure, operations, and responsibility boundaries before rollout.", href: "https://github.com/different-ai/openwork/blob/dev/docs/managed-deployments.md", link: "Review deployment documentation" }
-              ].map(deployment => (
-                <div key={deployment.title} className="py-6 first:pt-0">
-                  <h3 className="text-lg font-medium">{deployment.title}</h3>
-                  <p className="mt-2 text-[15px] leading-7 text-[var(--lp-body)]">{deployment.body}</p>
-                  <a href={deployment.href} className="mt-3 inline-block text-sm font-medium underline underline-offset-4">{deployment.link}</a>
-                </div>
-              ))}
-            </div>
+        <section aria-labelledby="deployment-heading" className={section}>
+          <div id="deployment-heading">
+            <LpSectionHeader label="Deployment, on your terms" heading="Start on the laptop. Choose the control plane." headingLines={["Start on the laptop.", "Choose the control plane."]} />
           </div>
+          <ul className="mt-10 grid gap-3 md:grid-cols-3">
+            {enterpriseDeployments.map(card => (
+              <IconCard key={card.title} card={card}>
+                <div className="mt-6"><LpArrowLink href={card.href}>{card.link}</LpArrowLink></div>
+              </IconCard>
+            ))}
+          </ul>
         </section>
 
-        <section aria-label="A proposed enterprise rollout" className="mt-20 md:mt-28">
+        <section aria-label="A proposed enterprise rollout" className={section}>
           <LpSectionHeader label="A practical evaluation" heading="Prove the fit. Then expand." />
           <ol className="mt-10 grid gap-8 md:grid-cols-3 md:gap-10">
-            {rollout.map((phase, index) => (
-              <li key={phase.step} className="border-t border-[var(--lp-border)] pt-5">
-                <span className="mono text-xs text-[var(--lp-muted)]">0{index + 1}</span>
-                <h3 className="mt-5 text-xl font-medium tracking-tight">{phase.step}</h3>
-                <p className="mt-3 text-[15px] leading-7 text-[var(--lp-body)]">{phase.body}</p>
+            {enterpriseRollout.map((phase, index) => (
+              <li key={phase.step} className="flex flex-col">
+                <div className="flex h-10 items-center border-b border-[var(--lp-ink)]">
+                  <span className="mono text-xs text-[var(--lp-muted)]">0{index + 1}</span>
+                </div>
+                <h3 className="mt-5 text-[17px] font-medium tracking-[-0.01em]">{phase.step}</h3>
+                <p className={`mt-3 ${body}`}>{phase.body}</p>
               </li>
             ))}
           </ol>
-          <p className="mt-6 text-sm leading-6 text-[var(--lp-muted)]">An evaluation plan, not a deployment guarantee. Timeline, scope, support, and commercial terms are agreed with your team.</p>
+          <p className="mt-6 text-[13px] leading-6 text-[var(--lp-muted)]">An evaluation plan, not a deployment guarantee. Timeline, scope, support, and commercial terms are agreed with your team.</p>
         </section>
 
-        <section aria-labelledby="trust-heading" className="mt-20 flex flex-col justify-between gap-7 border-y border-[var(--lp-border)] py-10 md:mt-28 md:flex-row md:items-center">
-          <div className="max-w-xl">
-            <p className="text-sm text-[var(--lp-muted)]">Review the evidence</p>
-            <h2 id="trust-heading" className="mt-3 text-[30px] font-light leading-tight tracking-tight">Your security review starts here.</h2>
-            <p className="mt-4 text-[15px] leading-7 text-[var(--lp-body)]">Use the Trust Center for current security materials and the source for implementation details. Bring your deployment questions to the evaluation.</p>
+        <section aria-labelledby="trust-heading" className="mt-28 flex flex-col justify-between gap-10 rounded-[24px] bg-[var(--lp-tonal)] px-7 py-12 md:mt-36 md:flex-row md:items-center md:px-14 md:py-[72px]">
+          <div className="max-w-[640px]">
+            <div className="text-[15px] text-[var(--lp-muted)]">Review the evidence</div>
+            <h2 id="trust-heading" className="mt-3 text-[34px] font-light leading-[41px] tracking-[-0.015em] md:text-[40px] md:leading-[48px]">Your security review starts here.</h2>
+            <p className={`mt-4 ${body}`}>Use the Trust Center for current security materials and the source for implementation details. Bring your deployment questions to the evaluation.</p>
           </div>
-          <div className="flex shrink-0 flex-col items-start gap-4">
+          <div className="flex shrink-0 flex-col items-start gap-3 sm:flex-row md:items-center">
             <a href={TRUST_CENTER_URL} target="_blank" rel="noreferrer" className="lp-pill-primary">Visit the Trust Center</a>
-            <a href="https://github.com/different-ai/openwork" className="text-sm font-medium underline underline-offset-4">Inspect the source</a>
+            <a href="https://github.com/different-ai/openwork" className="lp-pill-secondary">Inspect the source</a>
           </div>
         </section>
 
-        <section aria-labelledby="enterprise-faq-heading" className="mt-20 grid gap-8 md:mt-28 md:grid-cols-[1fr_1.5fr] md:gap-20">
-          <h2 id="enterprise-faq-heading" className="text-[36px] font-light tracking-tight">Before you roll out.</h2>
+        <section aria-labelledby="enterprise-faq-heading" className="mt-28 grid gap-8 md:mt-36 md:grid-cols-[1fr_1.5fr] md:gap-20">
+          <h2 id="enterprise-faq-heading" className="text-[36px] font-light leading-[42px] tracking-[-0.015em]">Before you roll out.</h2>
           <div className="divide-y divide-[var(--lp-border)] border-y border-[var(--lp-border)]">
             {enterpriseFaq.map(entry => (
               <details key={entry.question} className="group py-5">
@@ -238,13 +205,9 @@ export function LandingEnterprise(props: Props) {
           </div>
         </section>
 
-        <section aria-labelledby="contact-heading" className="mt-20 md:mt-28">
-          <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div>
-              <p className="text-sm text-[var(--lp-muted)]">Make an approved path worth using</p>
-              <h2 id="contact-heading" className="mt-3 text-[36px] font-light leading-tight tracking-tight md:text-[44px]">Bring IT. Bring a real workflow.</h2>
-            </div>
-            <a href={calHref} target={calExternal ? "_blank" : undefined} rel={calExternal ? "noreferrer" : undefined} className="lp-pill-primary self-start">Book a demo</a>
+        <section aria-labelledby="contact-heading" className={section}>
+          <div id="contact-heading" className="mb-8">
+            <LpSectionHeader label="Make an approved path worth using" heading="Bring IT. Bring a real workflow." right={<a href={calHref} {...calProps} className="lp-pill-primary">Book a demo</a>} />
           </div>
           <BookCallForm />
         </section>
