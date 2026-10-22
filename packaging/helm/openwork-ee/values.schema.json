@@ -228,6 +228,26 @@
               ],
               "description": "Connect: standard tools for tool-search clients: Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first. Renders DEN_FEATURE_CONNECT_STANDARD_TOOLS."
             },
+            "teamPlan": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Team plan checkout: Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan. Renders DEN_FEATURE_TEAM_PLAN."
+            },
+            "selfServeEnterprise": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Self-serve Enterprise: Owners can buy Enterprise by card at the planned per-person price. Renders DEN_FEATURE_SELF_SERVE_ENTERPRISE."
+            },
             "gatewayDashboard": {
               "enum": [
                 "",

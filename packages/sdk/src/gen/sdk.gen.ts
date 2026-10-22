@@ -1303,6 +1303,8 @@ export class DenClient extends HeyApiClient {
         connectToolShapes?: boolean | null;
         desktopConnectStandardTools?: boolean | null;
         connectStandardTools?: boolean | null;
+        teamPlan?: boolean | null;
+        selfServeEnterprise?: boolean | null;
       };
     },
     options?: Options<never, ThrowOnError>,

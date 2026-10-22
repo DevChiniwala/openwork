@@ -203,6 +203,20 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  teamPlan: {
+    label: "Team plan checkout",
+    description: "Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
+  selfServeEnterprise: {
+    label: "Self-serve Enterprise",
+    description: "Owners can buy Enterprise by card at the planned per-person price.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES

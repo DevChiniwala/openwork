@@ -47,6 +47,8 @@ config:
     connectToolShapes: ""           # default off · Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work.
     desktopConnectStandardTools: "" # default off · OpenCode agents, including OpenWork Desktop, discover connection actions, Workflows and Apps as individual tools. Turning this off restores capability search without changing the connection URL.
     connectStandardTools: ""        # default off · Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.
+    teamPlan: ""                    # default off (cloud only) · Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.
+    selfServeEnterprise: ""         # default off (cloud only) · Owners can buy Enterprise by card at the planned per-person price.
   # END GENERATED features
   tenancy:
     mode: single_org
