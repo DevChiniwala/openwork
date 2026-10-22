@@ -40,8 +40,13 @@ const stepSchema = z.object({
   startedAt: z.number().nullable(),
   finishedAt: z.number().nullable(),
   updates: z.array(z.string()).default([]),
+  /** Work in the computer's browser; absent for its other apps (and from older servers). */
+  surface: z.literal("browser").optional(),
+  /** Web pages it opened in the browser, each with a stable id for its link (/browser/<id>). */
+  pages: z.array(z.object({ id: z.string(), url: z.string(), title: z.string() })).optional(),
 });
 export type WorkbotStep = z.infer<typeof stepSchema>;
+export type WorkbotPage = NonNullable<WorkbotStep["pages"]>[number];
 const partSchema = z.discriminatedUnion("kind", [
   /** `step`: the model call the words came from, so the page keeps one bubble per call. Older servers omit it. */
   z.object({ kind: z.literal("text"), text: z.string(), step: z.number().optional() }),

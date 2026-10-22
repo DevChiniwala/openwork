@@ -79,6 +79,20 @@ export const DEFAULT_REPEAT_LIMITS: Required<RepeatLimits> = { maxWaitingMs: 10 
 export const STOP_REPEATING_INSTRUCTION =
   "You have made the same tool call several times and got the same result each time. Do not make that call again. Finish now with your final message: say what you were waiting for or what kept failing, what you have so far, and what is still needed."
 
+/**
+ * Added to the system prompt for the next step when the model's reply stopped at the output-token cap. Such a reply
+ * never ends the turn: without a complete tool call it is dropped and the step runs again. After `MAX_CUT_OFF_STEPS`
+ * cut-off replies in a row the turn fails with `output_limit`.
+ */
+export const CUT_OFF_INSTRUCTION =
+  "Your previous reply reached the output limit before it was finished; its unfinished part was discarded and not run. Send less in one reply: split long code, scripts or documents into several smaller tool calls (for example, write a file in parts, then run it)."
+export const MAX_CUT_OFF_STEPS = 3
+
+/** The system prompt for one step, with the notes the turn's state calls for. */
+function stepSystem(base: string, askedToStop: boolean, cutOffs: number) {
+  return [base, ...(askedToStop ? [STOP_REPEATING_INSTRUCTION] : []), ...(cutOffs > 0 ? [CUT_OFF_INSTRUCTION] : [])].join("\n\n")
+}
+
 const abortableSleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     if (signal.aborted) return reject(signal.reason)
@@ -990,6 +1004,8 @@ export class Runner {
     let answeredModel: string | undefined
     let toolCalls = 0
     let repeat: RepeatState = FRESH_REPEAT
+    // Replies in a row that stopped at the output-token cap (see CUT_OFF_INSTRUCTION).
+    let cutOffs = 0
     let waitBeforeNextStep = 0
     /** What a turn that failed unexpectedly threw, for its error report (its type and stack, never its content). */
     let thrown: unknown
@@ -1103,7 +1119,7 @@ export class Runner {
         try {
           const model = credentials.modelAccess ? this.scopedModel(credentials.modelAccess) : this.options.model
           result = await model.complete({
-            system: repeat.askedToStop ? `${setup.baseSystem}\n\n${STOP_REPEATING_INSTRUCTION}` : setup.baseSystem,
+            system: stepSystem(setup.baseSystem, repeat.askedToStop, cutOffs),
             messages,
             cacheAfter,
             tools: setup.toolSpecs,
@@ -1137,6 +1153,17 @@ export class Runner {
         steps += 1
         toolCalls += result.toolCalls.length
         store.addUsage(sessionId, messageId, result.usage)
+        cutOffs = result.cutOff ? cutOffs + 1 : 0
+        if (cutOffs >= MAX_CUT_OFF_STEPS) {
+          store.setTurnStatus(sessionId, messageId, "failed", "output_limit")
+          return
+        }
+        if (result.cutOff && result.toolCalls.length === 0) {
+          // Unfinished, not a final answer: it is dropped, and the next step is asked for less.
+          if (events) events.emit(sessionId, { type: "text", messageId, step: streamStep, delta: "", reset: true })
+          modelStep -= 1
+          continue
+        }
         store.appendMessage(sessionId, messageId, { role: "assistant", text: result.text, toolCalls: result.toolCalls })
         if (result.toolCalls.length === 0) {
           store.setTurnStatus(sessionId, messageId, "completed")
@@ -1613,6 +1640,8 @@ export class Runner {
       const repeatLimits = { ...DEFAULT_REPEAT_LIMITS, ...session?.repeats }
       let answer: PendingStep
       let outcomes: ToolResult[]
+      // Replies in a row that stopped at the output-token cap, this one included (see CUT_OFF_INSTRUCTION).
+      let cutOffs = 0
       let reactions: boolean
       if (state.pending) {
         // The step stopped while its tool calls ran: it finishes from the kept answer. A call without a recorded
@@ -1694,7 +1723,7 @@ export class Runner {
         let result: Awaited<ReturnType<ModelClient["complete"]>>
         try {
           result = await chosen.client.complete({
-            system: state.repeat.askedToStop ? `${setup.baseSystem}\n\n${STOP_REPEATING_INSTRUCTION}` : setup.baseSystem,
+            system: stepSystem(setup.baseSystem, state.repeat.askedToStop, state.cutOffs ?? 0),
             messages,
             cacheAfter,
             tools: setup.toolSpecs,
@@ -1724,6 +1753,19 @@ export class Runner {
           running.onSupersede = undefined
         }
         lane.answeredModel = result.model
+        cutOffs = result.cutOff ? (state.cutOffs ?? 0) + 1 : 0
+        if (cutOffs >= MAX_CUT_OFF_STEPS) {
+          lane.steps = state.steps + 1
+          return end("failed", "output_limit", { usage: result.usage })
+        }
+        if (result.cutOff && result.toolCalls.length === 0) {
+          // Unfinished, not a final answer: it is dropped, and the next step is asked for less.
+          events?.emit(sessionId, { type: "text", messageId, step: modelStep, delta: "", reset: true })
+          lane.steps = state.steps + 1
+          const next: StepState = { ...state, steps: state.steps + 1, cutOffs }
+          store.commitStep({ sessionId, messageId, usage: result.usage, outcome: { next: { dueAt: this.now(), state: next } } })
+          return { kind: "next" }
+        }
         if (result.toolCalls.length === 0) {
           lane.steps = state.steps + 1
           return end("completed", null, { messages: [{ role: "assistant", text: result.text, toolCalls: [] }], usage: result.usage })
@@ -1763,7 +1805,7 @@ export class Runner {
       // Same calls, same inputs, same results as the step before: waiting on something, or stuck.
       const checked = afterStep(state.repeat, answer.toolCalls, outcomes, repeatLimits, REPEAT_WAITS_MS, this.now())
       if (checked.stuck) return end("failed", "stuck_repeating", { messages, usage: answer.usage })
-      const next: StepState = { v: 1, steps, toolCalls, stretchStartedAt, repeat: checked.state, mcp: state.mcp, readOnly: state.readOnly }
+      const next: StepState = { v: 1, steps, toolCalls, stretchStartedAt, repeat: checked.state, mcp: state.mcp, readOnly: state.readOnly, ...(cutOffs ? { cutOffs } : {}) }
       store.commitStep({ sessionId, messageId, ...(await prepared(messages)), usage: answer.usage, outcome: { next: { dueAt: this.now() + checked.waitMs, state: next } } })
       return checked.waitMs ? { kind: "wait", ms: checked.waitMs } : { kind: "next" }
     } catch (error) {

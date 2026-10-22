@@ -26,7 +26,7 @@ node src/atlassian.mjs        # Open Jira, Open Confluence APIs + MCP    (PORT=3
 ATLASSIAN_BASE_URL=http://127.0.0.1:3991 node src/atlassian-web.mjs   # Open Jira / Open Confluence web UI (PORT=3992)
 ```
 
-No install step: the package uses Node built-ins only (Node 22.23+).
+No install step: the package uses Node built-ins only (stable Node.js 24.x, version 24.22.1 or newer within that major).
 
 | Service | Web | MCP | REST |
 |---|---|---|---|

@@ -90,7 +90,7 @@ test("a member asks about an open document and calendar without losing a draft",
     await user.click({ role: "button", label: "Hide workspace chat" });
     await user.resizeViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
     await user.click({ role: "button", label: "Close Project brief.txt" });
-    await user.click({ role: "button", label: "Discard changes" });
+    await user.click({ role: "button", label: "Don’t save" });
     await user.click({ role: "button", label: "Open workspace navigation" });
     await user.click({ role: "button", label: /^Home$/ });
     await user.type({ role: "textbox", label: "Message Workbot" }, "A question from Home");

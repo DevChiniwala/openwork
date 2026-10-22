@@ -21,7 +21,7 @@ const home = `# OpenWork
 
 - **Download for free** — [Desktop](https://openworklabs.com/download)
 - **Open in your browser** — [OpenWork Web](https://app.openworklabs.com)
-- **Team plans** — [Pricing](https://openworklabs.com/pricing) (first 5 Cloud seats free, then \\$10 per seat/mo; self-hosting free up to 5 users)
+- **Team plans** — [Pricing](https://openworklabs.com/pricing) (Free plan up to 5 users; Team \\$10 per user/mo; self-hosting free up to 5 users)
 - **Sign in to the hosted workspace** — [Cloud](https://app.openworklabs.com)
 - **SCIM / audit / procurement** — [Enterprise](https://openworklabs.com/enterprise)
 - **Docs** — [openworklabs.com/docs](https://openworklabs.com/docs)
@@ -41,7 +41,7 @@ const home = `# OpenWork
 A free, open-source desktop app (macOS, Windows, Linux) for doing work with AI agents on your own files. Built on OpenCode; an open-source alternative to Claude Cowork and Codex.
 
 ### Is OpenWork free?
-Yes — the desktop app is free and open source with bring-your-own keys. On OpenWork Cloud, Team includes your first 5 seats free, then \\$10 per seat/mo; self-hosting is free for organizations up to 5 users; Enterprise is custom.
+Yes — the desktop app is free and open source with bring-your-own keys. On OpenWork Cloud, the Free plan covers up to 5 users and Team is \\$10 per user/mo; self-hosting is free for organizations up to 5 users; Enterprise is custom.
 
 ### Which models does it support?
 Any model OpenCode supports: OpenAI, Anthropic, Google, local models — 50+ providers.
@@ -63,7 +63,7 @@ Backed by Y Combinator.
 
 const pricing = `# OpenWork pricing — free, team, and enterprise
 
-> OpenWork has three tiers: free open-source desktop, Team with the first 5 OpenWork Cloud seats free then \\$10 per seat/mo, and custom Enterprise. Self-hosting is free for organizations up to 5 users.
+> OpenWork has three tiers: free open-source desktop, a Free OpenWork Cloud plan for up to 5 users, Team at \\$10 per user/mo, and custom Enterprise. Self-hosting is free for organizations up to 5 users.
 
 ## Free
 
@@ -73,9 +73,9 @@ const pricing = `# OpenWork pricing — free, team, and enterprise
 - Free forever
 - CTA: [Get Started for free](https://app.openworklabs.com?mode=sign-up)
 
-## Team — \\$10 / seat / month
+## Team — \\$10 / user / month
 
-- First 5 seats free on OpenWork Cloud
+- Unlimited users (the Free plan is limited to 5)
 - API access
 - SSO / SAML
 - Extension Marketplace
@@ -193,7 +193,7 @@ Each \`/download/<platform>\` URL redirects to the installer in the latest stabl
 
 ## Joining a team?
 
-- New team: sign up at https://app.openworklabs.com?mode=sign-up (first 5 seats free), then follow the [team quickstart](https://openworklabs.com/docs/cloud/team-quickstart).
+- New team: sign up at https://app.openworklabs.com?mode=sign-up (Free plan up to 5 users), then follow the [team quickstart](https://openworklabs.com/docs/cloud/team-quickstart).
 - Existing team: click \`Joining a team? Sign in\` in the desktop app.
 
 ## For agents
@@ -209,7 +209,7 @@ const connect = `# OpenWork Connect
 
 - Org-level authentication, roles, allowlists, and audit apply to every call
 - Works in OpenWork and any MCP-compatible client
-- First 5 seats are free
+- Free plan for up to 5 users
 - [Get started free](https://app.openworklabs.com?mode=sign-up)
 - [Read the docs](https://openworklabs.com/docs)
 

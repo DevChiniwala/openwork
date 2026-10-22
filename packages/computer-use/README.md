@@ -162,7 +162,7 @@ Electron. They live in this package; the desktop imports its explicit exports.
 [Managed Daytona computer](../../docs/computer-use/managed-daytona.md) for its
 image, flags, lifecycle and current viewer limits.
 
-In a dedicated VM with the desktop running, Node 22+ can run
+In a dedicated VM with the desktop running, stable Node.js 24.x (24.22.1 or newer within that major) can run
 `scripts/prove-cloud-desktop.mjs`. Request its loopback `/run` endpoint, pause
 and resume the VM through the provider, then request `/after`. This checks a
 browser fill followed by a desktop keyboard save, shared takeover, screenshot

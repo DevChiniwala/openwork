@@ -61,6 +61,7 @@ import { preclaimScopeMiddleware } from "./middleware/preclaim-scope.js"
 import { auditRequestMiddleware } from "./audit/request-capture.js"
 import { isOperationalErrorPath, normalizeOperationalErrorResponse, operationalErrorResponse } from "./operational-errors.js"
 import { sanitizePublicResponseHeaders } from "./public-response-headers.js"
+import { isDraining } from "./drain-state.js"
 import { AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER } from "@openwork/types/automations"
 
 type AppVariables = RequestIdVariables & AuthContextVariables & Partial<UserOrganizationsContext> & Partial<OrganizationContextVariables> & Partial<MemberTeamsContext>
@@ -77,6 +78,7 @@ const readinessResponseSchema = z.object({
   checks: z.object({
     database: z.enum(["ok", "error"]),
   }),
+  draining: z.boolean().optional().meta({ description: "True while this instance shuts down and finishes its in-flight requests." }),
 }).meta({ ref: "DenApiReadinessResponse" })
 
 const openApiDocumentSchema = z.object({
@@ -262,7 +264,7 @@ app.get(
     tags: ["System"],
     security: [],
     summary: "Check den-api readiness",
-    description: "Verifies den-api can reach its database dependency.",
+    description: "Verifies den-api can reach its database dependency and is not shutting down.",
     responses: {
       200: jsonResponse("den-api is ready to serve traffic.", readinessResponseSchema),
       503: jsonResponse("den-api is not ready to serve traffic.", readinessResponseSchema),
@@ -270,13 +272,18 @@ app.get(
   }),
   publicRoute,
   async (c) => {
+    let database: "ok" | "error" = "ok"
     try {
       await db.execute(sql`select 1`)
-      return c.json({ ok: true, service: "den-api", checks: { database: "ok" } })
     } catch (error) {
       appLogger.error("readiness database check failed", { component: "readiness", error })
-      return c.json({ ok: false, service: "den-api", checks: { database: "error" } }, 503)
+      database = "error"
     }
+    // A draining instance still finishes in-flight work but must not look
+    // ready for new traffic.
+    if (isDraining()) return c.json({ ok: false, service: "den-api", checks: { database }, draining: true }, 503)
+    if (database === "error") return c.json({ ok: false, service: "den-api", checks: { database } }, 503)
+    return c.json({ ok: true, service: "den-api", checks: { database } })
   },
 )
 
