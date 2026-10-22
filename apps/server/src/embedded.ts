@@ -59,6 +59,12 @@ export type EmbeddedServerOptions = CliArgs & {
   anonymousInference?: ServerConfig["anonymousInference"];
   /** Desktop marks a brand-new install so it starts on OpenCode v2. */
   freshInstallEngine?: ServerConfig["freshInstallEngine"];
+  /**
+   * Desktop moves installs still on OpenCode v1 to v2 in the background (copy
+   * chats with a backup, switch when idle). Den's engineV2ForceUpgrade still
+   * stops and reverts it when the rollout is turned off.
+   */
+  engineAutoUpgrade?: boolean;
 };
 
 export type EmbeddedServerHandle = {
@@ -84,6 +90,11 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
   config.driveFileApproval = options.driveFileApproval;
   config.anonymousInference = options.anonymousInference;
   config.freshInstallEngine = options.freshInstallEngine;
+  if (options.engineAutoUpgrade !== undefined) {
+    config.engineAutoUpgrade = options.engineAutoUpgrade;
+    // A forced instance must also accept Den's "off" to revert.
+    if (options.engineAutoUpgrade) config.engineForcePolicy = true;
+  }
   config.resumeInterruptedTasks = options.resumeInterruptedTasks === true && options.manageOpencode === true && !config.opencodeBaseUrl;
   const logger = createServerLogger(config);
 
@@ -243,7 +254,9 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
         workspaceDirs: config.workspaces.map((workspace) => workspace.path).filter((path) => path.trim()),
       }));
       for (const { result } of seeded) {
-        if (!result.seeded && result.reason === "failed") {
+        if (result.seeded) {
+          logger.log("info", `Bundled engine dependencies seeded: true (${result.durationMs} ms).`);
+        } else if (result.reason === "failed") {
           logger.log("warn", "Bundled engine dependencies could not be prepared; using the engine installer.");
         }
       }

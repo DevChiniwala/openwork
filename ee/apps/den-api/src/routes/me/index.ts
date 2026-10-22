@@ -381,7 +381,7 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
         organizationId: organization.id,
         orgMemberId: currentMember.id,
       })
-      const features = await getOrganizationFeatures(organization.id)
+      const features = await getOrganizationFeatures(organization.id, { userId: currentMember.userId })
       const agentPermissions = { rules: await readAgentPermissionRulesForMember({ organizationId: organization.id, orgMemberId: currentMember.id }) }
       // The model new chats start with; only v2 desktops apply it. A failure leaves desktops on their own default.
       const defaultModel = await desktopConfigDefaultModel({ organizationId: organization.id, memberId: currentMember.id })
@@ -393,6 +393,7 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
         // Compatibility field for published desktops: Connect is always on.
         connectEnabled: true,
         liveProviderSync: features.liveProviderSync,
+        removeOpencodeZen: features.removeOpencodeZen,
         agentPermissions,
         ...(defaultModel ? { defaultModel } : {}),
         ...(Array.isArray(metadata.allowedDesktopVersions)

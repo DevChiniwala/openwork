@@ -4,11 +4,16 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, WebContentsView, clipboard, dialog, session, shell } from "electron";
+import { app, BrowserWindow, WebContentsView, clipboard, dialog, nativeImage, session, shell } from "electron";
 import {
+  AGENT_VIEWPORTS,
   BACKGROUND_TAB_VIEWPORT,
+  DEFAULT_AGENT_VIEWPORT,
+  agentViewportEmulationCommands,
+  agentViewportFor,
   backgroundTabEmulationCommands,
   createBrowserTabRegistry,
+  fitAgentViewport,
   foregroundTabEmulationCommands,
 } from "@openwork/browser-tabs";
 import { runDetachedTask } from "./process-resilience.mjs";
@@ -276,6 +281,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       const guard = details.resourceType === "mainFrame" ? taskHost.navigationGuard(tab?.tabId) : null;
       const request = { url: details.url, method: details.method, hasUpload: Boolean(details.uploadData?.length) };
       if (tab && details.resourceType !== "mainFrame") rememberRequest(tab, details.url);
+      // Browser tasks wait for requests an action started before reporting settled.
+      if (tab && details.resourceType !== "webSocket") tab.inFlight.set(details.id, Date.now());
       Promise.resolve().then(async () => {
         // Every request follows the website rules; only a page may ask first.
         const page = details.resourceType === "mainFrame";
@@ -325,6 +332,9 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
           callback({ cancel: true });
         });
     });
+    const finished = (details) => { [...browserTabs.values()].find((item) => item.view.webContents.id === details.webContentsId)?.inFlight.delete(details.id); };
+    browserSession.webRequest.onCompleted({ urls: ["<all_urls>"] }, finished);
+    browserSession.webRequest.onErrorOccurred({ urls: ["<all_urls>"] }, finished);
   }
   // tabId -> { tabId, view, favicon, background }. Order, ownership, the active
   // tab per conversation, and which conversation is on screen live in the
@@ -366,6 +376,9 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
   // Active proxy for the built-in browser session: { rules, username, password }.
   let browserProxy = null;
   let browserControlEnabled = true;
+  // The size tabs lock to while the agent controls them (AGENT_VIEWPORTS key).
+  /** @type {string} */
+  let agentViewportKey = DEFAULT_AGENT_VIEWPORT;
   let menuRequest = null;
   let menuShowSerial = 0;
   let linkChoiceRequest = null;
@@ -471,6 +484,10 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       applySurfacing();
       await tab.emulation;
       signal?.throwIfAborted();
+      await lockAgentViewport(tab);
+      signal?.throwIfAborted();
+      // Sites pick their phone pages from the first request's user agent.
+      if (agentViewportFor(tab.agentViewport).mobile) { await tab.view.webContents.loadURL(tab.view.webContents.getURL()); signal?.throwIfAborted(); }
       return tab;
     }
     catch (error) {
@@ -533,6 +550,9 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       ownerSessionId: registry.ownerOf(tabId),
       loadError: tab.loadError,
       browserTask: tab.browserTask,
+      agentViewport: tab.agentViewport
+        ? { key: tab.agentViewport, width: agentViewportFor(tab.agentViewport).width, height: agentViewportFor(tab.agentViewport).height, scale: tab.viewportScale }
+        : null,
       siteToolCount: Number.isInteger(tab.webMcpToolCount) ? tab.webMcpToolCount : 0,
       siteTools: Array.isArray(tab.webMcpTools) ? tab.webMcpTools : [],
       siteToolActivity: Array.isArray(tab.webMcpActivity) ? tab.webMcpActivity : [],
@@ -760,7 +780,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
           createBrowserTab(request.url, { ownerSessionId: request.ownerSessionId, initializeBlank: false });
         } else {
           const result = await openExternalUrl(request.url);
-          if (!result.ok) throw new Error(result.error);
+          // A slow browser is still opening the link; only a real failure needs a dialog.
+          if (!result.ok && !result.pending) throw new Error(result.error);
         }
       } catch (error) {
         if (isCurrent()) {
@@ -882,9 +903,21 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     allowed: browserTaskAllowed,
     openTab: openBrowserTab,
     navigate: (tab, url) => tab.view.webContents.loadURL(url),
-    changed: (tabId, activity) => { const tab = getBrowserTab(tabId); if (tab) { tab.thumbnailRevision = (tab.thumbnailRevision ?? 0) + 1; tab.browserTask = activity; sendBrowserState(); } },
+    changed: (tabId, activity) => {
+      const tab = getBrowserTab(tabId);
+      if (!tab) return;
+      tab.thumbnailRevision = (tab.thumbnailRevision ?? 0) + 1;
+      tab.browserTask = activity;
+      // A takeover hands the page back at the panel's own width.
+      if (activity.status === "paused") releaseAgentViewport(tab);
+      sendBrowserState();
+    },
     siteTools: (args) => webMcpBroker.listTools(args),
     runSiteTool: (args, options) => webMcpBroker.executeTool(args, options),
+    inFlight: (tab, since) => [...tab.inFlight.values()].filter((started) => started >= since).length,
+    prepare: (tab) => lockAgentViewport(tab),
+    inputScale: (tab) => tab.agentViewport && !tab.background ? tab.viewportScale : 1,
+    capture: (tab, viewport) => captureAgentViewport(tab, viewport),
   });
 
   function scheduleWebMcpToolCountRefresh(tabId) {
@@ -950,6 +983,12 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       deferBackground,
       operation: false, suspending: false, mediaPlaying: false, downloads: new Set(),
       domReady: false, emulation: Promise.resolve(),
+      // AGENT_VIEWPORTS key while the agent controls the tab, and the scale its
+      // emulation currently draws at inside the panel (1 when not scaled).
+      /** @type {string | null} */
+      agentViewport: null,
+      viewportScale: 1,
+      agentViewportQueued: false,
       /** @type {((error: Error | null) => void) | null} */
       finishSuspension: null,
       thumbnailRevision: 0,
@@ -960,6 +999,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       /** What the page requested since it opened (origin and path), for checking it against new website rules. */
       requests: new Set(),
       requestsOverflowed: false,
+      /** @type {Map<number, number>} Request id -> start time, until it completes or fails. */
+      inFlight: new Map(),
       // Set while a page reloads, or is replaced by a blank one, because new website rules restrict it.
       websiteRecheck: false,
       closingRestrictedPage: false,
@@ -975,6 +1016,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     view.webContents.once("dom-ready", () => {
       tab.domReady = true;
       if (tab.background) emulateBackgroundTab(tab);
+      else if (tab.agentViewport) emulateAgentViewport(tab);
     });
     view.webContents.on("media-started-playing", () => { tab.mediaPlaying = true; });
     view.webContents.on("media-paused", () => { tab.mediaPlaying = false; });
@@ -1221,7 +1263,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     if (webContents.isDestroyed()) return;
     tab.background = true;
     detachBrowserView(tab.view);
-    tab.view.setBounds({ x: 0, y: 0, ...BACKGROUND_TAB_VIEWPORT });
+    const viewport = tab.agentViewport ? agentViewportFor(tab.agentViewport) : BACKGROUND_TAB_VIEWPORT;
+    tab.view.setBounds({ x: 0, y: 0, width: viewport.width, height: viewport.height });
     backgroundBrowserWindow().contentView.addChildView(tab.view);
     if (tab.domReady) emulateBackgroundTab(tab);
   }
@@ -1239,10 +1282,15 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     queueBrowserTabEmulation(tab, "emulate background browser tab", async (isCurrent) => {
       if (!tab.background) return;
       if (!cdp.isAttached()) cdp.attach("1.3");
-      for (const { method, params } of backgroundTabEmulationCommands()) {
+      // Off screen the view is already the agent's size, so it draws unscaled.
+      const commands = tab.agentViewport
+        ? [...agentViewportEmulationCommands(agentViewportFor(tab.agentViewport), 1, process.versions.chrome), { method: "Emulation.setFocusEmulationEnabled", params: { enabled: true } }]
+        : backgroundTabEmulationCommands();
+      for (const { method, params } of commands) {
         if (!isCurrent() || !tab.background) return;
         await cdp.sendCommand(method, params);
       }
+      tab.viewportScale = 1;
     });
   }
 
@@ -1261,9 +1309,121 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
           await cdp.sendCommand(method, params);
         }
       } finally {
-        if (isCurrent() && !tab.background && cdp.isAttached()) cdp.detach();
+        if (isCurrent() && !tab.background && !tab.agentViewport && cdp.isAttached()) cdp.detach();
       }
     });
+    if (tab.agentViewport) emulateAgentViewport(tab);
+  }
+
+  // While the agent controls a tab it lays out at one fixed size, drawn scaled
+  // to fit the panel like Chrome's device mode. Resizing the panel then only
+  // rescales the page, so what the agent observed stays valid. The person's own
+  // browsing, and a takeover, fit the panel as before.
+  function agentViewportPlacement(tab) {
+    if (!tab.agentViewport || !lastBrowserBounds) return null;
+    return fitAgentViewport(agentViewportFor(tab.agentViewport), lastBrowserBounds);
+  }
+
+  function emulateAgentViewport(tab) {
+    // Panel resizes arrive every frame; one queued update reads the latest bounds.
+    if (tab.view.webContents.isDestroyed() || tab.agentViewportQueued) return;
+    tab.agentViewportQueued = true;
+    const cdp = tab.view.webContents.debugger;
+    queueBrowserTabEmulation(tab, "emulate agent browser viewport", async (isCurrent) => {
+      tab.agentViewportQueued = false;
+      if (tab.background || !tab.agentViewport || !tab.domReady) return;
+      if (!cdp.isAttached()) cdp.attach("1.3");
+      const scale = agentViewportPlacement(tab)?.scale ?? 1;
+      for (const { method, params } of agentViewportEmulationCommands(agentViewportFor(tab.agentViewport), scale, process.versions.chrome)) {
+        if (!isCurrent() || tab.background || !tab.agentViewport) return;
+        await cdp.sendCommand(method, params);
+        // Agent input converts with the scale Chromium now draws at.
+        if (method === "Emulation.setDeviceMetricsOverride") tab.viewportScale = scale;
+      }
+      sendBrowserState();
+    });
+  }
+
+  /**
+   * Lock a tab the agent is about to use to the chosen size; resolves once it
+   * is applied. A failed emulation leaves the page at the panel's size rather
+   * than failing the agent's operation.
+   */
+  function lockAgentViewport(tab) {
+    if (tab.agentViewport !== agentViewportKey) {
+      tab.agentViewport = agentViewportKey;
+      if (tab.background) enterBackgroundSize(tab);
+      else {
+        placeOnScreenView(tab);
+        emulateAgentViewport(tab);
+      }
+      sendBrowserState();
+    }
+    return tab.emulation.catch(() => {});
+  }
+
+  function releaseAgentViewport(tab) {
+    if (!tab.agentViewport) return;
+    tab.agentViewport = null;
+    tab.viewportScale = 1;
+    if (tab.background) enterBackgroundSize(tab);
+    else if (!tab.view.webContents.isDestroyed()) {
+      placeOnScreenView(tab);
+      const cdp = tab.view.webContents.debugger;
+      queueBrowserTabEmulation(tab, "release agent browser viewport", async (isCurrent) => {
+        if (tab.background || tab.agentViewport || !cdp.isAttached()) return;
+        try {
+          for (const { method, params } of [
+            { method: "Emulation.setTouchEmulationEnabled", params: { enabled: false } },
+            { method: "Emulation.setUserAgentOverride", params: { userAgent: "" } },
+            ...foregroundTabEmulationCommands(),
+          ]) {
+            if (!isCurrent() || tab.background || tab.agentViewport) return;
+            await cdp.sendCommand(method, params);
+          }
+        } finally {
+          if (isCurrent() && !tab.background && !tab.agentViewport && cdp.isAttached()) cdp.detach();
+        }
+      });
+    }
+    sendBrowserState();
+  }
+
+  /** A background tab's view and emulation follow its current viewport. */
+  function enterBackgroundSize(tab) {
+    const viewport = tab.agentViewport ? agentViewportFor(tab.agentViewport) : BACKGROUND_TAB_VIEWPORT;
+    tab.view.setBounds({ x: 0, y: 0, width: viewport.width, height: viewport.height });
+    if (tab.domReady) {
+      if (!tab.agentViewport) {
+        const cdp = tab.view.webContents.debugger;
+        queueBrowserTabEmulation(tab, "clear agent device emulation", async () => {
+          if (!tab.background || !cdp.isAttached()) return;
+          await cdp.sendCommand("Emulation.setTouchEmulationEnabled", { enabled: false });
+          await cdp.sendCommand("Emulation.setUserAgentOverride", { userAgent: "" });
+        });
+      }
+      emulateBackgroundTab(tab);
+    }
+  }
+
+  /** Size the on-screen tab's native view: the whole panel, or its fitted agent viewport. */
+  function placeOnScreenView(tab) {
+    const mainWindow = window();
+    if (!lastBrowserBounds || !mainWindow || !mainWindow.contentView.children.includes(tab.view)) return;
+    tab.view.setBounds(agentViewportPlacement(tab)?.bounds ?? lastBrowserBounds);
+  }
+
+  /** The agent's screenshot at the full emulated resolution, not the scaled pixels on screen. */
+  async function captureAgentViewport(tab, viewport) {
+    const cdp = tab.view.webContents.debugger;
+    if (!tab.agentViewport || !cdp.isAttached()) return null;
+    try {
+      await tab.emulation;
+      const { data } = await cdp.sendCommand("Page.captureScreenshot", { format: "png" });
+      return nativeImage.createFromBuffer(Buffer.from(data, "base64")).resize({ width: viewport.width, height: viewport.height }).toPNG({ scaleFactor: 1 });
+    } catch {
+      return null;
+    }
   }
 
   /** Re-evaluate every tab after the on-screen conversation changed. */
@@ -1479,10 +1639,11 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     tab.view.setVisible(!showsErrorPage(tab));
     detachIdleBrowserViews(tab.view);
     // Size before attaching so a restored view never flashes at stale bounds.
-    tab.view.setBounds(lastBrowserBounds);
+    tab.view.setBounds(agentViewportPlacement(tab)?.bounds ?? lastBrowserBounds);
     if (!mainWindow.contentView.children.includes(tab.view)) {
       mainWindow.contentView.addChildView(tab.view);
     }
+    if (tab.agentViewport && agentViewportPlacement(tab)?.scale !== tab.viewportScale) emulateAgentViewport(tab);
   }
 
   function selectBrowserTab(tabId) {
@@ -2001,6 +2162,23 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       browserControlEnabled = enabled === true;
       if (!browserControlEnabled) for (const tab of browserTabs.values()) taskHost.pause(tab.tabId, "Browser control disabled");
       return browserControlEnabled;
+    });
+    ipcMain.handle("openwork:browser:setAgentViewport", (event, key) => {
+      if (!isMainRenderer(event) || typeof key !== "string" || !Object.hasOwn(AGENT_VIEWPORTS, key)) return agentViewportKey;
+      agentViewportKey = key;
+      // Tabs the agent is using switch now; the agent observes the new layout.
+      for (const tab of browserTabs.values()) if (tab.agentViewport && tab.agentViewport !== key) lockAgentViewport(tab);
+      sendBrowserState();
+      return agentViewportKey;
+    });
+    ipcMain.handle("openwork:browser:endAgentTurn", (event, sessionId) => {
+      const owner = normalizeSessionId(sessionId);
+      if (!isMainRenderer(event) || !owner) return false;
+      for (const item of registry.tabsFor(owner)) {
+        const tab = browserTabs.get(item.tabId);
+        if (tab) releaseAgentViewport(tab);
+      }
+      return true;
     });
     ipcMain.handle("openwork:browser:tabContextMenu", (_event, tabId, point) => showBrowserTabContextMenu(tabId, point));
     ipcMain.handle("openwork:browser:chooseLinkDestination", (event, id, destination) => {

@@ -83,7 +83,43 @@ as_app() {
 }
 # Agent-driven pages cannot reach private networks. Native apps cannot open
 # network connections at all; the browser's CDP and VNC replies still work.
+# Native nftables UID matches also work on microVM kernels that omit xt_owner.
+# Use one atomic transaction and reserve control ports for trusted transports.
+guard_desktop_nft() {
+  browser_uid=$(id -u openwork-browser)
+  command_uid=""
+  app_uid=""
+  if id openwork-command >/dev/null 2>&1; then command_uid=$(id -u openwork-command); fi
+  if id openwork-app >/dev/null 2>&1; then app_uid=$(id -u openwork-app); fi
+  {
+    if nft list table inet openwork_desktop >/dev/null 2>&1; then
+      printf '%s\n' 'delete table inet openwork_desktop'
+    fi
+    printf '%s\n' 'add table inet openwork_desktop'
+    printf '%s\n' 'add chain inet openwork_desktop output { type filter hook output priority 0; policy accept; }'
+    if [ -n "$command_uid" ]; then
+      printf 'add rule inet openwork_desktop output meta skuid %s tcp dport { 5900-5903, 6080, 9222 } reject\n' "$command_uid"
+    fi
+    if [ -n "$app_uid" ]; then
+      printf 'add rule inet openwork_desktop output meta skuid %s reject\n' "$app_uid"
+    fi
+    printf 'add rule inet openwork_desktop output meta skuid %s ct state established,related accept\n' "$browser_uid"
+    for nameserver in $(awk '/^nameserver/ { print $2 }' /etc/resolv.conf); do
+      nameserver=${nameserver%%%*}
+      family=ip
+      case "$nameserver" in *:*) family=ip6 ;; esac
+      printf 'add rule inet openwork_desktop output meta skuid %s %s daddr %s meta l4proto { tcp, udp } th dport 53 accept\n' "$browser_uid" "$family" "$nameserver"
+    done
+    printf 'add rule inet openwork_desktop output meta skuid %s ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } reject\n' "$browser_uid"
+    printf 'add rule inet openwork_desktop output meta skuid %s ip6 daddr { ::/96, ::ffff:0:0/96, 64:ff9b::/96, 64:ff9b:1::/48, fc00::/7, fe80::/10 } reject\n' "$browser_uid"
+  } | nft -f -
+}
+
 guard_desktop_egress() {
+  if command -v nft >/dev/null 2>&1; then
+    guard_desktop_nft
+    return
+  fi
   uid=$(id -u openwork-browser)
   tools=iptables
   if command -v ip6tables >/dev/null && ip6tables -w -S OUTPUT >/dev/null 2>&1; then tools="iptables ip6tables"; fi
@@ -177,8 +213,17 @@ until curl --fail --silent --max-time 2 http://127.0.0.1:9222/json/version >/dev
 done
 if [ "${WORKBOT_DESKTOP_VNC:-0}" = 1 ]; then
   command -v x11vnc >/dev/null
-  window=$(xdotool search --onlyvisible --class chromium | head -n 1)
-  [ -n "$window" ] || { echo "The browser window is unavailable" >&2; exit 1; }
+  # Chromium opens and closes windows while it starts, and a search that walks the
+  # window tree then fails with BadWindow. Retry briefly instead of failing a cold boot.
+  window=
+  attempt=0
+  until [ -n "$window" ]; do
+    window=$(xdotool search --onlyvisible --class chromium 2>/dev/null | head -n 1) || window=
+    [ -n "$window" ] && break
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 25 ] || { echo "The browser window is unavailable" >&2; exit 1; }
+    sleep 0.2
+  done
   # Root's guest starts one inetd-mode viewer over private stdio. A process
   # binding a local VNC port can never substitute itself for that transport.
   printf '%s\n' "$window" > "$1/browser-window"

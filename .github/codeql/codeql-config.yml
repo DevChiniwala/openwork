@@ -1,7 +1,6 @@
 name: OpenWork CodeQL configuration
 
-# Default setup must load this file via the github-codeql-config-file repository
-# property. See docs/codeql-results.md for activation and verification.
+# Loaded by .github/workflows/codeql.yml. See docs/codeql-results.md.
 paths-ignore:
   # Entire eval trees, including fixtures, helpers, and shared eval packages.
   - '**/evals/**'

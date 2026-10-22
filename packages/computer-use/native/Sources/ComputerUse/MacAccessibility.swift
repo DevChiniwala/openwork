@@ -88,9 +88,16 @@ struct AppIdentity {
         let protected: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable",
             "com.mitchellh.ghostty", "com.apple.ScriptEditor2", "com.apple.systempreferences",
             "com.apple.SecurityAgent", "com.apple.loginwindow", "com.apple.keychainaccess",
-            "com.apple.Passwords", "com.1password.1password", "com.agilebits.onepassword7"]
-        // Never the host apps either: an agent must not grant itself access or approve its own requests.
-        return !protected.contains(id) && !id.hasPrefix("com.differentai.openwork") && !id.hasPrefix("com.differentai.opencoworker")
+            "com.apple.Passwords", "com.1password.1password", "com.agilebits.onepassword7",
+            // Other terminals, and editors and automation apps that run shell commands or scripts.
+            "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm", "co.zeit.hyper", "org.tabby",
+            "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium", "com.visualstudio.code.oss",
+            "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "dev.zed.Zed", "dev.zed.Zed-Preview",
+            "com.panic.Nova", "com.apple.dt.Xcode", "com.apple.Automator", "com.apple.shortcuts"]
+        // Every JetBrains IDE has a terminal. Never the host apps either: an agent must not grant
+        // itself access or approve its own requests.
+        return !protected.contains(id) && !id.hasPrefix("com.jetbrains.") && !id.hasPrefix("com.google.android.studio")
+            && !id.hasPrefix("com.differentai.openwork") && !id.hasPrefix("com.differentai.opencoworker")
             && !id.hasPrefix("com.openwork") && !id.hasPrefix("com.openai")
     }
 }
@@ -463,8 +470,9 @@ final class MacAccessibility {
     }
 
     /// `region` is window-local points (top-left origin); nil captures the whole window.
+    /// `jpegQuality` encodes JPEG instead of PNG; `maxLongSide` caps the image's longer edge.
     func capture(target: WindowTarget, app: AppIdentity, bounds: CGRect, state: WindowState, region: CGRect? = nil, maxScale: CGFloat = 1,
-                 check: () throws -> Void = {}) async throws -> (Data, Int, Int, Int64) {
+                 maxLongSide: CGFloat = 1600, jpegQuality: CGFloat? = nil, check: () throws -> Void = {}) async throws -> (Data, Int, Int, Int64) {
         try state.requireCapture()
         guard Geometry.valid(bounds) else { throw UseError("invalid_geometry", "The window has invalid capture bounds.", next: "observe") }
         try Task.checkCancellation(); try check()
@@ -477,7 +485,7 @@ final class MacAccessibility {
         guard Geometry.valid(source), CGRect(origin: .zero, size: bounds.size).contains(source) else {
             throw UseError("invalid_arguments", "The region must lie inside the window.", next: "observe")
         }
-        let ratio = min(maxScale, 1600 / max(source.width, source.height))
+        let ratio = min(maxScale, maxLongSide / max(source.width, source.height))
         config.width = max(1, Int(source.width * ratio))
         config.height = max(1, Int(source.height * ratio))
         if let region { config.sourceRect = region }
@@ -510,7 +518,8 @@ final class MacAccessibility {
                 y: CGFloat(image.height) - (clipped.maxY - captured.minY) * yScale,
                 width: clipped.width * xScale, height: clipped.height * yScale).insetBy(dx: -2, dy: -2))
         }
-        guard let redacted = context.makeImage(), let data = NSBitmapImageRep(cgImage: redacted).representation(using: .png, properties: [:]) else {
+        guard let redacted = context.makeImage(), let data = jpegQuality.map({ NSBitmapImageRep(cgImage: redacted).representation(using: .jpeg, properties: [.compressionFactor: $0]) })
+                ?? NSBitmapImageRep(cgImage: redacted).representation(using: .png, properties: [:]) else {
             throw UseError("capture_failed", "Could not encode this window.", next: "observe")
         }
         return (data, image.width, image.height, capturedAt)

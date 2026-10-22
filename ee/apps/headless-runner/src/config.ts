@@ -109,6 +109,10 @@ const configSchema = z.object({
   HEADLESS_COMPUTER_SNAPSHOT: z.string().min(1).optional(),
   HEADLESS_COMPUTER_PAUSE_SECONDS: z.coerce.number().int().min(10).default(300),
   HEADLESS_COMPUTER_KEEP_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  /** true keeps each conversation's computer (paused, memory intact) until removed, instead of deleting it after KEEP_DAYS unused. */
+  HEADLESS_COMPUTER_PERSISTENT: z.enum(["true", "false"]).default("false"),
+  /** Freestyle desktop: the domain the viewer is published under; any unused style.dev subdomain needs no DNS. */
+  HEADLESS_COMPUTER_DOMAIN: z.string().regex(/^(?=.{1,40}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/, "HEADLESS_COMPUTER_DOMAIN must be a lowercase domain of at most 40 characters").optional(),
   /**
    * Optional error reports to Sentry (see error-reporting.ts). Unset, nothing is sent anywhere: self-hosted runners
    * ship without one. The release defaults to `headless-runner@<HEADLESS_RUNNER_VERSION>`.
@@ -246,6 +250,7 @@ function computerConfig(value: z.infer<typeof configSchema>): Config["computer"]
   if (!apiKey) throw new Error(`Invalid headless-runner configuration: HEADLESS_COMPUTER=${value.HEADLESS_COMPUTER} needs ${value.HEADLESS_COMPUTER === "daytona" ? "DAYTONA_API_KEY" : "FREESTYLE_API_KEY"}`)
   if (value.HEADLESS_COMPUTER === "daytona" && !value.HEADLESS_COMPUTER_SNAPSHOT) throw new Error("Daytona computers need HEADLESS_COMPUTER_SNAPSHOT (snapshot:build:daytona)")
   if (value.HEADLESS_COMPUTER === "daytona" && value.HEADLESS_COMPUTER_DESKTOP === "true" && value.HEADLESS_COMPUTER_CLASS !== "linux-vm") throw new Error("Daytona desktop computers require HEADLESS_COMPUTER_CLASS=linux-vm for memory-preserving pause and snapshots")
+  if (value.HEADLESS_COMPUTER === "freestyle" && value.HEADLESS_COMPUTER_DESKTOP === "true" && !value.HEADLESS_COMPUTER_SNAPSHOT) throw new Error("Freestyle desktop computers need HEADLESS_COMPUTER_SNAPSHOT (snapshot:build:freestyle-desktop)")
   return {
     kind: value.HEADLESS_COMPUTER,
     apiKey,
@@ -257,6 +262,8 @@ function computerConfig(value: z.infer<typeof configSchema>): Config["computer"]
     snapshot: value.HEADLESS_COMPUTER_SNAPSHOT,
     idlePauseMs: value.HEADLESS_COMPUTER_PAUSE_SECONDS * 1000,
     keepDays: value.HEADLESS_COMPUTER_KEEP_DAYS,
+    persistent: value.HEADLESS_COMPUTER_PERSISTENT === "true",
+    ...(value.HEADLESS_COMPUTER_DOMAIN ? { endpointDomain: value.HEADLESS_COMPUTER_DOMAIN } : {}),
   }
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { demonstrationReplySchema, type DemonstrationCommand } from "@openwork/types/browser-demonstration"
 
 /**
  * The typed client for the headless runner (ee/apps/headless-runner): the one place that knows its routes,
@@ -57,6 +58,8 @@ export const headlessModelAccessSchema = z.strictObject({
   }),
   apiKey: z.string().min(1).max(4096),
   protocol: z.enum(["anthropic", "openai", "openai-responses"]),
+  /** Trusted route's upstream identity. The persisted selection still pins its free/paid access domain. */
+  model: z.string().trim().min(1).max(512).optional(),
 })
 export type HeadlessModelAccess = z.infer<typeof headlessModelAccessSchema>
 
@@ -245,7 +248,7 @@ export type RunnerRepeatLimits = { maxWaitingMs?: number; maxIdenticalFailures?:
  * the computer must be configured on the runner too), so a caller that never asks (Automations) never gets any of
  * them. Slack asks for reactions and tasks where `slackWorkbotReplies` is on.
  */
-export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?: boolean; reactions?: boolean; tasks?: boolean }
+export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?: boolean; reactions?: boolean; tasks?: boolean; documentNavigation?: boolean }
 
 /**
  * Who a conversation belongs to and how it is shown to the model: `owner` (the caller's key for one person) and `ref`
@@ -261,6 +264,7 @@ const capabilityFields = (input: RunnerCapabilities & RunnerSessionSettings) => 
   ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
   ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
   ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
+  ...(input.documentNavigation !== undefined ? { documentNavigation: input.documentNavigation } : {}),
   ...(input.owner ? { owner: input.owner } : {}),
   ...(input.ref ? { ref: input.ref } : {}),
   ...(input.timeZone ? { timeZone: input.timeZone } : {}),
@@ -303,7 +307,13 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       if (status !== 200 || !parsed.success) return { ok: false as const, status, error: errorCode(payload, "desktop_unavailable") }
       return { ok: true as const, value: parsed.data }
     },
-    async desktopAction(sessionId: string, action: "continue" | "pause" | "resume") {
+    async browserDemonstration(sessionId: string, command: DemonstrationCommand) {
+      const { status, payload } = await request(deps, "POST", `${sessionPath(sessionId)}/desktop/demonstration`, command, 180_000)
+      const parsed = demonstrationReplySchema.safeParse(payload)
+      if (status !== 200 || !parsed.success) return { ok: false as const, status, error: errorCode(payload, "teaching_unavailable") }
+      return { ok: true as const, value: parsed.data }
+    },
+    async desktopAction(sessionId: string, action: "continue" | "pause" | "resume" | "rebuild") {
       const { status, payload } = await request(deps, "POST", `${sessionPath(sessionId)}/desktop/action`, { action }, 180_000)
       return { ok: status === 200, error: errorCode(payload, "desktop_unavailable") }
     },
@@ -344,10 +354,17 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       }
       const extras = { ...(input.repeats ? { repeats: input.repeats } : {}), ...capabilityFields(input) }
       let { status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...extras })
+      // An older runner has no document-navigation setting: the conversation keeps its other settings and offers links.
+      let compatible: Record<string, unknown> = extras
+      if (unknownSetting(status, payload) && input.documentNavigation !== undefined) {
+        const { documentNavigation: _navigation, ...rest } = compatible
+        compatible = rest
+        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
+      }
       // An older runner has no desktop setting. Omitting an explicit off value preserves side-chat settings.
       if (unknownSetting(status, payload) && input.desktop === false) {
-        const { desktop, ...compatible } = extras
-        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
+        const { desktop: _desktop, ...rest } = compatible
+        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...rest }))
       }
       // A runner older than per-session capabilities or settings rejects them: keep the conversation, without them.
       if (unknownSetting(status, payload) && Object.keys(extras).length && !input.strict) ({ status, payload } = await request(deps, "PUT", sessionPath(id), base))

@@ -32,7 +32,8 @@ test("existing desktop inventory returns only the live upgrade policy for the ru
     }
     const isolated = await den.request(isolatedToken, "PUT", "/v1/session-runners/inventory", { body: inventory })
     assert.equal(isolated.status, 200, summary(isolated))
-    assert.deepEqual(field(isolated.body, "enginePolicy"), { upgrade: false })
+    // Another organization keeps the deployment default (on) whatever this one sets.
+    assert.deepEqual(field(isolated.body, "enginePolicy"), { upgrade: true })
   }
 })
 

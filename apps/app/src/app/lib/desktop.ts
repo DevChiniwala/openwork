@@ -48,6 +48,7 @@ import type {
   WorkspaceList,
 } from "./desktop-types";
 import type {
+  AgentViewportKey,
   BrowserPanelOwnerPayload,
   BrowserPanelTab,
   BrowserStatePayload,
@@ -109,7 +110,7 @@ declare global {
         getPathForFile?: (file: File) => string;
       };
       shell?: {
-        openExternal?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
+        openExternal?: (url: string) => Promise<{ ok: boolean; pending?: boolean; error?: string } | void>;
         relaunch?: () => Promise<void>;
       };
       system?: {
@@ -225,6 +226,10 @@ declare global {
         setProxy?: (proxy?: string | null) => Promise<BrowserProxyState>;
         getProxy?: () => Promise<BrowserProxyState>;
         setControlEnabled?: (enabled: boolean) => Promise<boolean>;
+        /** The size tabs lay out at while the agent controls them, drawn scaled to fit the panel. */
+        setAgentViewport?: (key: AgentViewportKey) => Promise<AgentViewportKey>;
+        /** The conversation's turn ended: its tabs fit the panel again. */
+        endAgentTurn?: (sessionId: string) => Promise<boolean>;
         /** The member's agent permission rules for websites, applied to every page the built-in browser opens; null while they are being verified for an organization that uses them, which opens none. */
         setAgentPermissionRules?: (rules: DesktopAgentPermissionRule[] | null) => Promise<boolean>;
         showTabContextMenu?: (tabId: string, point?: { x: number; y: number }) => Promise<void>;
@@ -511,19 +516,32 @@ export function assertDesktopWebUrl(url: string): string {
   return parsed.toString();
 }
 
-export async function openDesktopUrl(url: string): Promise<void> {
+/**
+ * "opening" means the system browser was asked and has not confirmed yet. Slow
+ * machines (virtual desktops, endpoint security) can take a minute to show it;
+ * that is not a failure, and asking again would only add another tab.
+ */
+export type DesktopUrlOpenStatus = "opened" | "opening";
+
+export async function openDesktopUrlWithStatus(url: string): Promise<DesktopUrlOpenStatus> {
   const safeUrl = assertDesktopWebUrl(url);
   const openExternal = window.__OPENWORK_ELECTRON__?.shell?.openExternal;
   if (openExternal) {
     const result = await openExternal(safeUrl);
     if (result && result.ok === false) {
+      if (result.pending) return "opening";
       throw new Error(result.error ?? "Failed to open browser");
     }
-    return;
+    return "opened";
   }
   if (typeof window !== "undefined") {
     window.open(safeUrl, "_blank", "noopener,noreferrer");
   }
+  return "opened";
+}
+
+export async function openDesktopUrl(url: string): Promise<void> {
+  await openDesktopUrlWithStatus(url);
 }
 
 export async function openDesktopPath(target: string): Promise<void> {
@@ -677,6 +695,7 @@ const {
   openworkServerInfo,
   openworkServerRestart,
   runtimeBootstrap,
+  runtimeStatus,
   engineInfo,
   pickDirectory,
   pickFile,
@@ -718,6 +737,7 @@ export {
   openworkServerInfo,
   openworkServerRestart,
   runtimeBootstrap,
+  runtimeStatus,
   engineInfo,
   pickDirectory,
   pickFile,

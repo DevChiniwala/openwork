@@ -67,9 +67,23 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  connectionMcpServers: {
+    label: "Connect: an MCP server for each connection",
+    description: "Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  agentConnectionRemoval: {
+    label: "Agents remove connections",
+    description: "People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -102,6 +116,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotUsageRecovery: {
+    label: "Workbot: usage limits and upgrades",
+    description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   automationCalendar: {
     label: "Calendar: desktop app",
     description: "Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.",
@@ -109,16 +130,31 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  engineV2ForceUpgrade: {
-    label: "Upgrade to OpenCode v2",
-    description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle.",
+  removeOpencodeZen: {
+    label: "Remove OpenCode Zen models",
+    description: "Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
   },
+  engineV2ForceUpgrade: {
+    label: "Upgrade to OpenCode v2",
+    description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. On by default; turning it off stops the move and returns force-moved installs to v1.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: true,
+  },
   computerUse: {
     label: "Computer use",
     description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+
+  browserDemonstrations: {
+    label: "Workbot: teach browser tasks",
+    description: "Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -142,6 +178,13 @@ export const FEATURES = defineFeatures({
   remoteSessionSubagents: {
     label: "Desktop: tasks on other computers as sub-agents",
     description: "A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  connectStandardTools: {
+    label: "Connect: standard tools",
+    description: "Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

@@ -1904,7 +1904,7 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
 
     const totalFreeSeats = Number(freeSeatsDialog.totalFreeSeats);
     if (!Number.isInteger(totalFreeSeats) || totalFreeSeats < DEFAULT_FREE_SEAT_COUNT) {
-      setError(`Free seats must be a whole number at least ${DEFAULT_FREE_SEAT_COUNT}.`);
+      setError(`The Free plan user limit must be a whole number, at least ${DEFAULT_FREE_SEAT_COUNT}.`);
       return;
     }
 
@@ -1917,7 +1917,7 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
       });
 
       if (!response.ok) {
-        setError(getErrorMessage(nextPayload, `Could not update free seats for ${freeSeatsDialog.org.name}.`));
+        setError(getErrorMessage(nextPayload, `Could not update the Free plan user limit for ${freeSeatsDialog.org.name}.`));
         return;
       }
 
@@ -2318,10 +2318,10 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
                         {org.memberCount} / {org.seatLimit} seats
                       </span>
                       <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                        {org.freeSeatCount} free
+                        Free plan up to {org.freeSeatCount}
                       </span>
                       <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                        {org.billableSeatCount} chargeable
+                        {org.billableSeatCount} billed on Team
                       </span>
                     </div>
                   </div>
@@ -2331,12 +2331,12 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
                     <MetaCell label="Plan source" value={formatProvider(org.plan.source)} />
                     <MetaCell label="Members" value={String(org.memberCount)} />
                     <div>
-                      <p className="text-xs font-medium text-slate-500">Free seats</p>
+                      <p className="text-xs font-medium text-slate-500">Free plan user limit</p>
                       <div className="mt-1 flex items-center gap-2">
                         <p className="text-sm text-slate-700">{org.freeSeatCount}</p>
                         <button
                           type="button"
-                          aria-label={`Edit free seats for ${org.name}`}
+                          aria-label={`Edit the Free plan user limit for ${org.name}`}
                           onClick={() => setFreeSeatsDialog({ org, totalFreeSeats: String(org.freeSeatCount) })}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
                         >
@@ -2664,14 +2664,14 @@ export function DenAdminPanel({ initialPayload, section }: { initialPayload: unk
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Organization billing</p>
             <h2 id="free-seats-dialog-title" className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-slate-950">
-              Edit free seats
+              Edit Free plan user limit
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Set the total number of free seats for {freeSeatsDialog.org.name}. The default {DEFAULT_FREE_SEAT_COUNT} seats stay included; OpenWork saves only the additional seats in organization metadata.
+              How many users {freeSeatsDialog.org.name} can have before it must upgrade to the Team plan. This only moves the upgrade point: the Team plan still bills every user. The default is {DEFAULT_FREE_SEAT_COUNT}; OpenWork saves only the additional users in organization metadata.
             </p>
 
             <label className="mt-5 grid gap-2">
-              <span className="text-xs font-medium text-slate-500">Total free seats</span>
+              <span className="text-xs font-medium text-slate-500">Users allowed on the Free plan</span>
               <input
                 type="number"
                 min={DEFAULT_FREE_SEAT_COUNT}

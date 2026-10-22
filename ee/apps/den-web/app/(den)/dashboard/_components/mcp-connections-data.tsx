@@ -88,6 +88,8 @@ export type ExternalMcpConnection = {
   createdByName?: string | null;
   /** Whether the signed-in member added it; they can always edit or remove it. */
   createdByYou?: boolean;
+  /** The server's answer to whether the signed-in member can remove it now. Older servers omit it. */
+  canRemove?: boolean;
   updatedAt: string | null;
   connectedForMe: boolean;
   needsReconnect?: boolean;
@@ -663,9 +665,9 @@ export function mcpConnectionsQueryOptions(orgId: string | null, scope: External
   });
 }
 
-export function useMcpConnections(scope: ExternalMcpConnectionScope = "manageable") {
+export function useMcpConnections(scope: ExternalMcpConnectionScope = "manageable", options: { refetchOnMount?: "always" } = {}) {
   const { orgId } = useOrgDashboard();
-  return useQuery({ ...mcpConnectionsQueryOptions(orgId, scope), enabled: Boolean(orgId) });
+  return useQuery({ ...mcpConnectionsQueryOptions(orgId, scope), enabled: Boolean(orgId), ...options });
 }
 
 export function mcpConnectionPresetsQueryOptions() {

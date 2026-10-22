@@ -18,6 +18,7 @@ import { getOrganizationFeatures } from "./features.js"
 import { publicRoute } from "./middleware/index.js"
 import { registerAdminMcpRoutes } from "./mcp/admin.js"
 import { registerAgentMcpRoutes } from "./mcp/agent.js"
+import { registerConnectionServerRoutes } from "./mcp/connection-server.js"
 import { registerExternalConnectionProxyRoutes } from "./mcp/external-connection-proxy.js"
 import { registerMcpRoutes } from "./mcp/index.js"
 import type { MemberTeamsContext, OrganizationContextVariables, UserOrganizationsContext } from "./middleware/index.js"
@@ -306,6 +307,7 @@ registerMcpTokenRoutes(app)
 registerMcpRoutes(app)
 registerAgentMcpRoutes(app)
 registerExternalConnectionProxyRoutes(app)
+registerConnectionServerRoutes(app)
 registerAdminMcpRoutes(app)
 registerTelemetryRoutes(app)
 
@@ -322,7 +324,7 @@ configureCloudWorkflowExecutor(async ({ organizationId, ownerMemberId, automatio
   )).limit(1)
   const userId = members[0]?.userId
   if (!userId) return { ok: false, message: "The Automation owner is no longer active.", retryable: false }
-  const organizationFeatures = await getOrganizationFeatures(normalizedOrganizationId)
+  const organizationFeatures = await getOrganizationFeatures(normalizedOrganizationId, { userId })
   const member = await resolveMcpMemberIdentity({ userId, organizationId })
   if (!member) return { ok: false, message: "The Automation owner is no longer active.", retryable: false }
   const catalog = await getCatalog(app as unknown as Hono, undefined)

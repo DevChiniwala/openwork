@@ -152,3 +152,37 @@ test("rollout off preserves a saved v2 engine choice", async () => {
     assert.equal(readEngineV2PreviewState(config).chatRouting, true);
   });
 });
+
+test("a person's explicit switch back to v1 sticks: the background upgrade leaves it alone", async () => {
+  await profile(async (config, dir) => {
+    // Unreadable history would make any upgrade attempt fail loudly.
+    writeFileSync(join(dir, "v1.db"), "not a SQLite database");
+    writeFileSync(join(dir, "engine-v2-preview.json"), JSON.stringify({
+      enabled: false, chatRouting: false, engineOrigin: "manual", engineChangedAt: "2026-10-01T12:00:00.000Z",
+    }));
+    const engine = createEngineV2Preview({ config, autoUpgradeError: () => assert.fail("a manual v1 choice must not be upgraded") });
+    try {
+      engine.start();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(engine.status().chatRouting, false);
+      assert.equal(engine.status().migration.state === "error", false);
+      assert.equal(readEngineV2PreviewState(config).autoUpgradeRetry, undefined);
+    } finally { await engine.stop(); }
+  });
+});
+
+test("an install that never chose an engine is still moved to v2 in the background", async () => {
+  await profile(async (config, dir) => {
+    writeFileSync(join(dir, "v1.db"), "not a SQLite database");
+    // Legacy v1 state: no origin and no recorded choice.
+    writeFileSync(join(dir, "engine-v2-preview.json"), JSON.stringify({ enabled: false, chatRouting: false }));
+    const errors: string[] = [];
+    const engine = createEngineV2Preview({ config, autoUpgradeError: error => errors.push(error) });
+    try {
+      engine.start();
+      for (let check = 0; check < 100 && errors.length === 0; check++) await new Promise(resolve => setTimeout(resolve, 5));
+      assert.equal(errors.length, 1, "the upgrade was attempted (and failed safely on unreadable history)");
+      assert.equal(engine.status().chatRouting, false, "a failed attempt keeps v1");
+    } finally { await engine.stop(); }
+  });
+});

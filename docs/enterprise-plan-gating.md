@@ -14,8 +14,8 @@ companies (managed deployment, skill development, MCP consulting).
 
 | Plan | Price | Includes |
 |---|---|---|
-| Free | $0 | Open-source desktop app, BYO keys; first 5 Cloud seats |
-| Team | $10 / seat / month | Unlimited seats, SSO/SAML, API access, marketplace/plugin management, distributed keys |
+| Free | $0 | Open-source desktop app, BYO keys; Cloud limited to 5 users |
+| Team | $10 / user / month | Unlimited users, SSO/SAML, API access, marketplace/plugin management, distributed keys |
 | Enterprise | Custom | Everything in Team, plus: SCIM, Desktop policies & version controls, enforced SSO (`requireSso`), analytics, audit log, managed deployment (self-hosted or hosted by us), custom skill development, MCP consulting, rollout support, custom commercial terms |
 
 SSO/SAML is a Team feature: the `sso` entitlement is granted to the `team` and
@@ -45,6 +45,14 @@ Gated (return HTTP 402 without the entitlement):
   policies and assignments (`routes/org/desktop-policies.ts`)
 - Enterprise: `PATCH /v1/org` **only when the patch touches** `requireSso` or
   `allowedDesktopVersions` (`routes/org/core.ts` → `orgs.ts:updateOrganizationSettings`)
+- Enterprise (`scim`): `POST /v1/scim/token` and SCIM user creation
+  (`POST /api/auth/scim/v2/Users`).
+- Team or Enterprise (`sso`): automatic sign-up through SSO, and joining by
+  signing in with an email on the organization's verified SSO domain
+  (`identity-provisioning.ts`). Outside Enterprise these also respect the Free
+  plan user limit, like invitations. Invited people can always sign in with SSO.
+- `DEN_PLAN_GATING_ENABLED` is a den-api environment variable; den-web only
+  reads the resulting `entitlements` from `GET /v1/org`.
 
 Never gated:
 
@@ -55,7 +63,7 @@ Never gated:
 - All `GET` endpoints (admins can always see their config).
 - All `DELETE` endpoints (`DELETE /v1/sso`, `DELETE /v1/desktop-policies/:id`)
   — downgrading/removing must always be possible.
-- SCIM token usage for an already-provisioned connection.
+- SCIM deprovisioning and updates for an already-provisioned connection.
 
 This guarantees zero breakage: nothing that runs today stops running. The only
 new friction is on *changing* enterprise config without a plan.
@@ -163,9 +171,10 @@ version controls".
 
 ## Open questions
 
-- Do we gate SCIM token *generation* too? (Suggested: yes, same entitlement as
-  SSO, since it's part of identity provisioning.)
 - Enterprise self-serve checkout vs. sales-led only (suggested: sales-led
   first; the CTA is already a Cal.com booking).
-- Stripe billing does not yet set `plan.tier = "team"` for paid Team orgs. Set it
-  before enabling `DEN_PLAN_GATING_ENABLED`, or Team orgs lose SSO management.
+- Stripe billing sets `plan: { tier: "team", source: "stripe" }` while an
+  organization's Team plan (seat) subscription is active, trialing or past due,
+  and returns it to Free when it ends. Admin-set, grandfathered and Enterprise
+  plans are never changed by Stripe. Existing paid orgs pick this up on their
+  next Stripe subscription event.

@@ -7,13 +7,18 @@ branch also includes Documents; its `workbotDocuments` rollout remains independe
 
 The two views use one conversation computer:
 
-- **Browser** streams the Chromium window, including its tabs and address bar.
-- **Computer** streams the entire Linux desktop.
+- **Browser** (`/browser`) streams the Chromium window, including its tabs and address bar.
+- **Computer** (`/computer`) streams the entire Linux desktop.
 - **Take control** interrupts Workbot's current turn, pauses both browser and
   computer tools, and enables native mouse/keyboard input through noVNC.
 - **Return to Workbot** ends the manual connection and releases the tools.
 - **Pause** suspends the VM; reopening the tab leaves it paused until **Resume**.
   Memory, browser tabs and unsaved applications survive VM pause/resume.
+- **Rebuild computer** appears when the computer won't connect. After the person
+  confirms, Workbot stops the current turn and the runner deletes the VM and
+  creates a fresh one from the configured snapshot. The VM's disk, open apps and
+  browser tabs are erased; the chat and its kept Files stay. This is also how a
+  person moves an existing computer onto a rebuilt snapshot.
 
 The main Workbot conversation's existing `hc-…` computer owns both views. The
 viewer does not create a second computer or accept a sandbox/session id from the
@@ -67,11 +72,55 @@ HEADLESS_COMPUTER_SNAPSHOT=workbot-desktop
 DAYTONA_TARGET=<the snapshot's region>
 ```
 
-Keep `DAYTONA_API_KEY` in the runner's existing secret configuration. Build the
-runner normally; the headless computer build bundles the guest bridge and copies
-its startup helper. On first desktop use they are installed into the member's
-existing computer. Older computers need the desktop packages and patched Node 24.x (24.22.1 or newer) before
-they can open a stream; this change does not replace an existing VM or its files.
+Keep `DAYTONA_API_KEY` in the runner's existing secret configuration and set
+`DAYTONA_API_URL=https://app.daytona.io/api`. On celld, these settings must also
+be in the `CELLD_RUNNER_VARS` secret of the `celld-production` GitHub environment:
+Render service variables alone are not Worker bindings. Deploy with the existing
+runner workflow and wait for every node to adopt the bundle. Keep its compatibility
+and real-turn checks enabled.
+
+The headless computer build embeds the same guest identity in the image and
+runner bundle, so celld needs no local package asset files. The identity covers
+the files esbuild bundles into the guest, the versions of the packages it
+bundles, and the files the image installs (`scripts/desktop-identity.mjs`). The
+rest of the lockfile, Mac-only code and tests do not change it. The root-owned
+bridge is already installed in the snapshot; it rejects incompatible runners.
+The runner then logs the bridge's reason and Workbot tells the person their
+computer needs an update (`desktop_outdated`) instead of asking them to
+reconnect. Existing computers and their files are not replaced automatically:
+after a snapshot upgrade, each person can use **Rebuild computer**, which erases
+that computer's disk, so tell people to keep anything they need in Files first.
+
+### Freestyle instead of Daytona
+
+Freestyle runs the same desktop from a snapshot captured while the desktop is
+already up, so a new computer resumes in seconds instead of booting it. Build it
+from a checkout whose guest matches the runner you deploy, then point the runner
+at the printed slug:
+
+```bash
+pnpm --filter @openwork-ee/headless-computer build
+FREESTYLE_API_KEY=... pnpm --filter @openwork-ee/headless-computer snapshot:build:freestyle-desktop
+```
+
+```dotenv
+HEADLESS_COMPUTER=freestyle
+HEADLESS_COMPUTER_DESKTOP=true
+HEADLESS_COMPUTER_SNAPSHOT=<printed workbot-desktop-freestyle-… slug>
+# Optional: keep each conversation's computer until removed (default: delete after KEEP_DAYS unused).
+HEADLESS_COMPUTER_PERSISTENT=true
+# Optional: publish the viewer under a domain verified on the Freestyle account (default style.dev).
+HEADLESS_COMPUTER_DOMAIN=computers.example.com
+```
+
+Keep `FREESTYLE_API_KEY` in the runner's secrets. Each desktop computer
+publishes only its viewer port, at a random host under that domain; the guest's
+single-use, origin-bound viewer tickets still gate every connection. Freestyle
+pauses a computer with its memory after the runner's idle period, and resumes it
+for the next turn. The builder installs the desktop on Freestyle's Ubuntu base,
+with Chromium for Testing in place of Debian's package and patched Node 24.x
+(24.22.1 or newer). Rebuild the snapshot and existing computers to adopt the
+updated runtime; changing runner configuration does not patch an existing VM.
 
 ## Transport and rollout
 
@@ -89,10 +138,21 @@ mode; noVNC's `viewOnly` setting also disables accidental input. Both manual
 streams and structured tools operate the same broad desktop. Browser processes
 run as an unprivileged account with Chromium's sandbox and a protected X cookie.
 Workbot's model and connected-app tokens are not passed to the desktop.
-The member's VM has broad browser, native and shell access, including local
-web apps. This slice does not enforce the desktop app's organization website
-rules or a private-network egress policy. Deploy it on an isolated VM network;
-an organization requiring restricted egress needs enforcement at that boundary.
+The browser can reach public websites; its desktop egress guard blocks private
+and loopback destinations, with DNS exceptions restricted to the configured
+resolvers on port 53. Native apps cannot open network connections. The command
+account cannot reach the reserved desktop control ports; authenticated viewer
+and helper transports remain separate. The desktop image uses native nftables
+UID rules on microVM kernels without `xt_owner`, and startup fails if rule
+installation fails. Hosts without nftables retain the existing iptables guard.
+Organization website allowlists still need enforcement at the VM network boundary.
+
+## Teach browser tasks
+
+With `browserDemonstrations` enabled, members can demonstrate a browser task,
+explain it in chat, select fields to collect, and save a private reusable skill.
+See [Teach Workbot browser tasks](browser-demonstrations.md) for the flow,
+recording boundaries, and desktop snapshot requirements.
 
 ## Useful applications
 
@@ -130,6 +190,45 @@ report missing apps honestly and need an operator rebuild to add them. Existing
 computers are never replaced automatically. Launches use the same input rail
 and takeover pause as browser and native actions, with no extra consent screen.
 
+### Scripting apps instead of clicking
+
+`computer_app_script {app, ...}` drives an app through its own scripting
+interface, so a scene edit or spreadsheet change is one call instead of dozens
+of screenshot-and-click rounds. The GUI stays for looking at the result.
+
+| App | Interface | What it does |
+| --- | --- | --- |
+| Blender | `bpy` in the open session, or `blender --background` | Runs Python, returns objects, materials and camera, optionally renders (`viewport` or `final`) |
+| Calc, Writer, Impress, Draw | UNO over a named pipe | Reads and writes cell ranges, inserts text, exports PDF, and reports what changed |
+| GIMP | Script-Fu batch mode | Converts, resizes and rotates images |
+| Inkscape | `inkscape --actions` (`transform`) | Exports, resizes and transforms drawings |
+
+Launching Blender loads a small bridge (`--python`) that listens on a Unix
+socket for that process in the desktop user's home; with several Blender
+instances, scripting selects the focused Blender window and refuses an ambiguous
+target. LibreOffice launches with a named UNO pipe.
+Both are sockets, not loopback ports, because the desktop egress guard refuses
+loopback for that user. Each Blender script is one undo step, so the person can
+press Ctrl+Z. LibreOffice edits stay unsaved in the open window unless the call
+passes `save: true`; a file with no open window is edited headlessly and saved.
+Cell strings are always stored as text, so content copied from a page or file
+is never evaluated. Formulas are explicit `{formula}` cells and are refused if
+they fetch or link outside the workbook (`WEBSERVICE`, `DDE`, `HYPERLINK`,
+`INDIRECT`, `IMAGE` or external references), including URLs constructed from cell
+contents. This also protects saved files opened outside the desktop's network isolation.
+
+Scripts run as `openwork-app`, separated from the browser and command accounts.
+The private browser home is inaccessible and IPv4/IPv6 egress is denied, including
+DNS and loopback; app bridges use Unix sockets. The same `computerUse` and
+`remoteComputers` rollout applies, with no new consent prompt. They use the shared
+input rail. Stop requests cancellation and takeover waits for its acknowledgement.
+Blender checks at Python lines and between render/save phases; a native render
+may finish before cancellation is acknowledged, and no later save begins. Other
+lanes end their child process. A stopped, timed-out or
+interrupted script reports that its outcome is uncertain and is never retried.
+Launch receipts for scriptable apps include a one-line hint with the scripting
+route and a few shortcuts.
+
 ## MicroVM lifecycle and cost
 
 Daytona's `linux-vm` class is its hypervisor-backed microVM, also used by the
@@ -151,7 +250,8 @@ a renewable provider TTL so paused disks can eventually expire too; Daytona's
 auto-delete setting alone applies to stopped computers. Commands, file access,
 and viewer access renew the lease, at most once a minute. Inventory and idle
 maintenance probes do not renew it. Export deliverables to kept Files before
-retention expires. The existing container/Freestyle behavior stays unchanged.
+retention expires. `HEADLESS_COMPUTER_PERSISTENT=true` disables that deletion on
+both providers: computers stay paused with their memory until removed.
 
 The shared Daytona provider exposes `blocks.snapshots` for explicit hot
 checkpoints using `{includeMemory:true}`, matching upstream's world API. A
@@ -232,5 +332,10 @@ For image acceptance, copy `ee/packages/headless-computer/scripts/prove-desktop-
 into a dedicated prepared test guest, start its desktop, then run it as root with
 `DISPLAY=:99 XAUTHORITY=/run/openwork-desktop/99/.Xauthority node prove-desktop-apps.mjs --dedicated-guest`.
 It checks the installed catalog, launches four GUI apps, saves text through the
-editor and renders a small Blender scene on CPU. It leaves its outputs and
-desktop screenshot under `/workspace/out/desktop-apps-proof-…` for inspection.
+editor and renders a small Blender scene on CPU. It then adds a red cube and
+renders it twice in a fresh open Blender: first through the GUI alone, replaying
+the clicks and keys a computer-use agent needs, then with one
+`computer_app_script` call, and prints the act, input and screenshot counts of
+each route. It also checks that Stop cancels a running script and exercises the
+office, GIMP and Inkscape lanes. It leaves its outputs and screenshots under
+`/workspace/out/desktop-apps-proof-…` for inspection.

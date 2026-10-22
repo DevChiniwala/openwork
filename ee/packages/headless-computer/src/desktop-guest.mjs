@@ -4,7 +4,8 @@ import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import { WebSocketServer, WebSocket } from "ws";
-import { createCloudComputer } from "@openwork/computer-use/cloud";
+import { createCloudComputer, browserEgressStatus } from "@openwork/computer-use/cloud";
+import { createBrowserDemonstration } from "@openwork/computer-use/browser-demonstration";
 import { createDesktopApplications } from "./desktop-apps.mjs";
 import { ViewerTickets } from "./viewer-tickets.mjs";
 
@@ -21,6 +22,7 @@ const computer = await createCloudComputer({ directory, display: ":99", enabled:
   privateBrowsing: process.env.WORKBOT_DESKTOP_PRIVATE_BROWSING === "1",
   applications: createDesktopApplications({ directory: `${directory}/apps`, display: ":99" }),
 });
+const teaching = createBrowserDemonstration({ path: `${directory}/browser-demonstration.json` });
 const json = (response, status, payload) => {
   response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(payload));
@@ -46,7 +48,23 @@ const server = createServer(async (request, response) => {
     if (request.url === "/health") {
       const browser = await fetch("http://127.0.0.1:9222/json/version", { signal: AbortSignal.timeout(1500) }).then(async result => { await result.body?.cancel(); return result.ok; }).catch(() => false);
       const viewer = await Promise.all([access(viewerScript), access(`${directory}/browser-window`)]).then(() => true, () => false);
-      return json(response, browser && viewer ? 200 : 503, { ok: browser && viewer, version: process.env.WORKBOT_DESKTOP_VERSION ?? "unknown" });
+      return json(response, browser && viewer ? 200 : 503, { ok: browser && viewer, version: process.env.WORKBOT_DESKTOP_VERSION ?? "unknown", ...(body.diagnostics === true ? { egress: await browserEgressStatus() } : {}) });
+    }
+    if (request.url === "/browser/demonstration") {
+      if (typeof body.sessionId !== "string" || !body.sessionId || body.sessionId.length > 256) return json(response, 400, { error: "invalid_session" });
+      if (body.command?.action === "start" || body.command?.action === "resume") {
+        try {
+          const result = await tickets.run(viewerGeneration, async () => {
+            await computer.interact({ action: "takeover" });
+            return teaching.command(body.sessionId, body.command);
+          });
+          return json(response, 200, result);
+        } catch (error) {
+          await teaching.command(body.sessionId, { action: "pause" }).catch(() => {});
+          throw error;
+        }
+      }
+      return json(response, 200, await teaching.command(body.sessionId, body.command));
     }
     if (request.url === "/viewer") {
       if (!["browser", "computer"].includes(body.view) || typeof body.origin !== "string") return json(response, 400, { error: "invalid_view" });
@@ -59,6 +77,7 @@ const server = createServer(async (request, response) => {
       return json(response, 200, result);
     }
     if (request.url === "/continue") {
+      if (teaching.isTeaching()) return json(response, 409, { error: "teaching_active", message: "Finish or discard teaching before returning control to Workbot." });
       const generation = tickets.revoke();
       for (const socket of sockets) { transports.get(socket)?.destroy(); socket.terminate(); }
       await tickets.run(generation, () => computer.interact({ action: "resume" }));

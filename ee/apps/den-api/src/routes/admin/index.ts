@@ -57,6 +57,7 @@ import {
   readOrganizationFeatureOverridesForMany,
   type FeatureOverrideChanges,
 } from "@openwork-ee/den-db/organization-features"
+import { registerAdminMemberFeatureRoutes } from "./member-features.js"
 import { updateFeatureRollout, updateOrganizationFeatureOverrides } from "../../features.js"
 import {
   FEATURE_KEYS,
@@ -83,7 +84,9 @@ import { auditChangeCapture, logAuditOutcomeLost } from "../../audit/request-cap
 import { platformAdminChangeCapture } from "../../audit/service-capture.js"
 import { hasOpenWorkWebComplimentaryAccess, resolveOpenWorkWebAccess, setOpenWorkWebComplimentaryAccess } from "../../openwork-web-access.js"
 import { isOpenWorkWebAvailable } from "../../openwork-web-availability.js"
-import { calculateOrganizationSeatBillingCounts, getOrganizationSeatBillingCounts, isEligibleOpenWorkWebSubscriptionStatus, isOngoingOpenWorkWebSubscriptionStatus, organizationHasOngoingOpenWorkWebSubscription, refreshOrgSubscriptionFromStripe, syncSeatSubscriptionQuantityAfterMemberChange } from "../../stripe-billing.js"
+import { isEligibleOpenWorkWebSubscriptionStatus, isOngoingOpenWorkWebSubscriptionStatus, organizationHasOngoingOpenWorkWebSubscription, refreshOrgSubscriptionFromStripe, syncOrganizationBillingQuantities } from "../../stripe-billing.js"
+import { FREE_ORG_SEAT_COUNT } from "../../billing-quantities.js"
+import { getBillingQuantitiesForOrganizations, getOrganizationBillingQuantities } from "../../billing-users.js"
 import { unlessResumeTableMissing } from "../../headless-runner/resume-grant-revocation.js"
 import { buildAdminPageInfo, normalizeAdminPageRequest, sanitizeAdminSearchForLike, type AdminPageRequest } from "./scale-performance.js"
 
@@ -100,7 +103,7 @@ type AdminBillingStatus = {
   note: string | null
 }
 
-const DEFAULT_ORGANIZATION_FREE_SEAT_COUNT = calculateOrganizationSeatBillingCounts({ memberCount: 0 }).includedFree
+const DEFAULT_ORGANIZATION_FREE_SEAT_COUNT = FREE_ORG_SEAT_COUNT
 const logger = appLogger.child({ component: "admin_routes" })
 
 const overviewQuerySchema = z.object({
@@ -164,7 +167,7 @@ const adminOrganizationCapabilitiesSchema = z.object({
 
 const adminFeatureStateSchema = z.object({
   enabled: z.boolean(),
-  source: z.enum(["unavailable", "killed", "lock", "override", "everyone"]),
+  source: z.enum(["unavailable", "killed", "lock", "override", "member", "everyone"]),
   everyone: z.boolean(),
   killed: z.boolean(),
   lock: z.boolean().nullable(),
@@ -1048,12 +1051,8 @@ async function shapeAdminOrganizationRows(rows: Array<Pick<typeof OrganizationTa
   }
 
   const organizationIds = rows.map((row) => row.id)
-  const [memberRows, webSubscriptionRows, featureOverridesByOrg, featureRollouts] = await Promise.all([
-    db
-      .select({ organizationId: MemberTable.organizationId, memberCount: sql<number>`count(*)` })
-      .from(MemberTable)
-      .where(and(inArray(MemberTable.organizationId, organizationIds), isNull(MemberTable.removedAt)))
-      .groupBy(MemberTable.organizationId),
+  const [billingByOrg, webSubscriptionRows, featureOverridesByOrg, featureRollouts] = await Promise.all([
+    getBillingQuantitiesForOrganizations(rows),
     db
       .select({
         organizationId: OrgSubscriptionTable.organization_id,
@@ -1069,10 +1068,6 @@ async function shapeAdminOrganizationRows(rows: Array<Pick<typeof OrganizationTa
     includeFeatures ? readOrganizationFeatureOverridesForMany(db, organizationIds) : null,
     includeFeatures ? readFeatureRollouts(db) : null,
   ])
-  const memberCountByOrg = new Map<string, number>()
-  for (const row of memberRows) {
-    memberCountByOrg.set(row.organizationId, toNumber(row.memberCount))
-  }
   const webSubscriptionByOrg = new Map(webSubscriptionRows.map((row) => [row.organizationId, row]))
 
   return rows.map((entry) => {
@@ -1081,7 +1076,7 @@ async function shapeAdminOrganizationRows(rows: Array<Pick<typeof OrganizationTa
       : null
     const metadata = normalizeOrganizationMetadata(entry.metadata).metadata
     const seatLimit = metadata.limits.members ?? DEFAULT_ORGANIZATION_LIMITS.members
-    const seatCounts = calculateOrganizationSeatBillingCounts({ memberCount: memberCountByOrg.get(entry.id) ?? 0, metadata })
+    const seatCounts = billingByOrg.get(entry.id)?.seats ?? { total: 0, free: DEFAULT_ORGANIZATION_FREE_SEAT_COUNT, additionalFree: 0, chargeable: 0 }
     return {
       id: entry.id,
       name: entry.name,
@@ -1402,6 +1397,7 @@ const adminRouteErrors = {
 export function registerAdminRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
   registerAdminFreeAutoUsageRoutes(app)
   registerAdminFreeAutoConversionsRoutes(app)
+  registerAdminMemberFeatureRoutes(app)
   registerAdminOrganizationDetailRoutes(app)
   registerAdminOrganizationControlPanelRoutes(app)
   registerAdminDashboardRoute(app)
@@ -1808,8 +1804,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
       // Admin user deletion soft-removes memberships; clear affected org membership caches.
       await Promise.all(organizationIds.map((organizationId) => cache.org.deleteMembers(organizationId)))
       for (const organizationId of organizationIds) {
-        const seatCounts = await getOrganizationSeatBillingCounts({ organizationId })
-        await syncSeatSubscriptionQuantityAfterMemberChange({ organizationId, memberCount: seatCounts.total })
+        await syncOrganizationBillingQuantities({ organizationId })
       }
 
       return c.json({ ok: true, user: { id: targetUser.id, email: targetUser.email } })
@@ -1911,8 +1906,8 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         seatsFreeAdditional,
       }))
 
-      const seatCounts = await getOrganizationSeatBillingCounts({ organizationId })
-      await syncSeatSubscriptionQuantityAfterMemberChange({ organizationId, memberCount: seatCounts.total })
+      await syncOrganizationBillingQuantities({ organizationId })
+      const { seats: seatCounts } = await getOrganizationBillingQuantities(organizationId)
 
       return c.json({
         ok: true,

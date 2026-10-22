@@ -7,8 +7,10 @@ import { mintHeadlessRunMcpToken, revokeHeadlessRunMcpToken } from "../mcp/headl
 import { appLogger } from "../observability/logger.js"
 import { checkRateLimit } from "../utils/rate-limit.js"
 import type { HeadlessModelAccess } from "@openwork-ee/headless-protocol"
-import { organizationCloudModel } from "../workbot/model.js"
+import { organizationCloudModelSelection } from "../workbot/model.js"
 import { cloudAgentGatewayAccess } from "../workbot/gateway-model.js"
+import { isWorkbotManagedLuna } from "@openwork/types/den/workbot-settings"
+import { workbotManagedLunaAccess } from "../workbot/managed-luna.js"
 import { indexCapabilityForTurn, type HeadlessIndexKind } from "./session-index.js"
 
 /**
@@ -148,7 +150,9 @@ export async function mintHeadlessTurnCredentials(input: {
   // Taken before anything is minted: a credential revocation after this moment outranks the grant (see
   // headlessResumeGrantAuthorizedBeforeRevocation), however long minting takes.
   const authorizedAt = new Date()
-  const modelAccess = await cloudAgentGatewayAccess(input, input.model ?? await organizationCloudModel(input) ?? "")
+  const modelAccess = input.indexKind === "workbot" && input.model && isWorkbotManagedLuna(input.model)
+    ? await workbotManagedLunaAccess(input, input.model)
+    : await cloudAgentGatewayAccess(input, input.model ?? await organizationCloudModelSelection(input) ?? "")
   const minted = await mintHeadlessRunMcpToken(input)
   const resumeGrant = await resumeGrantForTurn({ ...input, authorizedAt })
   const indexCapability = await indexCapabilityForTurn(input)
@@ -255,8 +259,8 @@ export async function exchangeHeadlessResumeGrant(
   if (input.modelAccessRequired) {
     if (!input.model) return { ok: false, status: 403, error: "model_unavailable" }
     try {
-      // The persisted turn keeps its selected alias; current member access is rechecked.
-      modelAccess = await cloudAgentGatewayAccess(row, input.model)
+      // The persisted turn keeps its selected alias across rollout rollback; current member access is rechecked.
+      modelAccess = await (isWorkbotManagedLuna(input.model) ? workbotManagedLunaAccess : cloudAgentGatewayAccess)(row, input.model)
     } catch {
       return { ok: false, status: 403, error: "model_unavailable" }
     }

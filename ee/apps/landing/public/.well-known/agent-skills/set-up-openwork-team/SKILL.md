@@ -5,7 +5,7 @@ description: Set up OpenWork for a team - sign up for OpenWork Cloud, create the
 
 # Set up OpenWork for a team
 
-OpenWork Cloud is the team control plane: members, shared models (AI Gateway), shared skills and plugins, and the MCP Gateway. The first 5 seats are free; then $10 per seat per month. Pricing: https://openworklabs.com/pricing
+OpenWork Cloud is the team control plane: members, shared models (AI Gateway), shared skills and plugins, and the MCP Gateway. The Free plan covers up to 5 users; the Team plan is $10 per user per month. Pricing: https://openworklabs.com/pricing
 
 The human creates the account. Don't invent passwords or create accounts for the user without asking.
 

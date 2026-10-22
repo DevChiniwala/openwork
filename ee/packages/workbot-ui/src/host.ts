@@ -27,6 +27,8 @@ export type WorkbotHost = {
   documents?: boolean
   /** Shared browser and computer desktop, enabled by the organization flags. */
   computer?: boolean
+  /** Teach browser tasks and save private Cloud skills; omitted means off. */
+  browserDemonstrations?: boolean
   /** Explicit document editing is enabled; omitted means preview only. */
   documentEditing?: boolean
   /** Native dictation entry point; omitted means off. Speech stays with the OS. */
@@ -35,6 +37,8 @@ export type WorkbotHost = {
   workspaceAssistant?: boolean
   /** Offers to open documents a reply mentions and keeps the chat open beside them. Needs workspaceAssistant. */
   guidedNavigation?: boolean
+  /** Signed-in model-limit recovery; never offers anonymous access or starts a payment. */
+  usageRecovery?: { denUrl: string; organizationId: string }
   /** The organization runs Automations in the cloud, so the Calendar can create them. Off when unset. */
   canSchedule?: boolean
   /** Where the person connects their own Google or Microsoft account, for the Calendar's connect links. */

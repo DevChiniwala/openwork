@@ -3,6 +3,7 @@
 import { client } from "./client.gen.js";
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js";
 import type {
+  AccountFollowUpActionInput,
   ActivateAutomationErrors,
   ActivateAutomationResponses,
   AgentPermissionPolicyWrite,
@@ -138,6 +139,7 @@ import type {
   DownloadHostGoogleDriveFileResponses,
   ExternalMcpConnectionAccessInput,
   ExternalMcpConnectionByKeyUpsertInput,
+  ExternalMcpConnectionRemovalRequestBody,
   ExternalMcpConnectionToolPolicyInput,
   ExternalMcpConnectionToolRunInput,
   ExternalMcpIssuerReviewInput,
@@ -208,7 +210,13 @@ import type {
   GetV1AdminFreeAutoUsageResponses,
   GetV1AdminMetricsErrors,
   GetV1AdminMetricsResponses,
+  GetV1AdminOpportunitiesAccountsByOrganizationIdErrors,
+  GetV1AdminOpportunitiesAccountsByOrganizationIdResponses,
+  GetV1AdminOpportunitiesCompaniesErrors,
+  GetV1AdminOpportunitiesCompaniesResponses,
   GetV1AdminOpportunitiesErrors,
+  GetV1AdminOpportunitiesOverviewErrors,
+  GetV1AdminOpportunitiesOverviewResponses,
   GetV1AdminOpportunitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesErrors,
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
@@ -217,6 +225,8 @@ import type {
   GetV1AdminOrganizationsByOrganizationIdErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsResponses,
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+  GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdResponses,
   GetV1AdminOrganizationsByOrganizationIdUsageErrors,
   GetV1AdminOrganizationsByOrganizationIdUsageResponses,
@@ -563,10 +573,13 @@ import type {
   GetWellKnownOauthAuthorizationServerResponses,
   GetWellKnownOauthProtectedResourceMcpAdminResponses,
   GetWellKnownOauthProtectedResourceMcpAgentResponses,
+  GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses,
   GetWellKnownOauthProtectedResourceMcpResponses,
   GetWellKnownOauthProtectedResourceResponses,
   GetWellKnownOpenidConfigurationApiAuthResponses,
   GetWellKnownOpenidConfigurationResponses,
+  GetWorkbotModelRecoveryErrors,
+  GetWorkbotModelRecoveryResponses,
   GetWorkbotSessionErrors,
   GetWorkbotSessionResponses,
   GoogleWorkspaceCreateCalendarEventBody,
@@ -673,6 +686,8 @@ import type {
   PostRegisterResponses,
   PostV1AdminAdminsErrors,
   PostV1AdminAdminsResponses,
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors,
+  PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeErrors,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
@@ -861,6 +876,8 @@ import type {
   PostV1MarketplacesResponses,
   PostV1McpConnectionsByConnectionIdCheckErrors,
   PostV1McpConnectionsByConnectionIdCheckResponses,
+  PostV1McpConnectionsByConnectionIdCredentialPromptErrors,
+  PostV1McpConnectionsByConnectionIdCredentialPromptResponses,
   PostV1McpConnectionsByConnectionIdDisconnectErrors,
   PostV1McpConnectionsByConnectionIdDisconnectMyAccountErrors,
   PostV1McpConnectionsByConnectionIdDisconnectMyAccountResponses,
@@ -981,6 +998,8 @@ import type {
   PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
   PutV1AdminOrganizationsByOrganizationIdControlPanelAccessErrors,
   PutV1AdminOrganizationsByOrganizationIdControlPanelAccessResponses,
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+  PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessErrors,
   PutV1AdminOrganizationsByOrganizationIdOpenworkWebAccessResponses,
   PutV1AgentPermissionsEveryoneErrors,
@@ -1035,6 +1054,8 @@ import type {
   RenamePermissionSetBody,
   ReplaceGoogleDocumentTextErrors,
   ReplaceGoogleDocumentTextResponses,
+  RequestMcpConnectionRemovalErrors,
+  RequestMcpConnectionRemovalResponses,
   RunAutomationNowErrors,
   RunAutomationNowResponses,
   SaveGoogleDriveDocumentEditsErrors,
@@ -1214,6 +1235,101 @@ export class DenClient extends HeyApiClient {
       url: "/v1/admin/free-auto/conversions",
       ...options,
       ...params,
+    });
+  }
+
+  /**
+   * Get an organization member's feature overrides
+   *
+   * Returns effective features for one active organization member. override is the member's setting (null inherits); everyone is the inherited organization value. Deployment restrictions, kill switches and operator locks still win.
+   */
+  public getV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      memberId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "path", key: "memberId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
+      GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Set an organization member's feature overrides
+   *
+   * Sets true/false for one member or clears an override with null to inherit the organization setting. Only platform administrators can write. Membership and organization are revalidated under a transaction lock; pending and removed members cannot receive overrides.
+   */
+  public putV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      memberId: string;
+      capabilities: {
+        nativeDictation?: boolean | null;
+        organizationGrants?: boolean | null;
+        connectionMcpServers?: boolean | null;
+        liveProviderSync?: boolean | null;
+        agentConnectionRemoval?: boolean | null;
+        managedDeployments?: boolean | null;
+        workbotDocuments?: boolean | null;
+        workbotDocumentEditing?: boolean | null;
+        workbotWorkspaceAssistant?: boolean | null;
+        workbotUsageRecovery?: boolean | null;
+        automationCalendar?: boolean | null;
+        removeOpencodeZen?: boolean | null;
+        engineV2ForceUpgrade?: boolean | null;
+        computerUse?: boolean | null;
+        browserDemonstrations?: boolean | null;
+        browserFloatingView?: boolean | null;
+        remoteComputers?: boolean | null;
+        remoteSessionSubagents?: boolean | null;
+        connectStandardTools?: boolean | null;
+      };
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { in: "path", key: "memberId" },
+            { in: "body", key: "capabilities" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).put<
+      PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesResponses,
+      PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/members/{memberId}/capabilities",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 
@@ -1510,9 +1626,130 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Get this week's actionable platform activity
+   *
+   * Platform-admin-only Monday-to-now UTC summary compared with the same elapsed period last week. Counts registered accounts, current joined human memberships and organization-scoped observed telemetry. Returns daily signup and membership counts, at most eight records per signal list, and a prioritized queue built from transparent, dated signals and recorded internal follow-ups. Missing telemetry does not establish inactivity or service health. No emails, content, credentials or external enrichment.
+   */
+  public getV1AdminOpportunitiesOverview<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesOverviewResponses,
+      GetV1AdminOpportunitiesOverviewErrors,
+      ThrowOnError
+    >({ url: "/v1/admin/opportunities/overview", ...options });
+  }
+
+  /**
+   * Get an account's sales context
+   *
+   * Platform-admin-only. Returns the organization's current people (owners first, at most 25) with their existing admin-visible name, email and role, observed adoption, the transparent recommendation and its dated signals, and internal follow-up history. Internal context only: not visible to the organization.
+   */
+  public getV1AdminOpportunitiesAccountsByOrganizationId<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesAccountsByOrganizationIdResponses,
+      GetV1AdminOpportunitiesAccountsByOrganizationIdErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/accounts/{organizationId}",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Record a sales follow-up step
+   *
+   * Platform-admin-only. Appends what happened (reviewed, contacted, reply, meeting, note, closed, dismissed or reopened) and sets the next action, owner and UTC follow-up date in one idempotent request. Never sends a message, changes the organization or writes to its audit log.
+   */
+  public postV1AdminOpportunitiesAccountsByOrganizationIdActions<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+      accountFollowUpActionInput: AccountFollowUpActionInput;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "organizationId" },
+            { key: "accountFollowUpActionInput", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses,
+      PostV1AdminOpportunitiesAccountsByOrganizationIdActionsErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/accounts/{organizationId}/actions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Group signups by company email domain
+   *
+   * Platform-admin-only, paginated. Groups accounts with a verified, non-personal email domain across every organization they joined: signups, first signup, latest sign-in still on record, organizations, people observed using the app in the last 30 days, highest stored plan, current paid subscription, and whether a platform admin recorded outreach for any of those organizations. Defaults to active companies nobody has contacted. A domain does not establish employment and organizations are never merged. No content, credentials, Stripe calls or external enrichment.
+   */
+  public getV1AdminOpportunitiesCompanies<ThrowOnError extends boolean = false>(
+    parameters?: {
+      activity?: "active" | "all";
+      outreach?: "not_contacted" | "contacted" | "any";
+      billing?: "any" | "paying" | "not_paying";
+      sort?: "active" | "signups" | "recent" | "signin";
+      search?: string;
+      limit?: number;
+      cursor?: string;
+      offset?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "activity" },
+            { in: "query", key: "outreach" },
+            { in: "query", key: "billing" },
+            { in: "query", key: "sort" },
+            { in: "query", key: "search" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      GetV1AdminOpportunitiesCompaniesResponses,
+      GetV1AdminOpportunitiesCompaniesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/opportunities/companies",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
    * Find organizations with observed app adoption
    *
-   * Platform-admin-only, server-paginated organization signals. Defaults to two joined human users and observed organization-scoped telemetry in the last 30 days, most recent first. Company-email signals use verified addresses excluding known personal providers; they do not establish employment. Cloud setup counts active, non-deleted skill and MCP metadata. Missing telemetry does not imply inactivity. No content, credentials, billing lookups or external enrichment.
+   * Platform-admin-only, server-paginated organization signals. Defaults to two joined human users and observed organization-scoped telemetry in the last 30 days, most recent first. Company-email signals use verified addresses excluding known personal providers; they do not establish employment. Cloud setup counts active, non-deleted skill and MCP metadata. Billing is the stored plan tier and recorded subscription status; outreach is what platform admins recorded. Missing telemetry does not imply inactivity. No content, credentials, Stripe calls or external enrichment.
    */
   public getV1AdminOpportunities<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1520,6 +1757,7 @@ export class DenClient extends HeyApiClient {
       minMembers?: "1" | "2" | "5" | "10";
       companyEmail?: "0" | "1";
       setup?: "any" | "skills" | "mcp" | "both";
+      outreach?: "any" | "not_contacted" | "contacted";
       sort?: "recent" | "active" | "members";
       search?: string;
       limit?: number;
@@ -1537,6 +1775,7 @@ export class DenClient extends HeyApiClient {
             { in: "query", key: "minMembers" },
             { in: "query", key: "companyEmail" },
             { in: "query", key: "setup" },
+            { in: "query", key: "outreach" },
             { in: "query", key: "sort" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
@@ -12689,6 +12928,45 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Prepare removing an organization connection
+   *
+   * Prepares removing one organization connection (connector) from OpenWork and returns a link where the person confirms it. Nothing is removed by this call: the connection, who can use it, its stored accounts and OAuth app are deleted only when the person opens the link and confirms in OpenWork. It never deletes anything in the connected service. Only when the user explicitly asks to remove a connection: first list connections with getMcpConnections and pick the one whose name matches; if several could match, ask the user which one and do not guess. Send its exact name as expectedName. A connection that plugins need is refused unless detachFromPlugins is true, which you may send only after telling the user which plugins use it and they agree. Needs the Remove any connection permission, or having added the connection. Give the person handoff.url and handoff.instructions; afterwards, list connections with getMcpConnections to confirm it is gone.
+   */
+  public requestMcpConnectionRemoval<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+      externalMcpConnectionRemovalRequestBody: ExternalMcpConnectionRemovalRequestBody;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "connectionId" },
+            { key: "externalMcpConnectionRemovalRequestBody", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      RequestMcpConnectionRemovalResponses,
+      RequestMcpConnectionRemovalErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/{connectionId}/removal-request",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
    * Disconnect (clear credentials for) an External MCP Connection without removing it
    *
    * Needs the Disconnect any connection permission (owners and admins by default) and a recent sign-in. Signs out every shared or per-member account stored for this connection, while preserving the connection row, access grants, OAuth client configuration, and plugin bindings.
@@ -12708,6 +12986,45 @@ export class DenClient extends HeyApiClient {
       url: "/v1/mcp-connections/{connectionId}/disconnect",
       ...options,
       ...params,
+    });
+  }
+
+  /**
+   * Ask a person to enter the API key of an existing MCP connection
+   *
+   * Shows the person a private field in OpenWork for an existing API-key connection, so the key never passes through you. Use it to finish a connection still waiting for its shared key, to let the caller add or replace their own key (scope personal), or to let an owner or admin replace each person's own key with one shared key (scope shared on a personal-key connection; its ID and access stay, and nothing changes until they save a key that works). Changes nothing by itself.
+   */
+  public postV1McpConnectionsByConnectionIdCredentialPrompt<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+      scope?: "shared" | "personal";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "connectionId" },
+            { in: "body", key: "scope" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1McpConnectionsByConnectionIdCredentialPromptResponses,
+      PostV1McpConnectionsByConnectionIdCredentialPromptErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/{connectionId}/credential-prompt",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 
@@ -16291,7 +16608,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get Workbot settings
    *
-   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the models that can be chosen: the caller's credential-ready, supported AI Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. Requires View OpenWork Models settings or Manage OpenWork Models.
+   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.
    */
   public getV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -16304,7 +16621,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Set Workbot's default model
    *
-   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. Requires the Manage OpenWork Models permission and a recent sign-in.
+   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.
    */
   public putV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(
     parameters: {
@@ -16332,7 +16649,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Check whether Workbot has an AI provider
    *
-   * Returns whether Workbot turns need the organization's AI Gateway (gatewayRequired, always true) and whether the organization has at least one active AI Gateway provider (hasGatewayProvider). Content-free: no provider names, counts, ids, models or grants. A provider existing does not mean the caller has a usable model; each turn still checks the member's own access. Available to any organization member. Never exposed to MCP.
+   * Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. The managed Luna default with workbotUsageRecovery uses the member's Models access and needs no custom Gateway provider. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.
    */
   public getV1OrgWorkbotReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -16616,6 +16933,19 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * Get my Workbot model recovery options
+   *
+   * Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.
+   */
+  public getWorkbotModelRecovery<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetWorkbotModelRecoveryResponses,
+      GetWorkbotModelRecoveryErrors,
+      ThrowOnError
+    >({ url: "/v1/workbot/model-recovery", ...options });
+  }
+
+  /**
    * Record content-free Workbot service facts
    *
    * Server-to-server only: requires the runner service credential and a live member MCP token. Org and member are resolved from the token. No text or caller-supplied identity is accepted. Telemetry storage failure never fails a user flow.
@@ -16736,7 +17066,7 @@ export class DenClient extends HeyApiClient {
   /**
    * A short-lived token for one Workbot turn
    *
-   * For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. Also returns the member's Gateway route and bearer credential for the selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.
+   * For the Workbot app only. Mints the member-scoped MCP token a Workbot turn uses to reach the person's connected apps on the headless runner, for at most an hour. With `sessionId` and `messageId`, and where turns keep going on their own for the workspace, also returns a resume grant for that turn. With `sessionId` and where the session index is on for the workspace, also returns an index capability for that session. With scoped model access, also returns the member’s Gateway or managed Models route and bearer credential for the exact selected model, rechecking access for every turn. This response is server-to-server only and must not be forwarded to a browser or logged. Refused when Workbot is off for the workspace.
    */
   public createWorkbotRunToken<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -17009,6 +17339,29 @@ export class DenClient extends HeyApiClient {
       unknown,
       ThrowOnError
     >({ url: "/mcp/agent/.well-known/oauth-protected-resource", ...options });
+  }
+
+  /**
+   * Get OAuth protected resource metadata for /mcp/agent
+   *
+   * Returns the RFC 9728 protected-resource metadata MCP clients use to discover the authorization server and scopes for this transport.
+   */
+  public getWellKnownOauthProtectedResourceMcpAgentServersByConnectionId<ThrowOnError extends boolean = false>(
+    parameters: {
+      connectionId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "connectionId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetWellKnownOauthProtectedResourceMcpAgentServersByConnectionIdResponses,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/.well-known/oauth-protected-resource/mcp/agent/servers/{connectionId}",
+      ...options,
+      ...params,
+    });
   }
 
   /**

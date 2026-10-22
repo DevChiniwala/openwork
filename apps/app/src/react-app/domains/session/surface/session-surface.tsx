@@ -66,7 +66,7 @@ import { isComputerTarget } from "./composer/computer-mentions";
 import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import { openDesktopUrl } from "@/app/lib/desktop";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
-import { COMPOSER_DRAFT_TOKEN_RE, composerPillText, parseComposerPillToken } from "./composer/composer-pills";
+import { COMPOSER_DRAFT_TOKEN_RE, COMPOSER_PILL_TOKEN_GLOBAL_RE, composerPillText, parseComposerPillToken } from "./composer/composer-pills";
 import { createPastedTextChip, insertDraftToken, resolvePastedTextPlaceholders } from "./composer/pasted-text";
 import {
   canAdmitNextQueuedItem,
@@ -113,7 +113,7 @@ import { useSessionFindStore } from "./find-store";
 import { getSessionActivityStatusLabel, useSessionActivityStore, type SessionActivityStatus } from "@/react-app/domains/session/status/session-activity-store";
 import { PermissionApprovalPanel } from "@/react-app/domains/session/chat/permission-approval-modal";
 import { ComputerRequestPanel } from "@/react-app/domains/session/computer/computer-request-panel";
-import { useComputerRequest } from "@/react-app/domains/session/computer/computer-store";
+import { useComputerRequest, useComputerStore } from "@/react-app/domains/session/computer/computer-store";
 import { QuestionPanel } from "@/react-app/domains/session/modals/question-modal";
 import { QueuedMessagesPanel } from "@/react-app/domains/session/modals/queued-messages-panel";
 import { deriveOpenTargets, sameOpenTargets, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -191,6 +191,7 @@ import { buildConnectorToolIdentities } from "@/react-app/domains/connections/co
 const EMPTY_TRANSCRIPT: UIMessage[] = [];
 const IDLE_STATUS: SessionStatus = { type: "idle" };
 const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next OpenWork task.";
+const COMPUTER_CONTINUE_PROMPT = "I'm done with the computer. Go ahead.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
 
 function sanitizedInspectorDiagnosticText(value: string) {
@@ -1174,10 +1175,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
     props.onModelChange(nextModel, variant);
     setModelPickerOpen(false);
   }, [props.onModelChange, sessionModel]);
+  // Only this conversation's setting changes. A conversation without its own
+  // model already routes to the global default here; writing a remembered
+  // model's setting globally would pair it with a different default model.
   const handleModelVariantChange = useCallback((value: string | null) => {
     sessionModel.setVariant(value);
-    props.onModelVariantChange(value);
-  }, [props.onModelVariantChange, sessionModel]);
+  }, [sessionModel]);
   const handleOpenModelPicker = useCallback(() => {
     props.onModelClick(props.sessionId);
   }, [props.onModelClick, props.sessionId]);
@@ -2068,6 +2071,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
         return [{ type: "connect-skill", slug: pill.slug, name: pill.name, marketplace: pill.marketplace, capability: pill.capability } satisfies ComposerDraft["parts"][number]];
       }
       if (pill?.kind === "skill") return [{ type: "skill", name: pill.name } satisfies ComposerDraft["parts"][number]];
+      if (pill?.kind === "session") {
+        return [{ type: "session", workspaceId: pill.workspaceId, sessionId: pill.sessionId, title: pill.title } satisfies ComposerDraft["parts"][number]];
+      }
       const attachmentMatch = segment.match(/^\[attachment (.+)\]$/);
       if (attachmentMatch) {
         // Attachment chips are visual tokens only; bytes travel via draft.attachments.
@@ -2097,7 +2103,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     resolved = resolved.replace(/\[attachment [^\]]+\]/g, "");
     // Pills keep their short visible text; their instructions travel as
     // synthetic parts and never expand into the user's message.
-    resolved = resolved.replace(/\[connect-skill [^\]]+\]|\[skill [^\]]+\]|\[connector [^\]]+\]/g, (match) => {
+    resolved = resolved.replace(COMPOSER_PILL_TOKEN_GLOBAL_RE, (match) => {
       const pill = parseComposerPillToken(match);
       return pill ? composerPillText(pill) : match;
     });
@@ -3254,6 +3260,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (context.status !== "ready" || context.asking || !isLatestTurnToolCall(context.messages, toolCallId)) return;
     void handleResumeInterrupted(prompt ?? CHAT_CONNECTION_CONTINUE_PROMPT);
   }, [handleResumeInterrupted]);
+  // Continue in the Computer view after the turn ended while the person had control:
+  // carry on, as if the person said so. A turn still running continues by itself.
+  const computerContinued = useComputerStore((state) => state.continued[props.sessionId] ?? 0);
+  const handledComputerContinue = useRef(computerContinued);
+  useEffect(() => {
+    if (computerContinued === handledComputerContinue.current) return;
+    handledComputerContinue.current = computerContinued;
+    const context = continueAfterConnectionRef.current;
+    if (context.status !== "ready" || context.asking) return;
+    void handleResumeInterrupted(COMPUTER_CONTINUE_PROMPT);
+  }, [computerContinued, handleResumeInterrupted]);
 
   const handleRevertToUserMessage = useCallback((messageId: string) => {
     if (archived || !archiveStateKnown || sessionWorkHeld(props.opencodeBaseUrl, props.sessionId)) return;
@@ -3737,11 +3754,24 @@ export function SessionSurface(props: SessionSurfaceProps) {
       </div>
       {/* Error display moved inline into the session conversation area */}
       {props.developerMode && props.isControlTarget ? <SessionDebugPanel
-        model={model} client={props.client} workspaceId={props.workspaceId}
+        client={props.client} workspaceId={props.workspaceId} workspaceRoot={props.workspaceRoot}
         opencodeBaseUrl={props.opencodeBaseUrl} openworkToken={props.openworkToken}
-        status={liveStatus.type} messageCount={renderedMessages.length} todoCount={props.todos?.length ?? 0}
-        modelLabel={props.modelLabel}
-        waitingOn={props.activePermission ? "Permission" : props.activeQuestion ? "Your answer" : sending ? "Send acknowledgement" : snapshotQuery.isFetching ? "Session history" : liveStatus.type === "retry" ? "Retry backoff" : liveStatus.type === "busy" ? "Assistant" : "Nothing"}
+        thread={{
+          model, status: liveStatus.type, messageCount: renderedMessages.length, todoCount: props.todos?.length ?? 0,
+          modelLabel: sessionModel.modelLabel, threadTitle: snapshot?.session.title ?? "Focused thread",
+          selectedModel: sessionModel.selectedModel, variant: sessionModel.modelVariant, historyComplete: hasFullHistory,
+          resolveAvailability: props.resolveModelAvailability, onCopyThread: handleCopyTranscript,
+          waitingOn: props.activePermission ? "Permission" : props.activeQuestion ? "Your answer" : attachmentsUploading ? "Attachment upload" : preparingCloudTools ? "Connected tools" : sending ? "Send acknowledgement" : snapshotQuery.isFetching || openingHistory.openingLoading ? "Session history" : liveStatus.type === "retry" ? "Retry backoff" : liveStatus.type === "busy" ? "Assistant" : "Nothing",
+          activity: [
+            { label: "Conversation history", state: snapshotQuery.isError || openingHistory.openingError ? "Failed" : snapshotQuery.isFetching || openingHistory.openingLoading || openingHistory.pages.loading ? "Loading" : "Loaded" },
+            { label: "Attachments", state: attachmentsUploading ? "Uploading" : "Idle" },
+            { label: "Connected tools", state: props.cloudMcpSubmissionState.status === "repairing" ? "Reconnecting" : props.cloudMcpSubmissionState.status === "checking" ? "Checking" : props.cloudMcpSubmissionState.status === "failed" ? "Failed" : "Ready" },
+            { label: "Prompt send", state: sending ? "Sending" : "Idle" },
+            { label: "Assistant", state: liveStatus.type === "busy" ? "Running" : liveStatus.type === "retry" ? "Waiting to retry" : "Idle" },
+            { label: "Queued messages", state: queuedItems.length > 0 ? `${queuedItems.length} waiting` : "Empty" },
+            { label: "Your input", state: props.activePermission ? "Permission required" : props.activeQuestion ? "Answer required" : "None" },
+          ],
+        }}
       /> : null}
     </div>
     </DevProfiler>

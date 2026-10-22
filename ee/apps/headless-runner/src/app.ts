@@ -9,6 +9,7 @@ import { serviceHealthResponse, type ServiceHealthConfig } from "./service-healt
 import { SavedFileLimitError, type SavedFiles } from "./saved-files.js"
 import { formatBytes } from "./tool-files.js"
 import { z } from "zod"
+import { demonstrationCommandSchema } from "@openwork/types/browser-demonstration"
 import { FILE_LIMITS, isMemoryPath, normalizePath } from "./files.js"
 import { localMemory, MemoryUnavailableError, type MemoryResolver } from "./memory.js"
 import type { Runner } from "./runner.js"
@@ -34,6 +35,8 @@ const createSessionBody = z
     reactions: z.boolean().optional(),
     /** Let the conversation hand longer work to background tasks (start_task) and keep talking. Off unless asked for. */
     tasks: z.boolean().optional(),
+    /** The host opens a document beside this chat on the person's explicit request (`open_document`). Off unless asked for. */
+    documentNavigation: z.boolean().optional(),
     /** Who the conversation belongs to, in the caller's terms, so the caller can list one person's conversations. */
     owner: z.string().min(1).max(200).optional(),
     /** The caller's own id for the conversation, returned when listing. */
@@ -219,18 +222,28 @@ export function createApp(input: {
     const raw: unknown = await c.req.json().catch(() => null)
     c.header("Cache-Control", "no-store")
     try {
+      if (c.req.param("operation") === "demonstration" && input.computer?.browserDemonstration) {
+        const body = demonstrationCommandSchema.safeParse(raw)
+        if (!body.success) return c.json({ error: "invalid_request" }, 400)
+        return c.json(await input.computer.browserDemonstration(session.id, body.data))
+      }
       if (c.req.param("operation") === "viewer" && input.computer?.desktopViewer) {
         const body = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean(), origin: z.string().url().max(2048) }).strict().safeParse(raw)
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         return c.json(await input.computer.desktopViewer(session.id, body.data))
       }
       if (c.req.param("operation") === "action" && input.computer?.desktopAction) {
-        const body = z.object({ action: z.enum(["continue", "pause", "resume"]) }).strict().safeParse(raw)
+        const body = z.object({ action: z.enum(["continue", "pause", "resume", "rebuild"]) }).strict().safeParse(raw)
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         return c.json(await input.computer.desktopAction(session.id, body.data.action))
       }
       return c.json({ error: "desktop_not_configured" }, 409)
-    } catch { return c.json({ error: "desktop_unavailable" }, 409) }
+    } catch (error) {
+      // The page only gets a stable code; the reason goes to the runner's log, where an operator can act on it.
+      const code = typeof error === "object" && error !== null && "desktopCode" in error && (error.desktopCode === "desktop_outdated" || error.desktopCode === "desktop_unresponsive") ? error.desktopCode : "desktop_unavailable"
+      console.error("[headless-runner] desktop failed", { sessionId: session.id, operation: c.req.param("operation"), code, error: error instanceof Error ? error.message : "unknown" })
+      return c.json({ error: code }, 409)
+    }
   })
 
   app.post("/v1/sessions", async (c) => {

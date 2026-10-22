@@ -42,7 +42,6 @@ final class SessionRuntime {
         self.policy = policy; self.clock = clock
         controls.onPause = { [weak self] reason in self?.pause(reason) }
         controls.onAvailability = { [weak self] available in self?.desktopAvailability(available) }
-        controls.onUserInteraction = { [weak self] in self?.personInteracted() }
         controls.onResume = { [weak self] in Task { await self?.resume() } }
         controls.onStop = { [weak self] in self?.close(stoppedByPerson: true) }
         controls.onTick = { [weak self] in self?.expire() }
@@ -301,7 +300,7 @@ final class SessionRuntime {
         var width = max(1, Int(bounds.width)); var height = max(1, Int(bounds.height))
         if image {
             do {
-                let captured = try await access.capture(target: current.target, app: current.app, bounds: bounds, state: state, check: check)
+                let captured = try await observationImage(current, bounds: bounds, state: state, check: check)
                 png = captured.0; width = captured.1; height = captured.2
             } catch {
                 try check()
@@ -351,8 +350,15 @@ final class SessionRuntime {
             if let issue = state.privacyIssue { payload["privacy_issue"] = issue }
         }
         var result: [[String: Any]] = []
-        if let png { result.append(["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]) }
+        if let png { result.append(["type": "image", "data": png.base64EncodedString(), "mimeType": Self.observationMimeType]) }
         return result + text(payload)
+    }
+
+    /// Observations are compact JPEGs: image tokens and upload time dominate each step.
+    /// The re-capture that guards coordinate input uses the same encoding, so digests compare.
+    static let observationMimeType = "image/jpeg"
+    private func observationImage(_ current: Session, bounds: CGRect, state: WindowState, check: () throws -> Void) async throws -> (Data, Int, Int, Int64) {
+        try await access.capture(target: current.target, app: current.app, bounds: bounds, state: state, maxLongSide: 1280, jpegQuality: 0.8, check: check)
     }
 
     /// A sharper look at part of the current observation, for reading only. It
@@ -399,6 +405,11 @@ final class SessionRuntime {
             session?.receipts.removeValue(forKey: oldest); session?.receiptInputs.removeValue(forKey: oldest)
         }
         guard let observation = current.observation else { throw UseError("observation_required", "Observe this window before acting. Each observation authorizes one act call.", next: "observe") }
+        // The person may be using another app meanwhile; bring the selected window back
+        // before input instead of pausing when they switched away.
+        if current.mode == .control, (try? access.validate(current.target, app: current.app, requireFrontmost: true)) == nil {
+            try await focusTarget(current)
+        }
         let bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
         if actions.contains(where: \.usesCoordinates), observation.imageDigest == nil {
@@ -436,7 +447,7 @@ final class SessionRuntime {
                         throw UseError("stale_observation", "The observed window content or focus changed.", next: "observe")
                     }
                     if action.usesCoordinates {
-                        let captured = try await access.capture(target: current.target, app: current.app, bounds: bounds, state: live, check: check)
+                        let captured = try await observationImage(current, bounds: bounds, state: live, check: check)
                         guard access.imageDigest(captured.0) == observation.imageDigest else {
                             throw UseError("stale_observation", "The window image changed. Observe before coordinate input.", next: "observe")
                         }
@@ -517,17 +528,6 @@ final class SessionRuntime {
         // Sleep/idle availability is technical, not the person's Take over.
         // Preserve any real pause, and require fresh validated reads on return.
         if session?.paused != true { controls.update(available ? "Refreshing the selected window…" : "Waiting for the desktop…", paused: false) }
-    }
-    private func personInteracted() {
-        guard session != nil else { return }
-        // Person input always hands control back; only an explicit Continue resumes.
-        // Embedded Continue lives in another process: its click must not renew
-        // the interruption delay of an already manually paused session.
-        if SessionControls.embedded && session?.paused == true && resumingSessionID != session?.id { return }
-        // Retain the next human action, not the temporary interaction message.
-        pause("You have control. Click Continue when you are ready.")
-        session?.interactionDeadline = now + 1
-        controls.update("You have control. Waiting for your input to finish…", paused: true, canContinue: false)
     }
     func pause(_ reason: String, announce: Bool = true) {
         guard let current = session, !current.paused || resumingSessionID == current.id else { return }

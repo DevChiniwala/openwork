@@ -79,6 +79,24 @@ test("desktop stays off on existing computers and opening a paused desktop does 
   await computers.delete("paused-desktop")
 })
 
+test("rebuilding replaces the conversation's VM and starts the desktop on the new one", async () => {
+  const commands: string[] = []
+  const provider = createFakeProvider({ capabilities: { platform: { os: "linux", isolation: "microvm" } }, onRun(spec) {
+    commands.push(spec.command)
+    return { exitCode: 0, stdout: spec.command.includes("call '/health'") ? JSON.stringify({ version: "running" }) : "0", stderr: "" }
+  } })
+  const computers = new Computers({ provider, idlePauseMs: 1000, keepDays: 1, desktop: true }, { readFile: async () => ({ text: "" }) })
+  const before = await computers.vm("rebuild")
+  commands.length = 0
+  assert.deepEqual(await computers.desktopAction("rebuild", "rebuild"), { ok: true })
+  assert.equal(provider.fake.count("destroy"), 1)
+  assert.equal(provider.fake.count("create"), 2)
+  const after = await computers.vm("rebuild")
+  assert.notDeepEqual(after.ref, before.ref)
+  assert.ok(commands.some(command => / start [a-f0-9]{64}$/.test(command)), "the new VM's desktop is started")
+  await computers.delete("rebuild")
+})
+
 test("a new command waits for a pending idle pause and resumes before running", { timeout: 2000 }, async t => {
   let release = () => {}
   const gate = new Promise<void>(resolve => { release = resolve })
@@ -104,4 +122,33 @@ test("a new command waits for a pending idle pause and resumes before running", 
   assert.equal(launched, true)
   assert.equal(pauses, 1)
   assert.equal(provider.fake.count("start"), 1)
+})
+
+test("passive teaching checks neither provision nor wake a paused conversation computer", async () => {
+  const f = fixture()
+  const computers = new Computers({ provider: f.provider, idlePauseMs: 1000, keepDays: 1, desktop: true }, { readFile: async () => ({ text: "" }) })
+  await assert.rejects(computers.browserDemonstration("missing", { action: "read" }), /Resume the computer/)
+  assert.equal(f.provider.fake.count("create"), 0)
+  const box = await computers.vm("paused-teaching")
+  await f.provider.stop(box, { timeoutMs: 1000 })
+  const starts = f.provider.fake.count("start")
+  await assert.rejects(computers.browserDemonstration("paused-teaching", { action: "read" }), /Resume the computer/)
+  assert.equal(f.provider.fake.count("start"), starts)
+  await computers.delete("paused-teaching")
+})
+
+test("desktop computers expose only the viewer port, and persistent computers are never auto-deleted", async () => {
+  const f = fixture()
+  const desktop = new Computers({ provider: f.provider, idlePauseMs: 1000, keepDays: 3, desktop: true }, { readFile: async () => ({ text: "" }) })
+  await desktop.vm("kept")
+  const kept = f.provider.fake.sandbox(desktop.slug("kept"))
+  assert.deepEqual(kept?.spec.exposePorts, [6080])
+  assert.equal(kept?.spec.lifecycle?.autoDeleteMinutes, 3 * 1440)
+  const persistent = new Computers({ provider: f.provider, idlePauseMs: 1000, keepDays: 3, persistent: true }, { readFile: async () => ({ text: "" }) })
+  await persistent.vm("forever")
+  const forever = f.provider.fake.sandbox(persistent.slug("forever"))
+  assert.deepEqual(forever?.spec.exposePorts, [])
+  assert.equal(forever?.spec.lifecycle?.autoDeleteMinutes, -1)
+  await desktop.delete("kept")
+  await persistent.delete("forever")
 })

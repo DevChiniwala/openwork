@@ -60,10 +60,133 @@ private final class PermissionCoachPanel: NSPanel {
     }
 }
 
+/// The OpenWork popover look: the app's light and dark tokens
+/// (apps/app/src/app/index.css, styles/colors.css), solid rather than glass.
+private enum CoachStyle {
+    static let surface = color(light: 0xFCFCFD, dark: 0x18191B)
+    static let hairline = color(light: 0x1C2024, dark: 0xEDEEF0, lightAlpha: 0.05, darkAlpha: 0.1)
+    static let text = color(light: 0x1C2024, dark: 0xEDEEF0)
+    static let secondaryText = color(light: 0x60646C, dark: 0x777B84)
+    static let inverseText = color(light: 0xFCFCFD, dark: 0x111113)
+    static let quietFill = color(light: 0xF0F0F3, dark: 0x212225)
+    static let quietFillHover = color(light: 0xE8E8EC, dark: 0x272A2D)
+    static let radius: CGFloat = 24
+    static let controlRadius: CGFloat = 11
+    static let inset: CGFloat = 20
+    static let headerHeight: CGFloat = 28
+    static let headerGap: CGFloat = 12
+
+    private static func color(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let value = isDark ? dark : light
+            return NSColor(srgbRed: CGFloat(value >> 16 & 0xFF) / 255, green: CGFloat(value >> 8 & 0xFF) / 255,
+                           blue: CGFloat(value & 0xFF) / 255, alpha: isDark ? darkAlpha : lightAlpha)
+        }
+    }
+}
+
+/// Solid surface with a hairline, drawn so the window shadow follows its corners.
+@MainActor
+private final class PermissionCoachSurface: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: CoachStyle.radius - 0.5, yRadius: CoachStyle.radius - 0.5)
+        CoachStyle.surface.setFill(); path.fill()
+        CoachStyle.hairline.setStroke(); path.lineWidth = 1; path.stroke()
+    }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+
 @MainActor
 private final class PermissionCoachButton: NSButton {
+    /// primary: the filled main action; quiet: text actions; close: the round dismiss control.
+    enum Role { case primary, quiet, close }
+    var role = Role.quiet { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
+    private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
+
     override var needsPanelToBecomeKey: Bool { true }
     override var acceptsFirstResponder: Bool { isEnabled }
+    override var intrinsicContentSize: NSSize {
+        switch role {
+        case .primary: return NSSize(width: NSView.noIntrinsicMetric, height: 36)
+        case .close: return NSSize(width: 28, height: 28)
+        case .quiet:
+            let symbol = image.map { $0.size.width + 4 } ?? 0
+            return NSSize(width: ceil(symbol + label(color: CoachStyle.secondaryText).size().width) + 4, height: 24)
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        // The guide never activates OpenWork, so hover must track while inactive.
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let active = hovering || isHighlighted
+        switch role {
+        case .primary:
+            CoachStyle.text.withAlphaComponent(isHighlighted ? 0.7 : hovering ? 0.85 : 1).setFill()
+            shape.fill()
+            drawContent(color: CoachStyle.inverseText, centered: true)
+        case .close:
+            (active ? CoachStyle.quietFillHover : CoachStyle.quietFill).setFill()
+            shape.fill()
+            drawContent(color: active ? CoachStyle.text : CoachStyle.secondaryText, centered: true, showTitle: false)
+        case .quiet:
+            drawContent(color: active ? CoachStyle.text : CoachStyle.secondaryText, centered: false)
+        }
+    }
+
+    override var focusRingMaskBounds: NSRect { bounds }
+    override func drawFocusRingMask() { shape.fill() }
+
+    private var shape: NSBezierPath {
+        switch role {
+        case .primary: NSBezierPath(roundedRect: bounds, xRadius: CoachStyle.controlRadius, yRadius: CoachStyle.controlRadius)
+        case .close: NSBezierPath(ovalIn: bounds)
+        case .quiet: NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6)
+        }
+    }
+
+    private func label(color: NSColor) -> NSAttributedString {
+        NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: role == .primary ? 13 : 12, weight: .medium), .foregroundColor: color])
+    }
+
+    private func drawContent(color: NSColor, centered: Bool, showTitle: Bool = true) {
+        let text = showTitle ? label(color: color) : NSAttributedString()
+        let symbol = image.map { tinted($0, color) }
+        let gap: CGFloat = symbol != nil && showTitle ? 4 : 0
+        let width = (symbol?.size.width ?? 0) + gap + text.size().width
+        var x = centered ? (bounds.width - width) / 2 : 2
+        if let symbol {
+            let size = symbol.size
+            symbol.draw(in: NSRect(x: x, y: (bounds.height - size.height) / 2, width: size.width, height: size.height),
+                        from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            x += size.width + gap
+        }
+        if showTitle { text.draw(at: NSPoint(x: x, y: (bounds.height - text.size().height) / 2)) }
+    }
+
+    private func tinted(_ symbol: NSImage, _ color: NSColor) -> NSImage {
+        NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+    }
 }
 
 @MainActor
@@ -154,7 +277,7 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         panel.worksWhenModal = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.animationBehavior = .none
-        panel.appearance = NSAppearance(named: .darkAqua)
+        // Follows the Mac's light or dark appearance, like OpenWork's default theme.
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -162,47 +285,44 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         panel.autorecalculatesKeyViewLoop = true
         self.panel = panel
 
-        let material = NSVisualEffectView()
-        material.material = .popover
-        material.blendingMode = .behindWindow
-        material.state = .active
-        material.wantsLayer = true
-        material.layer?.cornerRadius = 14
-        material.layer?.masksToBounds = true
-        material.layer?.borderWidth = 1
-        material.layer?.borderColor = NSColor.separatorColor.cgColor
-        panel.contentView = material
+        let surface = PermissionCoachSurface()
+        panel.contentView = surface
 
+        let mark = NSImageView(image: NSApp.applicationIconImage)
+        mark.imageScaling = .scaleProportionallyUpOrDown
+        mark.setAccessibilityElement(false)
+        mark.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        mark.heightAnchor.constraint(equalToConstant: 18).isActive = true
         let brand = NSTextField(labelWithString: "OpenWork")
-        brand.font = .systemFont(ofSize: 12, weight: .medium)
-        brand.textColor = .secondaryLabelColor
+        brand.font = .systemFont(ofSize: 13, weight: .semibold)
+        brand.textColor = CoachStyle.text
         let close = PermissionCoachButton(title: "Close", target: self, action: #selector(dismiss))
-        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close permission guide")
+        close.role = .close
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close permission guide")?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
         close.imagePosition = .imageOnly
         close.isBordered = false
         close.keyEquivalent = "\u{1b}"
         close.setAccessibilityLabel("Close permission guide")
         close.toolTip = "Close permission guide"
-        close.widthAnchor.constraint(equalToConstant: 24).isActive = true
-        close.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        let header = NSStackView(views: [brand, NSView(), close])
+        let header = NSStackView(views: [mark, brand, NSView(), close])
         header.orientation = .horizontal
         header.alignment = .centerY
+        header.spacing = 8
 
-        stepLabel.font = .systemFont(ofSize: 11, weight: .medium)
-        stepLabel.textColor = .secondaryLabelColor
-        titleLabel.font = .systemFont(ofSize: 19, weight: .semibold)
+        stepLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        stepLabel.textColor = CoachStyle.secondaryText
         taskLabel.font = .systemFont(ofSize: 13)
-        identityLabel.font = .systemFont(ofSize: 11)
-        identityLabel.textColor = .secondaryLabelColor
-        helpLabel.font = .systemFont(ofSize: 11)
-        helpLabel.textColor = .secondaryLabelColor
-        for label in [taskLabel, identityLabel, helpLabel] { label.preferredMaxLayoutWidth = 308 }
+        taskLabel.textColor = CoachStyle.text
+        identityLabel.font = .systemFont(ofSize: 12)
+        identityLabel.textColor = CoachStyle.secondaryText
+        helpLabel.font = .systemFont(ofSize: 12)
+        helpLabel.textColor = CoachStyle.secondaryText
+        for label in [taskLabel, identityLabel, helpLabel] { label.preferredMaxLayoutWidth = 344 - CoachStyle.inset * 2 }
 
         let primary = PermissionCoachButton(title: "Open settings", target: self, action: #selector(advance))
-        primary.bezelStyle = .rounded
-        primary.controlSize = .large
-        primary.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        primary.role = .primary
+        primary.isBordered = false
         let help = PermissionCoachButton(title: "Help", target: self, action: #selector(toggleHelp))
         help.isBordered = false
         help.imagePosition = .imageLeading
@@ -218,11 +338,14 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         let stack = NSStackView(views: [stepLabel, titleLabel, taskLabel, identityLabel, primary, footer, helpLabel])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 8
+        stack.spacing = 6
         stack.detachesHiddenViews = true
-        stack.setCustomSpacing(14, after: identityLabel)
+        stack.setCustomSpacing(4, after: stepLabel)
+        stack.setCustomSpacing(16, after: identityLabel)
+        stack.setCustomSpacing(8, after: primary)
+        stack.setCustomSpacing(4, after: footer)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        let document = PermissionCoachDocument(frame: NSRect(x: 0, y: 0, width: 308, height: 1))
+        let document = PermissionCoachDocument(frame: NSRect(x: 0, y: 0, width: 344 - CoachStyle.inset * 2, height: 1))
         document.addSubview(stack)
         let scroll = NSScrollView()
         scroll.documentView = document
@@ -233,17 +356,17 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         scroll.borderType = .noBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
         header.translatesAutoresizingMaskIntoConstraints = false
-        material.addSubview(header)
-        material.addSubview(scroll)
+        surface.addSubview(header)
+        surface.addSubview(scroll)
         NSLayoutConstraint.activate([
-            header.leadingAnchor.constraint(equalTo: material.leadingAnchor, constant: 18),
-            header.trailingAnchor.constraint(equalTo: material.trailingAnchor, constant: -18),
-            header.topAnchor.constraint(equalTo: material.topAnchor, constant: 16),
-            header.heightAnchor.constraint(equalToConstant: 24),
-            scroll.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
-            scroll.bottomAnchor.constraint(equalTo: material.bottomAnchor, constant: -16),
+            header.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: CoachStyle.inset),
+            header.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -CoachStyle.inset + 4),
+            header.topAnchor.constraint(equalTo: surface.topAnchor, constant: CoachStyle.inset - 4),
+            header.heightAnchor.constraint(equalToConstant: CoachStyle.headerHeight),
+            scroll.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: CoachStyle.inset),
+            scroll.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -CoachStyle.inset),
+            scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: CoachStyle.headerGap),
+            scroll.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -CoachStyle.inset),
             stack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
             stack.topAnchor.constraint(equalTo: document.topAnchor)
@@ -265,7 +388,8 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
             (permissions?.accessibility == true || permissions?.screenRecording == true ? "Step 2 of 2" : "Step 1 of 2"))
         let title = ready ? "Ready" : currentPermission.title
         if titleLabel.stringValue != title { scrollView?.contentView.scroll(to: .zero) }
-        titleLabel.stringValue = title
+        titleLabel.attributedStringValue = NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 17, weight: .semibold), .foregroundColor: CoachStyle.text, .kern: -0.2])
         if permissions == nil {
             taskLabel.stringValue = "Could not check. Try again."
         } else if ready {
@@ -275,12 +399,16 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         } else {
             taskLabel.stringValue = "In \(currentPermission.settingsName), turn on \(entryPhrase)."
         }
-        identityLabel.stringValue = entry.map { "Look for “\($0)” in the list. If it's already on and this still waits, turn it off and on again." }
+        // A switch that is on but still waits belongs to an older, differently
+        // signed copy. Toggling keeps that copy; only removing it replaces it.
+        identityLabel.stringValue = entry.map { "Look for “\($0)” in the list. If it's already on and this still waits, macOS is holding an older copy: select it, remove it with −, then add \($0) again with +." }
             ?? "Turn on the app named in the macOS request."
         identityLabel.isHidden = ready
+        stack?.setCustomSpacing(ready ? 16 : 6, after: taskLabel)
         primaryButton?.title = permissions == nil ? "Check again" : (ready ? "Back to OpenWork" : "Open settings")
         checkButton?.isHidden = permissions == nil
-        helpButton?.image = NSImage(systemSymbolName: helpExpanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)
+        helpButton?.image = NSImage(systemSymbolName: helpExpanded ? "chevron.down" : "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
         helpButton?.setAccessibilityLabel(helpExpanded ? "Hide help" : "Show help")
         var help = "If the pane does not open, search System Settings for “\(currentPermission.settingsName)”."
         if currentPermission == .screenRecording {
@@ -291,6 +419,9 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         helpLabel.isHidden = !helpExpanded
         positionPanel()
         panel.recalculateKeyViewLoop()
+        // The shadow follows the drawn corners; recompute it after a resize.
+        panel.displayIfNeeded()
+        panel.invalidateShadow()
     }
 
     private var entryPhrase: String { entry.map { "“\($0)”" } ?? "the app named in the macOS request" }
@@ -299,13 +430,15 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         guard let panel, let stack, let scrollView, let document = scrollView.documentView else { return }
         let visible = screen.visibleFrame.insetBy(dx: 12, dy: 12)
         let width = min(344, visible.width)
-        let bodyWidth = max(1, width - 36)
+        let bodyWidth = max(1, width - CoachStyle.inset * 2)
         for label in [taskLabel, identityLabel, helpLabel] { label.preferredMaxLayoutWidth = bodyWidth }
         document.setFrameSize(NSSize(width: bodyWidth, height: document.frame.height))
         document.layoutSubtreeIfNeeded()
         let bodyHeight = ceil(stack.fittingSize.height)
         document.setFrameSize(NSSize(width: bodyWidth, height: bodyHeight))
-        let size = NSSize(width: width, height: min(bodyHeight + 64, visible.height))
+        // Header row above the body, inset like the sides.
+        let chrome = (CoachStyle.inset - 4) + CoachStyle.headerHeight + CoachStyle.headerGap + CoachStyle.inset
+        let size = NSSize(width: width, height: min(bodyHeight + chrome, visible.height))
         if panel.frame.size != size { panel.setContentSize(size) }
         panel.contentView?.layoutSubtreeIfNeeded()
         scrollView.contentView.scroll(to: scrollView.contentView.constrainBoundsRect(scrollView.contentView.bounds).origin)

@@ -1,3 +1,4 @@
+import { startupPhase } from "./startup-phase.js";
 import { withEngineSwitchFence } from "./engine-switch-fence.js";
 import { acquireHistoryCopyLock } from "./opencode-v2-history-lock.js";
 import { engineAutoUpgradeRetry, historyRevision, runEngineAutoUpgrade, waitForEngineIdle, type EngineAutoUpgradeRetry } from "./engine-auto-upgrade.js";
@@ -319,12 +320,16 @@ function exec(file: string, args: string[], options: { cwd?: string; timeout?: n
 }
 
 async function resolveBinary(config: ServerConfig): Promise<ResolvedBinary> {
+  return startupPhase("engine.v2.resolve", () => resolveBinaryInner(config));
+}
+
+async function resolveBinaryInner(config: ServerConfig): Promise<ResolvedBinary> {
   const override = process.env.OPENWORK_OPENCODE2_BIN?.trim();
   if (override) return { bin: override, source: "env" };
 
   let pathError = "not found";
   try {
-    await exec("opencode2", ["--version"]);
+    await startupPhase("engine.v2.version-probe", () => exec("opencode2", ["--version"]));
     return { bin: "opencode2", source: "path" };
   } catch (error) {
     pathError = errorMessage(error);
@@ -516,7 +521,7 @@ export async function waitForEngineV2Catalog(
 }
 
 /** Translate only fields supported by the pinned v2 MCP API. */
-export function mapRuntimeMcpToV2(value: unknown): Record<string, unknown> | undefined {
+export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
   if (value.enabled === false || value.disabled === true) return undefined;
   const shared = {
@@ -538,6 +543,9 @@ export function mapRuntimeMcpToV2(value: unknown): Record<string, unknown> | und
     ...(typeof value.oauth.scope === "string" ? { scope: value.oauth.scope } : {}),
   } : value.oauth === false ? false : undefined;
   return { type: "remote", url: value.url, headers: strings(value.headers),
+    // Only the managed Connect endpoint needs modern discovery and per-request
+    // clientInfo. Keep third-party servers on the engine's legacy default.
+    ...(name === "openwork-cloud" ? { protocol: "auto" } : {}),
     ...(oauth === undefined ? {} : { oauth }), ...shared };
 }
 
@@ -716,7 +724,7 @@ export function createEngineV2Preview(options: {
     const organizationMcp = mcpRules ? await registeredOrganizationMcpServers(config, [location.workspaceId]) : {};
     const desired = new Map(Object.entries(runtime).flatMap(([name, value]) => {
       if (agentPermissionEngineMcpDenial(agentPermissionRules, name, value, organizationMcp)) return [];
-      const mapped = mapRuntimeMcpToV2(value);
+      const mapped = mapRuntimeMcpToV2(value, name);
       return mapped ? [[name, { config: mapped, fingerprint: JSON.stringify(mapped) }] as const] : [];
     }));
     const { applied, attempts } = location;
@@ -1110,6 +1118,8 @@ export function createEngineV2Preview(options: {
     if (nextEnabled && enabled && running) return status();
     enabled = nextEnabled;
     engineOrigin = "manual";
+    // A recorded time marks an explicit choice, which the background upgrade respects.
+    engineChangedAt = new Date().toISOString();
     engineForced = false;
     await persistState();
     if (!enabled) {
@@ -1436,6 +1446,12 @@ export function createEngineV2Preview(options: {
     await startFailureJob;
   }
 
+  // Someone explicitly switched this install back to OpenCode v1. Installs that
+  // never chose report "manual" too (the default), but have no recorded time.
+  function chosenV1Manually(): boolean {
+    return engineOrigin === "manual" && Boolean(engineChangedAt) && !chatRouting;
+  }
+
   function startWhenReady(): void {
     if (stopping) return;
     if (resumeMigration && !migrationJob) { runMigration(true); return; }
@@ -1444,7 +1460,7 @@ export function createEngineV2Preview(options: {
     // background attempt; off reverts only a force-owned v2 choice.
     if (forceRevert && engineForced && chatRouting && !config.readOnly && !autoRevertJob) {
       autoRevertJob = autoRevert().then(success => { if (success) autoRevertJob = undefined; });
-    } else if (forceUpgrade && !forceRevert && !config.readOnly && !chatRouting && !autoUpgradeJob) {
+    } else if (forceUpgrade && !forceRevert && !config.readOnly && !chatRouting && !autoUpgradeJob && !chosenV1Manually()) {
       autoUpgradeJob = autoUpgrade().then(success => { if (success) autoUpgradeJob = undefined; });
     } else if (enabled && !automaticHistoryCopy && engineOrigin !== "reverted" && !(forceUpgrade && !chatRouting)) void start().catch(recordStartError);
   }
