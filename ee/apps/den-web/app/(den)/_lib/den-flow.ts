@@ -1,4 +1,5 @@
 import { workflowRunPreviewSchema, type WorkflowRunPreview } from "@openwork/types/workflows";
+import { seatPlanQuoteSchema, type SeatPlanQuote } from "@openwork/types/den/billing-plans";
 import { denApiCredentials, denBrowserEndpoint } from "./den-api-origin";
 import { getAuthResumeUrl } from "./auth-resume";
 import { ORG_SCOPE_HEADER, getRequestOrgScope, shouldPinOrgScopePath } from "./org-scope";
@@ -23,6 +24,8 @@ export type OrgPaymentRequiredError = {
   message: string;
   currentCount: number;
   freeSeatCount: number;
+  /** The Team plan with this person added (ENG-874); null from older Den APIs. */
+  quote: SeatPlanQuote | null;
 };
 
 export type AuthUser = {
@@ -325,7 +328,13 @@ export function getOrgPaymentRequiredError(payload: unknown): OrgPaymentRequired
     message: payload.message,
     currentCount: payload.currentCount,
     freeSeatCount: payload.freeSeatCount,
+    quote: seatPlanQuote(payload.quote),
   };
+}
+
+function seatPlanQuote(value: unknown): SeatPlanQuote | null {
+  const parsed = seatPlanQuoteSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export function getReauthRequiredError(payload: unknown, response: Response): ReauthRequiredError | null {
