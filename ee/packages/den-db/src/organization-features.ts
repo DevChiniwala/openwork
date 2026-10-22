@@ -194,7 +194,20 @@ export async function setOrganizationFeatureOverrides(
   })
 }
 
-/** Fresh, tenant-scoped member state: it never enters the organization cache. */
+/**
+ * Organizations where at least one active member has an override. Member
+ * overrides are rare, so den-api caches this list for the whole deployment and
+ * reads a member's overrides only for these organizations.
+ */
+export async function readOrganizationsWithMemberFeatureOverrides(database: FeatureDatabase): Promise<string[]> {
+  const rows = await database.select({ organization_id: MemberTable.organizationId })
+    .from(MemberFeatureTable)
+    .innerJoin(MemberTable, eq(MemberTable.id, MemberFeatureTable.member_id))
+    .where(and(isNull(MemberTable.removedAt), eq(MemberTable.isSetupAgent, false)))
+  return [...new Set(rows.map((row) => row.organization_id))]
+}
+
+/** One active membership's overrides. den-api caches them per organization and user. */
 export async function readMemberFeatureOverrides(
   database: FeatureDatabase,
   organizationId: string,

@@ -1,6 +1,6 @@
 import { peopleMemberCondition } from "./setup-agent-members.js"
 import { asc, and, eq, gt, isNull, lt, lte } from "@openwork-ee/den-db/drizzle"
-import { readFeatureRollouts, readOrganizationFeatureOverrides } from "@openwork-ee/den-db/organization-features"
+import { readFeatureRollouts, readMemberFeatureOverrides, readOrganizationFeatureOverrides, readOrganizationsWithMemberFeatureOverrides } from "@openwork-ee/den-db/organization-features"
 import { AuthSessionTable, AuthUserTable, InvitationTable, MemberTable, OAuthConsentTable, OrganizationTable, TeamTable } from "@openwork-ee/den-db/schema"
 import { isFeatureKey, type FeatureOverrides, type FeatureRollouts } from "@openwork/features"
 import { normalizeDenTypeId, type DenTypeId, type DenTypeIdName } from "@openwork-ee/utils/typeid"
@@ -19,7 +19,7 @@ type UserId = typeof AuthUserTable.$inferSelect.id
 type OAuthConsentId = typeof OAuthConsentTable.$inferSelect.id
 
 type CacheParent = "auth" | "features" | "org"
-type CacheChild = "generation" | "inventory-generation" | "grant" | "grant-revoked" | "member" | "member-revoked" | "members" | "member-teams" | "overrides" | "rollouts" | "session" | "session-id" | "session-revoked" | "session-id-revoked"
+type CacheChild = "generation" | "inventory-generation" | "grant" | "grant-revoked" | "member" | "member-override-orgs" | "member-overrides" | "member-revoked" | "members" | "member-teams" | "overrides" | "rollouts" | "session" | "session-id" | "session-revoked" | "session-id-revoked"
 
 type CacheKeyInput = {
   parent: CacheParent
@@ -345,6 +345,18 @@ function parseCachedFeatureRollouts(raw: string | null): FeatureRollouts | null 
   return rollouts
 }
 
+function parseCachedOrganizationIds(raw: string | null): string[] | null {
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.every((id) => typeof id === "string") ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 function parseCachedFeatureOverrides(raw: string | null): FeatureOverrides | null {
   const parsed = parseJsonRecord(raw)
   if (!parsed) {
@@ -655,8 +667,8 @@ function logFeatureCacheError(stage: "get" | "set", child: CacheChild, id: strin
 /**
  * Feature flags are resolved on every org request. Every replica shares one
  * generation for all feature rows, bumped by den-api's feature writers
- * (features.ts updateFeatureRollout / updateOrganizationFeatureOverrides) after
- * the write. Successful bumps invalidate every replica immediately; the TTL
+ * (features.ts updateFeatureRollout / updateOrganizationFeatureOverrides /
+ * updateMemberFeatureOverrides) after the write. Successful bumps invalidate every replica immediately; the TTL
  * bounds failed bumps and external writes. Permission grants are always read
  * from the database by permissions/resolve.ts, never from this flag cache.
  */
@@ -671,6 +683,22 @@ function featureOverridesEntry(organizationId: OrgId): GenerationCacheEntry<Feat
     entryKey: (generation) => cacheKey({ parent: "features", child: "overrides", id: `${generation}:${organizationId}` }),
     parse: parseCachedFeatureOverrides,
     load: () => readOrganizationFeatureOverrides(db, organizationId),
+  }
+}
+
+/** Deployment-wide: the few organizations with any member override. Everyone else skips the member read. */
+const memberOverrideOrganizationsEntry: GenerationCacheEntry<string[]> = {
+  entryKey: (generation) => cacheKey({ parent: "features", child: "member-override-orgs", id: generation }),
+  parse: parseCachedOrganizationIds,
+  load: () => readOrganizationsWithMemberFeatureOverrides(db),
+}
+
+/** One member's overrides, keyed by organization and user so they never leave that membership. */
+function memberFeatureOverridesEntry(organizationId: OrgId, userId: UserId): GenerationCacheEntry<FeatureOverrides> {
+  return {
+    entryKey: (generation) => cacheKey({ parent: "features", child: "member-overrides", id: `${generation}:${organizationId}:${userId}` }),
+    parse: parseCachedFeatureOverrides,
+    load: () => readMemberFeatureOverrides(db, organizationId, userId),
   }
 }
 
@@ -694,16 +722,29 @@ function getOrganizationFeatureOverrides(organizationId: OrgId): Promise<Feature
   })
 }
 
-/** Rollouts and one organization's overrides together: one Redis round trip while the generation is unchanged. */
-async function getOrganizationFeatureState(organizationId: OrgId): Promise<{ rollouts: FeatureRollouts; overrides: FeatureOverrides }> {
-  const [rollouts, overrides] = await readManyThroughGeneration<[FeatureRollouts, FeatureOverrides]>({
+/**
+ * Rollouts and one organization's overrides: one Redis round trip while the
+ * generation is unchanged. With a user, that member's overrides too, read only
+ * when the organization has any (a second round trip for those few members).
+ */
+async function getOrganizationFeatureState(organizationId: OrgId, userId?: UserId): Promise<{ rollouts: FeatureRollouts; overrides: FeatureOverrides; memberOverrides: FeatureOverrides }> {
+  const read = <T extends unknown[]>(entries: { [K in keyof T]: GenerationCacheEntry<T[K]> }) => readManyThroughGeneration<T>({
     redis: activeRedisClient,
     generationKey: FEATURES_GENERATION_KEY,
-    entries: [featureRolloutsEntry, featureOverridesEntry(organizationId)],
+    entries,
     ttlSeconds: DEFAULT_CACHE_TTL_SECONDS,
     onError: (stage, error) => logFeatureCacheError(stage, "generation", organizationId, error),
   })
-  return { rollouts, overrides }
+  if (!userId) {
+    const [rollouts, overrides] = await read<[FeatureRollouts, FeatureOverrides]>([featureRolloutsEntry, featureOverridesEntry(organizationId)])
+    return { rollouts, overrides, memberOverrides: {} }
+  }
+  const [rollouts, overrides, memberOverrideOrganizations] = await read<[FeatureRollouts, FeatureOverrides, string[]]>([
+    featureRolloutsEntry, featureOverridesEntry(organizationId), memberOverrideOrganizationsEntry,
+  ])
+  if (!memberOverrideOrganizations.includes(organizationId)) return { rollouts, overrides, memberOverrides: {} }
+  const [memberOverrides] = await read<[FeatureOverrides]>([memberFeatureOverridesEntry(organizationId, userId)])
+  return { rollouts, overrides, memberOverrides }
 }
 
 async function invalidateFeatures() {
