@@ -51,7 +51,7 @@ export function SignInHandoffNotice(props: {
     const account = auth.user?.email ?? auth.user?.name ?? "this account";
     return (
       <div role="status" data-testid="sign-in-draft-consent">
-        <ComposerNoticeCard icon={null} title={`Move the signed-out draft to ${account}${organization ? ` in ${organization}` : ""}? It stays unsent.`}>
+        <ComposerNoticeCard icon={null} title={`Move the signed-out draft to ${account}${organization ? ` in ${organization}` : ""}? It stays unsent; this move can’t be undone.`}>
           <div className="flex flex-wrap items-center gap-1">
             <Button size="sm" onClick={() => {
               if (!carrySignInReturnDraft(identity, { scope, startedAt: target.startedAt })) {
