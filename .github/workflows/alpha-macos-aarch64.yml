@@ -126,6 +126,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Test packaged sidecar layout and resolution
+        run: node --test apps/desktop/test/sidecar-layout.test.mjs
+
       - name: Resolve alpha version
         id: alpha-version
         shell: bash
@@ -202,6 +205,19 @@ jobs:
             --mac \
             --arm64 \
             --publish never
+
+      - name: Retain macOS alpha build
+        if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openwork-alpha-macos-arm64
+          path: |
+            apps/desktop/dist-electron/*.dmg
+            apps/desktop/dist-electron/*.zip
+            apps/desktop/dist-electron/*.blockmap
+            apps/desktop/dist-electron/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Publish alpha build to rolling release
         if: env.MACOS_NOTARIZE == 'true' && (github.event_name == 'push' || inputs.publish == true)
@@ -340,6 +356,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm --filter @openwork/desktop... --filter @openwork/app... --filter openwork-server... install --frozen-lockfile --prefer-offline
+
+      - name: Test packaged sidecar layout and resolution
+        run: node --test apps/desktop/test/sidecar-layout.test.mjs
 
       - name: Resolve alpha version
         id: alpha-version
