@@ -2,7 +2,17 @@ import * as crypto from "node:crypto";
 import { recordFreeAutoSignIn } from "@openwork-ee/den-db";
 import { readOrganizationMetadata } from "@openwork/types/den/managed-models-policy";
 import { invalidateTeamInferenceOAuth, revokeMemberGatewayCredentials } from "./llm/inference-provider-lifecycle.js";
-import { ensureMemberGatewayKey } from "./gateway-keys.js";
+import { runPostOrganizationMemberChangeHooks } from "./organization-member-hooks.js";
+import {
+  finishScimProvisionedMember,
+  organizationAllowsProvisioning,
+  provisionSsoMembership,
+  provisionVerifiedDomainMembership,
+  SCIM_ENTERPRISE_REQUIRED_MESSAGE,
+  scimRequestOrganizationId,
+  SSO_INVITATION_REQUIRED_MESSAGE,
+} from "./identity-provisioning.js";
+import { syncOrganizationBillingQuantities } from "./stripe-billing.js";
 import { getInitialActiveOrganizationIdForUser } from "./active-organization.js";
 import { db } from "./db.js";
 import { resolveOrganizationMemberAuthority } from "./organization-team-roles.js";
@@ -69,10 +79,6 @@ import {
   organizationRoleValueIncludes,
   splitOrganizationRoles,
 } from "./organization-role-hierarchy.js";
-import {
-  getOrganizationSsoJitRole,
-  ORGANIZATION_SSO_JIT_ROLE,
-} from "./sso-jit.js";
 import { isScimDeprovisionedEmailForSsoProvider, isScimDeprovisionedIdentity, SCIM_DEPROVISIONED_SIGN_IN_MESSAGE } from "./scim-deprovisioning.js";
 import {
   ORGANIZATION_SAML_ALLOW_IDP_INITIATED,
@@ -857,10 +863,17 @@ export const auth = betterAuth({
     },
     member: {
       create: {
+        // Members Better Auth creates through its internal adapter (e.g. the
+        // organization plugin) join like any other member: billing follows the
+        // new user count and the member gets a gateway key. After-hooks run
+        // once the creating transaction has committed. SCIM and SSO write
+        // through the raw adapter instead; see identity-provisioning.ts.
         after: async (member: AuthMemberHookRow) => {
-          if (member.userId && !member.removedAt) await ensureMemberGatewayKey({
+          if (member.removedAt) return;
+          await runPostOrganizationMemberChangeHooks({
             organizationId: normalizeDenTypeId("organization", member.organizationId),
             memberId: normalizeDenTypeId("member", member.id),
+            change: "added",
           });
         },
       },
@@ -890,10 +903,14 @@ export const auth = betterAuth({
           });
         },
         after: async (member: AuthMemberHookRow) => {
+          const organizationId = normalizeDenTypeId("organization", member.organizationId);
           await revokeMemberGatewayCredentials({
-            organizationId: normalizeDenTypeId("organization", member.organizationId),
+            organizationId,
             memberId: normalizeDenTypeId("member", member.id),
           });
+          // One fewer user: billing follows the lower count.
+          await cache.org.deleteMembers(organizationId);
+          await syncOrganizationBillingQuantities({ organizationId });
         },
       },
     },
@@ -965,6 +982,14 @@ export const auth = betterAuth({
       }
 
       await assertLiveMcpSessionForRefreshGrant(ctx);
+
+      // SCIM adds people without an invitation: Enterprise only.
+      if (ctx.path === "/scim/v2/Users" && ctx.request?.method === "POST") {
+        const organizationId = await scimRequestOrganizationId(ctx.headers?.get("authorization"));
+        if (organizationId && !await organizationAllowsProvisioning(organizationId, "scim")) {
+          throw new APIError("FORBIDDEN", { message: SCIM_ENTERPRISE_REQUIRED_MESSAGE });
+        }
+      }
 
       if (ctx.path === "/oauth2/authorize") {
         const clientId = maybeString(ctx.query?.client_id);
@@ -1198,6 +1223,17 @@ export const auth = betterAuth({
         return;
       }
 
+      // A SCIM-created member joins like any other: billing follows the new
+      // user count and the member gets a gateway key.
+      if (ctx.path === "/scim/v2/Users" && ctx.request?.method === "POST") {
+        const createdUserId = readStringProperty(ctx.context.returned, "id");
+        const organizationId = await scimRequestOrganizationId(ctx.headers?.get("authorization"));
+        if (createdUserId && organizationId) {
+          await finishScimProvisionedMember({ organizationId, userId: normalizeDenTypeId("user", createdUserId) });
+        }
+        return;
+      }
+
       if (ctx.path === "/organization/leave") {
         const member = removedMemberIdentity(ctx.context.returned);
         if (member) {
@@ -1242,6 +1278,13 @@ export const auth = betterAuth({
       if (!newSession) {
         return;
       }
+
+      // Signing in (e.g. with Google) on an organization's verified SSO domain
+      // joins it on the Team plan and up; Free organizations use invitations.
+      await provisionVerifiedDomainMembership({
+        userId: normalizeDenTypeId("user", newSession.user.id),
+        email: newSession.user.email,
+      });
 
       const requirement = await findEnterpriseAuthRequirementForUserId(newSession.user.id);
       if (!requirement) {
@@ -1741,10 +1784,11 @@ export const auth = betterAuth({
         enabled: true,
         tokenPrefix: SSO_DOMAIN_VERIFICATION_TOKEN_PREFIX,
       },
+      // Den provisions SSO members itself (provisionUser below and the
+      // /callback/:id hook): Better Auth writes member rows through the raw
+      // adapter, skipping billing, and would add people to any plan.
       organizationProvisioning: {
-        disabled: false,
-        defaultRole: ORGANIZATION_SSO_JIT_ROLE,
-        getRole: getOrganizationSsoJitRole,
+        disabled: true,
       },
       saml: {
         enableInResponseToValidation: true,
@@ -1801,6 +1845,12 @@ export const auth = betterAuth({
               lastSsoLoginAt: payload.lastSsoLoginAt,
             },
           });
+
+        // Invited people join on any plan; automatic sign-up needs the Team plan.
+        const membership = await provisionSsoMembership({ organizationId, userId, email });
+        if (membership === "invitation_required") {
+          throw new APIError("FORBIDDEN", { message: SSO_INVITATION_REQUIRED_MESSAGE });
+        }
       },
     }),
     // RFC 8628 device authorization for `openwork-bootstrap login` and the

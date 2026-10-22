@@ -1978,6 +1978,7 @@ export type OrganizationContextResponse = {
     orgControls: boolean;
     analytics: boolean;
     auditLogs: boolean;
+    scim: boolean;
   };
   [key: string]: unknown;
 };
@@ -16820,6 +16821,10 @@ export type PostV1ScimTokenErrors = {
    * Unauthorized
    */
   401: ScimUnauthorizedError;
+  /**
+   * SCIM provisioning requires an Enterprise plan.
+   */
+  402: EnterprisePlanRequiredError;
   /**
    * The caller needs the Manage SCIM provisioning permission and a recent sign-in.
    */

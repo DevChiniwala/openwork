@@ -21,7 +21,7 @@ Do not run `npx openwork` or `npm install openwork`: the npm package named `open
 
 ### Path 2: "My team" — OpenWork Cloud with shared skills and models
 
-1. Sign up (free, first 5 seats included): https://app.openworklabs.com?mode=sign-up — after sign-up you name your team, which creates the organization.
+1. Sign up (Free plan, up to 5 users): https://app.openworklabs.com?mode=sign-up — after sign-up you name your team, which creates the organization.
 2. Invite teammates: dashboard `Members` > `Add member`.
 3. Share models: `AI Gateway` > `AI Providers` > `Add provider`, then choose who can use it.
 4. Share a skill: `Plugin Directory` > `Create plugin` > `+ Skill`, add it to a Collection, and grant the Collection to a team.
@@ -80,8 +80,8 @@ Under the hood, OpenWork is a GUI for OpenCode — anything OpenCode supports wo
 
 ## Pricing summary
 
-- **Free — $0**: the open-source desktop app (macOS, Windows, Linux) is free for anyone with your own provider keys; OpenWork Cloud: first 5 seats free for any team; self-hosting: free for organizations up to 5 users.
-- **Team — $10 per seat/month**: unlimited users, SSO/SAML, Extension Marketplace, distribute your own LLM keys to the team, cloud automations, basic analytics, standard support. Billed monthly.
+- **Free — $0**: the open-source desktop app (macOS, Windows, Linux) is free for anyone with your own provider keys; OpenWork Cloud: Free plan limited to 5 users; self-hosting: free for organizations up to 5 users.
+- **Team — $10 per user/month**: unlimited users, SSO/SAML, Extension Marketplace, distribute your own LLM keys to the team, cloud automations, basic analytics, standard support. Billed monthly.
 - **Enterprise — custom pricing, annual contract**: everything in Team, plus SCIM provisioning, usage analytics, desktop policies, audit log, spend observability, white-labeling, bring your own inference, and standard SLA support. Same terms cloud or self-hosted; annual contract with a 60-day opt-out. See [Enterprise](https://openworklabs.com/enterprise).
 - **Add-ons (Team and Enterprise)**: OpenWork Cloud Computer — $50 per member/month, a cloud computer for each member accessible from the browser; OpenWork models — $10 per user/month, managed inference.
 

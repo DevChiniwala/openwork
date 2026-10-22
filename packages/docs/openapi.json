@@ -8200,6 +8200,9 @@
               },
               "auditLogs": {
                 "type": "boolean"
+              },
+              "scim": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -8207,7 +8210,8 @@
               "desktopPolicies",
               "orgControls",
               "analytics",
-              "auditLogs"
+              "auditLogs",
+              "scim"
             ]
           }
         },
@@ -60906,6 +60910,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScimUnauthorizedError"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "SCIM provisioning requires an Enterprise plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnterprisePlanRequiredError"
                 }
               }
             }
