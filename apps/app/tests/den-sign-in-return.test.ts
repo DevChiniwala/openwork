@@ -24,7 +24,8 @@ import {
   type SignInReturnStorage,
 } from "../src/app/lib/den-sign-in-return";
 import { openAutoSignIn } from "../src/react-app/domains/cloud/auto-access-ui";
-import { carrySignedOutDraft, completeSignInReturn } from "../src/react-app/domains/cloud/sign-in-return";
+import { completeSignInReturn } from "../src/react-app/domains/cloud/sign-in-return";
+import { carrySignInReturnDraft, carrySignedOutDraft } from "../src/react-app/domains/cloud/sign-in-return-draft";
 import {
   cloudSessionDraftScope,
   getSessionDraft,
@@ -275,5 +276,21 @@ describe("in the app", () => {
     expect(carrySignedOutDraft({ workspaceId: "ws_local", sessionId: null }, scope)).toBe(false);
     expect(getSessionDraft(scope, "ws_local", NEW_TASK_DRAFT_SESSION_ID)?.text).toBe("already here");
     expect(carrySignedOutDraft({ workspaceId: null, sessionId: "ses_contract" }, scope)).toBe(false);
+  });
+
+  test("the verified identity of the completing sign-in receives the draft; nobody else does", () => {
+    const riley = { principalId: user.id, organizationId: acme.id };
+    const rileyScope = cloudSessionDraftScope(riley);
+    const jordanScope = cloudSessionDraftScope({ principalId: "user-jordan", organizationId: acme.id });
+    saveSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", "ses_contract", { text: "List the renewal dates", mode: "prompt" });
+    recordSignInReturnTarget({ path: conversation, authUrl });
+    // Not signed in yet: nothing moves.
+    expect(carrySignInReturnDraft(riley)).toBe(false);
+    noteSignInReturnHandoff({ desktopInitiated: true });
+    expect(carrySignInReturnDraft(riley)).toBe(true);
+    expect(getSessionDraft(rileyScope, "ws_local", "ses_contract")?.text).toBe("List the renewal dates");
+    // A later identity (after sign-out, someone else signs in) gets nothing.
+    expect(carrySignInReturnDraft({ principalId: "user-jordan", organizationId: acme.id })).toBe(false);
+    expect(getSessionDraft(jordanScope, "ws_local", "ses_contract")).toBeNull();
   });
 });

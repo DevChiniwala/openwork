@@ -1,13 +1,12 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { NavigateFunction } from "react-router";
 
 import { buildDenAuthUrl, createDenClient, readDenBootstrapConfig, readDenSettings } from "@/app/lib/den";
-import { markDesktopSignInInitiated, readOrgSelectionPending } from "@/app/lib/den-sign-in-intent";
+import { markDesktopSignInInitiated } from "@/app/lib/den-sign-in-intent";
 import {
   beginSignInReturn,
-  claimSignInReturnDraft,
   claimSignInReturnRoute,
   clearSignInReturnTarget,
   currentAppRoutePath,
@@ -21,14 +20,6 @@ import {
 } from "@/app/lib/den-sign-in-return";
 import { toast } from "@/components/ui/sonner";
 import { usePlatform } from "@/react-app/kernel/platform";
-import {
-  clearSessionDraft,
-  cloudSessionDraftScope,
-  getSessionDraft,
-  LOCAL_SESSION_DRAFT_SCOPE,
-  NEW_TASK_DRAFT_SESSION_ID,
-  saveSessionDraft,
-} from "../session/sync/draft-store";
 import { useDenAuth } from "./den-auth-provider";
 
 const FEATURE_KEY = "desktopSignInReturn";
@@ -139,38 +130,4 @@ export function completeSignInReturn(navigate: NavigateFunction): boolean {
   const organization = readDenSettings().activeOrgName?.trim();
   toast.success(organization ? `Signed in to ${organization}` : "Signed in", { id: "sign-in-return" });
   return true;
-}
-
-/** Move one signed-out draft into the signed-in scope, never over a draft already there. */
-export function carrySignedOutDraft(target: Pick<SignInReturnTarget, "workspaceId" | "sessionId">, scope: string) {
-  if (!target.workspaceId) return false;
-  const slot = target.sessionId ?? NEW_TASK_DRAFT_SESSION_ID;
-  const signedOut = getSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, target.workspaceId, slot);
-  if (!signedOut?.text.trim()) return false;
-  if (getSessionDraft(scope, target.workspaceId, slot)?.text.trim()) return false;
-  const saved = saveSessionDraft(scope, target.workspaceId, slot, { text: signedOut.text, mode: signedOut.mode });
-  if (saved.status !== "saved") return false;
-  clearSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, target.workspaceId, slot);
-  return true;
-}
-
-/**
- * Drafts are stored per account and organization. Once the identity of a
- * desktop-initiated sign-in is verified, the draft of the conversation it
- * started from follows the person into their signed-in scope.
- */
-export function SignInReturnDraftBridge() {
-  const auth = useDenAuth();
-  const target = useSignInReturnTarget();
-  const ready = Boolean(target && target.signedInAt !== null && !target.draftCarried);
-  useEffect(() => {
-    if (!ready || auth.status !== "signed_in" || !auth.verifiedIdentity) return;
-    if (auth.verifiedIdentity.organizationId !== readDenSettings().activeOrgId) return;
-    if (readOrgSelectionPending().pending) return;
-    const scope = cloudSessionDraftScope(auth.verifiedIdentity);
-    if (!scope) return;
-    const claimed = claimSignInReturnDraft();
-    if (claimed) carrySignedOutDraft(claimed, scope);
-  }, [auth.status, auth.verifiedIdentity, ready]);
-  return null;
 }

@@ -9,7 +9,6 @@ import { isDesktopRuntime } from "@/app/utils";
 import { ConnectLinkProvider } from "@/react-app/domains/cloud/connect-link-provider";
 import { DenAuthProvider } from "@/react-app/domains/cloud/den-auth-provider";
 import { AutoRejectedTurnRecoveryBridge } from "@/react-app/domains/cloud/auto-access-ui";
-import { SignInReturnDraftBridge } from "@/react-app/domains/cloud/sign-in-return";
 import { AutomationRunnerBridge } from "@/react-app/domains/automations/automation-runner-bridge";
 import { GlobalQueueDrainerBridge } from "@/react-app/domains/session/sync/global-queue-drainer-bridge";
 import { BrandThemeProvider } from "@/react-app/domains/cloud/brand-theme";
@@ -71,7 +70,6 @@ export function EnterpriseAwareAppProviders({ children }: AppProvidersProps) {
                 <AutomationRunnerBridge />
                 <GlobalQueueDrainerBridge />
                 <AutoRejectedTurnRecoveryBridge />
-                <SignInReturnDraftBridge />
                 <ReloadCoordinatorProvider>{children}</ReloadCoordinatorProvider>
                 <LinkOpenDialog />
                 <Toaster />
