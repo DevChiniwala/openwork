@@ -1299,6 +1299,7 @@ export class DenClient extends HeyApiClient {
         browserDemonstrations?: boolean | null;
         browserFloatingView?: boolean | null;
         remoteComputers?: boolean | null;
+        freestyleComputers?: boolean | null;
         remoteSessionSubagents?: boolean | null;
         connectStandardTools?: boolean | null;
       };

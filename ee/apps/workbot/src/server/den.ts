@@ -32,6 +32,8 @@ export const denSessionSchema = z.object({
   enabled: z.boolean(),
   canSchedule: z.boolean(),
   computer: z.boolean().default(false),
+  /** Where new conversations get their computer; absent means the runner's default. */
+  computerProvider: z.enum(["freestyle"]).optional(),
   browserDemonstrations: z.boolean().default(false),
   /** Workbot's Calendar tab is on (while Workbot is on). Older Dens omit it: off. */
   calendar: z.boolean().optional(),

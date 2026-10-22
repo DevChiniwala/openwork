@@ -188,6 +188,16 @@
               ],
               "description": "Desktop: computer use on remote computers: Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Configured and conversation-owned desktops open directly when enabled, including follow-ups and internal session renewal. Take over and Stop stay available. Renders DEN_FEATURE_REMOTE_COMPUTERS."
             },
+            "freestyleComputers": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: cloud computers on Freestyle: New Workbot conversations get their cloud computer from Freestyle, which starts from a running desktop and resumes in about a second. Existing conversations keep their computer. Requires remote computers and a runner configured for Freestyle. Renders DEN_FEATURE_FREESTYLE_COMPUTERS."
+            },
             "remoteSessionSubagents": {
               "enum": [
                 "",

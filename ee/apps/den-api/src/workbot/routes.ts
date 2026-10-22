@@ -377,6 +377,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         memberId,
         enabled: true,
         computer: features.computerUse && features.remoteComputers,
+        ...(features.computerUse && features.remoteComputers && features.freestyleComputers ? { computerProvider: "freestyle" as const } : {}),
         browserDemonstrations: features.browserDemonstrations && features.computerUse && features.remoteComputers,
         canSchedule,
         calendar: true,

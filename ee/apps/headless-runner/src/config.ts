@@ -107,6 +107,11 @@ const configSchema = z.object({
     .transform((value) => value || undefined),
   /** Snapshot id or slug to boot from; defaults to the one built from @openwork-ee/headless-computer's image. */
   HEADLESS_COMPUTER_SNAPSHOT: z.string().min(1).optional(),
+  /**
+   * A Freestyle desktop snapshot (snapshot:build:freestyle-desktop) that adds Freestyle beside the default provider:
+   * conversations whose organization turned on Freestyle computers start there; everyone else stays on the default.
+   */
+  HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT: z.string().min(1).optional(),
   HEADLESS_COMPUTER_PAUSE_SECONDS: z.coerce.number().int().min(10).default(300),
   HEADLESS_COMPUTER_KEEP_DAYS: z.coerce.number().int().min(1).max(365).default(14),
   /** true keeps each conversation's computer (paused, memory intact) until removed, instead of deleting it after KEEP_DAYS unused. */
@@ -161,6 +166,8 @@ export type Config = {
   /** Sealing and large bodies (storage/); `segments` false is the default and the kill switch. */
   storage: { segments: boolean; hotLimitBytes: number; segmentTargetBytes: number; largeBodyBytes: number }
   computer?: ComputerProviderConfig & { scope?: string; idlePauseMs: number; keepDays: number }
+  /** Freestyle beside a different default provider, for conversations that ask for it. */
+  freestyleComputer?: ComputerProviderConfig & { scope?: string; idlePauseMs: number; keepDays: number }
   /** Where error reports go; unset (no DSN) sends none. */
   errorReporting?: ErrorReportingConfig
   /** Turns with a resume grant keep going on their own (see self-resume.ts); unset, callers resume them. */
@@ -205,6 +212,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     fileLimits: { maxFileBytes: value.HEADLESS_FILES_MAX_BYTES, maxSessionBytes: value.HEADLESS_FILES_MAX_SESSION_BYTES },
     storage: storageConfig(value),
     computer: computerConfig(value),
+    freestyleComputer: freestyleComputerConfig(value),
     errorReporting: errorReportingConfig(value),
     selfResume: selfResumeConfig(value),
   }
@@ -260,6 +268,23 @@ function computerConfig(value: z.infer<typeof configSchema>): Config["computer"]
     desktop: value.HEADLESS_COMPUTER_DESKTOP === "true",
     scope: value.HEADLESS_COMPUTER_SCOPE,
     snapshot: value.HEADLESS_COMPUTER_SNAPSHOT,
+    idlePauseMs: value.HEADLESS_COMPUTER_PAUSE_SECONDS * 1000,
+    keepDays: value.HEADLESS_COMPUTER_KEEP_DAYS,
+    persistent: value.HEADLESS_COMPUTER_PERSISTENT === "true",
+    ...(value.HEADLESS_COMPUTER_DOMAIN ? { endpointDomain: value.HEADLESS_COMPUTER_DOMAIN } : {}),
+  }
+}
+
+function freestyleComputerConfig(value: z.infer<typeof configSchema>): Config["freestyleComputer"] {
+  if (!value.HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT) return undefined
+  if (value.HEADLESS_COMPUTER !== "daytona") throw new Error("HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT adds Freestyle beside Daytona; with HEADLESS_COMPUTER=freestyle use HEADLESS_COMPUTER_SNAPSHOT instead")
+  if (!value.FREESTYLE_API_KEY) throw new Error("HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT needs FREESTYLE_API_KEY")
+  return {
+    kind: "freestyle",
+    apiKey: value.FREESTYLE_API_KEY,
+    desktop: value.HEADLESS_COMPUTER_DESKTOP === "true",
+    scope: value.HEADLESS_COMPUTER_SCOPE,
+    snapshot: value.HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT,
     idlePauseMs: value.HEADLESS_COMPUTER_PAUSE_SECONDS * 1000,
     keepDays: value.HEADLESS_COMPUTER_KEEP_DAYS,
     persistent: value.HEADLESS_COMPUTER_PERSISTENT === "true",

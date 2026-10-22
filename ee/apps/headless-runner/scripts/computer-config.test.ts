@@ -34,3 +34,32 @@ test("a Freestyle desktop needs its desktop snapshot, and persistence and the vi
   assert.equal(loadConfig({ ...env, HEADLESS_COMPUTER_SNAPSHOT: "desktop" }).computer?.persistent, false)
   assert.throws(() => loadConfig({ ...env, HEADLESS_COMPUTER_SNAPSHOT: "desktop", HEADLESS_COMPUTER_DOMAIN: "https://bad" }), /lowercase domain/)
 })
+
+test("Freestyle beside Daytona needs its key, and only adds to a Daytona runner", () => {
+  const daytona = { ...base, HEADLESS_COMPUTER: "daytona", DAYTONA_API_KEY: "test", HEADLESS_COMPUTER_SNAPSHOT: "workbot-desktop", HEADLESS_COMPUTER_CLASS: "linux-vm", HEADLESS_COMPUTER_DESKTOP: "true" }
+  assert.equal(loadConfig(daytona).freestyleComputer, undefined)
+  assert.throws(() => loadConfig({ ...daytona, HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT: "workbot-desktop-freestyle" }), /FREESTYLE_API_KEY/)
+  const both = loadConfig({ ...daytona, HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT: "workbot-desktop-freestyle", FREESTYLE_API_KEY: "test" })
+  assert.equal(both.computer?.kind, "daytona")
+  assert.equal(both.freestyleComputer?.kind, "freestyle")
+  assert.equal(both.freestyleComputer?.snapshot, "workbot-desktop-freestyle")
+  assert.equal(both.freestyleComputer?.desktop, true)
+  assert.throws(() => loadConfig({ ...base, HEADLESS_COMPUTER: "freestyle", FREESTYLE_API_KEY: "test", HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT: "x" }), /beside Daytona/)
+})
+
+test("each conversation's computer calls go to the provider it started on", async () => {
+  const { routeComputers } = await import("../src/computer-routing.js")
+  const calls: string[] = []
+  const fake = (name: string) => ({
+    prompt: "p", tools: [], toolNames: new Set<string>(), image: name,
+    run: async (sessionId: string) => { calls.push(`${name}:${sessionId}`); return { output: "", isError: false } },
+    known: () => true, prewarm: () => {}, release: () => {}, delete: async () => {}, previewSavedFile: async () => {},
+    desktopViewer: async () => { calls.push(`${name}:viewer`); return { state: "paused" as const } },
+  })
+  const routed = routeComputers(fake("daytona"), fake("freestyle"), sessionId => sessionId === "hs_free" ? "freestyle" : sessionId === "hs_day" ? "default" : null)
+  await routed.run("hs_free", "bash", {})
+  await routed.run("hs_day", "bash", {})
+  await routed.run("hs_old", "bash", {})
+  await routed.desktopViewer?.("hs_free", { view: "computer", control: false, origin: "https://chat.example.test" })
+  assert.deepEqual(calls, ["freestyle:hs_free", "daytona:hs_day", "daytona:hs_old", "freestyle:viewer"])
+})

@@ -302,3 +302,17 @@ test("opening a document is a request the runner records only for a navigation-e
     if (enabled) assert.deepEqual(JSON.parse(result.output), { fileId: "file_example", status: "requested" })
   }
 })
+
+test("a conversation keeps the computer provider it started with", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "runner-provider-"))
+  try {
+    const store = new Store(nodeSqlite(join(directory, "runner.sqlite")))
+    assert.equal(store.putSession("hs_none", { title: "No computer" }).session.computerProvider, null)
+    assert.equal(store.putSession("hs_free", { computer: true, computerProvider: "freestyle" }).session.computerProvider, "freestyle")
+    assert.equal(store.putSession("hs_free", { computer: true }).session.computerProvider, "freestyle", "a later call without a provider keeps it")
+    assert.equal(store.putSession("hs_day", { computer: true }).session.computerProvider, "default")
+    assert.equal(store.putSession("hs_day", { computer: true, computerProvider: "freestyle" }).session.computerProvider, "default", "turning Freestyle on later never moves an existing computer")
+    assert.equal(store.putSession("hs_later", { title: "Chat" }).session.computerProvider, null)
+    assert.equal(store.putSession("hs_later", { computer: true, computerProvider: "freestyle" }).session.computerProvider, "freestyle", "a chat gets its provider when it first gets a computer")
+  } finally { rmSync(directory, { recursive: true, force: true }) }
+})

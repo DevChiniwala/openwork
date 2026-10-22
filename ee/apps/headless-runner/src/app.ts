@@ -31,6 +31,8 @@ const createSessionBody = z
     /** Give this conversation a Linux computer (needs HEADLESS_COMPUTER). Off unless asked for. */
     computer: z.boolean().optional(),
     desktop: z.boolean().optional(),
+    /** Run this conversation's computer on Freestyle (needs HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT); fixed once it has one. */
+    computerProvider: z.enum(["freestyle"]).optional(),
     /** Let the model react to the person's message with one emoji (the `react` tool). Off unless asked for. */
     reactions: z.boolean().optional(),
     /** Let the conversation hand longer work to background tasks (start_task) and keep talking. Off unless asked for. */

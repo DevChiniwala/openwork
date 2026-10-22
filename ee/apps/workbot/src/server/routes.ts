@@ -116,6 +116,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     createWorkbot({
       client: runnerClientFor(member),
       desktop: member.den.computer,
+      computerProvider: member.den.computerProvider,
       canSchedule: async () => member.den.canSchedule,
       model: async () => member.den.model,
       // Gateway access is validated for this actor and model by Den when minting each turn, not by the runner catalog.
@@ -255,7 +256,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       if (!existing.ok && existing.status === 404) sessionId = await workbot.ensureComputer(actorOf(member))
       else {
         if (!existing.ok) return desktopFailure(c, operation, existing.error)
-        const updated = await client.putSession(sessionId, { computer: true, desktop: true })
+        const updated = await client.putSession(sessionId, { computer: true, desktop: true, ...(member.den.computerProvider ? { computerProvider: member.den.computerProvider } : {}) })
         if (!updated.ok) return desktopFailure(c, operation, updated.error)
       }
       if (operation === "viewer") {

@@ -4813,6 +4813,7 @@
               "browserDemonstrations",
               "browserFloatingView",
               "remoteComputers",
+              "freestyleComputers",
               "remoteSessionSubagents",
               "connectStandardTools"
             ]
@@ -5040,6 +5041,9 @@
                     "remoteComputers": {
                       "type": "boolean"
                     },
+                    "freestyleComputers": {
+                      "type": "boolean"
+                    },
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
@@ -5071,6 +5075,7 @@
                     "browserDemonstrations",
                     "browserFloatingView",
                     "remoteComputers",
+                    "freestyleComputers",
                     "remoteSessionSubagents",
                     "connectStandardTools",
                     "gatewayDashboard"
@@ -6048,6 +6053,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "freestyleComputers": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "remoteSessionSubagents": {
                       "type": "object",
                       "properties": {
@@ -6181,6 +6243,7 @@
                     "browserDemonstrations",
                     "browserFloatingView",
                     "remoteComputers",
+                    "freestyleComputers",
                     "remoteSessionSubagents",
                     "connectStandardTools"
                   ],
@@ -6603,6 +6666,9 @@
                     "remoteComputers": {
                       "type": "boolean"
                     },
+                    "freestyleComputers": {
+                      "type": "boolean"
+                    },
                     "remoteSessionSubagents": {
                       "type": "boolean"
                     },
@@ -6634,6 +6700,7 @@
                     "browserDemonstrations",
                     "browserFloatingView",
                     "remoteComputers",
+                    "freestyleComputers",
                     "remoteSessionSubagents",
                     "connectStandardTools",
                     "gatewayDashboard"
@@ -7611,6 +7678,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "freestyleComputers": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "remoteSessionSubagents": {
                       "type": "object",
                       "properties": {
@@ -7744,6 +7868,7 @@
                     "browserDemonstrations",
                     "browserFloatingView",
                     "remoteComputers",
+                    "freestyleComputers",
                     "remoteSessionSubagents",
                     "connectStandardTools"
                   ],
@@ -33713,6 +33838,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "freestyleComputers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "remoteSessionSubagents": {
                           "type": "object",
                           "properties": {
@@ -33846,6 +34028,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
+                        "freestyleComputers",
                         "remoteSessionSubagents",
                         "connectStandardTools"
                       ]
@@ -34913,6 +35096,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "freestyleComputers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "remoteSessionSubagents": {
                           "type": "object",
                           "properties": {
@@ -35046,6 +35286,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
+                        "freestyleComputers",
                         "remoteSessionSubagents",
                         "connectStandardTools"
                       ]
@@ -35270,6 +35511,16 @@
                         ]
                       },
                       "remoteComputers": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "freestyleComputers": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -38419,6 +38670,9 @@
                         "remoteComputers": {
                           "type": "boolean"
                         },
+                        "freestyleComputers": {
+                          "type": "boolean"
+                        },
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
@@ -38450,6 +38704,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
+                        "freestyleComputers",
                         "remoteSessionSubagents",
                         "connectStandardTools",
                         "gatewayDashboard"
@@ -39427,6 +39682,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "freestyleComputers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "remoteSessionSubagents": {
                           "type": "object",
                           "properties": {
@@ -39560,6 +39872,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
+                        "freestyleComputers",
                         "remoteSessionSubagents",
                         "connectStandardTools"
                       ],
@@ -39731,6 +40044,9 @@
                         "remoteComputers": {
                           "type": "boolean"
                         },
+                        "freestyleComputers": {
+                          "type": "boolean"
+                        },
                         "remoteSessionSubagents": {
                           "type": "boolean"
                         },
@@ -39762,6 +40078,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
+                        "freestyleComputers",
                         "remoteSessionSubagents",
                         "connectStandardTools",
                         "gatewayDashboard"
@@ -40739,6 +41056,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "freestyleComputers": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "remoteSessionSubagents": {
                           "type": "object",
                           "properties": {
@@ -40872,6 +41246,7 @@
                         "browserDemonstrations",
                         "browserFloatingView",
                         "remoteComputers",
+                        "freestyleComputers",
                         "remoteSessionSubagents",
                         "connectStandardTools"
                       ],

@@ -175,6 +175,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  freestyleComputers: {
+    label: "Workbot: cloud computers on Freestyle",
+    description: "New Workbot conversations get their cloud computer from Freestyle, which starts from a running desktop and resumes in about a second. Existing conversations keep their computer. Requires remote computers and a runner configured for Freestyle.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
   remoteSessionSubagents: {
     label: "Desktop: tasks on other computers as sub-agents",
     description: "A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.",

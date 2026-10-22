@@ -49,6 +49,7 @@ const sessionOptions = z.object({
   files: z.boolean().optional(),
   computer: z.boolean().optional(),
   desktop: z.boolean().optional(),
+  computerProvider: z.enum(["default", "freestyle"]).optional(),
   reactions: z.boolean().optional(),
   tasks: z.boolean().optional(),
   documentNavigation: z.boolean().optional(),
@@ -96,6 +97,11 @@ export type Session = {
   files: boolean
   computer: boolean
   desktop: boolean
+  /**
+   * Which configured computer this conversation uses: the runner's default, or Freestyle when its organization opted
+   * in. Fixed when the conversation first gets a computer, so a later change never moves an existing computer.
+   */
+  computerProvider: "default" | "freestyle" | null
   /** Whether the model may react to the person's message with an emoji (the caller shows it). */
   reactions: boolean
   /** Whether the conversation may hand work to background tasks (start_task) and keep talking meanwhile. */
@@ -127,6 +133,7 @@ export type SessionInput = {
   files?: boolean
   computer?: boolean
   desktop?: boolean
+  computerProvider?: "default" | "freestyle"
   reactions?: boolean
   tasks?: boolean
   documentNavigation?: boolean
@@ -144,6 +151,7 @@ function optionsOf(input: {
   files?: boolean
   computer?: boolean
   desktop?: boolean
+  computerProvider?: "default" | "freestyle" | null
   reactions?: boolean
   tasks?: boolean
   documentNavigation?: boolean
@@ -157,6 +165,7 @@ function optionsOf(input: {
     ...(input.files !== undefined ? { files: input.files } : {}),
     ...(input.computer !== undefined ? { computer: input.computer } : {}),
     ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
+    ...(input.computerProvider ? { computerProvider: input.computerProvider } : {}),
     ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
     ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
     ...(input.documentNavigation !== undefined ? { documentNavigation: input.documentNavigation } : {}),
@@ -165,6 +174,16 @@ function optionsOf(input: {
     ...(input.memoryOf ? { memoryOf: input.memoryOf } : {}),
     ...(input.memoryScope ? { memoryScope: input.memoryScope } : {}),
   }
+}
+
+/**
+ * A conversation's computer stays where it started: the provider is recorded the first time it gets a computer, and
+ * conversations that already had one before providers were recorded stay on the default.
+ */
+function firstProvider(existing: Session | null, input: SessionInput): "default" | "freestyle" | undefined {
+  if (existing?.computerProvider) return existing.computerProvider
+  if (existing?.computer) return "default"
+  return input.computer ? input.computerProvider ?? "default" : undefined
 }
 
 /** A new conversation's title: the caller's, or none yet when it is to be named after its first answer. */
@@ -177,6 +196,7 @@ function serializeOptions(options: SessionOptions) {
     ...(options.files ? { files: true } : {}),
     ...(options.computer ? { computer: true } : {}),
     ...(options.desktop ? { desktop: true } : {}),
+    ...(options.computerProvider ? { computerProvider: options.computerProvider } : {}),
     ...(options.reactions ? { reactions: true } : {}),
     ...(options.tasks ? { tasks: true } : {}),
     ...(options.documentNavigation ? { documentNavigation: true } : {}),
@@ -465,7 +485,7 @@ export class Store {
     this.transaction(() => {
       this.db
         .prepare("INSERT INTO sessions (id, title, instructions, options, owner, ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, initialTitle(input), input.instructions ?? "", serializeOptions(optionsOf(input)), input.owner ?? null, input.ref ?? null, at, at)
+        .run(id, initialTitle(input), input.instructions ?? "", serializeOptions(optionsOf({ ...input, computerProvider: firstProvider(null, input) })), input.owner ?? null, input.ref ?? null, at, at)
       this.sessionCreated(id)
     })
     const session = this.getSession(id)
@@ -494,11 +514,11 @@ export class Store {
     if (!existing) {
       this.db
         .prepare("INSERT INTO sessions (id, title, instructions, options, owner, ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, initialTitle(input), input.instructions ?? "", serializeOptions(optionsOf(input)), input.owner ?? null, input.ref ?? null, at, at)
+        .run(id, initialTitle(input), input.instructions ?? "", serializeOptions(optionsOf({ ...input, computerProvider: firstProvider(null, input) })), input.owner ?? null, input.ref ?? null, at, at)
       this.sessionCreated(id)
     } else {
       // Settings the caller leaves out keep their current value.
-      const options = { ...optionsOf(existing), ...optionsOf(input) }
+      const options = { ...optionsOf(existing), ...optionsOf({ ...input, computerProvider: firstProvider(existing, input) }) }
       const changed =
         (input.title !== undefined && input.title !== existing.title) ||
         (input.instructions !== undefined && input.instructions !== existing.instructions) ||
@@ -540,6 +560,7 @@ export class Store {
       files: options.files ?? false,
       computer: options.computer ?? false,
       desktop: options.desktop ?? false,
+      computerProvider: options.computerProvider ?? null,
       reactions: options.reactions ?? false,
       tasks: options.tasks ?? false,
       documentNavigation: options.documentNavigation ?? false,

@@ -120,6 +120,19 @@ pauses a computer with its memory after the runner's idle period, and resumes it
 for the next turn. The builder installs the desktop on Freestyle's Ubuntu base,
 with Chromium for Testing in place of Debian's package.
 
+To try Freestyle for some organizations while the rest stay on Daytona, keep the
+Daytona settings above and add:
+
+```dotenv
+HEADLESS_COMPUTER_FREESTYLE_SNAPSHOT=<printed workbot-desktop-freestyle-… slug>
+FREESTYLE_API_KEY=...
+```
+
+Then turn on **Workbot: cloud computers on Freestyle** (`freestyleComputers`)
+for those organizations in `/admin`. Their new conversations get Freestyle
+computers; every conversation keeps the computer it started with, so turning the
+flag on or off never moves an existing computer.
+
 ## Transport and rollout
 
 The Workbot server checks signed-in membership and the organization flags before

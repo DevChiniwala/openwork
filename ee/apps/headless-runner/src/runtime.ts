@@ -25,6 +25,7 @@ import { readToolFile } from "./tool-files.js"
 import type { SessionComputer } from "./types.js"
 import type { CellsStore } from "./cells-store.js"
 import type { MemoryResolver } from "./memory.js"
+import { routeComputers } from "./computer-routing.js"
 
 /**
  * How the host runs step-mode turns' steps (see steps.ts). Without it (Node), each step runs as soon as it is due, in
@@ -84,10 +85,15 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
   let computer: SessionComputer | undefined
   if (config.computer) {
     const { Computers, createComputerProvider } = await import("@openwork-ee/headless-computer")
-    computer = new Computers({ ...config.computer, provider: await createComputerProvider(config.computer) }, {
+    const computers = async (settings: NonNullable<typeof config.computer>) => new Computers({ ...settings, provider: await createComputerProvider(settings) }, {
       files,
       readFile: (file, counts) => readToolFile({ name: file.name, mimeType: mediaTypeFor(file.name), data: Buffer.from(file.bytes).toString("base64") }, counts),
     })
+    const primary = await computers(config.computer)
+    // Freestyle beside the default: conversations that started there stay there.
+    computer = config.freestyleComputer
+      ? routeComputers(primary, await computers(config.freestyleComputer), sessionId => store.getSession(sessionId)?.computerProvider ?? null)
+      : primary
   }
   store.onChange = (sessionId, messageId, status) => events.emit(sessionId, { type: "changed", messageId, ...(status ? { status } : {}) })
   // A native Workers fetch needs its global receiver; model adapters invoke their injected fetch as a method.

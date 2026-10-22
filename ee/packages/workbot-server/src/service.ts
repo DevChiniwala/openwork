@@ -52,6 +52,8 @@ export type WorkbotDeps = {
   /** The headless runner, or null when this deployment has none. */
   client: HeadlessRunnerClient | null
   desktop?: boolean
+  /** Where a new conversation's computer runs; the runner keeps each conversation on the provider it started with. */
+  computerProvider?: "freestyle"
   /** Whether Workbot may set up recurring work (Automations on the headless runner) for this organization. */
   canSchedule: (organizationId: string) => Promise<boolean>
   /**
@@ -352,6 +354,7 @@ async function ensureSession(actor: WorkbotActor, timeZone: string, deps: Workbo
     files: true,
     computer: true,
     desktop: deps.desktop === true,
+    ...(deps.computerProvider ? { computerProvider: deps.computerProvider } : {}),
     reactions: true,
     tasks: true,
     documentNavigation: guidedNavigation,
