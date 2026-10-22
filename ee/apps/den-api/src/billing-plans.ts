@@ -40,10 +40,10 @@ export function isPerPersonPlanMetadata(metadata: StripeMetadata): boolean {
   return metadata?.pricing_model?.trim() === PER_PERSON_PRICING_MODEL
 }
 
-/** Statuses where Stripe is collecting or still retrying: the plan stays (or becomes) paid. */
-const PLAN_GRANTING_STATUSES = new Set(["active", "trialing", "past_due", "incomplete"])
-/** Statuses where Stripe stopped collecting: a Stripe-sourced plan returns to Free. */
-const PLAN_REVOKING_STATUSES = new Set(["canceled", "unpaid", "incomplete_expired", "expired", "paused"])
+/** Active plans and renewal grace periods grant access; an unpaid initial payment does not. */
+const PLAN_GRANTING_STATUSES = new Set(["active", "trialing", "past_due"])
+/** Unpaid initial payments and stopped subscriptions return a Stripe-sourced plan to Free. */
+const PLAN_REVOKING_STATUSES = new Set(["incomplete", "canceled", "unpaid", "incomplete_expired", "expired", "paused"])
 
 export type PlanReconciliationInput = {
   current: OrganizationPlan

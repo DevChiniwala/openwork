@@ -83,7 +83,7 @@ test("paying sets the plan, Stripe giving up returns it to Free, and manual gran
   const grandfatheredEnterprise = { tier: "enterprise", source: "grandfathered", grandfatheredAt: "2026-01-01T00:00:00.000Z" } as const
 
   // Paying (or Stripe still collecting) sets the plan.
-  for (const status of ["active", "trialing", "past_due", "incomplete"]) {
+  for (const status of ["active", "trialing", "past_due"]) {
     assert.deepEqual(reconcileOrganizationPlan({ current: free, status, tier: "team" }), stripeTeam, status)
   }
   assert.deepEqual(reconcileOrganizationPlan({ current: free, status: "active", tier: "enterprise" }), stripeEnterprise)
@@ -111,6 +111,18 @@ test("paying sets the plan, Stripe giving up returns it to Free, and manual gran
   assert.equal(reconcileOrganizationPlan({ current: free, status: "active", tier: "team", legacyWithoutCharge: true }), null)
   assert.deepEqual(reconcileOrganizationPlan({ current: stripeTeam, status: "canceled", tier: "team", legacyWithoutCharge: true }), free)
   assert.equal(reconcileOrganizationPlan({ current: stripeTeam, status: "something_new", tier: "team" }), null, "unknown statuses change nothing")
+})
+
+test("an incomplete initial payment never grants Team or Enterprise, and payment completion does", () => {
+  const free = { tier: "free", source: "default" } as const
+  for (const tier of ["team", "enterprise"] as const) {
+    assert.equal(reconcileOrganizationPlan({ current: free, status: "incomplete", tier }), null, `${tier} awaits payment`)
+    assert.deepEqual(reconcileOrganizationPlan({ current: { tier, source: "stripe" }, status: "incomplete", tier }), free, "remove any premature Stripe grant")
+    for (const source of ["manual", "grandfathered"] as const) {
+      assert.equal(reconcileOrganizationPlan({ current: { tier, source }, status: "incomplete", tier }), null, `${source} survives`)
+    }
+    assert.deepEqual(reconcileOrganizationPlan({ current: free, status: "active", tier }), { tier, source: "stripe" })
+  }
 })
 
 test("without returnTo a checkout keeps its existing return pages", () => {

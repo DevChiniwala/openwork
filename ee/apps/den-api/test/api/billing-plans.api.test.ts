@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { createHmac } from "node:crypto"
+import { createHmac, randomUUID } from "node:crypto"
 import { after, test } from "node:test"
 import { bootDen, field, list, summary, text, type Member } from "./harness.js"
 // The same loopback fake Stripe the e2e worlds use (Node built-ins only).
@@ -55,7 +55,7 @@ function sessionFor(orgId: string) {
 
 async function postStripeEvent(type: string, object: unknown) {
   const created = Math.floor(Date.now() / 1000)
-  const payload = JSON.stringify({ id: `evt_test_${type}_${created}`, object: "event", type, created, data: { object } })
+  const payload = JSON.stringify({ id: `evt_test_${randomUUID()}`, object: "event", type, created, data: { object } })
   const signature = createHmac("sha256", WEBHOOK_SECRET).update(`${created}.${payload}`).digest("hex")
   return den.request(null, "POST", "/v1/webhooks/stripe", { rawBody: payload, headers: { "content-type": "application/json", "stripe-signature": `t=${created},v1=${signature}` } })
 }
@@ -197,6 +197,33 @@ test("a manual Enterprise grant is never lowered by buying or cancelling Team", 
   assert.ok(subscription)
   assert.equal((await postStripeEvent("customer.subscription.deleted", stripe.setSubscriptionStatus(subscription.id, "canceled"))).status, 200)
   assert.equal(field(await orgPlan(granted.owner, granted.orgId), "plan", "tier"), "enterprise", "cancelling never lowers a manual grant")
+})
+
+test("incomplete initial payments do not unlock paid plans through webhooks or checkout sync", async () => {
+  for (const plan of ["team", "enterprise"] as const) {
+    const pending = await den.createOrg(await den.signUp(`Pending ${plan} Owner`), `Pending ${plan} workspace`)
+    const call = den.as(pending.owner, pending.orgId)
+    assert.equal((await den.setFeature(pending.orgId, plan === "team" ? "teamPlan" : "selfServeEnterprise", true)).status, 200)
+    const started = await call("POST", "/v1/billing/stripe/checkout", { type: "plan", plan })
+    assert.equal(started.status, 200, summary(started))
+    const session = sessionFor(pending.orgId)
+    assert.ok(session)
+    stripe.complete(session.id)
+    const subscription = stripe.state().subscriptions.find((entry) => entry.metadata.org_id === pending.orgId)
+    assert.ok(subscription)
+    const incomplete = stripe.setSubscriptionStatus(subscription.id, "incomplete")
+    const delivered = await postStripeEvent("customer.subscription.created", incomplete)
+    assert.equal(delivered.status, 200, summary(delivered))
+    assert.deepEqual(await orgPlan(pending.owner, pending.orgId), { plan: { tier: "free", source: "default" }, sso: false })
+
+    const synced = await call("POST", "/v1/billing/stripe/checkout/sync", { sessionId: session.id })
+    assert.equal(synced.status, 200, summary(synced))
+    assert.deepEqual(await orgPlan(pending.owner, pending.orgId), { plan: { tier: "free", source: "default" }, sso: false }, "checkout sync cannot bypass payment")
+
+    const paid = await postStripeEvent("customer.subscription.updated", stripe.setSubscriptionStatus(subscription.id, "active"))
+    assert.equal(paid.status, 200, summary(paid))
+    assert.deepEqual(await orgPlan(pending.owner, pending.orgId), { plan: { tier: plan, source: "stripe" }, sso: true })
+  }
 })
 
 test("a checkout session from another organization cannot be synced into this one", async () => {

@@ -165,7 +165,7 @@ export default function StripeCheckingPage() {
         </DenCard>
       ) : (
         <DenCard data-testid="checkout-return-confirming" className="flex min-h-40 items-center gap-3 text-[14px] text-gray-600">
-          <Loader2 className="size-4 animate-spin text-gray-400" aria-hidden="true" />
+          <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
           Confirming your payment with Stripe
         </DenCard>
       )}
