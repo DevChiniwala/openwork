@@ -98,7 +98,7 @@ function ActivationStepRow({ row, onAction }: { row: ActivationRow; onAction: (a
       ) : row.state === "locked" ? (
         <Lock className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.5} aria-label="Locked" />
       ) : (
-        <span className="size-4 shrink-0 rounded-full border-[1.5px] border-border" aria-label="Not done" />
+        <span className="size-4 shrink-0 rounded-full border-[1.5px] border-muted-foreground/60" aria-label="Not done" />
       )}
       <div className="min-w-0 flex-1">
         <p className={cn("truncate text-[13px] leading-[18px]", row.state === "done" ? "text-muted-foreground" : "font-medium text-foreground")}>{row.title}</p>

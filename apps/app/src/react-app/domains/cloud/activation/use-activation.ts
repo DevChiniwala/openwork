@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ActivationClientEvent, ActivationState } from "@openwork/types/den/activation";
 import { createDenClient, denOriginComparisonKey } from "@/app/lib/den";
@@ -31,11 +31,21 @@ export function useActivation() {
     queryKey: [...activationQueryPrefix(scope), auth.verifiedIdentity?.principalId ?? null],
     enabled: authorized,
     queryFn: async (): Promise<ActivationState | null> => (organizationId ? clientFor(scope).getActivation(organizationId) : null),
-    staleTime: 30_000,
+    // Off (null) rarely changes: check again on focus or after a few minutes, not on every render.
+    staleTime: (current) => (current.state.data === null ? 300_000 : 30_000),
     refetchOnWindowFocus: "always",
     retry: false,
   });
-  return { state: authorized ? query.data ?? null : null, refetch: query.refetch };
+  const state = authorized ? query.data ?? null : null;
+  const prefixKey = JSON.stringify(activationQueryPrefix(scope));
+  // An answer that finished before Den's checklist was known is reported once it is.
+  useEffect(() => {
+    if (!state || !pendingFirstAnswer || pendingFirstAnswer.key !== prefixKey) return;
+    const { durationMs } = pendingFirstAnswer;
+    pendingFirstAnswer = null;
+    void reportActivationEvent("first_response", durationMs);
+  }, [state, prefixKey]);
+  return { state, refetch: query.refetch };
 }
 
 type ReporterScope = DenScope & { key: string; prefix: readonly unknown[] };
@@ -57,6 +67,7 @@ export function reportActivationEvent(step: ActivationClientEvent, durationMs?: 
 }
 
 const skillRuns = new Set<string>();
+let pendingFirstAnswer: { key: string; durationMs: number } | null = null;
 
 /** A message was sent: remember whether it runs a skill, to report once its answer completes. */
 export function noteActivationRunStarted(sessionId: string, parts: readonly { type: string }[] | undefined) {
@@ -65,6 +76,8 @@ export function noteActivationRunStarted(sessionId: string, parts: readonly { ty
 
 /** An answer completed: the first answer (with how long it took) and, if the message ran a skill, using a skill. */
 export function noteActivationRunCompleted(sessionId: string, durationMs: number) {
+  const scope = readGatewayUsageScope();
+  if (scope.token && scope.organizationId) pendingFirstAnswer ??= { key: JSON.stringify(activationQueryPrefix(scope)), durationMs };
   void reportActivationEvent("first_response", durationMs);
   if (skillRuns.delete(sessionId)) void reportActivationEvent("use_skill");
 }
