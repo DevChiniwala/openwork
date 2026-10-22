@@ -14,7 +14,7 @@ OpenWork Cloud has three roles:
 - `Admin`: can invite `Member` users, manage ordinary teams, remove members subject to access safeguards, manage shared Cloud resources, connections, providers and usage limits, start a subscription, and view settings such as SSO, SCIM, API keys, approved web origins and desktop policies.
 - `Member`: can use resources shared with them but cannot manage org administration.
 
-`Super Admin` no longer exists. Every former super-admin is now an `Admin`, and admins keep exactly what they could do before. What only super-admins could do is now owner-only:
+`Super Admin` no longer exists. The upgrade converted former super-admins to `Admin`, but initially left their additional capabilities owner-only. A corrective migration restores the following capabilities to identifiable former super-admins in existing organizations through a **Restored administrator permissions** role linked to a **Restored administrators** team:
 
 - changing member roles and inviting someone as an `Admin`
 - designating Admin teams and changing who is in them
@@ -22,8 +22,15 @@ OpenWork Cloud has three roles:
 - managing SSO, SCIM, organization API keys, desktop policies and network diagnostics
 - opening the billing portal
 - editing or removing a connection someone else added
+- managing Member, Admin and team permissions (the replacement for custom-role administration)
 
-Custom roles have also been removed; members who had one are treated as `Member`. Enterprise organizations can use Permissions to give any of the owner-only actions to admins or to a team, and to change what members and admins can do.
+Recovery uses accepted super-admin invitations linked to the current membership, completed workspace claims, and retained member role-change audit records. Only active, directly assigned admins qualify, and later recorded demotions, removals or ownership transfers override earlier evidence. Historical records are not a complete roster: deleted history, missing invitation links or unrecorded changes can prevent recovery or leave stale evidence. An owner should review the recovered team and add any missing administrators deliberately.
+
+**New organizations and ordinary admins keep the existing defaults:** the capabilities above remain owner-only unless granted through Permissions. Recovery does not add organization deletion, ownership transfer, agent permission administration or deployment management. Existing explicit Admin permission decisions and custom team roles are left intact.
+
+To revoke recovery, sign in as the owner, open **Members › Roles** (Permissions), select **Restored administrator permissions**, and turn off the relevant permissions on its **Permissions** tab. To revoke the whole role, choose **Delete role** (its history is retained). To revoke it for one person, remove that person from the corresponding **Restored administrators** team in **Members › Teams**. Changing their direct role to `Member` alone does not remove a team permission grant. Review other team roles too: effective permissions are the union of all active grants. Owners always retain access to restore permissions.
+
+The old organization-role system was removed; people who had an old custom role became `Member`. Permissions now supports reusable roles assigned to teams. Owners can use it to change Member, Admin and team permissions. Recovery does not change catalog seeding or automatically extend custom roles when new permission keys are added.
 
 `Owner` cannot be assigned through an invitation or the role editor. Ownership can only be transferred to an active admin, and the previous owner becomes an admin.
 

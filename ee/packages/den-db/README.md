@@ -50,6 +50,61 @@ migration file, so the Den DB Migrate workflow also runs it on its own:
 pnpm --dir ee/packages/den-db db:reconcile-permissions
 ```
 
+## Administrator capability recovery (0155)
+
+Migration `0155_restore_administrator_capabilities.sql` is a one-time, selective
+data repair. It leaves built-in Admin defaults unchanged and creates a visible
+**Restored administrator permissions** role/team for active direct admins with
+surviving evidence of super-admin access. Accepted invitations must link to the
+current membership and match its organization and email; claimed workspace
+claims must identify the current user/membership; retained legacy role-change
+payloads and operation change snapshots must identify the same membership.
+Later recorded demotions, removals and ownership transfers veto older evidence.
+Email-only matches, pending invites, removed members and current ordinary
+members never qualify. These records prove past access, not a complete roster
+at the instant 0138 ran. Missing/expired records can miss people; missing
+revocation records can leave stale evidence. Review the recovered team.
+
+The fourteen restored keys cover the old super-admin scope, including
+`permissions.manage` as the successor to custom-role administration. Newer
+owner-only keys (`agent_permissions.manage`, `deployments.manage`), organization
+deletion and ownership transfer are not granted. Existing user decisions in the
+Admin default set are not overridden, and custom roles/links/history are not
+rewritten. Recovery is an additive team grant: to revoke for one person, remove
+them from the recovered team as well as changing their direct role. Owners can
+turn keys off on the Permissions tab or choose Delete role in Members › Roles
+(the stored role is archived, preserving its history).
+The deterministic IDs and preserved history make a rerun a no-op, including
+after a permission is revoked or the role/team link is removed.
+
+### Separate, opt-in all-admins alternative
+
+The automatic migration does **not** run this alternative. Only after a separate
+rollout decision, an operator with the configured database connection can inspect
+and apply it from this package:
+
+```bash
+node --conditions=development --import tsx scripts/restore-all-admin-capabilities.ts --all-admins
+node --conditions=development --import tsx scripts/restore-all-admin-capabilities.ts --all-admins --apply
+```
+
+Without `--apply`, it only reports counts and writes nothing. Applying grants the
+same fourteen capabilities in the built-in **Admin permissions** set of every
+organization existing at invocation, including ones without historical evidence.
+This intentionally elevates **admins who were never super-admins**, including
+members of existing Admin teams. Owners can revoke individual grants in Admin
+permissions. Any key with existing history is left alone, so custom denials and
+later revocations are not overwritten; absent default sets are seeded normally
+before the extra grants are added. New-organization code defaults do not change.
+Do not schedule this script: another deliberate invocation can include
+organizations created since the previous one. If selective recovery already ran,
+its team grants remain independent; revoke those too when restricting access.
+Neither variant recovers a deleted historical roster or consults cloud backups.
+
+Follow-up, not this repair: decide how new permission keys should extend custom
+roles and grants. Default-set reconciliation already exists; custom roles are
+not automatically extended and need ongoing maintenance.
+
 ## Production 0097 upgrade preconditions
 
 For an existing database with canonical 0097 still pending, use the compiled
