@@ -95,6 +95,8 @@ const DESKTOP_CONFIG_ITEMS = [
   "onboardingPromptDescriptions",
   "agentPermissions",
   "defaultModel",
+  // Applies live: a running app drops OpenCode Zen as soon as the rollout reaches it.
+  "removeOpencodeZen",
 ] as const satisfies readonly (keyof DenDesktopConfig)[];
 
 // The member a cached config was fetched for. The cache is per organization,
