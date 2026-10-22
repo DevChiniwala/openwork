@@ -143,6 +143,7 @@ import type {
   ExternalMcpConnectionToolPolicyInput,
   ExternalMcpConnectionToolRunInput,
   ExternalMcpIssuerReviewInput,
+  ExternalMcpReadinessChecksRequest,
   ExternalMcpRequirementsDiscoveryInput,
   ExternalMcpResolveInput,
   GetApiAuthOauth2AuthorizeErrors,
@@ -222,6 +223,8 @@ import type {
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdControlPanelErrors,
   GetV1AdminOrganizationsByOrganizationIdControlPanelResponses,
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
   GetV1AdminOrganizationsByOrganizationIdErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsResponses,
@@ -463,6 +466,8 @@ import type {
   GetV1MeInstallByPlatformResponses,
   GetV1MeInstallConfigErrors,
   GetV1MeInstallConfigResponses,
+  GetV1MeInvitationsErrors,
+  GetV1MeInvitationsResponses,
   GetV1MeLibraryErrors,
   GetV1MeLibraryResponses,
   GetV1MembersByMemberIdPermissionsErrors,
@@ -629,6 +634,8 @@ import type {
   PatchApiAuthScimV2UsersByUserIdResponses,
   PatchV1AdminOrganizationsByOrganizationIdDpaErrors,
   PatchV1AdminOrganizationsByOrganizationIdDpaResponses,
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
   PatchV1AdminOrganizationsByOrganizationIdFreeSeatsErrors,
   PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses,
   PatchV1AdminOrganizationsByOrganizationIdPlanErrors,
@@ -692,6 +699,8 @@ import type {
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses,
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
   PostV1AdminServicesCheckErrors,
   PostV1AdminServicesCheckResponses,
   PostV1AdminUsersByUserIdInferenceUsageResetErrors,
@@ -891,6 +900,8 @@ import type {
   PostV1McpConnectionsDiscoverErrors,
   PostV1McpConnectionsDiscoverResponses,
   PostV1McpConnectionsErrors,
+  PostV1McpConnectionsReadinessChecksErrors,
+  PostV1McpConnectionsReadinessChecksResponses,
   PostV1McpConnectionsResolveErrors,
   PostV1McpConnectionsResolveResponses,
   PostV1McpConnectionsResponses,
@@ -1168,7 +1179,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Check den-api readiness
    *
-   * Verifies den-api can reach its database dependency.
+   * Verifies den-api can reach its database dependency and is not shutting down.
    */
   public getReady<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GetReadyResponses, GetReadyErrors, ThrowOnError>({
@@ -1288,6 +1299,7 @@ export class DenClient extends HeyApiClient {
         liveProviderSync?: boolean | null;
         agentConnectionRemoval?: boolean | null;
         managedDeployments?: boolean | null;
+        enterprisePlan?: boolean | null;
         workbotDocuments?: boolean | null;
         workbotDocumentEditing?: boolean | null;
         workbotWorkspaceAssistant?: boolean | null;
@@ -1297,6 +1309,7 @@ export class DenClient extends HeyApiClient {
         engineV2ForceUpgrade?: boolean | null;
         computerUse?: boolean | null;
         browserDemonstrations?: boolean | null;
+        browserLiveView?: boolean | null;
         browserFloatingView?: boolean | null;
         remoteComputers?: boolean | null;
         remoteSessionSubagents?: boolean | null;
@@ -1968,6 +1981,75 @@ export class DenClient extends HeyApiClient {
       ThrowOnError
     >({
       url: "/v1/admin/organizations/{organizationId}/free-seats",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Get an organization's Enterprise plan billing
+   *
+   * Returns the organization's Stripe Enterprise subscription, committed minimum users and the users Stripe bills.
+   */
+  public getV1AdminOrganizationsByOrganizationIdEnterpriseSubscription<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
+      GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/enterprise-subscription",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Change an organization's Enterprise minimum users
+   *
+   * Updates the committed minimum users on the organization's Enterprise subscription and resynchronizes its Stripe quantity. Body: { minimumUsers }.
+   */
+  public patchV1AdminOrganizationsByOrganizationIdEnterpriseSubscription<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).patch<
+      PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
+      PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/enterprise-subscription",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Start an organization's Enterprise plan
+   *
+   * Creates a Stripe Enterprise subscription on a custom per-user price of the Enterprise product, billed by invoice, never below the committed minimum users. Cancels a Team plan subscription with a prorated credit. Body: { priceId, minimumUsers, billingEmail, daysUntilDue? }.
+   */
+  public postV1AdminOrganizationsByOrganizationIdEnterpriseSubscription<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).post<
+      PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
+      PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/enterprise-subscription",
       ...options,
       ...params,
     });
@@ -3063,6 +3145,18 @@ export class DenClient extends HeyApiClient {
   public getV1MeOrgs<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GetV1MeOrgsResponses, GetV1MeOrgsErrors, ThrowOnError>({
       url: "/v1/me/orgs",
+      ...options,
+    });
+  }
+
+  /**
+   * List current user's pending invitations
+   *
+   * Lists unexpired invitations sent to the signed-in person's verified email for organizations they have not joined yet. Always empty for an unverified email, whatever the deployment's verification setting. Accept one with POST /v1/orgs/invitations/accept.
+   */
+  public getV1MeInvitations<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GetV1MeInvitationsResponses, GetV1MeInvitationsErrors, ThrowOnError>({
+      url: "/v1/me/invitations",
       ...options,
     });
   }
@@ -12592,6 +12686,37 @@ export class DenClient extends HeyApiClient {
       ThrowOnError
     >({
       url: "/v1/mcp-connections/{connectionId}/tool-policy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Check connectors that have no stored status
+   *
+   * For an admin's connector list. For each listed connector with no stored status: copies any member's still-valid Ready check onto a per-member connector, otherwise checks it (initialize and tools/list, no tools executed) with the shared credential or the caller's own sign-in. Connectors that already have a status are left alone; use the per-connection check to re-check one. Requires connections.manage.
+   */
+  public postV1McpConnectionsReadinessChecks<ThrowOnError extends boolean = false>(
+    parameters: {
+      externalMcpReadinessChecksRequest: ExternalMcpReadinessChecksRequest;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "externalMcpReadinessChecksRequest", map: "body" }] }],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1McpConnectionsReadinessChecksResponses,
+      PostV1McpConnectionsReadinessChecksErrors,
+      ThrowOnError
+    >({
+      url: "/v1/mcp-connections/readiness-checks",
       ...options,
       ...params,
       headers: {

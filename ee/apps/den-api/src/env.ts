@@ -214,6 +214,7 @@ const EnvSchema = z.object({
   STRIPE_ENTERPRISE_PRICE_ID: z.string().optional(),
   DEN_ENTERPRISE_UNIT_AMOUNT: z.string().optional(),
   STRIPE_OPENWORK_WEB_PRICE_ID: z.string().optional(),
+  STRIPE_ENTERPRISE_PRODUCT_ID: z.string().optional(),
   STRIPE_BILLING_SUCCESS_URL: z.string().optional(),
   STRIPE_BILLING_CANCEL_URL: z.string().optional(),
 }).superRefine((value, ctx) => {
@@ -904,6 +905,8 @@ export const env = {
     // Stripe charges the configured price.
     enterpriseUnitAmount: parseEnterpriseUnitAmount(optionalString(parsed.DEN_ENTERPRISE_UNIT_AMOUNT)),
     openworkWebPriceId: optionalString(parsed.STRIPE_OPENWORK_WEB_PRICE_ID),
+    // Enterprise prices are custom per customer, so subscriptions are matched by product.
+    enterpriseProductId: optionalString(parsed.STRIPE_ENTERPRISE_PRODUCT_ID),
     billingSuccessUrl: optionalString(parsed.STRIPE_BILLING_SUCCESS_URL),
     billingCancelUrl: optionalString(parsed.STRIPE_BILLING_CANCEL_URL),
   },
@@ -945,7 +948,7 @@ export const env = {
     target: optionalString(parsed.DAYTONA_TARGET),
     snapshot: optionalString(parsed.DAYTONA_SNAPSHOT),
     sandboxClass: parsed.DAYTONA_SANDBOX_CLASS,
-    image: optionalString(parsed.DAYTONA_SANDBOX_IMAGE) ?? "node:20-bookworm",
+    image: optionalString(parsed.DAYTONA_SANDBOX_IMAGE) ?? "node:24.22.1-bookworm",
     resources: {
       cpu: Number(parsed.DAYTONA_SANDBOX_CPU ?? "2"),
       memory: Number(parsed.DAYTONA_SANDBOX_MEMORY ?? "4"),

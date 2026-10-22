@@ -337,6 +337,11 @@ function seatPlanQuote(value: unknown): SeatPlanQuote | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** What people see when an invitation would take a Free plan workspace past its user limit. */
+export function freePlanUserLimitMessage(freeSeatCount: number): string {
+  return `The Free plan is limited to ${freeSeatCount} users, counting pending invitations. Upgrade to the Team plan from Billing to invite more people.`;
+}
+
 export function getReauthRequiredError(payload: unknown, response: Response): ReauthRequiredError | null {
   if (response.status !== 403 || !isRecord(payload) || payload.error !== "reauth") {
     return null;

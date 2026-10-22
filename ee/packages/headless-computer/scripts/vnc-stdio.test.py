@@ -35,6 +35,8 @@ class ViewerTests(unittest.TestCase):
             self.assertIn('-inetd', commands[0])
             self.assertIn('-viewonly', commands[0])
             self.assertNotIn('-rfbport', commands[0])
+            self.assertIn('-wait', commands[0])
+            self.assertEqual(commands[0][commands[0].index('-wait') + 1], '100')
         finally:
             for fd in (incoming, receive, outgoing):
                 if fd is not None: os.close(fd)

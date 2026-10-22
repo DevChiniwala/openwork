@@ -8,6 +8,7 @@ import { createCloudComputer, browserEgressStatus } from "@openwork/computer-use
 import { createBrowserDemonstration } from "@openwork/computer-use/browser-demonstration";
 import { createDesktopApplications } from "./desktop-apps.mjs";
 import { ViewerTickets } from "./viewer-tickets.mjs";
+import { streamBrowser } from "./browser-screencast.mjs";
 
 const directory = process.env.WORKBOT_DESKTOP_STATE;
 if (!directory) throw new Error("WORKBOT_DESKTOP_STATE is required");
@@ -98,11 +99,20 @@ const server = createServer(async (request, response) => {
 const websocket = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
 server.on("upgrade", (request, socket, head) => {
   const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
-  const token = /^\/vnc\/([A-Za-z0-9_-]{43})$/.exec(path)?.[1];
+  const [, transport, token] = /^\/(vnc|screencast)\/([A-Za-z0-9_-]{43})$/.exec(path) ?? [];
   const ticket = tickets.consume(token, request.headers.origin);
   if (!ticket || Date.now() >= until || sockets.size >= 4) return socket.destroy();
+  // The screencast only watches the browser; taking control still goes through VNC.
+  if (transport === "screencast" && (ticket.view !== "browser" || ticket.control)) return socket.destroy();
   websocket.handleUpgrade(request, socket, head, ws => {
     if (ticket.generation !== tickets.generation || Date.now() >= until) return ws.terminate();
+    if (transport === "screencast") {
+      const deadline = setTimeout(() => ws.close(1000, "Renew viewer access"), 60_000);
+      const stop = streamBrowser(ws, { onClose: () => { clearTimeout(deadline); sockets.delete(ws); transports.delete(ws); ws.close(); } });
+      sockets.add(ws);
+      transports.set(ws, { destroy: stop });
+      return;
+    }
     // Private stdio cannot be pre-bound by the command account. The VNC
     // process itself enforces view-only, independently of noVNC's controls.
     const viewer = spawn("/usr/bin/python3", ["-I", viewerScript, ticket.view, ticket.control ? "control" : "view"], { stdio: ["pipe", "pipe", "ignore"] });

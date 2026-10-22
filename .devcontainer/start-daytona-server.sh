@@ -50,12 +50,12 @@ export BETTER_AUTH_URL="${BETTER_AUTH_URL:-$DEN_WEB_PUBLIC_URL}"
 export DEN_BETTER_AUTH_URL="$BETTER_AUTH_URL"
 export DEN_API_PUBLIC_URL
 export DEN_MCP_RESOURCE_URL="${DEN_MCP_RESOURCE_URL:-$DEN_API_PUBLIC_URL/mcp}"
-# DEN_API_BASE is the externally reachable Den API origin (see
-# packages/docs/start-here/private-network-deployment.mdx): Den Web publishes
-# it through /api/runtime-config as the desktop's denApiUrl. Desktops run in
-# other sandboxes and can only reach the public preview URL, never this
-# sandbox's loopback.
-export DEN_API_BASE="${DEN_API_BASE:-${DEN_API_PUBLIC_URL:-http://127.0.0.1:$DEN_API_PORT}}"
+# DEN_API_BASE is Den Web's server-side upstream; keep it on loopback so each
+# browser request doesn't leave the sandbox and re-enter through the public
+# preview proxy (~250 ms per call). Desktops still get the public origin:
+# /api/runtime-config publishes DEN_API_PUBLIC_URL as denApiUrl (see
+# packages/docs/start-here/private-network-deployment.mdx).
+export DEN_API_BASE="${DEN_API_BASE:-http://127.0.0.1:$DEN_API_PORT}"
 export DEN_AUTH_ORIGIN="${DEN_AUTH_ORIGIN:-$DEN_WEB_PUBLIC_URL}"
 export DEN_AUTH_FALLBACK_BASE="${DEN_AUTH_FALLBACK_BASE:-http://127.0.0.1:$DEN_API_PORT}"
 export NEXT_PUBLIC_OPENWORK_AUTH_CALLBACK_URL="${NEXT_PUBLIC_OPENWORK_AUTH_CALLBACK_URL:-$DEN_WEB_PUBLIC_URL}"
@@ -112,6 +112,30 @@ run_root() {
   fi
 }
 
+# The snapshot ships Oracle MySQL 8.4 (.devcontainer/Dockerfile.daytona-server).
+# Its Debian package only has a systemd unit and Daytona has no systemd, so run
+# mysqld directly when no SysV service exists (older MariaDB snapshots have one).
+start_mysql_server() {
+  if run_root service mysql start || run_root service mariadb start; then
+    return 0
+  fi
+  run_root install -d -o mysql -g mysql /var/run/mysqld
+  run_root mysqld --daemonize --user=mysql --pid-file=/var/run/mysqld/mysqld.pid
+}
+
+stop_mysql_server() {
+  run_root service mysql stop || run_root service mariadb stop || {
+    if [ -f /var/run/mysqld/mysqld.pid ]; then
+      run_root kill "$(run_root cat /var/run/mysqld/mysqld.pid)"
+      for _ in $(seq 1 30); do
+        pgrep -x mysqld >/dev/null || return 0
+        sleep 1
+      done
+      return 1
+    fi
+  }
+}
+
 # Workshop-only production cohosting. The provisioning wrapper must first
 # confirm provider public:false; never use an alias to evade origin validation.
 if [ "${OPENWORK_WORKSHOP_PRIVATE_COHOST:-0}" = "1" ]; then
@@ -135,7 +159,11 @@ COHOST_IP_JS
 )"
   # Bind only the actual container interface, not all interfaces. MySQL's unix
   # socket remains available for local schema/bootstrap operations below.
-  if [ -d /etc/mysql/mariadb.conf.d ]; then
+  # MySQL first: the base image also ships mariadb-common's directory, which
+  # Oracle MySQL never reads.
+  if command -v mysqld >/dev/null 2>&1 && mysqld --version | grep -q 'MySQL Community' && [ -d /etc/mysql/mysql.conf.d ]; then
+    cohost_mysql_config=/etc/mysql/mysql.conf.d/99-openwork-workshop.cnf
+  elif [ -d /etc/mysql/mariadb.conf.d ]; then
     cohost_mysql_config=/etc/mysql/mariadb.conf.d/99-openwork-workshop.cnf
   elif [ -d /etc/mysql/mysql.conf.d ]; then
     cohost_mysql_config=/etc/mysql/mysql.conf.d/99-openwork-workshop.cnf
@@ -145,7 +173,7 @@ COHOST_IP_JS
   fi
   printf '[mysqld]\nbind-address = %s\n' "$COHOST_IP" | run_root tee "$cohost_mysql_config" >/dev/null
   # The snapshot may already have MySQL running with its old loopback binding.
-  run_root service mysql stop >/dev/null 2>&1 || run_root service mariadb stop >/dev/null 2>&1
+  stop_mysql_server >/dev/null 2>&1 || true
   # The private interface carries no shared or fixed credential: Den uses a
   # per-boot random password for an account limited to its own database and to
   # connections from this backend's own address. Root stays socket/loopback-only.
@@ -352,7 +380,7 @@ wait_for_http() {
 }
 
 echo "==> Starting MySQL..."
-run_root service mysql start >/tmp/openwork-mysql-service.log 2>&1 || run_root service mariadb start >/tmp/openwork-mysql-service.log 2>&1
+start_mysql_server >/tmp/openwork-mysql-service.log 2>&1 || true
 
 for _ in $(seq 1 60); do
   if mysql -uroot -ppassword -e "SELECT 1" >/dev/null 2>&1; then

@@ -9,7 +9,7 @@ npm install -g openwork-server
 openwork-server --workspace /path/to/workspace --approval auto
 ```
 
-The npm package runs on Node.js 22.13 or newer on macOS, Linux, and Windows (arm64 or x64); Bun is not required at runtime.
+The npm package requires stable Node.js 24.x, version 24.22.1 or newer within that major, on macOS, Linux, and Windows (arm64 or x64); Bun is not required at runtime. Older Node releases and other majors (including 25+) are rejected by the runtime gate. This security baseline also replaces the previous Node.js 22.13 minimum.
 
 ### Self-hosted web UI
 
