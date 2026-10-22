@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test"
+import { QueryClient } from "@tanstack/react-query"
+import { createActivationCache } from "../src/react-app/domains/cloud/activation/activation-cache"
 import type { ActivationState } from "@openwork/types/den/activation"
 import {
   activationCardModel,
@@ -16,6 +18,34 @@ function state(done: readonly (typeof ids)[number][], extra: Partial<ActivationS
     ...extra,
   }
 }
+
+test("activation cache reads and writes only the verified principal, not another member in the same organization", () => {
+  const client = new QueryClient()
+  const cache = createActivationCache(() => client)
+  const scope = {}
+  const first = ["den-activation", "https://den.example", "org_a", 1, "member_a"]
+  const other = ["den-activation", "https://den.example", "org_a", 1, "member_b"]
+  const untouched = state([])
+  client.setQueryData(first, state(["first_response"]))
+  client.setQueryData(other, untouched)
+  const unbind = cache.bind(scope, first)
+  expect(cache.read(scope)).toEqual(state(["first_response"]))
+  cache.write(scope, state(["first_response", "use_skill"]))
+  expect(client.getQueryData(first)).toEqual(state(["first_response", "use_skill"]))
+  expect(client.getQueryData(other)).toEqual(untouched)
+  expect(cache.read({})).toBeUndefined()
+  unbind()
+  cache.write(scope, state([...ids]))
+  expect(cache.read(scope)).toBeUndefined()
+  expect(client.getQueryData(first)).toEqual(state(["first_response", "use_skill"]))
+  expect(client.getQueryData(other)).toEqual(untouched)
+  cache.bind(scope, other)
+  cache.write(scope, state([...ids]), first)
+  expect(cache.read(scope)).toEqual(untouched)
+  unbind() // A stale subscriber cannot remove the new principal's binding.
+  expect(cache.read(scope)).toEqual(untouched)
+  client.clear()
+})
 
 test("the card stays hidden before the first answer, while off, and at six of six", () => {
   expect(activationCardModel(null).presentation).toBe("hidden")

@@ -6,6 +6,7 @@ import { readGatewayUsageScope, subscribeGatewayUsageScope } from "@/app/lib/gat
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { useDenAuth } from "../den-auth-provider";
 import { createActivationReporter, draftUsesSkill } from "./activation-model";
+import { createActivationCache } from "./activation-cache";
 
 /**
  * The signed-in person's Get set up checklist from Den (`GET /v1/me/activation`). Den answers 404 while the
@@ -14,8 +15,10 @@ import { createActivationReporter, draftUsesSkill } from "./activation-model";
 
 type DenScope = ReturnType<typeof readGatewayUsageScope>;
 
-function activationQueryPrefix(scope: Pick<DenScope, "baseUrl" | "organizationId">) {
-  return ["den-activation", denOriginComparisonKey(scope.baseUrl), scope.organizationId ?? null] as const;
+const activationCache = createActivationCache<DenScope>(getReactQueryClient);
+
+function activationQueryPrefix(scope: DenScope) {
+  return ["den-activation", denOriginComparisonKey(scope.baseUrl), scope.organizationId ?? null, scope.generation] as const;
 }
 
 function clientFor(scope: DenScope) {
@@ -27,8 +30,13 @@ export function useActivation() {
   const scope = useSyncExternalStore(subscribeGatewayUsageScope, readGatewayUsageScope, readGatewayUsageScope);
   const organizationId = scope.organizationId;
   const authorized = Boolean(auth.isSignedIn && scope.token && organizationId && auth.verifiedIdentity?.organizationId === organizationId);
+  const principalId = auth.verifiedIdentity?.principalId ?? null;
+  useEffect(() => {
+    if (!authorized || !principalId) return;
+    return activationCache.bind(scope, [...activationQueryPrefix(scope), principalId]);
+  }, [authorized, principalId, scope]);
   const query = useQuery({
-    queryKey: [...activationQueryPrefix(scope), auth.verifiedIdentity?.principalId ?? null],
+    queryKey: [...activationQueryPrefix(scope), principalId],
     enabled: authorized,
     queryFn: async (): Promise<ActivationState | null> => (organizationId ? clientFor(scope).getActivation(organizationId) : null),
     // Off (null) rarely changes: check again on focus or after a few minutes, not on every render.
@@ -48,22 +56,23 @@ export function useActivation() {
   return { state, refetch: query.refetch };
 }
 
-type ReporterScope = DenScope & { key: string; prefix: readonly unknown[] };
+type ReporterScope = DenScope & { key: string; source: DenScope; queryKey: readonly unknown[] };
 
 const report = createActivationReporter<ReporterScope>({
-  readState: (scope) => getReactQueryClient().getQueriesData<ActivationState | null>({ queryKey: scope.prefix }).map(([, data]) => data).find((data) => data !== undefined),
+  readState: (scope) => activationCache.read(scope.source),
   send: (scope, step, durationMs) => scope.organizationId
     ? clientFor(scope).recordActivationEvent(scope.organizationId, { step, ...(durationMs !== undefined ? { durationMs: Math.min(Math.max(0, Math.round(durationMs)), 24 * 60 * 60 * 1000) } : {}) })
     : Promise.resolve(null),
-  onState: (scope, state) => { getReactQueryClient().setQueriesData<ActivationState | null>({ queryKey: scope.prefix }, state); },
+  onState: (scope, state) => { activationCache.write(scope.source, state, scope.queryKey); },
 });
 
 /** Reports a step only this app can observe, while Den shows the checklist; never throws. */
 export function reportActivationEvent(step: ActivationClientEvent, durationMs?: number): Promise<boolean> {
   const scope = readGatewayUsageScope();
   if (!scope.token || !scope.organizationId) return Promise.resolve(false);
-  const prefix = activationQueryPrefix(scope);
-  return report({ ...scope, prefix, key: JSON.stringify(prefix) }, step, durationMs);
+  const queryKey = activationCache.key(scope);
+  if (!queryKey) return Promise.resolve(false);
+  return report({ ...scope, source: scope, queryKey, key: JSON.stringify(queryKey) }, step, durationMs);
 }
 
 const skillRuns = new Set<string>();
