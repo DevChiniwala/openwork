@@ -2,7 +2,10 @@
 import { useId, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 
-import { clearSignInReturnTarget } from "@/app/lib/den-sign-in-return";
+import { claimSignInReturnDraft, clearSignInReturnTarget } from "@/app/lib/den-sign-in-return";
+import { readDenSettings } from "@/app/lib/den";
+import { cloudSessionDraftScope } from "../session/sync/draft-store";
+import { carrySignInReturnDraft, hasSignedOutDraft } from "./sign-in-return-draft";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
@@ -30,6 +33,29 @@ export function SignInHandoffNotice(props: {
   const inputId = useId();
   const sessionId = props.sessionId ?? null;
   const workspaceId = props.workspaceId ?? null;
+  const sameConversation = target?.sessionId === sessionId
+    && (!target.workspaceId || !workspaceId || target.workspaceId === workspaceId);
+  const identity = auth.verifiedIdentity;
+  const scope = cloudSessionDraftScope(identity);
+  if (target && sameConversation && target.signedInAt !== null && !target.draftCarried
+    && auth.isSignedIn && identity && scope && hasSignedOutDraft(target)) {
+    const organization = readDenSettings().activeOrgName?.trim();
+    const account = auth.user?.email ?? auth.user?.name ?? "this account";
+    return (
+      <div role="status" data-testid="sign-in-draft-consent">
+        <ComposerNoticeCard icon={null} title={`Move the signed-out draft to ${account}${organization ? ` in ${organization}` : ""}? It stays unsent.`}>
+          <div className="flex flex-wrap items-center gap-1">
+            <Button size="sm" onClick={() => {
+              if (!carrySignInReturnDraft(identity, { scope, startedAt: target.startedAt })) {
+                toast.error("Couldn’t move the draft. Your signed-out draft is still on this device.");
+              }
+            }}>Move draft to this account</Button>
+            <Button size="sm" variant="ghost" onClick={() => claimSignInReturnDraft()}>Keep draft signed out</Button>
+          </div>
+        </ComposerNoticeCard>
+      </div>
+    );
+  }
   const visible = Boolean(
     target
       && target.authUrl

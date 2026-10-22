@@ -14,8 +14,8 @@
 //   return     once an organization is active, chat opens on the recorded
 //              route instead of the session root (directly, or when org
 //              onboarding finishes), exactly once
-//   draft      once the new identity is verified, the signed-out draft of that
-//              conversation moves into the signed-in scope, exactly once
+//   draft      once the new identity is verified, explicit confirmation can
+//              move the unowned signed-out draft into that account, once
 //
 // Targets expire after 30 minutes; anything older falls back to the default
 // landing. Another sign-in entry point (Settings, the forced sign-in page)

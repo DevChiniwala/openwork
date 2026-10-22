@@ -27,7 +27,6 @@ import {
 import { exchangeHandoffAndSignIn } from "../../../app/lib/den-handoff";
 import { connectionDiagnosticHistory, type ConnectionDiagnosticReason, type ConnectionDiagnosticSource } from "../../../app/lib/connection-diagnostic-history";
 import { readOrgSelectionPending } from "../../../app/lib/den-sign-in-intent";
-import { carrySignInReturnDraft } from "./sign-in-return-draft";
 import {
   classifyStartupError,
   failStartup,
@@ -317,9 +316,6 @@ export function DenAuthProvider({ children }: DenAuthProviderProps) {
       const confirmedOrganizationId = confirmedSettings.activeOrgId?.trim() ?? "";
       const principalId = nextUser.id.trim();
       if (confirmedToken === token && principalId && confirmedOrganizationId) {
-        // A sign-in started from a conversation brings that conversation's
-        // signed-out draft along before the signed-in draft scope is published.
-        carrySignInReturnDraft({ principalId, organizationId: confirmedOrganizationId });
         verifiedCredentialRef.current = { token, organizationId: confirmedOrganizationId };
         setVerifiedIdentity({ principalId, organizationId: confirmedOrganizationId });
       } else {

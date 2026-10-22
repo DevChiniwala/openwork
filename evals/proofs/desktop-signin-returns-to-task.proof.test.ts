@@ -114,6 +114,11 @@ test("a person using Desktop without an account chats on Auto, signs in, and com
     await user.click({ role: "button", label: "Finish sign-in" });
     await user.see({ text: "Signed in to Acme" }, { timeoutMs: 90_000 });
     await user.see({ role: "button", label: "Riley — account and status" }, { timeoutMs: 60_000 });
+    await user.see({ testId: "sign-in-draft-consent" }, { timeoutMs: 30_000 });
+    await user.see("composer", { editable: true });
+    await user.notSee({ text: DRAFT });
+    await user.screenshot();
+    await user.click({ role: "button", label: "Move draft to this account" });
     await user.see("composer", { text: DRAFT, timeoutMs: 30_000 });
     await user.see({ text: world.reply });
     await user.notSee({ testId: "sign-in-handoff-notice" });
@@ -130,6 +135,30 @@ test("a person using Desktop without an account chats on Auto, signs in, and com
     const after = await world.localCounts();
     evidence.recordAssertionEvidence("the same conversation, not a copy", `conversations ${before.sessions} → ${after.sessions}; workspaces ${before.workspaces} → ${after.workspaces}`, after.sessions === before.sessions && after.workspaces === before.workspaces);
     expect(after).toEqual(before);
+  });
+
+  await step("another account finishing the pending sign-in cannot receive the signed-out draft without consent", async () => {
+    await signOut(user, probe);
+    await user.type("composer", "Private signed-out draft", { replace: true });
+    await user.click({ role: "button", label: "Sign in to OpenWork Cloud" });
+    await user.see({ testId: "sign-in-handoff-notice" }, { timeoutMs: 30_000 });
+    await user.click({ role: "button", label: "Paste sign-in code" });
+    await user.type(PASTE_FIELD, await world.grantFor("jordan"), { replace: true });
+    await user.click({ role: "button", label: "Finish sign-in" });
+    await user.see({ role: "button", label: "Jordan — account and status" }, { timeoutMs: 90_000 });
+    await user.see({ testId: "sign-in-draft-consent" }, { timeoutMs: 30_000 });
+    await user.see("composer", { editable: true });
+    await user.notSee({ text: "Private signed-out draft" });
+    await user.screenshot();
+    await user.click({ role: "button", label: "Keep draft signed out" });
+    await user.notSee({ testId: "sign-in-draft-consent" });
+    await user.reload();
+    await user.see("composer", { editable: true, timeoutMs: 90_000 });
+    await user.notSee({ text: "Private signed-out draft" });
+    const url = await route(probe);
+    evidence.recordAssertionEvidence("sign-in alone never transfers an unowned local draft", `account=Jordan; route=${url}; signed-out draft absent before consent and after declining and reloading`, url === conversationUrl);
+    expect(url).toBe(conversationUrl);
+    await user.screenshot();
   });
 
   await step("another member's sign-in does not reuse an unfinished one, and the draft stays with its owner", async () => {

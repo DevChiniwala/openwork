@@ -25,7 +25,7 @@ import {
 } from "../src/app/lib/den-sign-in-return";
 import { openAutoSignIn } from "../src/react-app/domains/cloud/auto-access-ui";
 import { completeSignInReturn } from "../src/react-app/domains/cloud/sign-in-return";
-import { carrySignInReturnDraft, carrySignedOutDraft } from "../src/react-app/domains/cloud/sign-in-return-draft";
+import { carrySignInReturnDraft, hasSignedOutDraft } from "../src/react-app/domains/cloud/sign-in-return-draft";
 import {
   cloudSessionDraftScope,
   getSessionDraft,
@@ -261,36 +261,50 @@ describe("in the app", () => {
     }
   });
 
-  test("the signed-out draft follows the person into their signed-in scope, once, without overwriting", () => {
-    const scope = cloudSessionDraftScope({ principalId: user.id, organizationId: acme.id });
-    expect(scope).not.toBeNull();
-    if (!scope) return;
+  test("sign-in never assigns an unowned draft without explicit account-bound consent", () => {
+    const riley = { principalId: user.id, organizationId: acme.id };
+    const jordan = { principalId: "user-jordan", organizationId: acme.id };
+    const scope = cloudSessionDraftScope(riley)!;
+    const jordanScope = cloudSessionDraftScope(jordan)!;
     saveSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", "ses_contract", { text: "List the renewal dates", mode: "prompt" });
-    expect(carrySignedOutDraft({ workspaceId: "ws_local", sessionId: "ses_contract" }, scope)).toBe(true);
+    const target = recordSignInReturnTarget({ path: conversation, authUrl })!;
+    const confirmation = { scope, startedAt: target.startedAt };
+    expect(carrySignInReturnDraft(riley, confirmation)).toBe(false);
+    noteSignInReturnHandoff({ desktopInitiated: true });
+    // Either account can finish sign-in, but neither receives the local draft.
+    expect(carrySignInReturnDraft(riley)).toBe(false);
+    expect(carrySignInReturnDraft(jordan)).toBe(false);
+    expect(getSessionDraft(scope, "ws_local", "ses_contract")).toBeNull();
+    expect(getSessionDraft(jordanScope, "ws_local", "ses_contract")).toBeNull();
+    // Consent for another account or an earlier attempt cannot authorize it.
+    expect(carrySignInReturnDraft(jordan, confirmation)).toBe(false);
+    expect(carrySignInReturnDraft(riley, { ...confirmation, startedAt: target.startedAt - 1 })).toBe(false);
+    expect(hasSignedOutDraft(target)).toBe(true);
+    expect(carrySignInReturnDraft(riley, confirmation)).toBe(true);
     expect(getSessionDraft(scope, "ws_local", "ses_contract")?.text).toBe("List the renewal dates");
     expect(getSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", "ses_contract")).toBeNull();
-    expect(carrySignedOutDraft({ workspaceId: "ws_local", sessionId: "ses_contract" }, scope)).toBe(false);
-
-    saveSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", NEW_TASK_DRAFT_SESSION_ID, { text: "signed-out prompt", mode: "prompt" });
-    saveSessionDraft(scope, "ws_local", NEW_TASK_DRAFT_SESSION_ID, { text: "already here", mode: "prompt" });
-    expect(carrySignedOutDraft({ workspaceId: "ws_local", sessionId: null }, scope)).toBe(false);
-    expect(getSessionDraft(scope, "ws_local", NEW_TASK_DRAFT_SESSION_ID)?.text).toBe("already here");
-    expect(carrySignedOutDraft({ workspaceId: null, sessionId: "ses_contract" }, scope)).toBe(false);
+    expect(carrySignInReturnDraft(riley, confirmation)).toBe(false);
+    expect(carrySignInReturnDraft(jordan, { ...confirmation, scope: jordanScope })).toBe(false);
+    expect(getSessionDraft(jordanScope, "ws_local", "ses_contract")).toBeNull();
   });
 
-  test("the verified identity of the completing sign-in receives the draft; nobody else does", () => {
-    const riley = { principalId: user.id, organizationId: acme.id };
-    const rileyScope = cloudSessionDraftScope(riley);
-    const jordanScope = cloudSessionDraftScope({ principalId: "user-jordan", organizationId: acme.id });
-    saveSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", "ses_contract", { text: "List the renewal dates", mode: "prompt" });
-    recordSignInReturnTarget({ path: conversation, authUrl });
-    // Not signed in yet: nothing moves.
-    expect(carrySignInReturnDraft(riley)).toBe(false);
+  test("declining keeps the draft signed out and confirmation never overwrites an account draft", () => {
+    const identity = { principalId: user.id, organizationId: acme.id };
+    const scope = cloudSessionDraftScope(identity)!;
+    saveSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", NEW_TASK_DRAFT_SESSION_ID, { text: "signed-out prompt", mode: "prompt" });
+    saveSessionDraft(scope, "ws_local", NEW_TASK_DRAFT_SESSION_ID, { text: "already here", mode: "prompt" });
+    const target = recordSignInReturnTarget({ path: "/workspace/ws_local/session" })!;
     noteSignInReturnHandoff({ desktopInitiated: true });
-    expect(carrySignInReturnDraft(riley)).toBe(true);
-    expect(getSessionDraft(rileyScope, "ws_local", "ses_contract")?.text).toBe("List the renewal dates");
-    // A later identity (after sign-out, someone else signs in) gets nothing.
-    expect(carrySignInReturnDraft({ principalId: "user-jordan", organizationId: acme.id })).toBe(false);
-    expect(getSessionDraft(jordanScope, "ws_local", "ses_contract")).toBeNull();
+    expect(carrySignInReturnDraft(identity, { scope, startedAt: target.startedAt })).toBe(false);
+    expect(getSessionDraft(scope, "ws_local", NEW_TASK_DRAFT_SESSION_ID)?.text).toBe("already here");
+    expect(hasSignedOutDraft(target)).toBe(true);
+    recordSignInReturnTarget({ path: conversation, authUrl });
+    saveSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", "ses_contract", { text: "private local draft", mode: "prompt" });
+    noteSignInReturnHandoff({ desktopInitiated: true });
+    // The secondary action consumes the choice without moving or deleting data.
+    claimSignInReturnDraft();
+    expect(carrySignInReturnDraft(identity)).toBe(false);
+    expect(getSessionDraft(scope, "ws_local", "ses_contract")).toBeNull();
+    expect(getSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, "ws_local", "ses_contract")?.text).toBe("private local draft");
   });
 });

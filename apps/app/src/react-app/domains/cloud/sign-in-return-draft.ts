@@ -10,8 +10,13 @@ import {
   type SessionDraftIdentity,
 } from "../session/sync/draft-store";
 
-/** Move one signed-out draft into the signed-in scope, never over a draft already there. */
-export function carrySignedOutDraft(target: Pick<SignInReturnTarget, "workspaceId" | "sessionId">, scope: string) {
+export function hasSignedOutDraft(target: Pick<SignInReturnTarget, "workspaceId" | "sessionId">) {
+  return Boolean(target.workspaceId && getSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, target.workspaceId,
+    target.sessionId ?? NEW_TASK_DRAFT_SESSION_ID)?.text.trim());
+}
+
+/** Move only after consent; never overwrite a draft already in the account. */
+function carrySignedOutDraft(target: Pick<SignInReturnTarget, "workspaceId" | "sessionId">, scope: string) {
   if (!target.workspaceId) return false;
   const slot = target.sessionId ?? NEW_TASK_DRAFT_SESSION_ID;
   const signedOut = getSessionDraft(LOCAL_SESSION_DRAFT_SCOPE, target.workspaceId, slot);
@@ -24,18 +29,16 @@ export function carrySignedOutDraft(target: Pick<SignInReturnTarget, "workspaceI
 }
 
 /**
- * Drafts are stored per account and organization. The auth provider calls
- * this with a newly verified identity, before publishing it, so the draft of
- * the conversation a desktop-initiated sign-in (`desktopSignInReturn`)
- * started from is already in the signed-in scope when the composer switches
- * to it. Runs once per sign-in; a no-op without a completed target.
+ * A signed-out draft has no verifiable owner. Sign-in alone must never give it
+ * to an account. The composer asks explicitly, naming the destination; bind
+ * that choice to both the account scope and attempt shown when it was made.
  */
-export function carrySignInReturnDraft(identity: SessionDraftIdentity): boolean {
+export function carrySignInReturnDraft(identity: SessionDraftIdentity, confirmation?: { scope: string; startedAt: number }): boolean {
   const target = readSignInReturnTarget();
   if (!target || target.signedInAt === null || target.draftCarried) return false;
   if (readOrgSelectionPending().pending) return false;
   const scope = cloudSessionDraftScope(identity);
-  if (!scope) return false;
+  if (!scope || confirmation?.scope !== scope || confirmation.startedAt !== target.startedAt) return false;
   const claimed = claimSignInReturnDraft();
   return claimed ? carrySignedOutDraft(claimed, scope) : false;
 }
