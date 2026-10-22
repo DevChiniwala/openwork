@@ -78,6 +78,16 @@
               ],
               "description": "Managed deployments: Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments. Renders DEN_FEATURE_MANAGED_DEPLOYMENTS."
             },
+            "enterprisePlan": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Enterprise plan billing: Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page. Renders DEN_FEATURE_ENTERPRISE_PLAN."
+            },
             "workbotDocuments": {
               "enum": [
                 "",
@@ -167,6 +177,16 @@
                 false
               ],
               "description": "Workbot: teach browser tasks: Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs. Renders DEN_FEATURE_BROWSER_DEMONSTRATIONS."
+            },
+            "browserLiveView": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: browser live view: Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window. Renders DEN_FEATURE_BROWSER_LIVE_VIEW."
             },
             "browserFloatingView": {
               "enum": [

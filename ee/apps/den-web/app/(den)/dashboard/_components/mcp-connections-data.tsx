@@ -50,12 +50,39 @@ export type ExternalMcpRequiredBy = {
   name: string;
 };
 
+export type ConnectionReadinessFailure = "sign_in_required" | "sign_in_rejected" | "setup_required" | "unavailable" | "timed_out" | "settings_changed" | "tools_unreadable";
+
 export type ConnectionReadiness = {
   status: "ready" | "could_not_verify";
   checkedAt: string;
   lastSuccessfulAt: string | null;
   reason: string | null;
+  /** Why it did not pass. Absent from older servers and older checks. */
+  failure?: ConnectionReadinessFailure | null;
 };
+
+const READINESS_CHECKS_BATCH_LIMIT = 50;
+
+/**
+ * Admin list: bring connectors with no stored status up to date in one call.
+ * The server copies a member's still-valid Ready check or checks the
+ * connector itself; connectors nobody can check stay not checked.
+ */
+export function useRefreshUncheckedConnections() {
+  const { orgId } = useOrgDashboard();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (connectionIds: string[]) => {
+      const { response, payload } = await requestJson("/v1/mcp-connections/readiness-checks", {
+        method: "POST",
+        headers: getOrgScopeHeaders(requireOrgId(orgId)),
+        body: JSON.stringify({ connectionIds: connectionIds.slice(0, READINESS_CHECKS_BATCH_LIMIT) }),
+      }, 60000);
+      if (!response.ok) throw getRequestError(payload, response, "Could not check connections. Try again.");
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all }),
+  });
+}
 
 export function useCheckMcpConnection() {
   const { orgId } = useOrgDashboard();
@@ -68,13 +95,16 @@ export function useCheckMcpConnection() {
       if (!response.ok) throw getRequestError(payload, response, "Could not check this connection. Try again.");
       return z.object({ readiness: z.object({ status: z.enum(["ready", "could_not_verify"]), checkedAt: z.string(), reason: z.string().nullable() }) }).parse(payload).readiness;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all }),
+    // A failed request may still have recorded a result; always show what is stored.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all }),
   });
 }
 
 export type ExternalMcpConnection = {
-  /** Absent from older servers; null means no stored check. */
+  /** The signed-in member's own last check. Absent from older servers; null means not checked for them. */
   readiness?: ConnectionReadiness | null;
+  /** Admin list only: whether the connector itself works (any member's Ready for per-member connectors). Null means nobody checked it yet. */
+  organizationReadiness?: ConnectionReadiness | null;
   id: string;
   name: string;
   url: string;

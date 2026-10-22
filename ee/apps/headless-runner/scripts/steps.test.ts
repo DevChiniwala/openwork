@@ -13,7 +13,7 @@ import type { ModelClient, ModelRequest } from "../src/model.js"
 import { nodeSqlite } from "../src/node-sqlite.js"
 import type { SqlDriver } from "../src/sql.js"
 import { grantVault } from "../src/resume-grants.js"
-import { Runner, type RunnerOptions } from "../src/runner.js"
+import { CUT_OFF_INSTRUCTION, Runner, type RunnerOptions } from "../src/runner.js"
 import { SelfResume } from "../src/self-resume.js"
 import { FRESH_REPEAT, type StepState } from "../src/steps.js"
 import { Store } from "../src/store.js"
@@ -531,4 +531,38 @@ test("a Node runner that shuts down mid-step leaves the turn to go on when it st
   await second.runner.idle()
   assert.equal(second.store.getTurn(session.id, "m1")?.status, "completed")
   assert.equal(second.store.getTurn(session.id, "m2")?.status, "completed")
+})
+
+test("a reply cut off at the output cap never ends the turn: it is dropped, the model is asked for less, and repeats fail", async () => {
+  for (const execution of [undefined, "steps" as const]) {
+    using temp = tempDir()
+    const systems: string[] = []
+    // Cut off twice (text only, then nothing), then answers.
+    const model: ModelClient = {
+      async complete(request) {
+        systems.push(request.system)
+        if (systems.length === 1) return { text: "Here is the whole scri", toolCalls: [], usage, cutOff: true }
+        if (systems.length === 2) return { text: "", toolCalls: [], usage, cutOff: true }
+        return { text: "Built it in parts.", toolCalls: [], usage }
+      },
+    }
+    const { store, runner } = world(temp.directory, { model })
+    store.putSession("hs_cut_off", { owner: "test" })
+    runner.send({ sessionId: "hs_cut_off", messageId: "m1", prompt: "Model an apartment", credentials: {}, ...(execution ? { execution } : {}) })
+    await runner.idle()
+    await drain(runner, store)
+    assert.equal(store.getTurn("hs_cut_off", "m1")?.status, "completed", `${execution ?? "one go"}`)
+    assert.deepEqual(transcript(store, "hs_cut_off", "m1").filter((message) => message.role === "assistant").map((message) => message.text), ["Built it in parts."])
+    assert.deepEqual(systems.map((system) => system.includes(CUT_OFF_INSTRUCTION)), [false, true, true])
+
+    const always: ModelClient = { async complete() { return { text: "", toolCalls: [], usage, cutOff: true } } }
+    using other = tempDir()
+    const failing = world(other.directory, { model: always })
+    failing.store.putSession("hs_cut_off", { owner: "test" })
+    failing.runner.send({ sessionId: "hs_cut_off", messageId: "m1", prompt: "Model an apartment", credentials: {}, ...(execution ? { execution } : {}) })
+    await failing.runner.idle()
+    await drain(failing.runner, failing.store)
+    const turn = failing.store.getTurn("hs_cut_off", "m1")
+    assert.deepEqual([turn?.status, turn?.error], ["failed", "output_limit"], `${execution ?? "one go"}`)
+  }
 })

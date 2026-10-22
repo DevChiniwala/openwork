@@ -1079,6 +1079,13 @@
       "when": 1792620716958,
       "tag": "0154_account_follow_up",
       "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "5",
+      "when": 1792693523832,
+      "tag": "0155_enterprise_plan_subscriptions",
+      "breakpoints": true
     }
   ]
 }

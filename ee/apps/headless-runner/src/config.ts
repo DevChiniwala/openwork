@@ -52,7 +52,7 @@ const configSchema = z.object({
   HEADLESS_MAX_CONCURRENT_TURNS: z.coerce.number().int().min(1).max(1_000).default(32),
   /** Model calls per turn; 0 means no limit, so a long task is bounded by the turn timeout and Stop instead. */
   HEADLESS_MAX_STEPS: z.coerce.number().int().min(0).default(0),
-  HEADLESS_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(128_000).default(8192),
+  HEADLESS_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(128_000).default(16_384),
   /** 0 means no limit: every model and tool call has its own timeout, so a turn cannot hang. */
   HEADLESS_TURN_TIMEOUT_MS: z.coerce
     .number()

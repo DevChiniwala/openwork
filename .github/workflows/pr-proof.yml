@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
+          node-version: 24.22.1
       - id: select
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,7 +81,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
+          node-version: 24.22.1
       - uses: pnpm/action-setup@v4
         with:
           version: 11.4.0
@@ -216,7 +216,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
+          node-version: 24.22.1
       - uses: pnpm/action-setup@v4
       - name: Install trusted judge dependencies
         run: pnpm --dir evals --filter @openwork/test-evidence... install --frozen-lockfile --ignore-scripts

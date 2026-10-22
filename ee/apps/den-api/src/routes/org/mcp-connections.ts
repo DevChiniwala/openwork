@@ -22,6 +22,7 @@ import {
   PluginConfigObjectTable,
   PluginTable,
   type ExternalMcpOAuthConfiguration,
+  type ExternalMcpReadinessFailure,
   type ExternalMcpToolPolicy,
 } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId, type DenTypeId } from "@openwork-ee/utils/typeid"
@@ -153,7 +154,7 @@ import {
 import type { OrgRouteVariables } from "./shared.js"
 import { beginNativeProviderConnect } from "./oauth-providers.js"
 import { createExternalMcpLifecycleDeadline } from "../../capability-sources/external-mcp-client.js"
-import { readinessFingerprint, rotateReadinessCredentialBinding, saveReadinessCheck, visibleReadiness } from "../../capability-sources/external-mcp-readiness.js"
+import { promoteMemberReadiness, readinessFingerprint, rotateReadinessCredentialBinding, saveReadinessCheck, storedOrganizationReadiness, visibleReadiness } from "../../capability-sources/external-mcp-readiness.js"
 
 const connectionParamsSchema = idParamSchema("connectionId", "externalMcpConnection")
 const logger = appLogger.child({ component: "mcp_connections" })
@@ -462,10 +463,29 @@ const connectionReadinessSchema = z.object({
   checkedAt: z.string().datetime(),
   lastSuccessfulAt: z.string().datetime().nullable(),
   reason: z.string().nullable(),
+  failure: z.enum(["sign_in_required", "sign_in_rejected", "setup_required", "unavailable", "timed_out", "settings_changed", "tools_unreadable"]).nullable().optional()
+    .describe("Why the check did not pass. sign_in_* means a person must sign in again; the others are not sign-in problems. Null when Ready or for checks recorded before this field existed."),
 }).meta({ ref: "ExternalMcpConnectionReadiness" })
 
+const READINESS_CHECK_BATCH_LIMIT = 50
+
+const readinessChecksBodySchema = z.object({
+  connectionIds: z.array(z.string().min(1).max(64)).min(1).max(READINESS_CHECK_BATCH_LIMIT),
+}).meta({ ref: "ExternalMcpReadinessChecksRequest" })
+
+const readinessChecksResponseSchema = z.object({
+  results: z.array(z.object({
+    connectionId: z.string(),
+    outcome: z.enum(["copied_from_member", "checked", "already_checked", "not_checkable", "not_found"])
+      .describe("copied_from_member: a member's Ready check was copied to the connector. checked: a check ran and was recorded (Ready or not). not_checkable: nobody with a working sign-in has checked it and the caller cannot check it themselves."),
+  })),
+}).meta({ ref: "ExternalMcpReadinessChecksResponse" })
+
 const connectionResponseSchema = z.object({
-  readiness: connectionReadinessSchema.nullable().optional(),
+  readiness: connectionReadinessSchema.nullable().optional()
+    .describe("The calling member's own last check. Null means never checked for them (or the settings or their sign-in changed since)."),
+  organizationReadiness: connectionReadinessSchema.nullable().optional()
+    .describe("scope=manageable only. Whether the connector itself works: for shared connections the shared credential's check; for per-member connections the latest Ready check any member recorded for the current settings, otherwise the caller's own check. Null means nobody has checked it yet."),
   id: z.string(),
   name: z.string(),
   externalKey: z.string().nullable(),
@@ -932,9 +952,11 @@ async function checkConnectionReadiness(connection: ExternalMcpConnectionRow, me
   const fingerprint = readinessFingerprint(connection, account)
   let status: "ready" | "could_not_verify" = "could_not_verify"
   let reason: string | null = null
+  let failure: ExternalMcpReadinessFailure | null = null
   const credential = await resolveExternalMcpToolCredential(connection, memberId)
   if (!credential.ok) {
     reason = connection.credentialMode === "per_member" ? "Sign in to check this connection." : "Finish setting up this connection."
+    failure = connection.credentialMode === "per_member" ? "sign_in_required" : "setup_required"
   } else {
     try {
       // A complete initialize + tools/list, using the normal guarded transport and
@@ -943,10 +965,11 @@ async function checkConnectionReadiness(connection: ExternalMcpConnectionRow, me
       status = "ready"
     } catch (error) {
       const diagnostic = externalMcpDiagnosticForResponse(error, requestId, "MCP_TOOL_DISCOVERY")
-      reason = diagnostic.category === "provider_unavailable" ? "Service unavailable. Try again."
-        : diagnostic.category === "request_timeout" || diagnostic.category === "lifecycle_deadline" ? "The check timed out. Try again."
-        : diagnostic.httpStatus === 401 || diagnostic.httpStatus === 403 ? "Sign-in was rejected. Sign in again."
-        : "Couldn't read its tools. Check the connection settings."
+      failure = diagnostic.category === "provider_unavailable" ? "unavailable"
+        : diagnostic.category === "request_timeout" || diagnostic.category === "lifecycle_deadline" ? "timed_out"
+        : diagnostic.httpStatus === 401 || diagnostic.httpStatus === 403 ? "sign_in_rejected"
+        : "tools_unreadable"
+      reason = READINESS_FAILURE_REASONS[failure]
       // Provider text can repeat a just-entered key as plain prose; heuristic
       // redaction is not a boundary, so keep only server-owned identifiers.
       logger.warn("external_mcp_readiness_check_failed", {
@@ -965,14 +988,63 @@ async function checkConnectionReadiness(connection: ExternalMcpConnectionRow, me
   }) : null
   if (!current || readinessFingerprint(current, currentAccount) !== fingerprint) {
     status = "could_not_verify"
-    reason = "Connection settings changed. Check again."
+    failure = "settings_changed"
+    reason = READINESS_FAILURE_REASONS[failure]
   }
   const checkedAt = new Date().toISOString()
   const previous = visibleReadiness(connection.credentialMode === "per_member" ? account?.readinessCheck ?? null : connection.readinessCheck, fingerprint)
   const lastSuccessfulAt = status === "ready" ? checkedAt : previous?.lastSuccessfulAt ?? null
-  const check = { status, checkedAt, lastSuccessfulAt, reason, fingerprint }
+  const check = { status, checkedAt, lastSuccessfulAt, reason, failure, fingerprint }
   await saveReadinessCheck(connection, memberId, check)
-  return { status, checkedAt, lastSuccessfulAt, reason }
+  return { status, checkedAt, lastSuccessfulAt, reason, failure }
+}
+
+const READINESS_FAILURE_REASONS = {
+  sign_in_required: "Sign in to check this connection.",
+  setup_required: "Finish setting up this connection.",
+  unavailable: "The service didn't respond. Try again later.",
+  timed_out: "The check timed out. Try again.",
+  sign_in_rejected: "The service rejected the sign-in. Sign in again.",
+  settings_changed: "Connection settings changed during the check. Check again.",
+  tools_unreadable: "The service answered but its tools couldn't be read. Check the connection address and settings.",
+} satisfies Record<ExternalMcpReadinessFailure, string>
+
+const READINESS_CHECK_CONCURRENCY = 4
+
+/**
+ * Brings connectors with no stored status up to date for an admin's list:
+ * first copies any member's still-valid Ready check onto per-member
+ * connectors (database only), then probes the rest that the caller can
+ * check (a shared credential, or the caller's own sign-in), a few at a time.
+ * Connectors nobody can check yet are left as not checked.
+ */
+async function refreshUncheckedReadiness(connections: ExternalMcpConnectionRow[], memberId: DenTypeId<"member">, requestId: string) {
+  const unchecked = connections.filter((connection) => connection.kind === "external_mcp" && !storedOrganizationReadiness(connection))
+  const promoted = await promoteMemberReadiness(unchecked)
+  const toProbe: ExternalMcpConnectionRow[] = []
+  for (const connection of unchecked) {
+    if (promoted.has(connection.id)) continue
+    if (connection.credentialMode === "per_member") {
+      // The caller's own still-valid check (Ready was already promoted above) already answers for them.
+      const account = await getConnectedAccount({ organizationId: connection.organizationId, orgMembershipId: memberId, providerId: connection.id })
+      if (visibleReadiness(account?.readinessCheck ?? null, readinessFingerprint(connection, account))) continue
+    }
+    if ((await resolveExternalMcpToolCredential(connection, memberId)).ok) toProbe.push(connection)
+  }
+  const checked = new Set<string>()
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(READINESS_CHECK_CONCURRENCY, toProbe.length) }, async () => {
+    for (let connection = toProbe[next++]; connection; connection = toProbe[next++]) {
+      try {
+        await checkConnectionReadiness(connection, memberId, requestId)
+        checked.add(connection.id)
+      } catch (error) {
+        // One connector failing to record leaves it not checked; the rest still finish.
+        logger.warn("external_mcp_readiness_refresh_failed", { connection_id: connection.id, request_id: requestId, error: error instanceof Error ? error.name : "unknown" })
+      }
+    }
+  }))
+  return { promoted: new Set(promoted.keys()), checked }
 }
 
 type ConnectionRequiredBy = {
@@ -1375,6 +1447,8 @@ async function toConnectionResponse(
     credentialHealthCheckedAt: callerCredentialHealth?.checkedAt ?? null,
     ...(row.kind === "external_mcp"
       ? { readiness: visibleReadiness(readinessCheck, fingerprint) } : {}),
+    ...(row.kind === "external_mcp" && options.includeAccess
+      ? { organizationReadiness: storedOrganizationReadiness(row) ?? visibleReadiness(readinessCheck, fingerprint) } : {}),
     issuerReviewRequired,
     reconnectActionOwner,
     requiredBy: options.requiredBy,
@@ -2728,6 +2802,40 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
         policy,
       )
       return c.json({ policy: toToolPolicyResponse(policy, { includeAttribution: true }) })
+    },
+  )
+
+  app.post(
+    "/v1/mcp-connections/readiness-checks",
+    describeRoute({
+      tags: ["Capability Sources"],
+      summary: "Check connectors that have no stored status",
+      description: "For an admin's connector list. For each listed connector with no stored status: copies any member's still-valid Ready check onto a per-member connector, otherwise checks it (initialize and tools/list, no tools executed) with the shared credential or the caller's own sign-in. Connectors that already have a status are left alone; use the per-connection check to re-check one. Requires connections.manage.",
+      responses: {
+        200: jsonResponse("What happened to each connector.", readinessChecksResponseSchema),
+        400: jsonResponse("Invalid request.", invalidRequestSchema),
+        401: jsonResponse("Sign in required.", unauthorizedSchema),
+        403: jsonResponse("Connection management permission required.", forbiddenSchema),
+      },
+    }),
+    orgPermissionRoute("connections.manage"),
+    jsonValidator(readinessChecksBodySchema),
+    async (c) => {
+      const payload = c.get("organizationContext")
+      const requested = new Set(c.req.valid("json").connectionIds)
+      const rows = (await listExternalMcpConnections(payload.organization.id)).filter((row) => requested.has(row.id))
+      const { promoted, checked } = await refreshUncheckedReadiness(rows, payload.currentMember.id, c.get("requestId"))
+      return c.json({
+        results: [...requested].map((connectionId) => {
+          const row = rows.find((entry) => entry.id === connectionId)
+          const outcome = !row || row.kind !== "external_mcp" ? "not_found" as const
+            : promoted.has(connectionId) ? "copied_from_member" as const
+            : checked.has(connectionId) ? "checked" as const
+            : storedOrganizationReadiness(row) ? "already_checked" as const
+            : "not_checkable" as const
+          return { connectionId, outcome }
+        }),
+      })
     },
   )
 
