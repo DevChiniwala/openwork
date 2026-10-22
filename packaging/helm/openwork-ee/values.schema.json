@@ -128,6 +128,16 @@
               ],
               "description": "Workbot: usage limits and upgrades: Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation. Renders DEN_FEATURE_WORKBOT_USAGE_RECOVERY."
             },
+            "usageLimitUpgrade": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Usage limits: one limit card with an upgrade: When free Auto, OpenWork Models or an AI Gateway budget runs out in the desktop app, one card says what ran out, when it resets and that the message is saved, with the upgrade or request that fits the person’s role and a way to keep working with another model. Renders DEN_FEATURE_USAGE_LIMIT_UPGRADE."
+            },
             "automationCalendar": {
               "enum": [
                 "",

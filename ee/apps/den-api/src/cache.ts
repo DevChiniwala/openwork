@@ -1,6 +1,6 @@
 import { peopleMemberCondition } from "./setup-agent-members.js"
 import { asc, and, eq, gt, isNull, lt, lte } from "@openwork-ee/den-db/drizzle"
-import { readFeatureRollouts, readOrganizationFeatureOverrides } from "@openwork-ee/den-db/organization-features"
+import { readFeatureRollouts, readMemberFeatureOverrides, readOrganizationFeatureOverrides, readMembersWithFeatureOverrides } from "@openwork-ee/den-db/organization-features"
 import { AuthSessionTable, AuthUserTable, InvitationTable, MemberTable, OAuthConsentTable, OrganizationTable, TeamTable } from "@openwork-ee/den-db/schema"
 import { isFeatureKey, type FeatureOverrides, type FeatureRollouts } from "@openwork/features"
 import { normalizeDenTypeId, type DenTypeId, type DenTypeIdName } from "@openwork-ee/utils/typeid"
@@ -19,7 +19,7 @@ type UserId = typeof AuthUserTable.$inferSelect.id
 type OAuthConsentId = typeof OAuthConsentTable.$inferSelect.id
 
 type CacheParent = "auth" | "features" | "org"
-type CacheChild = "generation" | "inventory-generation" | "grant" | "grant-revoked" | "member" | "member-revoked" | "members" | "member-teams" | "overrides" | "rollouts" | "session" | "session-id" | "session-revoked" | "session-id-revoked"
+type CacheChild = "generation" | "inventory-generation" | "grant" | "grant-revoked" | "member" | "member-overrides" | "member-revoked" | "members" | "member-teams" | "overrides" | "rollouts" | "session" | "session-id" | "session-revoked" | "session-id-revoked"
 
 type CacheKeyInput = {
   parent: CacheParent
@@ -345,6 +345,18 @@ function parseCachedFeatureRollouts(raw: string | null): FeatureRollouts | null 
   return rollouts
 }
 
+function parseCachedStringList(raw: string | null): string[] | null {
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.every((id) => typeof id === "string") ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 function parseCachedFeatureOverrides(raw: string | null): FeatureOverrides | null {
   const parsed = parseJsonRecord(raw)
   if (!parsed) {
@@ -655,8 +667,8 @@ function logFeatureCacheError(stage: "get" | "set", child: CacheChild, id: strin
 /**
  * Feature flags are resolved on every org request. Every replica shares one
  * generation for all feature rows, bumped by den-api's feature writers
- * (features.ts updateFeatureRollout / updateOrganizationFeatureOverrides) after
- * the write. Successful bumps invalidate every replica immediately; the TTL
+ * (features.ts updateFeatureRollout / updateOrganizationFeatureOverrides /
+ * updateMemberFeatureOverrides) after the write. Successful bumps invalidate every replica immediately; the TTL
  * bounds failed bumps and external writes. Permission grants are always read
  * from the database by permissions/resolve.ts, never from this flag cache.
  */
@@ -672,6 +684,16 @@ function featureOverridesEntry(organizationId: OrgId): GenerationCacheEntry<Feat
     parse: parseCachedFeatureOverrides,
     load: () => readOrganizationFeatureOverrides(db, organizationId),
   }
+}
+
+/**
+ * Deployment-wide: the few active members with any override. Everyone else
+ * skips the member read. Only membership is cached, never override values.
+ */
+const membersWithFeatureOverridesEntry: GenerationCacheEntry<string[]> = {
+  entryKey: (generation) => cacheKey({ parent: "features", child: "member-overrides", id: generation }),
+  parse: parseCachedStringList,
+  load: () => readMembersWithFeatureOverrides(db),
 }
 
 function getFeatureRollouts(): Promise<FeatureRollouts> {
@@ -694,16 +716,29 @@ function getOrganizationFeatureOverrides(organizationId: OrgId): Promise<Feature
   })
 }
 
-/** Rollouts and one organization's overrides together: one Redis round trip while the generation is unchanged. */
-async function getOrganizationFeatureState(organizationId: OrgId): Promise<{ rollouts: FeatureRollouts; overrides: FeatureOverrides }> {
-  const [rollouts, overrides] = await readManyThroughGeneration<[FeatureRollouts, FeatureOverrides]>({
+/**
+ * Rollouts and one organization's overrides: one Redis round trip while the
+ * generation is unchanged. With a user, the same round trip says whether they
+ * have member overrides; only those few members read them, fresh, from the
+ * database, so the active-membership check always runs on live rows.
+ */
+async function getOrganizationFeatureState(organizationId: OrgId, userId?: UserId): Promise<{ rollouts: FeatureRollouts; overrides: FeatureOverrides; memberOverrides: FeatureOverrides }> {
+  const read = <T extends unknown[]>(entries: { [K in keyof T]: GenerationCacheEntry<T[K]> }) => readManyThroughGeneration<T>({
     redis: activeRedisClient,
     generationKey: FEATURES_GENERATION_KEY,
-    entries: [featureRolloutsEntry, featureOverridesEntry(organizationId)],
+    entries,
     ttlSeconds: DEFAULT_CACHE_TTL_SECONDS,
     onError: (stage, error) => logFeatureCacheError(stage, "generation", organizationId, error),
   })
-  return { rollouts, overrides }
+  if (!userId) {
+    const [rollouts, overrides] = await read<[FeatureRollouts, FeatureOverrides]>([featureRolloutsEntry, featureOverridesEntry(organizationId)])
+    return { rollouts, overrides, memberOverrides: {} }
+  }
+  const [rollouts, overrides, membersWithOverrides] = await read<[FeatureRollouts, FeatureOverrides, string[]]>([
+    featureRolloutsEntry, featureOverridesEntry(organizationId), membersWithFeatureOverridesEntry,
+  ])
+  const memberOverrides = membersWithOverrides.includes(`${organizationId}:${userId}`) ? await readMemberFeatureOverrides(db, organizationId, userId) : {}
+  return { rollouts, overrides, memberOverrides }
 }
 
 async function invalidateFeatures() {

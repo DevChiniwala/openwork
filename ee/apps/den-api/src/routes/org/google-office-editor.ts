@@ -49,14 +49,14 @@ export function registerGoogleOfficeEditorRoutes<T extends { Variables: OrgRoute
   const enabled = async (id: string, userId: string) => await organizationFeatureEnabled(id, "workbotDocuments", { userId })
   const guard: MiddlewareHandler<{ Variables: OrgRouteVariables }> = async (c, next) => {
     const context = c.get("organizationContext")
-    if (!context || !await enabled(context.organization.id, context.currentMember.userId)) return c.json({ error: "feature_disabled", message: "Documents is off for this workspace." }, 403)
+    if (!context?.features.workbotDocuments) return c.json({ error: "feature_disabled", message: "Documents is off for this workspace." }, 403)
     if (!store || !origins) return c.json({ error: "office_not_configured", message: "Full document editing is not set up for this workspace. An administrator can enable the document editor. You can open this file in Drive." }, 503)
     c.header("cache-control", "no-store")
     await next()
   }
   const editingGuard: MiddlewareHandler<{ Variables: OrgRouteVariables }> = async (c, next) => {
     const context = c.get("organizationContext")
-    if (!context || !await organizationFeatureEnabled(context.organization.id, "workbotDocumentEditing", { userId: context.currentMember.userId })) return c.json({ error: "feature_disabled", message: "Document editing is off for this workspace." }, 403)
+    if (!context?.features.workbotDocumentEditing) return c.json({ error: "feature_disabled", message: "Document editing is off for this workspace." }, 403)
     await next()
   }
   const description = (operationId: string, summary: string, schema: z.ZodType, security?: []) => {

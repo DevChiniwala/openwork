@@ -14,10 +14,11 @@ process.env.DEN_DEPLOYMENT = "self_hosted"
 process.env.DEN_FEATURE_REMOTE_SESSION_SUBAGENTS = ""
 const { db } = await import("../src/db.js")
 const { cache } = await import("../src/cache.js")
-const { getOrganizationFeatures, organizationFeatureEnabled, updateFeatureRollout, updateOrganizationFeatureOverrides } = await import("../src/features.js")
+const { getOrganizationFeatures, organizationFeatureEnabled, updateFeatureRollout, updateMemberFeatureOverrides, updateOrganizationFeatureOverrides } = await import("../src/features.js")
 
 const organizationId = createDenTypeId("organization")
 const userId = createDenTypeId("user")
+const memberId = createDenTypeId("member")
 const fault = new Error("write outcome uncertain")
 const rolloutBefore = [{ feature_key: "remoteSessionSubagents", enabled: true, killed: false }]
 const rolloutAfter = [{ feature_key: "remoteSessionSubagents", enabled: true, killed: true }]
@@ -39,6 +40,7 @@ function stubReads(results: Array<unknown[] | Error>, events: string[] = []) {
     const chain = {
       from: () => chain,
       leftJoin: () => chain,
+      innerJoin: () => chain,
       where: () => chain,
       limit: (count: number) => {
         read.limit = count
@@ -217,7 +219,63 @@ test("organization maps resolve cached rollout and organization overrides", asyn
   assert.equal(features.remoteSessionSubagents, true)
   assert.equal(read.mock.callCount(), 0)
   assert.equal(state.mock.callCount(), 1)
-  assert.deepEqual(state.mock.calls[0].arguments, [organizationId])
+  assert.deepEqual(state.mock.calls[0].arguments, [organizationId, undefined])
+})
+
+test("member overrides come from the feature cache with the organization state, not a database read per request", async () => {
+  const state = mock.method(cache.features, "state", async () => ({
+    rollouts: { remoteSessionSubagents: { enabled: false, killed: false } },
+    overrides: {},
+    memberOverrides: { remoteSessionSubagents: true },
+  }))
+  const read = mock.method(db, "select", () => { throw new Error("cached member feature resolution read the database") })
+  assert.equal((await getOrganizationFeatures(organizationId, { userId })).remoteSessionSubagents, true)
+  assert.equal(read.mock.callCount(), 0)
+  assert.deepEqual(state.mock.calls[0].arguments, [organizationId, userId])
+})
+
+test("members without overrides never read member overrides", async () => {
+  const reads = stubReads([rolloutAfter, [], [{ organization_id: organizationId, user_id: createDenTypeId("user") }]])
+  assert.deepEqual((await cache.features.state(organizationId, userId)).memberOverrides, {})
+  assert.deepEqual(reads.map((read) => read.fields), [["feature_key", "enabled", "killed"], ["feature_key", "enabled"], ["organization_id", "user_id"]])
+  stubReads([rolloutAfter, []])
+  assert.deepEqual((await cache.features.state(organizationId)).memberOverrides, {})
+})
+
+test("members with overrides read them fresh from their active membership", async () => {
+  const listed = [{ organization_id: organizationId, user_id: userId }, { organization_id: organizationId, user_id: userId }]
+  const reads = stubReads([rolloutAfter, [], listed, [{ feature_key: "remoteSessionSubagents", enabled: false }]])
+  assert.deepEqual((await cache.features.state(organizationId, userId)).memberOverrides, { remoteSessionSubagents: false })
+  assert.deepEqual(reads[3].fields, ["feature_key", "enabled"])
+})
+
+test("a replaced membership does not inherit the previous membership's overrides from a stale member list", async () => {
+  // The list still names the user, but the live join finds no rows for the new, active membership.
+  stubReads([rolloutAfter, [], [{ organization_id: organizationId, user_id: userId }], []])
+  assert.deepEqual((await cache.features.state(organizationId, userId)).memberOverrides, {})
+})
+
+test("member override writes invalidate the feature cache after the write commits", async () => {
+  const events: string[] = []
+  stubReads([[{ userId }]], events)
+  const { inserted } = stubWrites(events)
+  stubTransaction(events)
+  const invalidation = spyInvalidation(events)
+  assert.equal(await updateMemberFeatureOverrides({ organizationId, memberId, changes: { remoteSessionSubagents: true }, setByUserId: userId }), true)
+  assert.deepEqual(inserted, [{ member_id: memberId, feature_key: "remoteSessionSubagents", enabled: true, set_by_user_id: userId }])
+  assert.equal(invalidation.mock.callCount(), 1)
+  assert.deepEqual(events, ["begin", "read", "write", "commit", "invalidate"])
+})
+
+test("member override invalidation runs after an uncertain write failure and preserves the original error", async () => {
+  const events: string[] = []
+  stubReads([[{ userId }]], events)
+  stubWrites(events, fault)
+  stubTransaction(events)
+  const invalidation = spyInvalidation(events)
+  await assert.rejects(updateMemberFeatureOverrides({ organizationId, memberId, changes: { remoteSessionSubagents: true }, setByUserId: userId }), (error: unknown) => error === fault)
+  assert.equal(invalidation.mock.callCount(), 1)
+  assert.deepEqual(events, ["begin", "read", "write-failed", "transaction-failed", "invalidate"])
 })
 
 for (const locked of [false, true]) {
@@ -286,3 +344,9 @@ for (const wiring of [
     assert.equal(callsWithin(source, "setOrganizationFeatureOverrides").length, 0)
   })
 }
+
+test("the admin member capabilities route writes through the cache-invalidating wrapper", async () => {
+  const source = ts.createSourceFile("member-features.ts", await readFile(new URL("../src/routes/admin/member-features.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true)
+  assert.equal(callsWithin(source, "updateMemberFeatureOverrides").length, 1)
+  assert.equal(callsWithin(source, "setMemberFeatureOverrides").length, 0)
+})

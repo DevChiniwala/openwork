@@ -19,6 +19,10 @@ import {
 } from "./gateway-usage-state";
 import { useGatewayUsage } from "./use-gateway-usage";
 import { gatewayApprovalKey, useGatewayApprovalDismissals } from "./gateway-usage-approval-store";
+import { UsageLimitCard, UsageLimitLocked, useUsageLimitUpgrade, useUsageLimitViewer } from "./usage-limit-card";
+import { denDashboardUrl } from "@/app/lib/den-dashboard-links";
+import { openAlternativeModelPicker } from "@/app/lib/inference-access";
+import { usePlatform } from "@/react-app/kernel/platform";
 
 export const GATEWAY_USAGE_SETTINGS_PATH = "/settings/usage";
 
@@ -82,16 +86,23 @@ export function GatewayIncreaseForm({ pending, error, onSubmit, onCancel }: {
   );
 }
 
-export function GatewayUsageNotice({ state, status, stale, providerName = null, canSwitchProvider = false }: {
+export function GatewayUsageNotice({ state, status, stale, providerName = null, canSwitchProvider = false, sessionId, messageSaved = false }: {
   state: "blocked" | "over_limit"; status: GatewayUsageStatus; stale: boolean;
   /** Set when the selected model's provider has its own limit. */
   providerName?: string | null;
   /** Another provider the member has still has room. */
   canSwitchProvider?: boolean;
+  /** The conversation whose model picker "Use another model" opens. */
+  sessionId?: string;
+  /** A refused message is kept in the conversation. */
+  messageSaved?: boolean;
 }) {
   const navigate = useNavigate();
+  const platform = usePlatform();
   const usage = useGatewayUsage(true);
   const [asking, setAsking] = useState(false);
+  const upgrade = useUsageLimitUpgrade();
+  const viewer = useUsageLimitViewer();
   const buckets = status.buckets.filter((bucket) => exhausted(bucket) && (state !== "blocked" || bucket.hardLimit));
   const bucket = longestBlock(buckets);
   if (!bucket) return null;
@@ -132,6 +143,22 @@ export function GatewayUsageNotice({ state, status, stale, providerName = null, 
             onSubmit={(reason) => usage.reset.mutate({ bucketId: askable.id, reason }, { onSuccess: () => setAsking(false) })} />
         </div>
       </UsageCard>
+    );
+  }
+
+  if (upgrade) {
+    // The shared usage-limit card: admins raise the budget, members ask for more, everyone can switch models.
+    return (
+      <UsageLimitCard testId="gateway-usage-notice" kind="gateway_budget" saved={messageSaved}
+        title={`You’ve used ${gatewayPeriodPossessives[bucket.timeframe]} ${formatGatewayMoney(bucket.allowanceMicroUsd)}${forProvider}`}
+        reset={staleNote ?? <><GatewayResetTime value={bucket.resetAt} />{switchNote}</>}
+        actions={<>
+          {viewer.canBuy ? <Button size="sm" onClick={() => platform.openLink(denDashboardUrl(viewer.denBaseUrl, "gatewayLimits"))}>Raise budget</Button>
+            : askable && amount ? <Button size="sm" disabled={stale} onClick={() => { usage.reset.reset(); setAsking(true); }}>Ask for {amount} more</Button>
+              : <UsageLimitLocked label="Ask an admin for more" reason="An admin can raise your budget" />}
+          {sessionId ? <Button size="sm" variant="ghost" onClick={() => openAlternativeModelPicker(sessionId)}>Use another model</Button> : null}
+          {seeUsage}
+        </>} />
     );
   }
 

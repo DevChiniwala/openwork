@@ -13,6 +13,10 @@ export const DEN_DASHBOARD_LINKS = {
   modelConnections: "/dashboard/library?show=models",
   /** Members, where admins invite people (Get set up). */
   members: "/dashboard/members",
+  /** AI Gateway, Limits tab: where admins set and raise members' budgets. */
+  gatewayLimits: "/dashboard/ai-gateway?tab=limits",
+  /** Billing: the organization's plan and subscriptions. */
+  billing: "/dashboard/billing",
 } as const;
 
 export type DenDashboardLink = keyof typeof DEN_DASHBOARD_LINKS;

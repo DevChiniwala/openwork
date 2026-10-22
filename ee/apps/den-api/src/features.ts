@@ -1,8 +1,8 @@
 import {
   readFeatures,
-  readMemberFeatureOverrides,
   readOrganizationFeatureOverridesForMany,
   setFeatureRollout,
+  setMemberFeatureOverrides,
   setOrganizationFeatureOverrides,
   type FeatureDatabase,
 } from "@openwork-ee/den-db/organization-features"
@@ -24,9 +24,10 @@ import type { OrganizationContextVariables } from "./middleware/organization-con
  * .opencode/skills/add-a-feature first). Never read organization metadata or
  * environment variables to decide whether a feature is on.
  *
- * Writes use updateFeatureRollout / updateOrganizationFeatureOverrides below,
- * which invalidate the shared cache. Never call den-db's setFeatureRollout or
- * setOrganizationFeatureOverrides directly from den-api.
+ * Writes use updateFeatureRollout / updateOrganizationFeatureOverrides /
+ * updateMemberFeatureOverrides below, which invalidate the shared cache. Never
+ * call den-db's setFeatureRollout, setOrganizationFeatureOverrides or
+ * setMemberFeatureOverrides directly from den-api.
  */
 
 export type { FeatureKey, FeatureMap }
@@ -58,8 +59,8 @@ export async function getOrganizationFeatures(organizationId: string, options: R
     return readFeatures(options.database ?? db, organizationId, env.features, { lock: options.lock, userId: options.userId })
   }
   const id = normalizeDenTypeId("organization", organizationId)
-  const { rollouts, overrides } = await cache.features.state(id)
-  const memberOverrides = options.userId ? await readMemberFeatureOverrides(db, id, options.userId) : {}
+  const userId = options.userId ? normalizeDenTypeId("user", options.userId) : undefined
+  const { rollouts, overrides, memberOverrides } = await cache.features.state(id, userId)
   return resolveFeatures({ ...env.features, rollouts, overrides, memberOverrides })
 }
 
@@ -107,6 +108,16 @@ export async function updateFeatureRollout(input: Parameters<typeof setFeatureRo
 export async function updateOrganizationFeatureOverrides(input: Parameters<typeof setOrganizationFeatureOverrides>[1]) {
   try {
     return await setOrganizationFeatureOverrides(db, input)
+  } finally {
+    // After the commit (or a failure that may have committed).
+    await cache.features.invalidate()
+  }
+}
+
+/** Changes one member's feature overrides, then clears the feature cache on every replica. */
+export async function updateMemberFeatureOverrides(input: Parameters<typeof setMemberFeatureOverrides>[1]) {
+  try {
+    return await setMemberFeatureOverrides(db, input)
   } finally {
     // After the commit (or a failure that may have committed).
     await cache.features.invalidate()
