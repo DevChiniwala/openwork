@@ -10,7 +10,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { MCP_QUICK_CONNECT } from "../../../app/constants";
 import { isOpenWorkExtensionEnabled, OPENWORK_EXTENSION_STATE_CHANGED } from "../settings/extension-state";
 import { desktopCapabilityConfig, desktopPolicyKeys } from "@openwork/types/den/desktop-policies";
@@ -620,17 +619,23 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
   // Signed out there is no desktop config; the deployment's feature switch
   // decides whether OpenCode Zen models are removed. Unreachable means off.
   const signedOut = denAuth.status === "signed_out";
-  const deploymentBaseUrl = readDenSettings().baseUrl;
-  const deploymentZenRemoved = useQuery({
-    queryKey: ["den", "deployment-features", deploymentBaseUrl],
-    queryFn: () => createDenClient({ baseUrl: deploymentBaseUrl }).getDeploymentFeatures(),
-    enabled: signedOut,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-    retry: false,
-    select: (features) => features.removeOpencodeZen === true,
-  });
-  const opencodeZenRemoved = signedOut ? deploymentZenRemoved.data === true : config?.removeOpencodeZen === true;
+  const [deploymentZenRemoved, setDeploymentZenRemoved] = useState(false);
+  useEffect(() => {
+    if (!signedOut) return;
+    let cancelled = false;
+    const read = () => {
+      void createDenClient({ baseUrl: readDenSettings().baseUrl }).getDeploymentFeatures()
+        .then((features) => { if (!cancelled) setDeploymentZenRemoved(features.removeOpencodeZen === true); })
+        .catch(() => { if (!cancelled) setDeploymentZenRemoved(false); });
+    };
+    read();
+    const interval = window.setInterval(read, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [signedOut]);
+  const opencodeZenRemoved = signedOut ? deploymentZenRemoved : config?.removeOpencodeZen === true;
 
   const configRef = useRef(config);
   configRef.current = config;
