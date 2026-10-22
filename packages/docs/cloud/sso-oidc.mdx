@@ -101,13 +101,23 @@ own client and discovery document, not the examples unchanged.
    OpenWork Redirect URL from step 3 above. Use authorization code flow; implicit
    grant is not needed for this server-side flow.
 5. Use `openid email profile` and **Token endpoint auth method**
-   `client_secret_post`. Ensure an `email` claim is emitted; if needed, use
-   **Token configuration → Add optional claim** for the ID token's `email` claim.
-   A UPN or `preferred_username` is not necessarily the user's work email.
-   Apply your tenant's consent and user-assignment policies to the test administrator.
+   `client_secret_post`. Each user who signs in needs a work email address in
+   Entra's **mail** attribute. A UPN or `preferred_username` is not necessarily
+   that email. Apply your tenant's consent and user-assignment policies to the
+   test administrator.
 
-See Microsoft's [app-registration guide](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app)
-and [OIDC discovery reference](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc).
+<Note>
+When the provider has a UserInfo endpoint, OpenWork reads the email from that
+response. Adding an optional `email` claim to the ID token alone does not fix
+an empty Entra **mail** attribute: the UserInfo response still needs an email.
+Without it, sign-in fails. The test dialog can currently report that the
+authentication window was closed rather than identify the missing email;
+check the user's mail attribute and UserInfo email before retrying.
+</Note>
+
+See Microsoft's [app-registration guide](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app),
+[OIDC discovery reference](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc),
+and [UserInfo reference](https://learn.microsoft.com/en-us/entra/identity-platform/userinfo).
 
 ### Amazon Cognito
 
@@ -139,10 +149,19 @@ and [issuer/discovery endpoints](https://docs.aws.amazon.com/cognito/latest/deve
 3. Use issuer `https://accounts.google.com`, confirmed in
    `https://accounts.google.com/.well-known/openid-configuration`. Do not use
    Google's authorization endpoint as the issuer.
-4. Set **Authorized redirect URIs** to OpenWork's Redirect URL. Use `openid email
-   profile` and a supported token-endpoint method such as `client_secret_post`.
-   Server-side code flow does not require adding an **Authorized JavaScript origins**
-   entry just for the callback.
+4. Add OpenWork's Redirect URL under **Authorized redirect URIs**, **not
+   Authorized JavaScript origins**, and **save** the OAuth client. Google can
+   take a few minutes to apply the saved change; retry after it has propagated
+   if Google shows **Error 400: redirect_uri_mismatch**.
+5. Use `openid email profile` and a supported token-endpoint method such as
+   `client_secret_post`.
+
+<Note>
+Google accepts redirect hosts on a public domain, or localhost/loopback for
+local testing. Private-only hostnames such as those ending in `.test` are not
+accepted. Production redirect URIs must use HTTPS; localhost has a testing
+exception. See Google's [redirect URI validation rules](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation).
+</Note>
 
 A Google OAuth web client is not a service account or an IAM OAuth client. It
 also does not grant Google Workspace super-admin rights for SAML setup.
@@ -199,7 +218,7 @@ available, escalate to your deployment operator. Fix, retest, then re-enable.
 | --- | --- |
 | Microsoft `AADSTS50011` | Redirect URI mismatch. Compare the registered **Web → Redirect URIs** with OpenWork's Redirect URL and the actual web/auth callback. Check the older split-host warning above. This is not the SAML Reply URL setting. |
 | Cognito `An error was encountered with the requested page.` with `redirect_mismatch` | The generic page can hide a callback mismatch. Compare **Allowed callback URLs** with the actual web/auth callback, including host, scheme, port and path. Confirm the error code before assuming every generic Cognito error is a redirect mismatch. |
-| Google `redirect_uri_mismatch` | Correct **Authorized redirect URIs** for this exact OAuth web client; do not use the SAML ACS URL. |
+| Google `Error 400: redirect_uri_mismatch` | Add the exact OpenWork Redirect URL to this OAuth client's **Authorized redirect URIs**, not **Authorized JavaScript origins**, and save. Allow a few minutes for the change to apply before retrying. Check Google's public-domain/localhost host rules; do not use the SAML ACS URL. |
 | `OIDC discovery issuer does not match the configured issuer.` | Copy the discovery document's exact `issuer`, not the authorize/token URL, metadata URL or an unresolved tenant template. |
 | `invalid_client` | Check Client ID, secret **value**, expiry, and the supported token endpoint auth method. Never share the secret or tokens to diagnose it. |
 | `account_not_linked` / `SSO authentication did not complete successfully. Check the provider configuration and try again.` | Check the `email` claim, users' email domain, and existing account email first. These errors can have other causes; inspect redacted server diagnostics if they match. |
