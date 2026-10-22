@@ -1,8 +1,9 @@
-// macOS grants Accessibility and Screen Recording to the *responsible* app:
-// the outermost app bundle that started this process. The computer use helper
-// runs as OpenWork's child, so System Settings lists OpenWork (or, in a
-// development checkout, the terminal or editor that launched it). Setup
-// guidance names exactly that entry instead of asking people to guess.
+// macOS grants Accessibility and Screen Recording to the *responsible* app.
+// The computer use helper disclaims responsibility when it starts, so System
+// Settings lists its own bundle ("OpenWork Computer Use") and a grant never
+// waits for OpenWork to restart. Without the helper bundle (a raw development
+// build), this falls back to the outermost app that started this process.
+// Setup guidance names exactly that entry instead of asking people to guess.
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -32,10 +33,11 @@ async function plistValue(bundle, key, exec) {
 }
 
 /**
- * @param {{ pid?: number, execPath?: string, fallbackName?: string, exec?: Exec }} [options]
+ * @param {{ helperBundle?: string | null, pid?: number, execPath?: string, fallbackName?: string, exec?: Exec }} [options]
  * @returns {Promise<PermissionEntry>}
  */
-export async function resolvePermissionEntry({ pid = process.pid, execPath = pid === process.pid ? process.execPath : "", fallbackName = "OpenWork", exec = run } = {}) {
+export async function resolvePermissionEntry({ helperBundle = null, pid = process.pid, execPath = pid === process.pid ? process.execPath : "", fallbackName = "OpenWork", exec = run } = {}) {
+  if (helperBundle) return bundleEntry(helperBundle, exec);
   // ps names a packaged Electron app's own process without its path
   // ("OpenWork"), so start from the executable path this process knows.
   let outermost = bundleOf(execPath);
@@ -48,13 +50,18 @@ export async function resolvePermissionEntry({ pid = process.pid, execPath = pid
     }
   } catch { /* Fall back to the app's own name below. */ }
   if (!outermost) return { name: fallbackName, bundleId: null, ours: false };
+  return bundleEntry(outermost, exec);
+}
+
+/** @param {string} bundle @param {Exec} exec @returns {Promise<PermissionEntry>} */
+async function bundleEntry(bundle, exec) {
   const [displayName, bundleName, bundleId] = await Promise.all([
-    plistValue(outermost, "CFBundleDisplayName", exec),
-    plistValue(outermost, "CFBundleName", exec),
-    plistValue(outermost, "CFBundleIdentifier", exec),
+    plistValue(bundle, "CFBundleDisplayName", exec),
+    plistValue(bundle, "CFBundleName", exec),
+    plistValue(bundle, "CFBundleIdentifier", exec),
   ]);
   return {
-    name: displayName ?? bundleName ?? path.basename(outermost, ".app"),
+    name: displayName ?? bundleName ?? path.basename(bundle, ".app"),
     bundleId,
     ours: Boolean(bundleId?.startsWith(OPENWORK_BUNDLE_PREFIX)),
   };

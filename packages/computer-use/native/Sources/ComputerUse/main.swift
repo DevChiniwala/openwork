@@ -4,6 +4,9 @@ import Foundation
 
 setbuf(stdout, nil)
 let command = CommandLine.arguments.dropFirst().first ?? ""
+// Opened by macOS itself (Quit & Reopen after a grant): OpenWork starts it when needed.
+if command.isEmpty && getppid() == 1 { exit(0) }
+Responsibility.relaunchDisclaimed(requireTrustedHost: command == "mcp" || command == "mcp-embedded")
 
 @MainActor
 func printJSON(_ payload: [String: Any]) {

@@ -197,7 +197,7 @@ private final class PermissionCoachDocument: NSView {
 @MainActor
 final class PermissionCoach: NSObject, NSApplicationDelegate {
     private let initialPermission: GuidePermission
-    private let hostPID = getppid()
+    private let hostPID = Responsibility.hostPID
     /// The System Settings entry macOS lists for this request, named by the host.
     private let entry: String? = {
         guard let value = ProcessInfo.processInfo.environment["OPENWORK_COMPUTER_USE_ENTRY"]?
@@ -414,7 +414,7 @@ final class PermissionCoach: NSObject, NSApplicationDelegate {
         if currentPermission == .screenRecording {
             help += "\nmacOS may call it “Screen & System Audio Recording”."
         }
-        help += "\nIf macOS offers Quit & Reopen, choose Later. OpenWork checks again on its own; restart it only if this still waits."
+        help += "\nIf macOS offers Quit & Reopen, either choice is fine: OpenWork stays open and checks again on its own."
         helpLabel.stringValue = help
         helpLabel.isHidden = !helpExpanded
         positionPanel()

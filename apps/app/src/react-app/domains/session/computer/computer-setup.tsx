@@ -118,7 +118,7 @@ export function ComputerSetup({ snapshot, readError, actionError, busy, onPermis
         {!done ? (
           <details className="text-xs leading-relaxed text-muted-foreground">
             <summary className="cursor-pointer text-foreground">What these permissions allow</summary>
-            <p className="mt-2">macOS grants them to {entry}, which runs the OpenWork Computer Use helper. The agent still sees the app window it is using, and its content goes to your AI model provider. If macOS offers Quit &amp; Reopen, choose Later: this list checks again on its own.</p>
+            <p className="mt-2">macOS lists them under {entry}, the helper OpenWork uses for computer use. The agent still sees the app window it is using, and its content goes to your AI model provider. If macOS offers Quit &amp; Reopen, either choice is fine: OpenWork stays open and this list checks again on its own.</p>
           </details>
         ) : null}
         <DialogFooter>

@@ -200,10 +200,13 @@ let browserPanel = null;
 
 // Keep each chat's chosen computer in app data outside the workspace.
 const computerTargetsPath = () => path.join(app.getPath("userData"), "computer-use-targets.json");
-// The System Settings entry macOS lists for computer use: OpenWork when
-// packaged, or the terminal/editor that started a development build.
+// The System Settings entry macOS lists for computer use: the helper's own
+// bundle, which takes responsibility for itself so grants never restart OpenWork.
 let computerPermissionEntry = null;
-const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ fallbackName: APP_NAME })
+const computerHelperBundle = () => [process.resourcesPath, path.resolve(__dirname, "..", "resources")]
+  .map((root) => root && path.join(root, "helpers", "OpenWork Computer Use.app"))
+  .find((candidate) => candidate && existsSync(candidate)) ?? null;
+const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ helperBundle: computerHelperBundle(), fallbackName: APP_NAME })
   .catch(() => ({ name: APP_NAME, bundleId: null, ours: false })));
 const computerControl = createComputerControl({
   // Blender reads the bridge from disk, so packaged builds unpack it beside app.asar.

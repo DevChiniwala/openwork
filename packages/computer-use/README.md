@@ -5,6 +5,13 @@ A small macOS 14+ helper that lets OpenWork see and use the requested app window
 (bundle id `com.differentai.openwork.computer-use`) and launches from its main
 process. It has no model, API key, network listener or clipboard access.
 
+On start the helper relaunches itself once with macOS responsibility
+disclaimed, so System Settings lists **OpenWork Computer Use** for
+Accessibility and Screen Recording. A grant then only needs this short-lived
+helper to restart, never OpenWork. The first process stays as a thin parent
+that checks the desktop's signature, shares stdio, forwards signals and exits
+with the helper's status; the relaunched helper stops if that parent goes away.
+
 ## Commands
 
 | Command | Purpose |

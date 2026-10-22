@@ -342,6 +342,18 @@ test("a development build names the terminal that started it, which is not ours 
   assert.deepEqual(entry, { name: "Terminal", bundleId: "com.apple.Terminal", ours: false });
 });
 
+test("the helper bundle is its own entry, since it disclaims OpenWork's responsibility", async () => {
+  const helper = "/Applications/OpenWork.app/Contents/Resources/helpers/OpenWork Computer Use.app";
+  const entry = await resolvePermissionEntry({
+    helperBundle: helper,
+    pid: 4100,
+    exec: fakeExec({ 4100: [1, "OpenWork"] }, {
+      [helper]: { CFBundleDisplayName: "OpenWork Computer Use", CFBundleIdentifier: "com.differentai.openwork.computer-use" },
+    }),
+  });
+  assert.deepEqual(entry, { name: "OpenWork Computer Use", bundleId: "com.differentai.openwork.computer-use", ours: true });
+});
+
 test("screenshot false settles the act with elements only and never reaches the native call", async (t) => {
   const seen = [];
   const f = fixture({ seen, toolResult: (name) => name === "computer_act" ? text({ ok: true, status: "dispatched", next: "observe" }) : undefined });
