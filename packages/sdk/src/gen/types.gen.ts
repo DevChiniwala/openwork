@@ -1170,8 +1170,6 @@ export type AdminFeature = {
     | "browserFloatingView"
     | "remoteComputers"
     | "remoteSessionSubagents"
-    | "connectToolShapes"
-    | "desktopConnectStandardTools"
     | "activationChecklist"
     | "connectStandardTools";
   label: string;
@@ -1230,8 +1228,6 @@ export type AdminOrganizationsPageResponse = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       /**
@@ -1407,24 +1403,6 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       activationChecklist: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1524,8 +1502,6 @@ export type AdminOverviewResponse = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       /**
@@ -1693,24 +1669,6 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7940,24 +7898,6 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       activationChecklist: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8004,8 +7944,6 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       browserFloatingView?: boolean | null;
       remoteComputers?: boolean | null;
       remoteSessionSubagents?: boolean | null;
-      connectToolShapes?: boolean | null;
-      desktopConnectStandardTools?: boolean | null;
       activationChecklist?: boolean | null;
       connectStandardTools?: boolean | null;
     };
@@ -8200,24 +8138,6 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9508,8 +9428,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       /**
@@ -9677,24 +9595,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9790,8 +9690,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       /**
@@ -9959,24 +9857,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;

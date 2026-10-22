@@ -85,7 +85,7 @@ for (const toolShapes of [undefined, false, true]) {
 }
 
 for (const toolShapes of [false, true]) {
-  test(`gateway instructions describe ${toolShapes ? "MCP tool shapes" : "the older match fields"} when connectToolShapes is ${toolShapes ? "on" : "off"}`, async () => {
+  test(`gateway instructions describe ${toolShapes ? "MCP tool shapes" : "the older match fields"} when connectStandardTools is ${toolShapes ? "on" : "off"}`, async () => {
     const server = createAgentMcpServer({ toolShapes })
     const client = new Client({ name: "gateway-tool-shapes-unit-test", version: "1" })
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()

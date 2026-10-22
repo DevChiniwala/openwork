@@ -31,7 +31,7 @@ test("only an allowlisted client or the explicit override picks the full view, a
   assert.equal(connectToolView(CLAUDE_CODE, on), "full")
   assert.equal(connectToolView({ name: " Claude-Code " }, on), "full")
   assert.equal(connectToolView({ name: "cursor", version: "1" }, on), "search")
-  assert.equal(connectToolView({ name: "opencode" }, on), "search")
+  assert.equal(connectToolView({ name: "opencode" }, on), "full")
   assert.equal(connectToolView(null, on), "search")
   // The override wins over the guess, both ways.
   assert.equal(connectToolView({ name: "cursor" }, { enabled: true, override: "full" }), "full")
@@ -49,23 +49,18 @@ test("only an allowlisted client or the explicit override picks the full view, a
   assert.equal(connectToolViewOverride("https://den.test/mcp/agent"), null)
 })
 
-test("OpenCode full tools have an independent desktop rollout and preserve explicit search", () => {
+test("one rollout gates every supported client and preserves the existing client allowlist", () => {
   for (const enabled of [false, true]) {
-    for (const desktopEnabled of [false, true]) {
-      const flags = { enabled, desktopEnabled }
-      assert.equal(connectToolView({ name: "opencode" }, flags), desktopEnabled ? "full" : "search")
-      assert.equal(connectToolView({ name: " OpenCode " }, flags), desktopEnabled ? "full" : "search")
-      assert.equal(connectToolView(CLAUDE_CODE, flags), enabled ? "full" : "search")
-      assert.equal(connectToolView({ name: "cursor" }, flags), "search")
-      assert.equal(connectToolView(null, flags), "search")
-      assert.equal(connectToolView({ name: "opencode" }, { ...flags, override: "search" }), "search")
+    for (const name of ["opencode", " OpenCode ", "claude-code", " Claude-Code "]) {
+      assert.equal(connectToolView({ name }, { enabled }), enabled ? "full" : "search")
+      assert.equal(connectToolView({ name }, { enabled, override: "search" }), "search")
+      assert.equal(connectToolView({ name }, { enabled, override: "full" }), enabled ? "full" : "search")
+    }
+    for (const client of [null, { name: "cursor" }, { name: "" }]) {
+      assert.equal(connectToolView(client, { enabled }), "search")
+      assert.equal(connectToolView(client, { enabled, override: "full" }), enabled ? "full" : "search")
     }
   }
-  // The desktop flag cannot opt unknown clients or legacy requests into full.
-  assert.equal(connectToolView(null, { enabled: false, desktopEnabled: true, override: "full" }), "search")
-  assert.equal(connectToolView({ name: "cursor" }, { enabled: false, desktopEnabled: true, override: "full" }), "search")
-  // Existing explicit opt-ins still work independently of the desktop rollout.
-  assert.equal(connectToolView({ name: "opencode" }, { enabled: true, desktopEnabled: false, override: "full" }), "full")
 })
 
 test("clientInfo comes only from the request's own _meta", () => {
