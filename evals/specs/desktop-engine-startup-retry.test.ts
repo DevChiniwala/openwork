@@ -8,7 +8,7 @@ import * as managed from "../../apps/server/src/managed-opencode-v2.ts";
 import { createEngineV2Preview, readEngineV2PreviewState } from "../../apps/server/src/engine-v2-preview.ts";
 import type { ServerConfig } from "../../apps/server/src/types.ts";
 
-test("slow v2 readiness retries with visible status and backoff without disabling a forced fresh profile", async () => {
+test("slow v2 readiness retries with visible status and backoff without disabling a forced fresh profile", async ({ evidence }) => {
   const root = await mkdtemp(join(tmpdir(), "openwork-broker-retry-"));
   for (const [key, value] of Object.entries({
     HOME: root, USERPROFILE: root,
@@ -42,6 +42,7 @@ test("slow v2 readiness retries with visible status and backoff without disablin
     assert.equal(preview.status().engineForced, true);
     assert.equal(readEngineV2PreviewState(config).enabled, true);
     assert.deepEqual(fatalErrors, [], "a slow engine is not reported as a fatal forced-upgrade failure");
+    evidence.recordAssertionEvidence("Slow v2 startup retries visibly without disabling the fresh profile", "Exactly two attempts, 5 s then 10 s status/backoff, enabled chat routing and forced ownership retained, no fatal callback.", true);
   } finally {
     await preview.stop();
     start.mockRestore();
