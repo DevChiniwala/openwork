@@ -374,6 +374,8 @@ ${setup ? "" : `<ul>${rows}</ul><div class="total" data-testid="fake-stripe-tota
     server.once("error", reject);
     server.listen(options.port ?? 0, options.host ?? "127.0.0.1", resolve);
   });
+  // A world that fails before disposing must not keep the test process alive.
+  server.unref();
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Fake Stripe has no port");
   origin = `http://127.0.0.1:${address.port}`;
