@@ -1162,6 +1162,7 @@ export type AdminFeature = {
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
     | "workbotUsageRecovery"
+    | "usageLimitUpgrade"
     | "automationCalendar"
     | "removeOpencodeZen"
     | "engineV2ForceUpgrade"
@@ -1221,6 +1222,7 @@ export type AdminOrganizationsPageResponse = {
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
+      usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
@@ -1325,6 +1327,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      usageLimitUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1505,6 +1516,7 @@ export type AdminOverviewResponse = {
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
+      usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
@@ -1609,6 +1621,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      usageLimitUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7831,6 +7852,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      usageLimitUpgrade: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       automationCalendar: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7950,6 +7980,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       workbotDocumentEditing?: boolean | null;
       workbotWorkspaceAssistant?: boolean | null;
       workbotUsageRecovery?: boolean | null;
+      usageLimitUpgrade?: boolean | null;
       automationCalendar?: boolean | null;
       removeOpencodeZen?: boolean | null;
       engineV2ForceUpgrade?: boolean | null;
@@ -8081,6 +8112,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      usageLimitUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9444,6 +9484,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
+      usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
@@ -9548,6 +9589,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      usageLimitUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9716,6 +9766,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
       workbotUsageRecovery: boolean;
+      usageLimitUpgrade: boolean;
       automationCalendar: boolean;
       removeOpencodeZen: boolean;
       engineV2ForceUpgrade: boolean;
@@ -9820,6 +9871,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       workbotUsageRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      usageLimitUpgrade: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;

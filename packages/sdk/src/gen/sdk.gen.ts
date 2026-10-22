@@ -1292,6 +1292,7 @@ export class DenClient extends HeyApiClient {
         workbotDocumentEditing?: boolean | null;
         workbotWorkspaceAssistant?: boolean | null;
         workbotUsageRecovery?: boolean | null;
+        usageLimitUpgrade?: boolean | null;
         automationCalendar?: boolean | null;
         removeOpencodeZen?: boolean | null;
         engineV2ForceUpgrade?: boolean | null;
