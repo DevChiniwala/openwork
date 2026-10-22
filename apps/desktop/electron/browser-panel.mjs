@@ -2171,6 +2171,16 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       sendBrowserState();
       return agentViewportKey;
     });
+    // The person took over, then wrote to the agent again: that message
+    // hands the conversation's tabs back, so the new turn can use them.
+    ipcMain.handle("openwork:browser:startAgentTurn", (event, sessionId) => {
+      const owner = normalizeSessionId(sessionId);
+      if (!isMainRenderer(event) || !owner || !browserControlEnabled) return false;
+      const paused = registry.tabsFor(owner).find((item) => taskHost.stateFor(item.tabId).status === "paused");
+      if (!paused) return false;
+      taskHost.resume(paused.tabId);
+      return true;
+    });
     ipcMain.handle("openwork:browser:endAgentTurn", (event, sessionId) => {
       const owner = normalizeSessionId(sessionId);
       if (!isMainRenderer(event) || !owner) return false;

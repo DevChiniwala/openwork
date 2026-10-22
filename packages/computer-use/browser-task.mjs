@@ -569,7 +569,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
     checkControl(sessionId, scope.control);
     if (getTab(tab.tabId) !== tab || tab.view.webContents.isDestroyed()) fail("tab_closed", "The browser tab closed while navigation was pending.");
     if (ownerOf(tab.tabId) !== sessionId || navigations.get(tab.tabId) !== scope) fail("wrong_conversation", "The browser navigation owner changed.");
-    if (pausedSessions.has(sessionId)) fail("paused", "The user has browser control. Resume before continuing.");
+    if (pausedSessions.has(sessionId)) fail("paused", "The user has browser control until they resume it or send their next message.");
     if (!enabled()) fail("browser_disabled", "Browser control was disabled while navigation was pending.");
   }
   async function authorizeNavigation(scope, value) {
@@ -637,7 +637,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
       const sibling = states.get(item.tabId); sibling?.controller?.abort(); forget(sibling); publish(item.tabId, "paused", reason);
     }
     const state = stateFor(tabId); forget(state);
-    state.controller?.abort(new BrowserTaskError("paused", "Browser control paused. The user must resume it in the browser panel."));
+    state.controller?.abort(new BrowserTaskError("paused", "Browser control paused. It comes back when the user resumes it or sends their next message."));
     publish(tabId, "paused", reason);
   }
   function resume(tabId) {
@@ -743,7 +743,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
       if (typeof sessionId !== "string" || !sessionId.trim()) fail("missing_session", "Browser control requires a requesting conversation.");
       if (!enabled()) fail("browser_disabled", "Enable OpenWork Browser in Library, or ask your organization to allow browser control.");
       if (operation === "tabs") return { ok: true, provider: "builtin", externalBrowsers: "unsupported", tabs: tabsFor(sessionId).map((item) => ({ tabId: item.tabId, url: safeUrl(item.view.webContents.getURL()), title: item.view.webContents.getTitle().slice(0, 300), visible: isVisible(item.tabId), status: stateFor(item.tabId).status, operation: stateFor(item.tabId).operation })) };
-      if (pausedSessions.has(sessionId)) fail("paused", "The user has browser control. Resume in the browser panel before continuing.");
+      if (pausedSessions.has(sessionId)) fail("paused", "The user has browser control until they resume it or send their next message. End your turn and wait.");
       const control = controlFor(sessionId);
       controller = new AbortController();
       const requestSignal = AbortSignal.any([controller.signal, control.controller.signal]);
@@ -770,7 +770,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
         tab = args.tabId ? await Promise.race([resolve(sessionId, args.tabId), canceled]) : matches[0];
         requestSignal.throwIfAborted();
         checkControl(sessionId, control);
-        if (pausedSessions.has(sessionId)) fail("paused", "The user has browser control. Resume in the browser panel before continuing.");
+        if (pausedSessions.has(sessionId)) fail("paused", "The user has browser control until they resume it or send their next message. End your turn and wait.");
         if (!tab) {
           tab = await Promise.race([
             openTab(url.href, sessionId, requestSignal, async (created) => {
@@ -796,7 +796,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
       checkControl(sessionId, control);
       state = stateFor(tab.tabId);
       if (operation === "pause" || operation === "handoff") { pause(tab.tabId, operation === "handoff" ? "Sign in or continue in the browser, then resume" : "Paused"); return { ok: true, status: "paused", tabId: tab.tabId, next: "user_resume" }; }
-      if (pausedSessions.has(sessionId) || state.status === "paused") fail("paused", "The user has browser control. Resume in the browser panel before continuing.");
+      if (pausedSessions.has(sessionId) || state.status === "paused") fail("paused", "The user has browser control until they resume it or send their next message. End your turn and wait.");
       if (state.controller) fail("busy", "A browser operation is already running in this tab. Wait for its result; do not queue another action.");
       state.controller = controller;
       const navigationScope = trackNavigation(sessionId, tab, requestSignal);
