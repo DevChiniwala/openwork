@@ -8,7 +8,7 @@ const fresh: ActivationFacts = {
   invite: { canInvite: true, invitedByMe: 0, teammates: 0, joined: 1, pending: 0 },
   skillUsed: false,
   ownProvider: { reportedOnDevice: false, addedProviderName: null },
-  gateway: { canManage: true, providerName: null },
+  gateway: { canManage: true, hasProvider: false, providerName: null },
   readyConnectionName: null,
   ownerName: "Avery Owner",
   dismissed: false,
@@ -48,15 +48,17 @@ test("an inviter checks off only after inviting someone; a member counts any tea
 })
 
 test("a member sees the AI Gateway step locked with who manages it, and checked once the team shares a provider", () => {
-  const locked = computeActivationState(facts({ gateway: { canManage: false, providerName: null } }))
+  const locked = computeActivationState(facts({ gateway: { canManage: false, hasProvider: false, providerName: null } }))
   assert.deepEqual(locked.steps[4], { id: "gateway_provider", done: false, lockedReason: "Avery Owner manages AI Gateway" })
-  assert.deepEqual(computeActivationState(facts({ gateway: { canManage: false, providerName: null }, ownerName: null })).steps[4]?.lockedReason, "Your workspace owner manages AI Gateway")
-  const shared = computeActivationState(facts({ gateway: { canManage: false, providerName: "Team OpenAI" } }))
+  assert.deepEqual(computeActivationState(facts({ gateway: { canManage: false, hasProvider: false, providerName: null }, ownerName: null })).steps[4]?.lockedReason, "Your workspace owner manages AI Gateway")
+  const redacted = computeActivationState(facts({ gateway: { canManage: false, hasProvider: true, providerName: null } }))
+  assert.deepEqual(redacted.steps[4], { id: "gateway_provider", done: true })
+  const shared = computeActivationState(facts({ gateway: { canManage: false, hasProvider: true, providerName: "Team OpenAI" } }))
   assert.deepEqual(shared.steps[4], { id: "gateway_provider", done: true, detail: "Team OpenAI on AI Gateway" })
   // The next step skips a locked one the person cannot act on.
   const next = computeActivationState(facts({
     firstResponse: { done: true, durationMs: 900 }, invite: { canInvite: false, invitedByMe: 0, teammates: 1, joined: 2, pending: 0 },
-    skillUsed: true, ownProvider: { reportedOnDevice: true, addedProviderName: null }, gateway: { canManage: false, providerName: null },
+    skillUsed: true, ownProvider: { reportedOnDevice: true, addedProviderName: null }, gateway: { canManage: false, hasProvider: false, providerName: null },
   }))
   assert.equal(nextActivationStep(next)?.id, "connector")
 })
@@ -75,7 +77,7 @@ test("hiding collapses to the next line, and the checklist disappears at six of 
     invite: { canInvite: true, invitedByMe: 1, teammates: 1, joined: 2, pending: 0 },
     skillUsed: true,
     ownProvider: { reportedOnDevice: true, addedProviderName: null },
-    gateway: { canManage: true, providerName: "Team OpenAI" },
+    gateway: { canManage: true, hasProvider: true, providerName: "Team OpenAI" },
     readyConnectionName: "Slack",
     ownerName: "Avery Owner",
     dismissed: false,

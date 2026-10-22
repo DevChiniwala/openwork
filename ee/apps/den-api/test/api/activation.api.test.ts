@@ -64,8 +64,8 @@ test("the Get set up checklist is off by default, then reports each person's own
   // An admin shares a provider on AI Gateway: the step checks off for everyone in the workspace.
   const created = await owner("POST", "/v1/inference-providers", { name: "Team OpenAI", providerId: "openai", modelIds: ["gpt-6-luna"] })
   assert.equal(created.status, 201, summary(created))
-  assert.deepEqual(step((await memberCall("GET", "/v1/me/activation")).body, "gateway_provider"), { id: "gateway_provider", done: true, detail: "Team OpenAI on AI Gateway" })
-  assert.equal(step((await owner("GET", "/v1/me/activation")).body, "gateway_provider")?.done, true)
+  assert.deepEqual(step((await memberCall("GET", "/v1/me/activation")).body, "gateway_provider"), { id: "gateway_provider", done: true }, "members without gateway_providers.view see completion but not the provider name")
+  assert.deepEqual(step((await owner("GET", "/v1/me/activation")).body, "gateway_provider"), { id: "gateway_provider", done: true, detail: "Team OpenAI on AI Gateway" })
 
   // Workbot reads and writes the same record with the member's Workbot token, never another person's.
   const writeOnly = await den.request(member.token, "POST", "/v1/mcp/token", { orgId: workspace.orgId, body: { scopes: ["mcp:write"] } })

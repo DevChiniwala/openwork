@@ -147,7 +147,11 @@ export async function readActivationFacts(input: { organizationContext: Organiza
     },
     skillUsed,
     ownProvider: { reportedOnDevice: Boolean(reportedType("own_provider")), addedProviderName: addedProvider[0]?.name ?? null },
-    gateway: { canManage: permissions.has("gateway_providers.manage"), providerName: gatewayProvider[0]?.name ?? null },
+    gateway: {
+      canManage: permissions.has("gateway_providers.manage"),
+      hasProvider: gatewayProvider.length > 0,
+      providerName: permissions.has("gateway_providers.view") ? gatewayProvider[0]?.name ?? null : null,
+    },
     readyConnectionName: ready?.name ?? null,
     ownerName: owners.find((row) => roleIncludesOwner(row.role))?.name ?? null,
     dismissed: Boolean(reportedType("dismiss")),

@@ -18,7 +18,7 @@ export type ActivationFacts = {
   }
   skillUsed: boolean
   ownProvider: { reportedOnDevice: boolean; addedProviderName: string | null }
-  gateway: { canManage: boolean; providerName: string | null }
+  gateway: { canManage: boolean; hasProvider: boolean; providerName: string | null }
   readyConnectionName: string | null
   ownerName: string | null
   dismissed: boolean
@@ -60,11 +60,11 @@ export function computeActivationState(facts: ActivationFacts): ActivationState 
         }
       }
       case "gateway_provider": {
-        const done = facts.gateway.providerName !== null
+        const done = facts.gateway.hasProvider
         return {
           id,
           done,
-          ...(done ? { detail: `${facts.gateway.providerName} on AI Gateway` } : {}),
+          ...(done && facts.gateway.providerName ? { detail: `${facts.gateway.providerName} on AI Gateway` } : {}),
           ...(!done && !facts.gateway.canManage ? { lockedReason: `${owner(facts)} manages AI Gateway` } : {}),
         }
       }
