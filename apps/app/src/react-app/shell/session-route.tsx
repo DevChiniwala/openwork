@@ -20,6 +20,7 @@ import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
 import { trackSessionActive, trackTaskStarted } from "@/app/lib/den-telemetry";
+import { noteActivationRunStarted } from "../domains/cloud/activation/use-activation";
 import { buildDiagnosticsBundleJson } from "@/app/lib/diagnostics-bundle";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { canCreateWorkspaces } from "@/app/lib/workspace-creation-policy";
@@ -1793,6 +1794,7 @@ export function SessionRoute() {
                   ];
                   trackSessionActive(targetSessionId, telemetryDimensions);
                   trackTaskStarted(targetSessionId, telemetryDimensions);
+                  noteActivationRunStarted(targetSessionId, draft.parts);
 
                   if (draft.mode === "shell") {
                     onPrepared?.();
@@ -2170,6 +2172,7 @@ export function SessionRoute() {
                   ];
                   trackSessionActive(targetSessionId, telemetryDimensions);
                   trackTaskStarted(targetSessionId, telemetryDimensions);
+                  noteActivationRunStarted(targetSessionId, draft.parts);
                   if (draft.mode === "shell") {
                     onPrepared?.();
                     await shellInSession(workspaceOpencodeClient, targetSessionId, text, { messageID: draft.messageId });

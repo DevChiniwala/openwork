@@ -15,6 +15,7 @@ import {
 } from "../../react-app/domains/session/surface/model-removal-inventory";
 export type { ModelRemovalInventory } from "../../react-app/domains/session/surface/model-removal-inventory";
 import { workbotSettingsSchema } from "@openwork/types/den/workbot-settings";
+import { activationStateSchema, type ActivationEventRequest, type ActivationState } from "@openwork/types/den/activation";
 import {
   remoteSessionStatusResultSchema,
   type RemoteSessionStatusRequest,
@@ -3110,6 +3111,26 @@ export function createDenClient(options: {
         activeOrgSlug,
         defaultOrgId: activeOrgId,
       };
+    },
+
+    /** The Get set up checklist; null when the activationChecklist feature is off for the organization. */
+    async getActivation(orgId: string): Promise<ActivationState | null> {
+      try {
+        return activationStateSchema.parse(await requestJson<unknown>(baseUrls, "/v1/me/activation", { method: "GET", token, organizationId: orgId }));
+      } catch (error) {
+        if (error instanceof DenApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+
+    /** Reports a Get set up step only this app can observe; returns the updated checklist (null when off). */
+    async recordActivationEvent(orgId: string, event: ActivationEventRequest): Promise<ActivationState | null> {
+      try {
+        return activationStateSchema.parse(await requestJson<unknown>(baseUrls, "/v1/me/activation/events", { method: "POST", token, organizationId: orgId, body: event }));
+      } catch (error) {
+        if (error instanceof DenApiError && error.status === 404) return null;
+        throw error;
+      }
     },
 
     async getGatewayUsageStatus(orgId: string) {
