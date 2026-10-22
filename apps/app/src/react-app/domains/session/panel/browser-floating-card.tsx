@@ -34,19 +34,19 @@ function isSnap(value: unknown): value is BrowserFloatingSnap {
  * shown and the window is visible. Completion-driven, so a slow capture never
  * stacks requests.
  */
-function useBrowserThumbnail(tab: BrowserPanelTab): BrowserThumbnail | null {
+function useBrowserThumbnail(tab: BrowserPanelTab, doc: Document): BrowserThumbnail | null {
   const [thumbnail, setThumbnail] = React.useState<{ token: object; image: BrowserThumbnail } | null>(null);
-  const [visible, setVisible] = React.useState(() => document.visibilityState === "visible");
+  const [visible, setVisible] = React.useState(() => doc.visibilityState === "visible");
   const capturable = tab.status === "ready" && tab.browserTask?.status !== "paused";
   // A navigation, reload, takeover or hidden window retires the previous image
   // synchronously, including when the same tab later becomes capturable again.
   const token = React.useMemo(() => ({}), [tab.id, tab.url, capturable, visible]);
 
   React.useEffect(() => {
-    const update = () => setVisible(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", update);
-    return () => document.removeEventListener("visibilitychange", update);
-  }, []);
+    const update = () => setVisible(doc.visibilityState === "visible");
+    doc.addEventListener("visibilitychange", update);
+    return () => doc.removeEventListener("visibilitychange", update);
+  }, [doc]);
 
   React.useEffect(() => {
     const capture = getElectronBrowser()?.thumbnail;
@@ -77,6 +77,8 @@ function useBrowserThumbnail(tab: BrowserPanelTab): BrowserThumbnail | null {
 
 type BrowserFloatingCardProps = {
   slot: HTMLElement;
+  /** `slot` is the card's own floating window rather than the chat's layer. */
+  detached?: boolean;
   tab: BrowserPanelTab;
   snap: BrowserFloatingSnap;
   onSnap: (snap: BrowserFloatingSnap) => void;
@@ -85,12 +87,30 @@ type BrowserFloatingCardProps = {
   onHide: () => void;
 };
 
+function CardAction({ label, testId, detached, onClick, children }: { label: string; testId: string; detached: boolean; onClick: () => void; children: React.ReactNode }) {
+  const button = (
+    <Button variant="ghost" size="icon-xs" className="titlebar-no-drag" aria-label={label} title={detached ? label : undefined} data-testid={testId} onClick={onClick}>
+      {children}
+    </Button>
+  );
+  // Tooltips portal into the app window, so a detached card uses native titles.
+  if (detached) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /**
- * The browser as a small card on the right of the conversation. It only snaps
- * to three positions, by drag, keyboard or menu; pointer coordinates never
- * become layout. Clicking the preview opens the browser beside the chat.
+ * The browser as a small card. In the desktop app it is its own borderless
+ * window over every app, moved like any window. Otherwise it sits on the right
+ * of the conversation and only snaps to three positions, by drag, keyboard or
+ * menu; pointer coordinates never become layout. Clicking the preview opens
+ * the browser beside the chat.
  */
-export function BrowserFloatingCard({ slot, tab, snap, onSnap, onOpenSide, onFullscreen, onHide }: BrowserFloatingCardProps) {
+export function BrowserFloatingCard({ slot, detached = false, tab, snap, onSnap, onOpenSide, onFullscreen, onHide }: BrowserFloatingCardProps) {
   const cardRef = React.useRef<HTMLElement>(null);
   const drag = React.useRef<{ pointerId: number; startY: number; moved: boolean; candidate: BrowserFloatingSnap } | null>(null);
   const [candidate, setCandidate] = React.useState<BrowserFloatingSnap | null>(null);
@@ -98,7 +118,7 @@ export function BrowserFloatingCard({ slot, tab, snap, onSnap, onOpenSide, onFul
   const [slotHeight, setSlotHeight] = React.useState(0);
   const [cardHeight, setCardHeight] = React.useState(0);
   const hintId = React.useId();
-  const thumbnail = useBrowserThumbnail(tab);
+  const thumbnail = useBrowserThumbnail(tab, slot.ownerDocument);
   const needsYou = browserNeedsPerson(tab);
   const status = browserStatusLabel(tab);
   const host = browserSiteHost(tab.url);
@@ -123,6 +143,64 @@ export function BrowserFloatingCard({ slot, tab, snap, onSnap, onOpenSide, onFul
     drag.current = null;
     setDragging(false);
   };
+
+  const actions = (
+    <>
+      <CardAction label="Open beside chat" testId="browser-mode-side" detached={detached} onClick={onOpenSide}><PanelRight /></CardAction>
+      <CardAction label="Full screen" testId="browser-mode-fullscreen" detached={detached} onClick={onFullscreen}><Maximize2 /></CardAction>
+    </>
+  );
+  const preview = (
+    <button
+      type="button"
+      aria-label={`Open browser beside chat: ${host}, ${status}`}
+      data-testid="browser-floating-preview"
+      className="titlebar-no-drag mx-1.5 mb-1.5 block min-h-0 overflow-hidden rounded-xl text-left outline-none ring-1 ring-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={onOpenSide}
+    >
+      <div className="flex aspect-[8/5] items-center justify-center overflow-hidden bg-muted">
+        {thumbnail ? (
+          <img data-testid="browser-floating-thumbnail" src={thumbnail.dataUrl} alt="" className="h-full w-full object-cover object-top" />
+        ) : tab.favicon ? (
+          <img src={tab.favicon} alt="" className="size-6 rounded-[3px] opacity-70" />
+        ) : (
+          <Globe className="size-6 text-muted-foreground/60" aria-hidden="true" />
+        )}
+      </div>
+      <div className="flex items-center gap-2 px-2.5 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium">{host}</p>
+          <p className={cn("mt-0.5 truncate text-[11px]", needsYou ? "text-amber-11" : "text-muted-foreground")}>
+            {status}
+          </p>
+        </div>
+        {needsYou ? <span className="size-1.5 shrink-0 rounded-full bg-amber-9" aria-hidden="true" /> : null}
+      </div>
+    </button>
+  );
+
+  // Its own window: the window moves, so the card just fills it and its
+  // header is the drag handle. Snapping only applies inside the chat.
+  if (detached) {
+    return (
+      <aside
+        aria-label="Floating browser"
+        data-testid="browser-floating-card"
+        data-floating-window=""
+        className="flex w-full flex-col overflow-hidden rounded-xl bg-dls-surface text-foreground ring-1 ring-foreground/10"
+      >
+        <header className="flex shrink-0 items-center gap-0.5 p-1.5 titlebar-drag">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5 py-1 text-xs font-medium" title="Drag to move">
+            <Globe className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="truncate">Browser</span>
+          </span>
+          {actions}
+          <CardAction label="Hide browser" testId="browser-mode-hide" detached onClick={onHide}><EyeOff /></CardAction>
+        </header>
+        {preview}
+      </aside>
+    );
+  }
 
   return (
     <>
@@ -216,26 +294,7 @@ export function BrowserFloatingCard({ slot, tab, snap, onSnap, onOpenSide, onFul
             <GripVertical className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="truncate">Browser</span>
           </button>
-          <Tooltip>
-            <TooltipTrigger
-              render={(
-                <Button variant="ghost" size="icon-xs" aria-label="Open beside chat" data-testid="browser-mode-side" onClick={onOpenSide}>
-                  <PanelRight />
-                </Button>
-              )}
-            />
-            <TooltipContent>Open beside chat</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={(
-                <Button variant="ghost" size="icon-xs" aria-label="Full screen" data-testid="browser-mode-fullscreen" onClick={onFullscreen}>
-                  <Maximize2 />
-                </Button>
-              )}
-            />
-            <TooltipContent>Full screen</TooltipContent>
-          </Tooltip>
+          {actions}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={(
@@ -254,51 +313,17 @@ export function BrowserFloatingCard({ slot, tab, snap, onSnap, onOpenSide, onFul
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger
-              render={(
-                <Button variant="ghost" size="icon-xs" aria-label="Hide browser" data-testid="browser-mode-hide" onClick={onHide}>
-                  <EyeOff />
-                </Button>
-              )}
-            />
-            <TooltipContent>Hide browser</TooltipContent>
-          </Tooltip>
+          <CardAction label="Hide browser" testId="browser-mode-hide" detached={false} onClick={onHide}><EyeOff /></CardAction>
         </header>
         <p id={hintId} className="sr-only">Drag to snap to the top, middle or bottom right, or use Up, Down, Home and End.</p>
-        <button
-          type="button"
-          aria-label={`Open browser beside chat: ${host}, ${status}`}
-          data-testid="browser-floating-preview"
-          className="mx-1.5 mb-1.5 block min-h-0 overflow-hidden rounded-xl text-left outline-none ring-1 ring-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onOpenSide}
-        >
-          <div className="flex aspect-[8/5] items-center justify-center overflow-hidden bg-muted">
-            {thumbnail ? (
-              <img data-testid="browser-floating-thumbnail" src={thumbnail.dataUrl} alt="" className="h-full w-full object-cover object-top" />
-            ) : tab.favicon ? (
-              <img src={tab.favicon} alt="" className="size-6 rounded-[3px] opacity-70" />
-            ) : (
-              <Globe className="size-6 text-muted-foreground/60" aria-hidden="true" />
-            )}
-          </div>
-          <div className="flex items-center gap-2 px-2.5 py-2">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium">{host}</p>
-              <p className={cn("mt-0.5 truncate text-[11px]", needsYou ? "text-amber-11" : "text-muted-foreground")}>
-                {status}
-              </p>
-            </div>
-            {needsYou ? <span className="size-1.5 shrink-0 rounded-full bg-amber-9" aria-hidden="true" /> : null}
-          </div>
-        </button>
+        {preview}
       </aside>
       <span className="sr-only" role="status" aria-live="polite">Browser preview: {SNAP_LABELS[shown]}</span>
     </>
   );
 }
 
-/** Portals the floating card into the chat pane's floating layer. */
+/** Portals the floating card into its floating window or the chat pane's floating layer. */
 export function BrowserFloatingCardPortal(props: BrowserFloatingCardProps) {
   return createPortal(<BrowserFloatingCard {...props} />, props.slot);
 }

@@ -94,6 +94,7 @@ import {
   runDetachedTask,
 } from "./process-resilience.mjs";
 import { createQuitSequencer } from "./quit-sequence.mjs";
+import { attachFloatingViewWindow, floatingViewWindowOptions } from "./floating-view-window.mjs";
 import { createStartupLog, startupPhase, withStartupPhase } from "./startup-log.mjs";
 
 // Startup milestones (epoch ms) for the renderer's one-per-launch startup
@@ -2731,7 +2732,14 @@ async function createMainWindowInner() {
     recoverRendererCrash(details);
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.on("did-create-window", (child, { frameName }) => {
+    if (floatingViewWindowOptions({ url: "about:blank", frameName })) attachFloatingViewWindow(child);
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    const floatingView = floatingViewWindowOptions({ url, frameName });
+    if (floatingView) return { action: "allow", overrideBrowserWindowOptions: floatingView };
+
     if (url.startsWith("file://")) {
       try {
         runDetachedTask("open local file", () => shell.openPath(fileURLToPath(url)));

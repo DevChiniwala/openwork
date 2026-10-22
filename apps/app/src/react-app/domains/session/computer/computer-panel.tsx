@@ -7,6 +7,7 @@ import type { ComputerPresentation } from "@openwork/types/desktop-ipc"
 import { desktopBridge } from "@/app/lib/desktop"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useFitFloatingWindow, useFloatingWindow, useScreenFullscreen } from "../panel/floating-window"
 import { useComputerStore } from "./computer-store"
 
 type Observation = Omit<ComputerPresentation, "phase" | "frame"> & {
@@ -17,7 +18,7 @@ type Interaction = "takeover" | "resume"
 const inputLabels: Record<string, string> = { move: "Moving", click: "Click", double_click: "Double click", triple_click: "Triple click", drag: "Dragging", scroll: "Scrolling", key: "Key press", type: "Typing", press: "Press", set_value: "Editing" }
 const pausedPhases = ["paused", "person_interacting", "ready_to_continue", "requery_required"]
 
-/** Full window, like the browser's full screen: Escape returns to the floating view. */
+/** The in-app fallback for full screen (no floating window): Escape returns to the floating view. */
 function FullScreen({ children, onExit }: { children: ReactNode; onExit: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   useLayoutEffect(() => {
@@ -44,7 +45,11 @@ function FullScreen({ children, onExit }: { children: ReactNode; onExit: () => v
   )
 }
 
-/** A watch surface. Only the explicit controls below can hand back control. */
+/**
+ * A watch surface. Only the explicit controls below can hand back control.
+ * In the desktop app it lives in its own borderless window over every app;
+ * the chat's floating layer is the fallback when that window is unavailable.
+ */
 export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy, stopping, cleanupPending, stopError, onStop }: {
   sessionId: string
   slot: HTMLElement
@@ -72,6 +77,8 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
   const [screenSize, setScreenSize] = useState({ width: 0, height: 0 })
   const [position, setPosition] = useState({ x: 12, y: 12 })
   const [dragging, setDragging] = useState(false)
+  // The person closed the floating window; the view waits minimized in the chat.
+  const [windowClosed, setWindowClosed] = useState(false)
   const reducedMotion = useReducedMotion()
   const card = useRef<HTMLElement>(null)
   const moveButton = useRef<HTMLButtonElement>(null)
@@ -84,6 +91,18 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
   const transport = useRef<Promise<ComputerPresentation | null> | null>(null)
   const monitor = useRef({ minimized: false, fullscreen: false, revision: 0, freshAfter: 0, capture: 0, working: false, wake: () => {} })
   const id = useId()
+  const title = `Computer${observed?.appName ? ` · ${observed.appName}` : ""}`
+  const detached = useFloatingWindow("computer", Boolean(observed) && !windowClosed, {
+    title,
+    width: 460,
+    height: 380,
+    onClosed: () => { setWindowClosed(true); minimize(true) },
+  })
+  const host = detached ?? slot
+  const hostRef = useRef(host)
+  hostRef.current = host
+  useFitFloatingWindow(detached)
+  useScreenFullscreen(fullscreen ? host.ownerDocument : null, fullscreen, () => expand(false))
 
   function clearScreen() {
     monitor.current.freshAfter = Date.now()
@@ -100,6 +119,9 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
     monitor.current.revision += 1
     setMinimized(value)
     if (value) { monitor.current.fullscreen = false; setFullscreen(false) }
+    else setWindowClosed(false)
+    const view = hostRef.current.ownerDocument.defaultView
+    if (view && view !== window) view.resizeTo(value ? 300 : 460, view.innerHeight)
     clearScreen()
     monitor.current.wake()
     moveButton.current?.focus()
@@ -121,8 +143,11 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
     let reading = false
     let again = false
     let timer = 0
-    const shown = () => monitor.current.fullscreen || (slot.getClientRects().length > 0 && slot.clientWidth > 24 && slot.clientHeight > 24)
-    const visible = () => latest.current !== null && !monitor.current.minimized && document.visibilityState === "visible" && captureAllowed() && shown()
+    const shown = () => {
+      const current = hostRef.current
+      return monitor.current.fullscreen || current !== slot || (slot.getClientRects().length > 0 && slot.clientWidth > 24 && slot.clientHeight > 24)
+    }
+    const visible = () => latest.current !== null && !monitor.current.minimized && hostRef.current.ownerDocument.visibilityState === "visible" && captureAllowed() && shown()
     async function poll() {
       window.clearTimeout(timer)
       if (reading) { again = true; return }
@@ -158,7 +183,7 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
           const newSession = latest.current?.id !== next.id
           scope.current = nextScope
           setActionError("")
-          if (newSession) { monitor.current.minimized = false; setMinimized(false) }
+          if (newSession) { monitor.current.minimized = false; setMinimized(false); setWindowClosed(false) }
         }
         latest.current = { id: next.id, phase: next.phase }
         monitor.current.working = working
@@ -261,7 +286,7 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
   const stopPending = stopping || cleanupPending || presentation.phase === "stopping"
   const unavailable = readFailed || presentation.phase === "unavailable"
   const frame = !minimized && !unavailable && !stopPending && !paused && presentation.frame?.key !== failedFrame ? presentation.frame : undefined
-  const live = !minimized && document.visibilityState === "visible" && presentation.phase === "working" && frame && loadedFrame === frame.key && now - frame.capturedAt >= 0 && now - frame.capturedAt < 1_500
+  const live = !minimized && host.ownerDocument.visibilityState === "visible" && presentation.phase === "working" && frame && loadedFrame === frame.key && now - frame.capturedAt >= 0 && now - frame.capturedAt < 1_500
   const status = unavailable || failedFrame !== null ? "View unavailable" : paused ? "Paused" : live ? "Live" : "Connecting"
   const disabled = controlsBusy || busy !== null || unavailable || cleanupPending || !enabled
   const maxX = Math.max(12, bounds.width - cardSize.width - 12)
@@ -282,8 +307,6 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
     trail.unshift(`${point.x * imageWidth},${point.y * imageHeight}`)
     if (point.phase === "down") break
   }
-  const title = `Computer${presentation.appName ? ` · ${presentation.appName}` : ""}`
-
   const screen = (
     <div
       ref={setViewport}
@@ -349,7 +372,7 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
 
   const liveStatus = <span role="status" className={cn("shrink-0 text-xs", live ? "text-green-11" : "text-muted-foreground")} data-testid="session-computer-live-status">{status}</span>
 
-  if (fullscreen) {
+  if (fullscreen && !detached) {
     return (
       <FullScreen onExit={() => expand(false)}>
         <div className="flex h-full flex-col">
@@ -366,6 +389,40 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
           {footer}
         </div>
       </FullScreen>
+    )
+  }
+
+  const controls = <>
+    {!minimized ? liveStatus : null}
+    {!minimized ? <Button variant="ghost" size="icon-xs" className="titlebar-no-drag" aria-label={fullscreen ? "Exit full screen" : "Expand computer view full screen"} data-testid={fullscreen ? "session-computer-exit-fullscreen" : "session-computer-fullscreen-toggle"} onClick={() => expand(!fullscreen)}>{fullscreen ? <Minimize2 /> : <Maximize2 />}</Button> : null}
+    {!fullscreen ? <Button variant="ghost" size="icon-xs" className="titlebar-no-drag" aria-label={minimized ? "Restore computer view" : "Minimize computer view"} title={minimized ? "Show the computer view" : "Hide the view without stopping work"} data-testid="session-computer-minimize" onClick={() => minimize(!minimized)}>
+      {minimized ? <PictureInPicture2 /> : <Minus />}
+    </Button> : null}
+    {minimized ? <Button variant="ghost" size="xs" className="titlebar-no-drag text-red-11 hover:text-red-11" disabled={controlsBusy || !canStop} aria-busy={stopping} onClick={onStop}>{stopping ? "Stopping..." : "Stop"}</Button> : null}
+  </>
+
+  // Its own window: the window itself moves, resizes and goes full screen, so
+  // the surface just fills it. The header is the window's drag handle.
+  if (detached) {
+    return createPortal(
+      <aside
+        aria-label={title}
+        data-testid="session-computer-floating"
+        data-floating-window=""
+        data-minimized={minimized}
+        className={cn("flex w-full min-w-0 flex-col overflow-hidden bg-popover text-popover-foreground", fullscreen ? "h-dvh" : "rounded-xl ring-1 ring-foreground/10")}
+        onKeyDown={(event) => { if (event.key === "Escape" && !minimized && !fullscreen) { event.preventDefault(); event.stopPropagation(); minimize(true) } }}
+      >
+        <header className={cn("flex shrink-0 items-center gap-1 px-2 py-1 titlebar-drag", fullscreen && "mac:pl-24")}>
+          <span className="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-2 text-xs font-medium" title="Drag to move">
+            <Monitor size={14} className="shrink-0 text-muted-foreground" />
+            <span className="truncate">{title}</span>
+          </span>
+          {controls}
+        </header>
+        {!minimized ? <>{screen}{footer}</> : null}
+      </aside>,
+      detached,
     )
   }
 
@@ -417,12 +474,7 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
           <Monitor size={14} className="shrink-0 text-muted-foreground" />
           <span className="truncate">{title}</span>
         </button>
-        {!minimized ? liveStatus : null}
-        {!minimized ? <Button variant="ghost" size="icon-xs" aria-label="Expand computer view full screen" data-testid="session-computer-fullscreen-toggle" onClick={() => expand(true)}><Maximize2 /></Button> : null}
-        <Button variant="ghost" size="icon-xs" aria-label={minimized ? "Restore computer view" : "Minimize computer view"} title={minimized ? "Show the computer view" : "Hide the view without stopping work"} data-testid="session-computer-minimize" onClick={() => minimize(!minimized)}>
-          {minimized ? <PictureInPicture2 /> : <Minus />}
-        </Button>
-        {minimized ? <Button variant="ghost" size="xs" className="text-red-11 hover:text-red-11" disabled={controlsBusy || !canStop} aria-busy={stopping} onClick={onStop}>{stopping ? "Stopping..." : "Stop"}</Button> : null}
+        {controls}
       </header>
       <p id={`${id}-move`} className="sr-only">Drag anywhere within the chat, or use the arrow keys. Shift moves faster. Home and End move to corners. Escape minimizes the view without stopping work.</p>
       {minimized && (stopPending || stopError) ? <p role="status" className="px-3 py-2 text-[11px] text-amber-11">Stop not yet confirmed. Restore the view for details.</p> : null}

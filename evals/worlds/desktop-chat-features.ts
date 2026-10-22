@@ -1,4 +1,5 @@
-import { browserScript } from "@openwork/cdp";
+import { browserScript, connect, debuggerUrlFor, listTargets } from "@openwork/cdp";
+import type { Surface } from "@openwork/cdp";
 import type { Seed } from "@openwork/env";
 import { enableOrganizationCapabilities } from "./organization-capabilities.ts";
 
@@ -60,7 +61,29 @@ export async function browserFloatingViewWorld(seed: Seed) {
     if (!value || typeof value !== "object" || !("url" in value) || typeof value.url !== "string") return null;
     return { url: value.url };
   };
-  return { ...world, origin, thumbnail, pageUrl: `${origin}/?floating-browser=release-notes` };
+  // The floating card is its own borderless window: a second page target of
+  // the same app, titled "Browser". Attach to it to act inside it.
+  const floatingTargets = async () => (await listTargets(world.app.handle.cdpUrl))
+    .filter((target) => target.type === "page" && target.url === "about:blank" && target.title === "Browser");
+  const floatingWindow = async (timeoutMs = 15_000): Promise<Surface> => {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const [target] = await floatingTargets();
+      if (target) {
+        const client = await connect(debuggerUrlFor(world.app.handle.cdpUrl, target));
+        return { handle: world.app.handle, client };
+      }
+      if (Date.now() > deadline) throw new Error("The floating browser window did not open.");
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  };
+  const floatingWindowOpen = async () => (await floatingTargets()).length > 0;
+  // Window geometry the person sees: a frameless window's outer size equals its content.
+  const windowFrame = (surface: Surface = world.app) => seed.evalIn(surface, () => ({
+    inner: [window.innerWidth, window.innerHeight], outer: [window.outerWidth, window.outerHeight],
+  }));
+  const appFullscreen = () => seed.evalIn(world.app, () => document.fullscreenElement === document.documentElement);
+  return { ...world, origin, thumbnail, floatingWindow, floatingWindowOpen, windowFrame, appFullscreen, pageUrl: `${origin}/?floating-browser=release-notes` };
 }
 
 /** Computer use on this Mac. Readiness comes from the real helper and macOS permissions; nothing is faked. */
