@@ -135,10 +135,9 @@ function parseStripeBilling(payload: unknown): StripeBilling | null {
   };
 }
 
-const NOT_SOLD_LABEL = "Not sold on this deployment";
-
-function NotSoldBadge() {
-  return <DenBadge tone="neutral" icon={LockKeyhole}>{NOT_SOLD_LABEL}</DenBadge>;
+/** Neutral lock, not an error (DESIGN C5). Line items use the short label; the row says why. */
+function NotSoldBadge({ short = false }: { short?: boolean }) {
+  return <DenBadge tone="neutral" icon={LockKeyhole}>{short ? "Not sold" : "Not sold on this deployment"}</DenBadge>;
 }
 
 /** `?addPeople=N` from a link that already knows who is being added (0 to 50). */
@@ -185,8 +184,8 @@ export function BillingDashboardScreen() {
   const [stripeBusy, setStripeBusy] = useState(false);
   const [stripeActionBusy, setStripeActionBusy] = useState<"seat-checkout" | "plan-checkout" | "portal" | null>(null);
   const [planNotSold, setPlanNotSold] = useState(false);
-  const [requestedAddPeople] = useState(requestedAddPeopleFromUrl);
-  const [checkoutOutcome] = useState(checkoutOutcomeFromUrl);
+  const [requestedAddPeople, setRequestedAddPeople] = useState<number | null>(null);
+  const [checkoutOutcome, setCheckoutOutcome] = useState<"complete" | "canceled" | null>(null);
   const [stripeError, setStripeError] = useState<string | null>(null);
   const [stripeReturnChecking, setStripeReturnChecking] = useState(false);
   const currentOrgIdRef = useRef(activeOrgId);
@@ -240,6 +239,12 @@ export function BillingDashboardScreen() {
     if (!sessionHydrated || !user) return;
     void refreshStripeBilling(false);
   }, [sessionHydrated, user, activeOrgId]);
+
+  // Read after commit: a client navigation (the Stripe return page) updates the URL after render.
+  useEffect(() => {
+    setRequestedAddPeople(requestedAddPeopleFromUrl());
+    setCheckoutOutcome(checkoutOutcomeFromUrl());
+  }, []);
 
   useEffect(() => {
     if (!sessionHydrated || !user || typeof window === "undefined") return;
@@ -444,7 +449,9 @@ export function BillingDashboardScreen() {
       <DashboardPageTemplate
         icon={CreditCard}
         title="Billing"
-        description={webFeatureEnabled
+        description={showPlanCard
+          ? "Your plan and add-ons such as OpenWork Models are billed separately."
+          : webFeatureEnabled
           ? webComplimentary
             ? "OpenWork Web is included for this organization at no charge. Team seats and built-in AI model access remain separate purchases."
             : "OpenWork Web, team seats, and built-in AI model access are separate purchases. Your expected monthly total reflects the subscriptions shown below."
@@ -491,6 +498,7 @@ export function BillingDashboardScreen() {
         <>
       {showPlanCard && planSummary && planOffers ? (
         <BillingPlanCard
+          key={requestedAddPeople ?? "auto"}
           plan={planSummary}
           plans={planOffers}
           seatQuantity={seatsActive ? seatBilling?.subscription?.quantity ?? null : null}
@@ -525,8 +533,10 @@ export function BillingDashboardScreen() {
             className="mx-4 rounded-[18px]"
             leading={
               <DenMarkTile
-                label={seatsConfigured ? `${activeMemberCount}/${freeSeatCount}` : String(activeMemberCount)}
-                active={seatsActive && billableSeatCount > 0}
+                label={showPlanCard
+                  ? seatsActive && seatBilling?.subscription ? `${seatBilling.subscription.quantity}x` : String(planSummary?.people ?? activeMemberCount)
+                  : seatsConfigured ? `${activeMemberCount}/${freeSeatCount}` : String(activeMemberCount)}
+                active={seatsActive && (showPlanCard || billableSeatCount > 0)}
               />
             }
             title={showPlanCard && planSummary ? `${planSummary.tier === "enterprise" ? "Enterprise" : planSummary.tier === "team" ? "Team" : "Free"} plan` : "Team seats"}
@@ -542,8 +552,12 @@ export function BillingDashboardScreen() {
             value={seatsActive ? seatChargeLabel ?? "" : formatMoneyMinor(0, seatBilling?.currency ?? "usd")}
             valueCaption={`per ${seatBilling?.interval ?? "month"}`}
             badge={
-              !seatsConfigured
-                ? <NotSoldBadge />
+              showPlanCard && planSummary
+                ? planSummary.tier === "free"
+                  ? <DenBadge tone="neutral">Free</DenBadge>
+                  : <DenBadge tone="success" icon={Check}>Active</DenBadge>
+                : !seatsConfigured
+                ? <NotSoldBadge short />
                 : seatsActive
                   ? <DenBadge tone="success" icon={Check}>Active</DenBadge>
                   : <DenBadge tone="neutral">Included</DenBadge>
@@ -560,7 +574,7 @@ export function BillingDashboardScreen() {
                   : webComplimentary
                     ? `${getOpenWorkWebQuantityDescription(webBilling.quantity)} covered · complimentary access`
                   : !webConfigured
-                    ? "This deployment does not sell OpenWork Web access"
+                    ? billingNotConfiguredMessage("web")
                     : webSubscribed
                       ? `${getOpenWorkWebQuantityDescription(webBilling.quantity)} × ${webPrice} · ${formatSubscriptionStatus(webStatus ?? "unknown")}`
                       : `${getOpenWorkWebQuantityDescription(webBilling.quantity)} · not subscribed`
@@ -571,7 +585,7 @@ export function BillingDashboardScreen() {
                 webComplimentary
                   ? <DenBadge tone="success" icon={Check}>Complimentary</DenBadge>
                   : !webBilling || !webConfigured
-                  ? <NotSoldBadge />
+                  ? <NotSoldBadge short />
                   : webPaymentFailed
                     ? <DenBadge tone="warning">Payment failed</DenBadge>
                     : webCancelling
@@ -599,7 +613,7 @@ export function BillingDashboardScreen() {
             valueCaption={`per ${stripeBilling.interval}`}
             badge={
               !aiConfigured
-                ? <NotSoldBadge />
+                ? <NotSoldBadge short />
                 : aiPaymentFailed
                   ? <DenBadge tone="warning">Payment failed</DenBadge>
                   : aiActive
@@ -879,6 +893,7 @@ export function BillingDashboardScreen() {
           </div>
         ) : null}
 
+        {aiActive || aiConfigured ? (
         <DenActionList className="mt-5">
           {aiActive ? (
             <DenActionRow
@@ -916,6 +931,7 @@ export function BillingDashboardScreen() {
             />
           ) : null}
         </DenActionList>
+        ) : null}
       </DenCard>
         </>
       )}

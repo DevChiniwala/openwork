@@ -30,10 +30,12 @@ type ReturnState =
   | { kind: "desktop"; planTier: BillingPlanSummary["tier"] | null }
   | { kind: "failed" };
 
-function readReturnParams() {
-  // Read from window.location instead of useSearchParams to avoid the
-  // Suspense requirement on this client-only page.
-  const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+type ReturnParams = { kind: BillingCheckoutReturnKind | null; sessionId: string; returnTo: string | null };
+
+function readReturnParams(): ReturnParams {
+  // Read from window.location (after commit) instead of useSearchParams to
+  // avoid the Suspense requirement on this client-only page.
+  const params = new URLSearchParams(window.location.search);
   return {
     kind: parseCheckoutReturnKind(params.get("return")),
     sessionId: params.get("session_id")?.trim() ?? "",
@@ -59,11 +61,19 @@ export default function StripeCheckingPage() {
   const { activeOrg, runReauthableAction } = useOrgDashboard();
   const [state, setState] = useState<ReturnState>({ kind: "confirming" });
   const syncedSessionRef = useRef<string | null>(null);
-  const [{ kind, sessionId, returnTo }] = useState(readReturnParams);
+  const [params, setParams] = useState<ReturnParams | null>(null);
+  const kind = params?.kind ?? null;
+  const sessionId = params?.sessionId ?? "";
+  const returnTo = params?.returnTo ?? null;
   const destination = checkoutReturnDestination({ returnTo, sessionId: sessionId || null });
   const fallbackRoute = defaultDestination(kind, activeOrg?.slug, sessionId);
 
   useEffect(() => {
+    setParams(readReturnParams());
+  }, []);
+
+  useEffect(() => {
+    if (!params) return;
     // OpenWork Web confirms its own payment on the Web page.
     if (kind === "web" && !destination) {
       router.replace(fallbackRoute);
@@ -119,7 +129,7 @@ export default function StripeCheckingPage() {
       if (timer !== null) window.clearTimeout(timer);
     };
     // The return parameters are read once; the destination follows them.
-  }, [kind, sessionId, returnTo, activeOrg?.slug]);
+  }, [params, activeOrg?.slug]);
 
   const organizationName = activeOrg?.name ?? "your organization";
   const returnLabel = checkoutReturnLabel({ returnTo, kind });
