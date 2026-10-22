@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import { autoAccessWallFromError, autoAccessWallSchema, autoWallCopy, type AutoAccessWall } from "@/app/lib/inference-access";
 import { parseGatewayUsageError, gatewayUsageErrorEvidenceSchema, type GatewayUsageErrorEvidence } from "../../cloud/gateway-usage-state";
+import { openWorkModelsLimitSchema, parseOpenWorkModelsLimitError, type OpenWorkModelsLimit } from "../../cloud/usage-limit-state";
 
 import { safeStringify } from "../../../../app/utils";
 import { normalizeErrorText } from "../../../../lib/error-text";
@@ -20,6 +21,8 @@ export type OpencodeSessionErrorPresentation = {
    */
   connectUrl?: string | null;
   gatewayUsage?: GatewayUsageErrorEvidence;
+  /** The organization used its OpenWork Models allowance: a limit until a reset, not a rate limit. Additive. */
+  openworkModelsLimit?: OpenWorkModelsLimit;
   autoAccessWall?: AutoAccessWall;
   providerId?: string | null;
 };
@@ -355,6 +358,7 @@ export function presentOpencodeSessionError(error: unknown, fallback = "Session 
   const gatewayAuth = detectGatewayAuthRequired(error, fields);
   const gatewaySelection = safeStringify(error)?.includes("gateway_selection_required") === true;
   const gatewayUsage = parseGatewayUsageError(error);
+  const openworkModelsLimit = gatewayUsage ? null : parseOpenWorkModelsLimitError(error);
   const kind = gatewayAuth ? "gateway-auth-required" : gatewaySelection ? "gateway-selection-required" : sessionErrorKind(fields.name, fields.message, fields.code, fields.responseBody, fields.status);
   const fallbackTitle = normalizeSessionError(fields.message ?? defaultErrorMessage(fields.name, fallback));
   const credentialCopy = kind === "provider-credentials" ? providerCredentialCopy(fields) : null;
@@ -366,6 +370,7 @@ export function presentOpencodeSessionError(error: unknown, fallback = "Session 
     recoveryPrompt: errorRecoveryPrompt(kind),
     ...(gatewayAuth ? { connectUrl: gatewayAuth.connectUrl } : {}),
     ...(gatewayUsage ? { gatewayUsage, providerId: fields.provider } : {}),
+    ...(openworkModelsLimit ? { openworkModelsLimit } : {}),
   };
 }
 
@@ -398,6 +403,7 @@ export function sessionErrorPresentationFromUIMessage(message: UIMessage): Openc
   }
   if (candidate.autoAccessWall !== undefined && !autoAccessWallSchema.safeParse(candidate.autoAccessWall).success) return null;
   if (candidate.gatewayUsage !== undefined && !gatewayUsageErrorEvidenceSchema.safeParse(candidate.gatewayUsage).success) return null;
+  if (candidate.openworkModelsLimit !== undefined && !openWorkModelsLimitSchema.safeParse(candidate.openworkModelsLimit).success) return null;
   if (candidate.providerId !== undefined && candidate.providerId !== null && typeof candidate.providerId !== "string") return null;
   return candidate as OpencodeSessionErrorPresentation;
 }

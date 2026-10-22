@@ -4,7 +4,7 @@ import { nodeSqlite } from "../src/node-sqlite.js"
 import { createRuntime } from "../src/runtime.js"
 import { Store } from "../src/store.js"
 
-export type ProbeFixtureMode = "answered" | "unauthorized" | "payment_required" | "unavailable" | "empty" | "timeout" | "free_limit" | "usage_limit" | "rate_limited"
+export type ProbeFixtureMode = "answered" | "unauthorized" | "payment_required" | "unavailable" | "empty" | "timeout" | "free_limit" | "usage_limit" | "models_allowance" | "rate_limited"
 export type ProbeFixtureProtocol = Config["model"]["protocol"]
 
 async function listen(handler: (request: IncomingMessage, response: ServerResponse) => Promise<void>, port = 0) {
@@ -47,6 +47,11 @@ export async function modelProbeFixture(options: {
     }
     const body: unknown = raw ? JSON.parse(raw) : null
     calls.push({ path: request.url ?? "", body, authorized })
+    if (mode === "models_allowance") {
+      // The gateway's answer when the organization used its OpenWork Models allowance (ee/apps/gateway/src/models-allowance.ts).
+      for (const [name, value] of Object.entries({ "X-OpenWork-Error-Code": "openwork_models_allowance_reached", "X-OpenWork-Usage-State": "blocked", "X-Should-Retry": "false", "Retry-After": "4200", "X-OpenWork-Limit-Window-Type": "five_hour", "X-OpenWork-Limit-Bucket-Id": "iob_fixture" })) response.setHeader(name, value)
+      response.writeHead(429).end(JSON.stringify({ error: { message: "Your workspace used its OpenWork Models allowance.", type: "usage_limit_error", param: null, code: "openwork_models_allowance_reached", source: "openwork_models" } })); return
+    }
     if (mode === "free_limit" || mode === "usage_limit" || mode === "rate_limited") {
       if (mode !== "rate_limited") {
         response.setHeader("X-OpenWork-Error-Code", mode === "free_limit" ? "free_allowance_exhausted" : "openwork_gateway_usage_limit_exceeded")

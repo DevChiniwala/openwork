@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "@openwork-ee/den-db/drizzle"
 import { MemberTable } from "@openwork-ee/den-db/schema"
-import { readFeatureRollouts, readMemberFeatureOverrides, readOrganizationFeatureOverrides, setMemberFeatureOverrides, type FeatureOverrideChanges } from "@openwork-ee/den-db/organization-features"
+import { readFeatureRollouts, readMemberFeatureOverrides, readOrganizationFeatureOverrides, type FeatureOverrideChanges } from "@openwork-ee/den-db/organization-features"
 import { isDenTypeId } from "@openwork-ee/utils/typeid"
 import { FEATURE_KEYS, featureAvailableOn, mapFeatures, resolveFeature } from "@openwork/features"
 import type { Hono } from "hono"
@@ -8,6 +8,7 @@ import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import { db } from "../../db.js"
 import { env } from "../../env.js"
+import { updateMemberFeatureOverrides } from "../../features.js"
 import { adminRoute, jsonValidator } from "../../middleware/index.js"
 import { jsonResponse, invalidRequestSchema, notFoundSchema, unauthorizedSchema, forbiddenSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
@@ -72,7 +73,7 @@ export function registerAdminMemberFeatureRoutes<T extends { Variables: AuthCont
     }
     const user = c.get("user")
     if (!user) return c.json({ error: "unauthorized" }, 401)
-    const saved = await setMemberFeatureOverrides(db, { organizationId, memberId, changes, setByUserId: user.id })
+    const saved = await updateMemberFeatureOverrides({ organizationId, memberId, changes, setByUserId: user.id })
     if (!saved) return c.json({ error: "not_found", message: "Active organization member not found." }, 404)
     const [member] = await db.select({ userId: MemberTable.userId }).from(MemberTable).where(and(
       eq(MemberTable.id, memberId), eq(MemberTable.organizationId, organizationId), isNull(MemberTable.removedAt),

@@ -7,7 +7,9 @@ import { PickerNotice } from "../models/picker-notice";
 import { useState } from "react";
 import { useSessionActivityStore } from "../session/status/session-activity-store";
 import { useCheckDesktopRestriction } from "./desktop-config-provider";
-import { autoAccessRefreshEvent, autoPickerCopy, autoQuietlyUnavailable, autoWallCopy, freeAutoSwitchedOff, openAlternativeModelPicker, type AutoPickerState, type AutoAccessWall, type DesktopFreeAccessStatus } from "@/app/lib/inference-access";
+import { autoAccessRefreshEvent, autoPickerCopy, autoQuietlyUnavailable, autoResetPhrase, autoWallCopy, freeAutoSwitchedOff, openAlternativeModelPicker, type AutoPickerState, type AutoAccessWall, type DesktopFreeAccessStatus } from "@/app/lib/inference-access";
+import { UsageLimitActions, UsageLimitCard, useUsageLimitNavigation, useUsageLimitUpgrade, useUsageLimitViewer } from "./usage-limit-card";
+import { usageLimitActions } from "./usage-limit-state";
 import { useWorkspaceMaybe } from "@/react-app/shell/workspace-provider";
 import { useDenAuth, type DenAuthStore } from "./den-auth-provider";
 import { isDesktopRuntime } from "@/app/utils";
@@ -163,7 +165,25 @@ function AutoAccessFooterContent({ available, syncing = false }: { available: bo
   </div>;
 }
 
-export function AutoAccessNotice({ wall, sessionId, workspaceId, recovery }: { wall: AutoAccessWall; sessionId: string; workspaceId?: string; recovery?: { owner: RejectedTurnOwner; id: string } }) {
+/** Free Auto ran out: the shared usage-limit card, with sign-in and OpenWork Models as the ways to get more. */
+function FreeAutoLimitCard({ wall, sessionId, recovery }: { wall: AutoAccessWall; sessionId: string; recovery?: { owner: RejectedTurnOwner; id: string } }) {
+  const viewer = useUsageLimitViewer();
+  const navigate = useUsageLimitNavigation(sessionId, viewer);
+  const back = autoResetPhrase(wall.resetsAt);
+  return <div data-testid="auto-access-wall" data-state={wall.state}>
+    <UsageLimitCard testId="usage-limit-card" kind="free_auto" title="You’ve used your free Auto for now"
+      reset={back && wall.resetsAt ? <time dateTime={wall.resetsAt} title={new Date(wall.resetsAt).toLocaleString()}>Back {back}</time> : null}
+      actions={<UsageLimitActions actions={usageLimitActions("free_auto", viewer)} onAction={(id) => navigate(id, () => openAutoSignIn(recovery))} />} />
+  </div>;
+}
+
+export function AutoAccessNotice(props: { wall: AutoAccessWall; sessionId: string; workspaceId?: string; recovery?: { owner: RejectedTurnOwner; id: string } }) {
+  const upgrade = useUsageLimitUpgrade();
+  if (upgrade && props.wall.state === "limit") return <FreeAutoLimitCard wall={props.wall} sessionId={props.sessionId} recovery={props.recovery} />;
+  return <AutoAccessWallNotice {...props} />;
+}
+
+function AutoAccessWallNotice({ wall, sessionId, recovery }: { wall: AutoAccessWall; sessionId: string; workspaceId?: string; recovery?: { owner: RejectedTurnOwner; id: string } }) {
   const auth = useDenAuth();
   const signIn = useCloudSignIn();
   const copy = autoWallCopy(wall, auth.isSignedIn);
