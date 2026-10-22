@@ -165,6 +165,23 @@ test("retired headless GA locks cannot disable durable turns or session cells", 
 })
 
 
+test("Connect has one opt-in rollout; retired switches cannot override it", () => {
+  assert.equal(FEATURES.connectStandardTools.default, false)
+  assert.equal(resolveFeature("connectStandardTools", base).enabled, false)
+  for (const key of ["connectToolShapes", "desktopConnectStandardTools"]) {
+    assert.equal(featureKeySchema.safeParse(key).success, false)
+    assert.equal(Object.hasOwn(resolveFeatures(base), key), false)
+  }
+  const parsed = parseFeatureEnvironment({
+    DEN_FEATURE_CONNECT_TOOL_SHAPES: "true",
+    DEN_FEATURE_DESKTOP_CONNECT_STANDARD_TOOLS: "true",
+    DEN_FEATURE_CONNECT_STANDARD_TOOLS: "false",
+  })
+  assert.deepEqual(parsed.locks, { connectStandardTools: false })
+  assert.equal(parsed.problems.length, 2)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+})
+
 test("member overrides inherit by default and take priority over organization and everyone", () => {
   const key = "liveProviderSync"
   const context: FeatureContext = { ...base, overrides: { [key]: false }, memberOverrides: { [key]: true } }

@@ -25,26 +25,34 @@ output schema is registered. Advertising even an unconstrained object schema
 would break those existing calls; a checker should accept this optional-structured
 proxy case rather than require a fabricated result shape or runtime conversion.
 
-## Capability search format rollout
+## One Connect tool rollout
 
-`connectToolShapes` is off by default on cloud and self-hosted. Off,
-`search_capabilities` keeps the legacy `summary`, `argumentsSchema`,
+`connectStandardTools` is off by default on cloud and self-hosted. It controls
+both the full tool view below and capability-search schemas, including bounded
+connection proxies. Use its existing deployment, organization and member controls
+in `/admin` for rollout; the kill switch overrides every allowlist or override.
+There is no separate desktop or schema switch. The retired `connectToolShapes`
+and `desktopConnectStandardTools` keys are ignored; existing state for
+`connectStandardTools` remains authoritative.
+
+Off, `search_capabilities` keeps the legacy `summary`, `argumentsSchema`,
 `invocation`, and API `pathParams`/`queryParams`/`bodySchema` fields. Tool schemas,
 initialization instructions, and the guidance resource describe `path/query/body`
-calls. On, matches add MCP `description`/`inputSchema`/`annotations` next to the
-older fields and guidance uses `execute_capability({ name, arguments })`. The same member-aware flag applies
-to bounded connection proxies. Both call forms remain accepted in either state,
-so turning the rollout off does not invalidate calls from cached tool lists.
-The separate `connectStandardTools` full view is unchanged.
+calls. On, search matches add MCP `description`/`inputSchema`/`annotations` next
+to the older fields and guidance uses `execute_capability({ name, arguments })`.
+Both call forms remain accepted in either state, so turning the rollout off does
+not invalidate calls from cached search-tool lists.
 
 ## Full tool view
 
 With `connectStandardTools` on, clients that search large tool lists themselves
 get every connection action, Workflow, App and remote session the member may use
 as its own tool instead of `search_capabilities` and `execute_capability`
-(`connect-tool-view.ts`). Claude Code is recognized by the request's
+(`connect-tool-view.ts`). The existing supported-client allowlist recognizes
+Claude Code and OpenCode v2 (including OpenWork Desktop) by the request's
 `io.modelcontextprotocol/clientInfo`; `?tools=full` or `?tools=search` overrides
-that guess. Unknown, missing and 2025-era clients keep the search view.
+that guess only while the flag is on. Unknown, missing and 2025-era clients keep
+the search view unless explicitly opted in. Off always restores the search view.
 
 Tools are named like their Code Mode calls (`linear.list_issues`), at most 64
 characters, and run through the executor `execute_capability` uses. Only

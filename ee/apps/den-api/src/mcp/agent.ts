@@ -163,7 +163,7 @@ const connectionStatusOutputSchema = openworkCloudMcpConnectionActionSchema.exte
   }),
 })
 
-// Matches take the MCP tool shape with `connectToolShapes`, and keep the older
+// Matches take the MCP tool shape with `connectStandardTools`, and keep the older
 // fields either way for desktops released before it.
 const capabilityMatchOutputSchema = z.object({
   name: z.string(),
@@ -526,7 +526,6 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     const method = requestInfo.method
     const toolView = connectToolView(requestInfo.clientInfo, {
       enabled: organizationFeatures.connectStandardTools,
-      desktopEnabled: organizationFeatures.desktopConnectStandardTools,
       override: connectToolViewOverride(c.req.url),
     })
     const audience: AgentMcpAudience = { organizationId, userId: principal.userId, fullTools: toolView === "full" }
@@ -555,7 +554,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
     // Building your own Apps can be turned off for the deployment; MCP Apps
     // from connected MCP servers work either way.
     const appServersEnabled = env.appMcpServersEnabled
-    const toolShapes = organizationFeatures.connectToolShapes
+    const toolShapes = organizationFeatures.connectStandardTools
     // Resolved once per request, and only by the methods that need it: the
     // skill resources at discovery time, and list_skills / get_skill on call.
     let remoteSkillsPromise: Promise<RemoteSkillDescriptor[]> | null = null

@@ -1170,8 +1170,6 @@ export type AdminFeature = {
     | "browserFloatingView"
     | "remoteComputers"
     | "remoteSessionSubagents"
-    | "connectToolShapes"
-    | "desktopConnectStandardTools"
     | "connectStandardTools";
   label: string;
   description: string;
@@ -1229,8 +1227,6 @@ export type AdminOrganizationsPageResponse = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -1405,24 +1401,6 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1513,8 +1491,6 @@ export type AdminOverviewResponse = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -1681,24 +1657,6 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7903,24 +7861,6 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
       connectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7958,8 +7898,6 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       browserFloatingView?: boolean | null;
       remoteComputers?: boolean | null;
       remoteSessionSubagents?: boolean | null;
-      connectToolShapes?: boolean | null;
-      desktopConnectStandardTools?: boolean | null;
       connectStandardTools?: boolean | null;
     };
   };
@@ -8153,24 +8091,6 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9452,8 +9372,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -9620,24 +9538,6 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9724,8 +9624,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       browserFloatingView: boolean;
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
-      connectToolShapes: boolean;
-      desktopConnectStandardTools: boolean;
       connectStandardTools: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
@@ -9892,24 +9790,6 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       remoteSessionSubagents: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      connectToolShapes: {
-        enabled: boolean;
-        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
-        everyone: boolean;
-        killed: boolean;
-        lock: boolean | null;
-        override: boolean | null;
-        overrideApplies: boolean;
-      };
-      desktopConnectStandardTools: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
