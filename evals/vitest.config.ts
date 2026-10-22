@@ -39,7 +39,7 @@ export default defineConfig({
           // Live specs are attached-system incident signals: exclude them unless explicitly named.
           // Eval-framework unit tests only. Journeys live in specs/, core/ and proofs/
           // and run in the e2e project; spec-lint rejects anything else there.
-          include: ["../scenarios/**/*.test.ts", "packages/*/src/**/*.test.ts", "scripts/**/*.test.ts", "../apps/server/test/**/*.vitest.test.ts"],
+          include: ["specs/**/*.test.ts", "../scenarios/**/*.test.ts", "packages/*/src/**/*.test.ts", "scripts/**/*.test.ts", "../apps/server/test/**/*.vitest.test.ts"],
           // Custom excludes replace Vitest's defaults, so keep dependencies out explicitly.
           // "**" does not match "../", so ../scenarios needs its own patterns.
           exclude: ["**/node_modules/**", "**/*.e2e.test.ts", "**/e2e.test.ts", "../**/node_modules/**", "../**/*.e2e.test.ts", "../**/e2e.test.ts",
