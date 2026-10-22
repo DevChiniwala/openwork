@@ -1150,6 +1150,17 @@ export type DeploymentServiceReadiness = {
   services: Array<DeploymentServiceStatus>;
 };
 
+export type AdminEnterpriseBillingState = {
+  featureEnabled: boolean;
+  configured: boolean;
+  users: number;
+  minimumUsers: number;
+  billableUsers: number;
+  subscription: {
+    [key: string]: unknown;
+  } | null;
+};
+
 export type AdminFeature = {
   key:
     | "nativeDictation"
@@ -1158,6 +1169,7 @@ export type AdminFeature = {
     | "liveProviderSync"
     | "agentConnectionRemoval"
     | "managedDeployments"
+    | "enterprisePlan"
     | "workbotDocuments"
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
@@ -1215,6 +1227,7 @@ export type AdminOrganizationsPageResponse = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -1285,6 +1298,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1479,6 +1501,7 @@ export type AdminOverviewResponse = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -1549,6 +1572,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -7754,6 +7786,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      enterprisePlan: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       workbotDocuments: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7887,6 +7928,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       liveProviderSync?: boolean | null;
       agentConnectionRemoval?: boolean | null;
       managedDeployments?: boolean | null;
+      enterprisePlan?: boolean | null;
       workbotDocuments?: boolean | null;
       workbotDocumentEditing?: boolean | null;
       workbotWorkspaceAssistant?: boolean | null;
@@ -7984,6 +8026,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9191,6 +9242,185 @@ export type PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses = {
 export type PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponse =
   PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses[keyof PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses];
 
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/enterprise-subscription";
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors = {
+  /**
+   * The organization id was invalid.
+   */
+  400: {
+    error: "invalid_request";
+    message: string;
+  };
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionError =
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors[keyof GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors];
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses = {
+  /**
+   * Enterprise billing returned.
+   */
+  200: {
+    enterprise: AdminEnterpriseBillingState;
+  };
+};
+
+export type GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponse =
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses[keyof GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses];
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/enterprise-subscription";
+};
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors = {
+  /**
+   * The request body or organization id was invalid.
+   */
+  400: {
+    error: "invalid_request";
+    message: string;
+  };
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+  /**
+   * The organization has no ongoing Enterprise subscription, or Enterprise plan billing is off for it.
+   */
+  404:
+    | {
+        error: string;
+        message: string;
+      }
+    | {
+        error: "feature_disabled";
+        feature: string;
+      };
+  /**
+   * Stripe Enterprise billing is not configured on this deployment.
+   */
+  503: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionError =
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors[keyof PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors];
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses = {
+  /**
+   * The minimum users were updated.
+   */
+  200: {
+    ok: true;
+    enterprise: AdminEnterpriseBillingState;
+  };
+};
+
+export type PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponse =
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses[keyof PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses];
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionData = {
+  body?: never;
+  path: {
+    organizationId: string;
+  };
+  query?: never;
+  url: "/v1/admin/organizations/{organizationId}/enterprise-subscription";
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors = {
+  /**
+   * The request body, organization id or price was invalid.
+   */
+  400:
+    | {
+        error: "invalid_request";
+        message: string;
+      }
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+  /**
+   * The organization does not exist, or Enterprise plan billing is off for it.
+   */
+  404:
+    | NotFoundError
+    | {
+        error: string;
+        message: string;
+      }
+    | {
+        error: "feature_disabled";
+        feature: string;
+      };
+  /**
+   * The organization already has an Enterprise subscription.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Stripe Enterprise billing is not configured on this deployment.
+   */
+  503: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionError =
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors[keyof PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors];
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses = {
+  /**
+   * The Enterprise subscription was created.
+   */
+  200: {
+    ok: true;
+    enterprise: AdminEnterpriseBillingState;
+  };
+};
+
+export type PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponse =
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses[keyof PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses];
+
 export type PatchV1AdminOrganizationsByOrganizationIdDpaData = {
   body: {
     dpaSigned: boolean;
@@ -9361,6 +9591,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -9431,6 +9662,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9613,6 +9853,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
       managedDeployments: boolean;
+      enterprisePlan: boolean;
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
@@ -9683,6 +9924,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       managedDeployments: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      enterprisePlan: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;

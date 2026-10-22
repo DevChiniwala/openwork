@@ -94,21 +94,67 @@ type PlanTier = "free" | "team" | "enterprise"
 type PlanSource = "default" | "stripe" | "manual" | "grandfathered"
 
 /**
- * The plan an organization should have after its Team plan (seat) subscription
- * changes, or null to leave it alone. Paying for Team makes the organization a
- * Team organization, which unlocks Team features at any size; ending it returns
- * the organization to Free. Plans a platform admin set (manual), grandfathered
- * plans and Enterprise are never changed by Stripe.
+ * Quantity on a Stripe Enterprise subscription: every user, but never fewer
+ * than the committed minimum in the contract, and at least 1 (Stripe needs a
+ * positive quantity on a per-user price).
  */
-export function planAfterSeatSubscriptionChange(
+export function enterpriseSubscriptionQuantity(input: { users: number; minimumUsers: number }) {
+  return Math.max(1, normalizeUserCount(input.users), normalizeUserCount(input.minimumUsers))
+}
+
+/** Committed minimum users from an Enterprise subscription's `minimum_users` Stripe metadata; 0 when absent or invalid. */
+export function minimumUsersFromStripeMetadata(metadata: Record<string, string> | null | undefined) {
+  const raw = metadata?.minimum_users?.trim() ?? ""
+  if (!/^\d+$/.test(raw)) return 0
+  return normalizeUserCount(Number(raw))
+}
+
+/**
+ * Whether one more user may be added. Within its free seats any organization
+ * may; past them it needs a paid plan: a Team (seat) subscription, an
+ * Enterprise subscription, or (when allowed) an Enterprise plan set by a
+ * platform admin or grandfathered.
+ */
+export function canAddUser(input: {
+  seats: { total: number; free: number }
+  hasSeatSubscription: boolean
+  hasEnterpriseSubscription: boolean
+  enterprisePlanBypassesLimit: boolean
+}) {
+  return canAddUserWithoutSeatSubscription(input.seats)
+    || input.hasSeatSubscription
+    || input.hasEnterpriseSubscription
+    || input.enterprisePlanBypassesLimit
+}
+
+/**
+ * The plan an organization should have after one of its paid plan
+ * subscriptions changes, or null to leave it alone.
+ *
+ * - An Enterprise subscription makes it Enterprise; it outranks Team.
+ * - A Team plan (seat) subscription makes it Team, at any size.
+ * - When neither is paid for, a plan Stripe set returns to Free.
+ *
+ * Plans a platform admin set (manual) and grandfathered plans are never
+ * changed by Stripe, nor is an Enterprise plan that Stripe did not set.
+ */
+export function planAfterSubscriptionChange(
   current: { tier: PlanTier; source: PlanSource },
-  subscribed: boolean,
+  subscribed: { team: boolean; enterprise: boolean },
 ): { tier: PlanTier; source: PlanSource } | null {
-  if (current.tier === "enterprise" || current.source === "manual" || current.source === "grandfathered") {
+  if (current.source === "manual" || current.source === "grandfathered") {
     return null
   }
-  if (subscribed) {
-    return current.tier === "team" && current.source === "stripe" ? null : { tier: "team", source: "stripe" }
+  if (current.tier === "enterprise" && current.source !== "stripe") {
+    return null
   }
-  return current.source === "stripe" ? { tier: "free", source: "default" } : null
+  const next: { tier: PlanTier; source: PlanSource } | null = subscribed.enterprise
+    ? { tier: "enterprise", source: "stripe" }
+    : subscribed.team
+      ? { tier: "team", source: "stripe" }
+      : current.source === "stripe"
+        ? { tier: "free", source: "default" }
+        : null
+  if (!next) return null
+  return next.tier === current.tier && next.source === current.source ? null : next
 }

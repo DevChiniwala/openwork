@@ -4,7 +4,10 @@ import {
   calculateOrganizationBillingQuantities,
   canAddUserWithoutSeatSubscription,
   FREE_ORG_SEAT_COUNT,
-  planAfterSeatSubscriptionChange,
+  planAfterSubscriptionChange,
+  enterpriseSubscriptionQuantity,
+  canAddUser,
+  minimumUsersFromStripeMetadata,
 } from "../src/billing-quantities.js"
 
 test("every subscription bills the same users", () => {
@@ -50,16 +53,57 @@ test("the Free plan allows users up to its limit; the next one needs the Team pl
 })
 
 test("paying for Team makes the organization Team; ending it returns it to Free", () => {
-  assert.deepEqual(planAfterSeatSubscriptionChange({ tier: "free", source: "default" }, true), { tier: "team", source: "stripe" })
-  assert.equal(planAfterSeatSubscriptionChange({ tier: "team", source: "stripe" }, true), null)
-  assert.deepEqual(planAfterSeatSubscriptionChange({ tier: "team", source: "stripe" }, false), { tier: "free", source: "default" })
-  assert.equal(planAfterSeatSubscriptionChange({ tier: "free", source: "default" }, false), null)
+  const team = { team: true, enterprise: false }
+  const none = { team: false, enterprise: false }
+  assert.deepEqual(planAfterSubscriptionChange({ tier: "free", source: "default" }, team), { tier: "team", source: "stripe" })
+  assert.equal(planAfterSubscriptionChange({ tier: "team", source: "stripe" }, team), null)
+  assert.deepEqual(planAfterSubscriptionChange({ tier: "team", source: "stripe" }, none), { tier: "free", source: "default" })
+  assert.equal(planAfterSubscriptionChange({ tier: "free", source: "default" }, none), null)
 })
 
-test("Stripe never changes Enterprise, admin-set or grandfathered plans", () => {
-  assert.equal(planAfterSeatSubscriptionChange({ tier: "enterprise", source: "manual" }, false), null)
-  assert.equal(planAfterSeatSubscriptionChange({ tier: "enterprise", source: "stripe" }, true), null)
-  assert.equal(planAfterSeatSubscriptionChange({ tier: "team", source: "manual" }, false), null)
-  assert.equal(planAfterSeatSubscriptionChange({ tier: "free", source: "manual" }, true), null)
-  assert.equal(planAfterSeatSubscriptionChange({ tier: "enterprise", source: "grandfathered" }, false), null)
+test("an Enterprise subscription makes the organization Enterprise and outranks Team", () => {
+  assert.deepEqual(planAfterSubscriptionChange({ tier: "free", source: "default" }, { team: false, enterprise: true }), { tier: "enterprise", source: "stripe" })
+  assert.deepEqual(planAfterSubscriptionChange({ tier: "team", source: "stripe" }, { team: true, enterprise: true }), { tier: "enterprise", source: "stripe" })
+  assert.equal(planAfterSubscriptionChange({ tier: "enterprise", source: "stripe" }, { team: true, enterprise: true }), null)
+})
+
+test("ending an Enterprise subscription falls back to Team while Team is paid, otherwise Free", () => {
+  assert.deepEqual(planAfterSubscriptionChange({ tier: "enterprise", source: "stripe" }, { team: true, enterprise: false }), { tier: "team", source: "stripe" })
+  assert.deepEqual(planAfterSubscriptionChange({ tier: "enterprise", source: "stripe" }, { team: false, enterprise: false }), { tier: "free", source: "default" })
+})
+
+test("Stripe never changes admin-set, grandfathered or non-Stripe Enterprise plans", () => {
+  for (const subscribed of [{ team: false, enterprise: false }, { team: true, enterprise: false }, { team: false, enterprise: true }]) {
+    assert.equal(planAfterSubscriptionChange({ tier: "enterprise", source: "manual" }, subscribed), null)
+    assert.equal(planAfterSubscriptionChange({ tier: "team", source: "manual" }, subscribed), null)
+    assert.equal(planAfterSubscriptionChange({ tier: "free", source: "manual" }, subscribed), null)
+    assert.equal(planAfterSubscriptionChange({ tier: "enterprise", source: "grandfathered" }, subscribed), null)
+    assert.equal(planAfterSubscriptionChange({ tier: "enterprise", source: "default" }, subscribed), null)
+  }
+})
+
+test("Enterprise bills every user, never below the committed minimum, and at least 1", () => {
+  assert.equal(enterpriseSubscriptionQuantity({ users: 120, minimumUsers: 50 }), 120)
+  assert.equal(enterpriseSubscriptionQuantity({ users: 12, minimumUsers: 50 }), 50)
+  assert.equal(enterpriseSubscriptionQuantity({ users: 0, minimumUsers: 0 }), 1)
+  assert.equal(enterpriseSubscriptionQuantity({ users: Number.NaN, minimumUsers: -3 }), 1)
+})
+
+test("past the Free plan limit, any paid plan lets the organization add users", () => {
+  const seats = { total: 5, free: 5 }
+  const base = { seats, hasSeatSubscription: false, hasEnterpriseSubscription: false, enterprisePlanBypassesLimit: false }
+  assert.equal(canAddUser(base), false)
+  assert.equal(canAddUser({ ...base, hasSeatSubscription: true }), true)
+  assert.equal(canAddUser({ ...base, hasEnterpriseSubscription: true }), true)
+  assert.equal(canAddUser({ ...base, enterprisePlanBypassesLimit: true }), true)
+  assert.equal(canAddUser({ ...base, seats: { total: 4, free: 5 } }), true)
+})
+
+test("the committed minimum is read only from a whole number in Stripe metadata", () => {
+  assert.equal(minimumUsersFromStripeMetadata({ minimum_users: "50" }), 50)
+  assert.equal(minimumUsersFromStripeMetadata({ minimum_users: " 7 " }), 7)
+  assert.equal(minimumUsersFromStripeMetadata({ minimum_users: "-5" }), 0)
+  assert.equal(minimumUsersFromStripeMetadata({ minimum_users: "12.5" }), 0)
+  assert.equal(minimumUsersFromStripeMetadata({}), 0)
+  assert.equal(minimumUsersFromStripeMetadata(null), 0)
 })

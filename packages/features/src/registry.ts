@@ -95,6 +95,13 @@ export const FEATURES = defineFeatures({
     deployments: ["cloud"],
     default: false,
   },
+  enterprisePlan: {
+    label: "Enterprise plan billing",
+    description: "Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
   workbotDocuments: {
     label: "Workbot Documents",
     description: "Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive.",

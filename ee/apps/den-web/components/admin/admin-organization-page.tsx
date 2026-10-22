@@ -15,6 +15,7 @@ import { requestAdmin, withStoredBearer, type AdminResult } from "./admin-reques
 import { useAdminSessionCookie } from "./admin-shell";
 import { recordAdminOrganizationVisit } from "./admin-recent-organizations";
 import { AdminOrganizationControlPanel } from "./admin-organization-control-panel";
+import { AdminEnterpriseBilling } from "./admin-enterprise-billing";
 
 const AdminOrganizationInsights = lazy(() => import("./admin-organization-insights").then((module) => ({ default: module.AdminOrganizationInsights })));
 
@@ -241,7 +242,7 @@ export function AdminOrganizationPage({ organizationId, section }: { organizatio
   }, [path, section, search, refreshKey, fail]);
 
   if (section === "features") return <AdminOrganizationFeatureControls key={organizationId} organizationId={organizationId} refreshKey={refreshKey} onAccessFailure={fail} />;
-  if (section === "control-panel") return <AdminOrganizationControlPanel key={organizationId} organizationId={organizationId} onAccessFailure={fail} />;
+  if (section === "control-panel") return <><AdminOrganizationControlPanel key={organizationId} organizationId={organizationId} onAccessFailure={fail} /><AdminEnterpriseBilling key={`enterprise:${organizationId}`} organizationId={organizationId} onAccessFailure={fail} /></>;
 
   const data = snapshot && (snapshot.trusted || verified) ? snapshot.data : null;
   const errorNotice = errorMessage ? <p role="alert" className="border-b border-gray-200 p-4 text-sm text-red-700">{errorMessage} Use Refresh to try again.{data ? " Showing the last successful snapshot." : ""}</p> : null;

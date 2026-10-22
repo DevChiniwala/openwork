@@ -222,6 +222,8 @@ import type {
   GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses,
   GetV1AdminOrganizationsByOrganizationIdControlPanelErrors,
   GetV1AdminOrganizationsByOrganizationIdControlPanelResponses,
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+  GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
   GetV1AdminOrganizationsByOrganizationIdErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsErrors,
   GetV1AdminOrganizationsByOrganizationIdInsightsResponses,
@@ -629,6 +631,8 @@ import type {
   PatchApiAuthScimV2UsersByUserIdResponses,
   PatchV1AdminOrganizationsByOrganizationIdDpaErrors,
   PatchV1AdminOrganizationsByOrganizationIdDpaResponses,
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+  PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
   PatchV1AdminOrganizationsByOrganizationIdFreeSeatsErrors,
   PatchV1AdminOrganizationsByOrganizationIdFreeSeatsResponses,
   PatchV1AdminOrganizationsByOrganizationIdPlanErrors,
@@ -692,6 +696,8 @@ import type {
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsByGrantIdRevokeResponses,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsErrors,
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses,
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+  PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
   PostV1AdminServicesCheckErrors,
   PostV1AdminServicesCheckResponses,
   PostV1AdminUsersByUserIdInferenceUsageResetErrors,
@@ -1288,6 +1294,7 @@ export class DenClient extends HeyApiClient {
         liveProviderSync?: boolean | null;
         agentConnectionRemoval?: boolean | null;
         managedDeployments?: boolean | null;
+        enterprisePlan?: boolean | null;
         workbotDocuments?: boolean | null;
         workbotDocumentEditing?: boolean | null;
         workbotWorkspaceAssistant?: boolean | null;
@@ -1966,6 +1973,75 @@ export class DenClient extends HeyApiClient {
       ThrowOnError
     >({
       url: "/v1/admin/organizations/{organizationId}/free-seats",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Get an organization's Enterprise plan billing
+   *
+   * Returns the organization's Stripe Enterprise subscription, committed minimum users and the users Stripe bills.
+   */
+  public getV1AdminOrganizationsByOrganizationIdEnterpriseSubscription<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).get<
+      GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
+      GetV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/enterprise-subscription",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Change an organization's Enterprise minimum users
+   *
+   * Updates the committed minimum users on the organization's Enterprise subscription and resynchronizes its Stripe quantity. Body: { minimumUsers }.
+   */
+  public patchV1AdminOrganizationsByOrganizationIdEnterpriseSubscription<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).patch<
+      PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
+      PatchV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/enterprise-subscription",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Start an organization's Enterprise plan
+   *
+   * Creates a Stripe Enterprise subscription on a custom per-user price of the Enterprise product, billed by invoice, never below the committed minimum users. Cancels a Team plan subscription with a prorated credit. Body: { priceId, minimumUsers, billingEmail, daysUntilDue? }.
+   */
+  public postV1AdminOrganizationsByOrganizationIdEnterpriseSubscription<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "organizationId" }] }]);
+    return (options?.client ?? this.client).post<
+      PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
+      PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/organizations/{organizationId}/enterprise-subscription",
       ...options,
       ...params,
     });

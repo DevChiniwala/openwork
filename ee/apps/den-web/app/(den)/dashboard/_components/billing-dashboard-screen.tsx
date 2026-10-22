@@ -41,8 +41,47 @@ type StripeBilling = {
     cancelAtPeriodEnd: boolean;
   } | null;
   seats: StripeSeatBilling;
+  enterprise: StripeEnterpriseBilling | null;
   web: StripeWebBilling | null;
 };
+
+type StripeEnterpriseBilling = {
+  hasActiveSubscription: boolean;
+  users: number;
+  minimumUsers: number;
+  billableUsers: number;
+  subscription: {
+    status: string;
+    quantity: number;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+  } | null;
+};
+
+function parseStripeEnterpriseBilling(value: unknown): StripeEnterpriseBilling | null {
+  if (!value || typeof value !== "object") return null;
+  const enterprise = value as Partial<StripeEnterpriseBilling>;
+  if (
+    typeof enterprise.users !== "number" ||
+    typeof enterprise.minimumUsers !== "number" ||
+    typeof enterprise.billableUsers !== "number"
+  ) return null;
+  const subscription = enterprise.subscription && typeof enterprise.subscription === "object" ? enterprise.subscription : null;
+  return {
+    hasActiveSubscription: enterprise.hasActiveSubscription === true,
+    users: enterprise.users,
+    minimumUsers: enterprise.minimumUsers,
+    billableUsers: enterprise.billableUsers,
+    subscription: subscription
+      ? {
+          status: typeof subscription.status === "string" ? subscription.status : "unknown",
+          quantity: typeof subscription.quantity === "number" ? subscription.quantity : 0,
+          currentPeriodEnd: typeof subscription.currentPeriodEnd === "string" ? subscription.currentPeriodEnd : null,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd === true,
+        }
+      : null,
+  };
+}
 
 type StripeSeatBilling = {
   configured: boolean;
@@ -115,6 +154,7 @@ function parseStripeBilling(payload: unknown): StripeBilling | null {
           }
         : null,
     },
+    enterprise: parseStripeEnterpriseBilling((value as { enterprise?: unknown }).enterprise),
     web: parseStripeWebBilling(payload),
   };
 }
@@ -334,6 +374,18 @@ export function BillingDashboardScreen() {
   const freeSeatsLeft = Math.max(0, freeSeatCount - activeMemberCount);
   const seatInterval = seatBilling?.interval ?? "month";
 
+  // Enterprise is sales-led: a custom price billed by invoice. It replaces the
+  // Team plan, and its amount is on the invoice rather than computed here.
+  const enterpriseBilling = stripeBilling?.enterprise ?? null;
+  const enterpriseActive = enterpriseBilling?.hasActiveSubscription === true;
+  const enterpriseStatus = enterpriseBilling?.subscription?.status ?? null;
+  const enterprisePaymentFailed = enterpriseStatus === "past_due" || enterpriseStatus === "unpaid";
+  const enterpriseBillableUsers = enterpriseBilling?.billableUsers ?? 0;
+  const enterpriseMinimumUsers = enterpriseBilling?.minimumUsers ?? 0;
+  const enterpriseRenewsOn = formatBillingDate(enterpriseBilling?.subscription?.currentPeriodEnd ?? null);
+  const enterpriseCancelling = enterpriseBilling?.subscription?.cancelAtPeriodEnd === true;
+  const enterpriseUsersLabel = `${enterpriseBillableUsers} ${enterpriseBillableUsers === 1 ? "user" : "users"} billed${enterpriseMinimumUsers > 0 ? ` (minimum ${enterpriseMinimumUsers})` : ""}`;
+
   const webSubscription = webBilling?.subscription ?? null;
   const webCountsInvitations = openWorkWebCountsPendingInvitations(webBilling?.quantityDefinition);
   const webQuantityDefinition = webBilling?.quantityDefinition ?? null;
@@ -422,6 +474,23 @@ export function BillingDashboardScreen() {
           }
         />
         <div className="border-t border-gray-200">
+          {enterpriseActive ? (
+          <DenLineItemRow
+            className="mx-4 rounded-[18px]"
+            leading={<DenMarkTile label={`${enterpriseBillableUsers}x`} active />}
+            title="Enterprise plan"
+            description={`${enterpriseUsersLabel} · billed by invoice at your contract price`}
+            value="Invoiced"
+            valueCaption="not in total"
+            badge={
+              enterprisePaymentFailed
+                ? <DenBadge tone="warning">Payment overdue</DenBadge>
+                : enterpriseCancelling
+                  ? <DenBadge tone="warning">Cancelling</DenBadge>
+                  : <DenBadge tone="success" icon={Check}>Active</DenBadge>
+            }
+          />
+          ) : (
           <DenLineItemRow
             className="mx-4 rounded-[18px]"
             leading={
@@ -448,6 +517,7 @@ export function BillingDashboardScreen() {
                   : <DenBadge tone="neutral">Included</DenBadge>
             }
           />
+          )}
           {webFeatureEnabled ? (
             <DenLineItemRow
               className="mx-4 rounded-[18px]"
@@ -509,7 +579,7 @@ export function BillingDashboardScreen() {
           <DenLineItemRow
             className="mt-1 border-t border-gray-200"
             emphasis
-            title="Expected monthly total"
+            title={enterpriseActive ? "Expected monthly total, excluding Enterprise invoices" : "Expected monthly total"}
             value={totalLabel ?? ""}
             valueCaption={`per ${stripeBilling.interval}`}
           />
@@ -652,6 +722,54 @@ export function BillingDashboardScreen() {
         </DenCard>
       ) : null}
 
+      {enterpriseActive ? (
+      <DenCard className="mb-6" data-testid="billing-enterprise-card">
+        <DenSectionHeader
+          title="Enterprise plan"
+          description="Your Enterprise contract: every user is billed at your contract price, by invoice. Pending invitations count as users until they expire. There is no user limit."
+          action={
+            enterprisePaymentFailed
+              ? <DenBadge tone="warning">Payment overdue</DenBadge>
+              : enterpriseCancelling
+                ? <DenBadge tone="warning">Cancelling</DenBadge>
+                : <DenBadge tone="success" icon={Check}>Active</DenBadge>
+          }
+        />
+
+        <DenNotice
+          tone={enterprisePaymentFailed ? "error" : enterpriseCancelling ? "warning" : "info"}
+          className="mt-5"
+          message={
+            enterprisePaymentFailed
+              ? "An Enterprise invoice is overdue. Pay it from your invoices, or contact your OpenWork account team."
+              : enterpriseCancelling
+                ? `Your Enterprise plan ends ${enterpriseRenewsOn ?? "at the end of the current period"}. Contact your OpenWork account team to renew.`
+                : `${enterpriseUsersLabel}. Each person you add or remove changes the next invoice${enterpriseMinimumUsers > 0 ? `, which never goes below ${enterpriseMinimumUsers} users` : ""}. AI model access is a separate subscription, below.`
+          }
+        />
+
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <BillingStat label="Active users" value={String(activeMemberCount)} />
+          <BillingStat label="Users billed" value={String(enterpriseBillableUsers)} />
+          <BillingStat label={enterpriseCancelling ? "Plan ends" : "Next invoice"} value={enterpriseRenewsOn ?? "Not available"} />
+        </div>
+
+        <DenActionList className="mt-5">
+          <DenActionRow
+            description="Invite, remove, or change roles. Enterprise has no user limit."
+            action={<DenButton variant="secondary" onClick={goToMembers}>Manage members</DenButton>}
+          />
+          <DenActionRow
+            description="Opens Stripe. Download or pay invoices and update billing details. To change your contract, contact your OpenWork account team."
+            action={
+              <DenButton variant={enterprisePaymentFailed ? "primary" : "secondary"} disabled={!canOpenPortal} loading={stripeActionBusy === "portal"} onClick={openStripePortal}>
+                View invoices
+              </DenButton>
+            }
+          />
+        </DenActionList>
+      </DenCard>
+      ) : (
       <DenCard className="mb-6" data-testid="billing-seats-card">
         <DenSectionHeader
           title={seatsActive ? "Team plan" : "Free plan"}
@@ -739,6 +857,7 @@ export function BillingDashboardScreen() {
           )}
         </DenActionList>
       </DenCard>
+      )}
 
       <DenCard data-testid="billing-ai-card">
         <DenSectionHeader

@@ -140,9 +140,9 @@ Rollout order (each step independently safe):
    first adopt SSO/policies *between* the migration and the flag flip are not
    grandfathered (acceptable — gating only blocks edits, never breaks what
    they configured; ship a follow-up data migration if the gap grows long).
-4. Manual plan assignment for new enterprise customers via existing instance
-   admin surface (`routes/admin/index.ts`) until Stripe enterprise products
-   exist; later, optionally a third `OrgSubscriptionTable.type = "enterprise"`.
+4. Manual plan assignment via the instance admin surface
+   (`routes/admin/index.ts`) still works; Stripe-billed Enterprise is described
+   under "Enterprise plan billing" below.
 
 ## UX when gated
 
@@ -169,12 +169,51 @@ marketing story is:
 This is reflected on `/pricing` and `/enterprise` as "Desktop policies &
 version controls".
 
+## Enterprise plan billing (sales-led)
+
+Behind the `enterprisePlan` feature (cloud only, off). Enterprise is sold by
+us and billed through Stripe, not bought at checkout.
+
+- **Stripe setup:** one Enterprise product (`STRIPE_ENTERPRISE_PRODUCT_ID` on
+  den-api). Each customer gets their own recurring per-user price on that
+  product, so subscriptions are recognised by product, not price.
+- **Starting it:** a platform admin opens the organization's Control panel in
+  `/admin` and enters the contract price, the committed minimum users, the
+  billing email and the invoice terms
+  (`POST /v1/admin/organizations/:id/enterprise-subscription`). Den creates a
+  `send_invoice` subscription with `subscription_type: enterprise` and
+  `minimum_users` in its metadata. A Team plan (seat) subscription is canceled
+  with a prorated credit, and an admin-set or grandfathered plan is handed over
+  to Stripe (`plan: { tier: "enterprise", source: "stripe" }`).
+- **Quantity:** every user (the same count as Team, Models and Web), never
+  below the committed minimum, at least 1. It follows member and invitation
+  changes like the other subscriptions. The minimum is changed with
+  `PATCH .../enterprise-subscription` (stored in Stripe metadata and mirrored to
+  `org_subscriptions.minimum_quantity`).
+- **Plan:** while the Enterprise subscription is active, trialing or past due
+  the organization is Enterprise from Stripe; it outranks Team. When it ends the
+  organization falls back to Team if it still pays for Team, otherwise Free.
+  Admin-set and grandfathered plans are never changed by Stripe.
+- **User limit:** an active Enterprise subscription lifts the Free plan user
+  limit for invitations, SCIM and SSO. While the feature is on for the
+  organization, an Enterprise plan without one (admin-set or grandfathered)
+  lifts it too.
+- **Billing page:** organizations with an Enterprise subscription see an
+  Enterprise plan card (users billed, minimum, next invoice, invoices in the
+  Stripe portal) instead of the Team plan card. OpenWork Models and OpenWork
+  Web stay separate subscriptions.
+- **Turning it off:** blocks starting new Enterprise subscriptions and the
+  limit bypass for admin-set Enterprise plans. Existing Enterprise subscriptions
+  keep billing, keep the plan and keep their organization's invites working.
+
 ## Open questions
 
-- Enterprise self-serve checkout vs. sales-led only (suggested: sales-led
-  first; the CTA is already a Cal.com booking).
+- Enterprise self-serve checkout: not built; sales-led only for now.
 - Stripe billing sets `plan: { tier: "team", source: "stripe" }` while an
   organization's Team plan (seat) subscription is active, trialing or past due,
-  and returns it to Free when it ends. Admin-set, grandfathered and Enterprise
-  plans are never changed by Stripe. Existing paid orgs pick this up on their
-  next Stripe subscription event.
+  and returns it to Free when it ends. Migration
+  `0155_enterprise_plan_subscriptions` applies the same rule once to every
+  environment.
+- Moving the existing admin-set and grandfathered Enterprise organizations onto
+  Stripe Enterprise subscriptions is a sales decision, made one organization at
+  a time from `/admin`.
