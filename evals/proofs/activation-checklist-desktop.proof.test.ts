@@ -32,8 +32,10 @@ test("an owner gets a Get set up checklist after the first answer, and a member 
     await member.reload();
     await user.see("composer", { editable: true });
     const den = await probe.eventually(() => world.activation("admin"), { within: 30_000, label: "Den serves the checklist", until: (value) => value.status === 200 });
+    // Avery already invited Riley in this world; that fact must not reveal the card before an answer.
+    expect(den.done).toEqual(["invite_teammate"]);
     await user.notSee(card);
-    evidence.recordAssertionEvidence("No checklist before the first answer", `GET /v1/me/activation -> ${den.status}; done: ${den.done.join(", ") || "none"}; no card`, den.status === 200 && den.done.length === 0);
+    evidence.recordAssertionEvidence("The existing invite does not reveal the checklist before the first answer", `GET /v1/me/activation -> ${den.status}; done: ${den.done.join(", ")}; first answer not done; no card`, den.status === 200 && den.done.length === 1 && den.done[0] === "invite_teammate");
     await user.screenshot();
   });
 
