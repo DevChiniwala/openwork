@@ -223,6 +223,12 @@ which floats to the newest release on every pull; check with
 `helm show values oci://ghcr.io/different-ai/charts/openwork-ee --version X | grep -A1 '^image:'`
 and, when it prints `tag: latest`, also pass `--set image.tag=X`.
 
+OpenCode v2 history migration is automatic; no Helm feature value or admin
+switch is required. Upgrade the desktop application as well as the chart/server.
+Old `config.features.engineV2ForceUpgrade` entries are accepted but ignored and
+can be removed. Migration keeps backups, waits for idle, and respects explicit
+manual engine choices. See [engine migration](../../../docs/opencode-engine-migration.md).
+
 Create a values file for the target environment:
 
 ```yaml

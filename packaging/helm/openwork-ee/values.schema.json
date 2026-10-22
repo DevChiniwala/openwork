@@ -138,16 +138,6 @@
               ],
               "description": "Remove OpenCode Zen models: Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead. Renders DEN_FEATURE_REMOVE_OPENCODE_ZEN."
             },
-            "engineV2ForceUpgrade": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Upgrade to OpenCode v2: Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. On by default; turning it off stops the move and returns force-moved installs to v1. Renders DEN_FEATURE_ENGINE_V2_FORCE_UPGRADE."
-            },
             "computerUse": {
               "enum": [
                 "",
@@ -898,6 +888,16 @@
               ],
               "description": "Retired: no longer a feature switch. Ignored."
             },
+            "headlessStepTurns": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
             "engineV2Upgrade": {
               "enum": [
                 "",
@@ -908,7 +908,7 @@
               ],
               "description": "Retired: no longer a feature switch. Ignored."
             },
-            "headlessStepTurns": {
+            "engineV2ForceUpgrade": {
               "enum": [
                 "",
                 "true",

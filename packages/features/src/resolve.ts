@@ -55,9 +55,11 @@ export const RETIRED_FEATURE_KEYS = [
   "headlessSessionIndex",
   // Generally available (2026-10): durable step turns and per-chat cells are always on.
   "headlessDurableTurns", "headlessSessionCells",
-  // Folded (2026-10): workbotGuidedNavigation → workbotWorkspaceAssistant, engineV2Upgrade →
-  // engineV2ForceUpgrade, headlessStepTurns → headlessDurableTurns.
-  "workbotGuidedNavigation", "engineV2Upgrade", "headlessStepTurns",
+  // Folded (2026-10): workbotGuidedNavigation → workbotWorkspaceAssistant,
+  // headlessStepTurns → headlessDurableTurns.
+  "workbotGuidedNavigation", "headlessStepTurns",
+  // Generally available (2026-10): automatic OpenCode v2 migration is not optional.
+  "engineV2Upgrade", "engineV2ForceUpgrade",
   // Removed (2026-10): Workbot team settings links, remote session events, and the deprecated
   // Models and Task analytics screens.
   "workbotTeamLinks", "remoteSessionEvents", "modelsAnalyticsUi", "taskAnalyticsUi",

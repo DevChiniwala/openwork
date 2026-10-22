@@ -137,13 +137,6 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  engineV2ForceUpgrade: {
-    label: "Upgrade to OpenCode v2",
-    description: "Desktop and web instances still on OpenCode v1 copy their chats with a backup and switch to OpenCode v2 automatically when idle. On by default; turning it off stops the move and returns force-moved installs to v1.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: true,
-  },
   computerUse: {
     label: "Computer use",
     description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",

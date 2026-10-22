@@ -4808,7 +4808,6 @@
               "workbotUsageRecovery",
               "automationCalendar",
               "removeOpencodeZen",
-              "engineV2ForceUpgrade",
               "computerUse",
               "browserDemonstrations",
               "browserFloatingView",
@@ -5027,9 +5026,6 @@
                     "removeOpencodeZen": {
                       "type": "boolean"
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "boolean"
-                    },
                     "computerUse": {
                       "type": "boolean"
                     },
@@ -5074,7 +5070,6 @@
                     "workbotUsageRecovery",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserFloatingView",
@@ -5773,63 +5768,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "computerUse": {
                       "type": "object",
                       "properties": {
@@ -6300,7 +6238,6 @@
                     "workbotUsageRecovery",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserFloatingView",
@@ -6714,9 +6651,6 @@
                     "removeOpencodeZen": {
                       "type": "boolean"
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "boolean"
-                    },
                     "computerUse": {
                       "type": "boolean"
                     },
@@ -6761,7 +6695,6 @@
                     "workbotUsageRecovery",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserFloatingView",
@@ -7460,63 +7393,6 @@
                         "overrideApplies"
                       ]
                     },
-                    "engineV2ForceUpgrade": {
-                      "type": "object",
-                      "properties": {
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "unavailable",
-                            "killed",
-                            "lock",
-                            "override",
-                            "member",
-                            "everyone"
-                          ]
-                        },
-                        "everyone": {
-                          "type": "boolean"
-                        },
-                        "killed": {
-                          "type": "boolean"
-                        },
-                        "lock": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "override": {
-                          "anyOf": [
-                            {
-                              "type": "boolean"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "overrideApplies": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "enabled",
-                        "source",
-                        "everyone",
-                        "killed",
-                        "lock",
-                        "override",
-                        "overrideApplies"
-                      ]
-                    },
                     "computerUse": {
                       "type": "object",
                       "properties": {
@@ -7987,7 +7863,6 @@
                     "workbotUsageRecovery",
                     "automationCalendar",
                     "removeOpencodeZen",
-                    "engineV2ForceUpgrade",
                     "computerUse",
                     "browserDemonstrations",
                     "browserFloatingView",
@@ -11022,13 +10897,21 @@
           },
           "features": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "engineV2ForceUpgrade": {
+                "type": "boolean",
+                "const": true,
+                "deprecated": true,
+                "description": "Fixed compatibility value for published desktop clients. Automatic OpenCode v2 migration is always on; this is not a configurable feature."
+              }
             },
+            "required": [
+              "engineV2ForceUpgrade"
+            ],
             "additionalProperties": {
               "type": "boolean"
             },
-            "description": "Effective on/off for every OpenWork feature in this organization. Treat a missing key as off."
+            "description": "Effective on/off for every OpenWork feature in this organization, plus fixed deprecated client compatibility values. Treat a missing key as off."
           },
           "canManageDeploymentServices": {
             "type": "boolean",
@@ -32056,9 +31939,17 @@
           },
           "features": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "engineV2ForceUpgrade": {
+                "type": "boolean",
+                "const": true,
+                "deprecated": true,
+                "description": "Fixed compatibility value for published desktop clients. Automatic OpenCode v2 migration is always on; this is not a configurable feature."
+              }
             },
+            "required": [
+              "engineV2ForceUpgrade"
+            ],
             "additionalProperties": {
               "type": "boolean"
             }
@@ -33674,63 +33565,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -34201,7 +34035,6 @@
                         "workbotUsageRecovery",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserFloatingView",
@@ -34990,63 +34823,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -35517,7 +35293,6 @@
                         "workbotUsageRecovery",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserFloatingView",
@@ -35698,16 +35473,6 @@
                         ]
                       },
                       "removeOpencodeZen": {
-                        "anyOf": [
-                          {
-                            "type": "boolean"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "engineV2ForceUpgrade": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -38902,9 +38667,6 @@
                         "removeOpencodeZen": {
                           "type": "boolean"
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "boolean"
-                        },
                         "computerUse": {
                           "type": "boolean"
                         },
@@ -38949,7 +38711,6 @@
                         "workbotUsageRecovery",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserFloatingView",
@@ -39648,63 +39409,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -40175,7 +39879,6 @@
                         "workbotUsageRecovery",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserFloatingView",
@@ -40338,9 +40041,6 @@
                         "removeOpencodeZen": {
                           "type": "boolean"
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "boolean"
-                        },
                         "computerUse": {
                           "type": "boolean"
                         },
@@ -40385,7 +40085,6 @@
                         "workbotUsageRecovery",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserFloatingView",
@@ -41084,63 +40783,6 @@
                             "overrideApplies"
                           ]
                         },
-                        "engineV2ForceUpgrade": {
-                          "type": "object",
-                          "properties": {
-                            "enabled": {
-                              "type": "boolean"
-                            },
-                            "source": {
-                              "type": "string",
-                              "enum": [
-                                "unavailable",
-                                "killed",
-                                "lock",
-                                "override",
-                                "member",
-                                "everyone"
-                              ]
-                            },
-                            "everyone": {
-                              "type": "boolean"
-                            },
-                            "killed": {
-                              "type": "boolean"
-                            },
-                            "lock": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "override": {
-                              "anyOf": [
-                                {
-                                  "type": "boolean"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "overrideApplies": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "enabled",
-                            "source",
-                            "everyone",
-                            "killed",
-                            "lock",
-                            "override",
-                            "overrideApplies"
-                          ]
-                        },
                         "computerUse": {
                           "type": "object",
                           "properties": {
@@ -41611,7 +41253,6 @@
                         "workbotUsageRecovery",
                         "automationCalendar",
                         "removeOpencodeZen",
-                        "engineV2ForceUpgrade",
                         "computerUse",
                         "browserDemonstrations",
                         "browserFloatingView",

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { createEngineV2Preview, readEngineV2PreviewState } from "../src/engine-v2-preview.js";
 import type { ServerConfig } from "../src/types.js";
+import { resolveServerConfig } from "../src/config.js";
 
 async function profile(run: (config: ServerConfig, dir: string) => Promise<void>): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "openwork-auto-upgrade-"));
@@ -15,7 +16,6 @@ async function profile(run: (config: ServerConfig, dir: string) => Promise<void>
     host: "127.0.0.1", port: 0, token: "test", hostToken: "host-test", configPath: join(dir, "server.json"),
     approval: { mode: "auto", timeoutMs: 1000 }, corsOrigins: [], workspaces: [], authorizedRoots: [], readOnly: false,
     startedAt: Date.now(), tokenSource: "generated", hostTokenSource: "generated", logFormat: "json", logRequests: false,
-    engineAutoUpgrade: true,
   };
   try { await run(config, dir); }
   finally {
@@ -25,6 +25,38 @@ async function profile(run: (config: ServerConfig, dir: string) => Promise<void>
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test("server configuration defaults migration on without any rollout flag", async () => {
+  await profile(async (_config, dir) => {
+    const previous = process.env.OPENWORK_ENGINE_AUTO_UPGRADE;
+    try {
+      delete process.env.OPENWORK_ENGINE_AUTO_UPGRADE;
+      const defaults = await resolveServerConfig({ configPath: join(dir, "server.json"), workspaces: [] });
+      assert.equal(defaults.engineAutoUpgrade, true);
+      assert.equal(defaults.engineForcePolicy, undefined);
+      process.env.OPENWORK_ENGINE_AUTO_UPGRADE = "0";
+      const optOut = await resolveServerConfig({ configPath: join(dir, "server.json"), workspaces: [] });
+      assert.equal(optOut.engineAutoUpgrade, false);
+    } finally {
+      if (previous === undefined) delete process.env.OPENWORK_ENGINE_AUTO_UPGRADE;
+      else process.env.OPENWORK_ENGINE_AUTO_UPGRADE = previous;
+    }
+  });
+});
+
+test("default migration waits for idle without starting v2 or touching history", async () => {
+  await profile(async (config) => {
+    let probes = 0;
+    const engine = createEngineV2Preview({ config, autoUpgradeIdle: async () => { probes++; return false; } });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(probes, 1);
+      assert.equal(engine.status().chatRouting, false);
+      assert.equal(engine.status().running, false);
+      assert.equal(engine.status().migration.state, "idle");
+    } finally { await engine.stop(); }
+  });
+});
 
 test("boot never blocks: unreadable v1 history stays on v1 with a durable error and backoff", async () => {
   await profile(async (config, dir) => {
@@ -66,7 +98,7 @@ test("a later boot honors persisted backoff without attempting history access", 
   });
 });
 
-test("turning rollout off does not resume an interrupted automatic copy or delete v2 data", async () => {
+test("an explicit local migration opt-out preserves an interrupted copy and v2 data", async () => {
   await profile(async (config, dir) => {
     config.engineAutoUpgrade = false;
     const state = { enabled: true, chatRouting: false, automaticHistoryCopy: true, v1HistoryCopyStartedAt: 1 };
@@ -85,30 +117,26 @@ test("turning rollout off does not resume an interrupted automatic copy or delet
   });
 });
 
-test("flag off only returns a forced instance to v1", async () => {
+test("legacy off policy never reverts an automatically migrated host", async () => {
   await profile(async (config, dir) => {
     config.engineAutoUpgrade = false;
     config.engineForcePolicy = true;
-    writeFileSync(join(dir, "engine-v2-preview.json"), JSON.stringify({ enabled: true, chatRouting: true,
-      engineOrigin: "forced", engineForced: true }));
-    const engine = createEngineV2Preview({ config });
+    const state = { enabled: true, chatRouting: true, engineOrigin: "forced", engineForced: true };
+    writeFileSync(join(dir, "engine-v2-preview.json"), JSON.stringify(state));
+    const engine = createEngineV2Preview({ config, deferStart: true });
     try {
-      for (let check = 0; check < 100 && engine.status().chatRouting; check++) await new Promise(resolve => setTimeout(resolve, 5));
-      assert.equal(engine.status().chatRouting, false);
-      assert.equal(engine.status().engineOrigin, "reverted");
-      assert.equal(engine.status().engineForced, false);
-      assert.equal(engine.status().enabled, false);
-      assert.equal(engine.status().running, false);
       engine.setForcePolicy({ upgrade: false });
-      assert.equal(engine.status().chatRouting, false, "upgrade must not refire while the flag is off");
-      const persisted = readEngineV2PreviewState(config);
-      assert.equal(persisted.engineOrigin, "reverted");
-      assert.equal(persisted.chatRouting, false);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(engine.status().chatRouting, true);
+      assert.equal(engine.status().engineOrigin, "forced");
+      assert.equal(engine.status().engineForced, true);
+      assert.equal(engine.status().enabled, true);
+      assert.deepEqual(JSON.parse(readFileSync(join(dir, "engine-v2-preview.json"), "utf8")), state);
     } finally { await engine.stop(); }
   });
 });
 
-test("revert leaves a manually selected v2 engine untouched", async () => {
+test("legacy off policy leaves a manually selected v2 engine untouched", async () => {
   await profile(async (config, dir) => {
     config.engineAutoUpgrade = false;
     config.engineForcePolicy = true;
@@ -124,21 +152,53 @@ test("revert leaves a manually selected v2 engine untouched", async () => {
   });
 });
 
-test("revert waits for running v2 work and never interrupts it", async () => {
+test("legacy upgrade:false cannot block the default boot migration", async () => {
+  await profile(async (config, dir) => {
+    writeFileSync(join(dir, "v1.db"), "not a SQLite database");
+    const errors: string[] = [];
+    const engine = createEngineV2Preview({ config, deferStart: true, autoUpgradeError: error => errors.push(error) });
+    try {
+      engine.setForcePolicy({ upgrade: false });
+      engine.start();
+      for (let check = 0; check < 100 && errors.length === 0; check++) await new Promise(resolve => setTimeout(resolve, 5));
+      assert.equal(errors.length, 1, "default migration still attempts history access without a rollout flag");
+      assert.equal(engine.status().chatRouting, false, "unreadable history still fails safely");
+    } finally { await engine.stop(); }
+  });
+});
+
+test("legacy upgrade:true cannot override an explicit local opt-out", async () => {
   await profile(async (config, dir) => {
     config.engineAutoUpgrade = false;
-    config.engineForcePolicy = true;
-    writeFileSync(join(dir, "engine-v2-preview.json"), JSON.stringify({ enabled: true, chatRouting: true,
-      engineOrigin: "forced", engineForced: true }));
-    let probed = false;
-    const engine = createEngineV2Preview({ config, autoRevertIdle: async () => { probed = true; return false; } });
+    writeFileSync(join(dir, "v1.db"), "not a SQLite database");
+    const engine = createEngineV2Preview({ config, autoUpgradeError: () => assert.fail("local opt-out must win") });
     try {
+      engine.setForcePolicy({ upgrade: true });
+      engine.start();
       await new Promise(resolve => setTimeout(resolve, 20));
-      assert.equal(probed, true);
-      assert.equal(engine.status().chatRouting, true);
-      assert.equal(engine.status().engineForced, true);
+      assert.equal(engine.status().migration.state, "idle");
+      assert.equal(readEngineV2PreviewState(config).autoUpgradeRetry, undefined);
     } finally { await engine.stop(); }
-    assert.equal(readEngineV2PreviewState(config).chatRouting, true);
+  });
+});
+
+test("an explicit engine environment override prevents automatic migration", async () => {
+  await profile(async (config, dir) => {
+    const previous = process.env.OPENWORK_ENGINE_V2_PREVIEW;
+    process.env.OPENWORK_ENGINE_V2_PREVIEW = "0";
+    writeFileSync(join(dir, "v1.db"), "not a SQLite database");
+    const engine = createEngineV2Preview({ config, autoUpgradeError: () => assert.fail("pinned engine must win") });
+    try {
+      engine.setForcePolicy({ upgrade: true });
+      engine.start();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(engine.status().migration.state, "idle");
+      assert.equal(engine.status().chatRouting, false);
+    } finally {
+      await engine.stop();
+      if (previous === undefined) delete process.env.OPENWORK_ENGINE_V2_PREVIEW;
+      else process.env.OPENWORK_ENGINE_V2_PREVIEW = previous;
+    }
   });
 });
 
@@ -168,6 +228,25 @@ test("a person's explicit switch back to v1 sticks: the background upgrade leave
       assert.equal(engine.status().migration.state === "error", false);
       assert.equal(readEngineV2PreviewState(config).autoUpgradeRetry, undefined);
     } finally { await engine.stop(); }
+  });
+});
+
+test("an explicit v1 choice made while waiting for idle prevents the automatic switch", async () => {
+  await profile(async config => {
+    let releaseIdle: (idle: boolean) => void = () => assert.fail("idle probe not started");
+    const idle = new Promise<boolean>(resolve => { releaseIdle = resolve; });
+    const engine = createEngineV2Preview({ config, autoUpgradeIdle: () => idle,
+      autoUpgradeError: () => assert.fail("a local engine choice is not an upgrade failure") });
+    try {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      await engine.setEnabled(false);
+      releaseIdle(true);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(engine.status().enabled, false);
+      assert.equal(engine.status().chatRouting, false);
+      assert.equal(engine.status().running, false);
+      assert.equal(engine.status().engineOrigin, "manual");
+    } finally { releaseIdle(true); await engine.stop(); }
   });
 });
 

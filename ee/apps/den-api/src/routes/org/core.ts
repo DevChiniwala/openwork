@@ -15,6 +15,7 @@ import { cloudHostingAvailable } from "../../capability-sources/cloud-hosting.js
 import { db } from "../../db.js"
 import { checkEntitlement, getOrganizationEntitlements, parseOrganizationPlan } from "../../entitlements.js"
 import { env } from "../../env.js"
+import { clientFeatures, clientFeaturesSchema } from "../../feature-response.js"
 import { deploymentCapabilities } from "../../gateway-deployment.js"
 import { cachedOrganizationServiceReadiness } from "../../service-readiness-runtime.js"
 import { canManageDeploymentServices } from "../../middleware/admin.js"
@@ -186,7 +187,7 @@ const organizationContextResponseSchema = z.object({
    * New clients read this; `capabilities` is frozen for published clients.
    * A key missing here means an older server: treat it as off.
    */
-  features: z.record(z.string(), z.boolean()).meta({ description: "Effective on/off for every OpenWork feature in this organization. Treat a missing key as off." }),
+  features: clientFeaturesSchema.meta({ description: "Effective on/off for every OpenWork feature in this organization, plus fixed deprecated client compatibility values. Treat a missing key as off." }),
   canManageDeploymentServices: z.boolean().meta({ description: "Whether this caller may open installation diagnostics: a self-hosted installation administrator (local allowlist), signed in or using an API key they own. Organization ownership and permissions never grant it. False on hosted deployments and when the lookup fails." }),
   deploymentCapabilities: deploymentCapabilitiesSchema,
   entitlements: z.object({ sso: z.boolean(), desktopPolicies: z.boolean(), orgControls: z.boolean(), analytics: z.boolean(), auditLogs: z.boolean() }),
@@ -734,7 +735,7 @@ export function registerOrgCoreRoutes<T extends { Variables: OrgRouteVariables }
         },
         plan: parseOrganizationPlan(currentOrganization.metadata),
         entitlements: getOrganizationEntitlements(currentOrganization.metadata),
-        features,
+        features: clientFeatures(features),
         // Frozen for published clients; new clients read `features`.
         capabilities: {
           auditLogs: env.auditVisibilityEnabled,

@@ -91,6 +91,20 @@ test("retired GA locks cannot disable models, skills, permissions or team member
   assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
 })
 
+test("automatic v2 migration has no feature key and ignores legacy opt-out locks", () => {
+  for (const key of ["engineV2Upgrade", "engineV2ForceUpgrade"]) {
+    assert.equal(featureKeySchema.safeParse(key).success, false)
+    assert.equal(Object.hasOwn(resolveFeatures(base), key), false)
+  }
+  const parsed = parseFeatureEnvironment({
+    DEN_FEATURE_ENGINE_V2_UPGRADE: "false",
+    DEN_FEATURE_ENGINE_V2_FORCE_UPGRADE: "false",
+  })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, 2)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+})
+
 test("service readiness is retired: no key, and an old operator lock is ignored with a warning", () => {
   assert.equal(featureKeySchema.safeParse("serviceReadiness").success, false)
   const parsed = parseFeatureEnvironment({ DEN_FEATURE_SERVICE_READINESS: "false" })
