@@ -11,6 +11,7 @@
     "sdk:build": "pnpm --filter @openwork/sdk build",
     "den:contract": "node scripts/den-contract.mjs",
     "hooks:install": "node scripts/install-git-hooks.mjs",
+    "docs:pdf": "node scripts/docs-pdf.mjs",
     "test:contracts": "pnpm --filter @openwork-ee/den-api test:contract-tools",
     "test:node-runtime": "node --test scripts/tests/node-runtime-baseline.test.mjs apps/server/test/node-runtime.test.mjs .devcontainer/node-runtime.test.mjs packaging/helm/openwork-ee/tests/node-runtime.mjs",
     "dev": "OPENWORK_DEV_MODE=1 OPENWORK_ELECTRON_REMOTE_DEBUG_PORT=${OPENWORK_ELECTRON_REMOTE_DEBUG_PORT:-9823} pnpm --filter @openwork/desktop dev",
