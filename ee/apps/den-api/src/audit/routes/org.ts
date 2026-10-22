@@ -183,6 +183,8 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   member("POST", "/v1/managed-deployments/:deploymentId/launch", "tenant_change", "managed_deployment.launch.prepare", "managed_deployment", "managed_deployment", "deploymentId", { notes: "Prepares an approval link or account-checked command; nothing runs until the customer approves in their cloud." }),
 
   // Member-facing org reads and install distribution
+  member("GET", "/v1/me/activation", "tenant_read", "activation.read", "activation.checklist", "activation_checklist", null, { notes: "The signed-in member's own setup progress in the active organization; no message content or credentials." }),
+  member("POST", "/v1/me/activation/events", "tenant_signal", "activation.event.report", "activation.checklist", "activation_checklist", null, { notes: "Idempotent client-observed setup facts or dismissal, attributed by organizationContext; bounded step and optional duration only. Does not configure providers or connections." }),
   member("GET", "/v1/me/library", "tenant_read", "library.list", "library.access", "plugin", null),
   member("GET", "/v1/me/plugin-access", "tenant_read", "plugin_access.effective.list", "library.access", "plugin", null),
   member("GET", "/v1/me/install-config", "tenant_read", "install_config.read", "install.distribution", "organization", null),

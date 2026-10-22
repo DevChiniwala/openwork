@@ -67,3 +67,10 @@ test("the header chip waits for a real answer, reports it once and links to the 
   assert.equal(activationDenUrl(destination, "use_skill"), "https://den.example.test/dashboard/library?show=skills&workbotOrganizationId=org_example")
   assert.equal(activationDenUrl(destination, "invite_teammate"), "https://den.example.test/dashboard/members?workbotOrganizationId=org_example")
 })
+
+test("activation links strip only trailing slashes in one scan, including long suffixes", () => {
+  const expected = "https://den.example.test/base//path/dashboard/members?workbotOrganizationId=org%20example"
+  for (const suffix of ["", "/", "///", "/".repeat(100_000)]) {
+    assert.equal(activationDenUrl({ denUrl: `https://den.example.test/base//path${suffix}`, organizationId: "org example" }, "invite_teammate"), expected)
+  }
+})

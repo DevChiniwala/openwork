@@ -48,7 +48,10 @@ const DEN_PAGES = {
 
 export function activationDenUrl(destination: { denUrl: string; organizationId: string }, step: keyof typeof DEN_PAGES): string {
   const path = DEN_PAGES[step];
-  return `${destination.denUrl.replace(/\/+$/, "")}/dashboard/${path}${path.includes("?") ? "&" : "?"}workbotOrganizationId=${encodeURIComponent(destination.organizationId)}`;
+  // Scan the suffix once: an unanchored trailing-slash regex can backtrack quadratically.
+  let end = destination.denUrl.length;
+  while (end > 0 && destination.denUrl[end - 1] === "/") end -= 1;
+  return `${destination.denUrl.slice(0, end)}/dashboard/${path}${path.includes("?") ? "&" : "?"}workbotOrganizationId=${encodeURIComponent(destination.organizationId)}`;
 }
 
 function activationKey() {
