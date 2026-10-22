@@ -60,6 +60,7 @@ function success(result: Result, label: string) {
 
 export class UpgradeLab {
   private forward: ChildProcess | undefined
+  private branchBuilt = false
   private ip = 1
   constructor(readonly engine: "mysql" | "mariadb") {}
   sql(statement: string) {
@@ -115,6 +116,12 @@ export class UpgradeLab {
     run("podman", ["exec", "exp-o2-redis", "redis-cli", "-p", "63489", "FLUSHALL"])
   }
   branchMigrate() {
+    // CI's Den cache restores den-db/dist but not utils/dist; build the actual
+    // PR-head bootstrap and its utilities once, including current migration SQL.
+    if (!this.branchBuilt) {
+      run("pnpm", ["--filter", "@openwork-ee/den-db", "build"])
+      this.branchBuilt = true
+    }
     // The real branch bootstrap, not extracted SQL or a reimplementation of the migrator.
     run("node", ["--input-type=module", "-e", `process.env.DATABASE_URL=${JSON.stringify(dbUrl)}; process.env.DEN_DB_ENCRYPTION_KEY='exp-o2-disposable-key-12345678901234567890'; const {bootstrapDenDb}=await import('./ee/packages/den-db/dist/scripts/bootstrap.js'); await bootstrapDenDb(); process.exit(0)`])
   }
