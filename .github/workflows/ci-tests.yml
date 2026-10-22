@@ -450,7 +450,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
 
       - name: Validate models snapshot
         run: |
@@ -518,7 +518,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
       - name: Validate the docs build
         run: npx -y mint@4.2.868 validate
       - name: Check for broken links and images
@@ -558,7 +558,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 24
+          node-version: 24.22.1
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:

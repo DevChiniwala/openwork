@@ -26,9 +26,21 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \\
   ffmpeg imagemagick poppler-utils qpdf ghostscript tesseract-ocr pandoc \\
-  jq ripgrep sqlite3 zip unzip p7zip-full file curl ca-certificates git \\
-  nodejs npm fonts-dejavu-core fonts-liberation fonts-noto-core \\
+  jq ripgrep sqlite3 zip unzip p7zip-full file curl ca-certificates git xz-utils \\
+  fonts-dejavu-core fonts-liberation fonts-noto-core \\
   ${officePackages}
+# Official Node release checksums: https://nodejs.org/dist/v24.22.1/SHASUMS256.txt
+case "$(dpkg --print-architecture)" in
+  amd64) node_arch=x64; node_sha256=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6 ;;
+  arm64) node_arch=arm64; node_sha256=dbabf7a1cbf947e6059ffad2c27b80041db97dea1e553b62afdee7f13fca336e ;;
+  *) echo "Unsupported Node architecture" >&2; exit 1 ;;
+esac
+node_tmp=$(mktemp -d)
+curl -fsSL -o "$node_tmp/node.tar.xz" "https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-$node_arch.tar.xz"
+echo "$node_sha256  $node_tmp/node.tar.xz" | sha256sum -c -
+tar -xJf "$node_tmp/node.tar.xz" -C /usr/local --strip-components=1 --no-same-owner
+rm -rf "$node_tmp"
+test "$(node --version)" = v24.22.1
 ${lockedPython ? `python3 -m pip install --no-cache-dir --quiet --break-system-packages --require-hashes --only-binary=:all: -r /usr/local/share/openwork-computer/requirements-desktop.lock` : `python3 -m pip install --no-cache-dir --quiet --break-system-packages \\
   pandas numpy matplotlib openpyxl xlsxwriter python-docx python-pptx pdfplumber pypdf pillow opencv-python-headless requests beautifulsoup4 \\
   || python3 -m pip install --no-cache-dir --quiet \\

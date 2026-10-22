@@ -152,7 +152,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
 
       # The built-in GitHub Actions app cannot be a ruleset bypass actor
       # (GitHub rejects it), so fresh cuts push their tag as the org-owned
@@ -474,7 +474,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
 
       - name: Verify release tag
         if: needs.resolve-release.outputs.benchmark_only != 'true'
@@ -634,7 +634,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -1034,7 +1034,7 @@ jobs:
         if: needs.resolve-release.outputs.build_electron == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
 
       - name: Download Electron updater manifest artifacts
         if: needs.resolve-release.outputs.build_electron == 'true'
@@ -1127,7 +1127,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -1217,19 +1217,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 22.13.0 is the package's engines floor (node:sqlite without a flag).
+          # Verify every host at the package's Node 24.22.1 engines floor.
           - os: ubuntu-24.04
             target: linux-x64
-            node: "22.13.0"
+            node: "24.22.1"
           - os: macos-15-intel
             target: darwin-x64
-            node: "24"
+            node: "24.22.1"
           - os: macos-15
             target: darwin-arm64
-            node: "24"
+            node: "24.22.1"
           - os: windows-2022
             target: windows-x64
-            node: "24"
+            node: "24.22.1"
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout smoke script
@@ -1285,7 +1285,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.22.1
 
       - name: Download npm package
         uses: actions/download-artifact@v4

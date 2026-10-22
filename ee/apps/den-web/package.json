@@ -2,6 +2,9 @@
   "name": "@openwork-ee/den-web",
   "private": true,
   "version": "0.0.0",
+  "engines": {
+    "node": ">=24.22.1 <25"
+  },
   "scripts": {
     "dev": "OPENWORK_DEV_MODE=1 NEXT_PUBLIC_POSTHOG_KEY= NEXT_PUBLIC_POSTHOG_API_KEY= next dev --hostname 0.0.0.0 --port 3005",
     "dev:local": "OPENWORK_DEV_MODE=1 NEXT_PUBLIC_POSTHOG_KEY= NEXT_PUBLIC_POSTHOG_API_KEY= next dev --hostname ${DEN_WEB_HOST:-0.0.0.0} --port ${DEN_WEB_PORT:-3005}",

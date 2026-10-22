@@ -22,9 +22,10 @@ with the existing `bash` and `look` tools available on the same machine.
 
 ## Prepare the headless runner
 
-Build `ee/packages/headless-computer/Dockerfile.desktop` using a pinned
-`node:24-bookworm-slim@sha256:…` base, push it to your registry, and create a
-Daytona Linux VM snapshot from the resulting image digest.
+Build `ee/packages/headless-computer/Dockerfile.desktop` using its digest-pinned
+`node:24.22.1-bookworm-slim` default (or an explicitly verified pinned override),
+push it to your registry, and create a Daytona Linux VM snapshot from the
+resulting image digest.
 The **Daytona Eval Image** workflow offers a manual `computer-desktop` target:
 it publishes AMD64 to an immutable `computer-desktop-<commit>` tag without
 changing the existing eval image's `dev` tag. Its run summary records the digest.
@@ -33,7 +34,6 @@ require an AMD64 image and an existing image reference for Linux VMs:
 
 ```sh
 docker build --platform linux/amd64 -f ee/packages/headless-computer/Dockerfile.desktop \
-  --build-arg OPENWORK_COMPUTER_BASE_IMAGE="$PINNED_NODE_IMAGE" \
   -t "$COMPUTER_IMAGE" .
 docker push "$COMPUTER_IMAGE"
 daytona snapshot create workbot-desktop --image "$COMPUTER_IMAGE_DIGEST" \
@@ -70,7 +70,7 @@ DAYTONA_TARGET=<the snapshot's region>
 Keep `DAYTONA_API_KEY` in the runner's existing secret configuration. Build the
 runner normally; the headless computer build bundles the guest bridge and copies
 its startup helper. On first desktop use they are installed into the member's
-existing computer. Older computers need the desktop packages and Node 22+ before
+existing computer. Older computers need the desktop packages and patched Node 24.x (24.22.1 or newer) before
 they can open a stream; this change does not replace an existing VM or its files.
 
 ## Transport and rollout

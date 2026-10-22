@@ -930,7 +930,7 @@ export const env = {
     target: optionalString(parsed.DAYTONA_TARGET),
     snapshot: optionalString(parsed.DAYTONA_SNAPSHOT),
     sandboxClass: parsed.DAYTONA_SANDBOX_CLASS,
-    image: optionalString(parsed.DAYTONA_SANDBOX_IMAGE) ?? "node:20-bookworm",
+    image: optionalString(parsed.DAYTONA_SANDBOX_IMAGE) ?? "node:24.22.1-bookworm",
     resources: {
       cpu: Number(parsed.DAYTONA_SANDBOX_CPU ?? "2"),
       memory: Number(parsed.DAYTONA_SANDBOX_MEMORY ?? "4"),

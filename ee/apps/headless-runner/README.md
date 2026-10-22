@@ -363,7 +363,7 @@ production runner runs on celld instead (see [Run on celld](#run-on-celld-no-dis
 `HEADLESS_FILES=s3` or `off`**: it refuses `disk` (`cells_require_s3_files`); see
 [OWNER-CELLS.md](./OWNER-CELLS.md).
 
-On Render, create a **private service** so it has no public URL; only den-api and Workbot reach it. Use Node 22.13 or later.
+On Render, create a **private service** so it has no public URL; only den-api and Workbot reach it. Use stable Node.js 24.x, version 24.22.1 or newer within that major.
 
 | Setting | Value |
 |---|---|

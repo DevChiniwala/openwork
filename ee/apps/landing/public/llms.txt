@@ -27,7 +27,7 @@ Do not run `npx openwork` or `npm install openwork`: the npm package named `open
 4. Share a skill: `Plugin Directory` > `Create plugin` > `+ Skill`, add it to a Collection, and grant the Collection to a team.
 5. Everyone installs the desktop app (Path 1) and clicks `Joining a team? Sign in`.
 - Walkthrough: [Team quickstart](https://openworklabs.com/docs/cloud/team-quickstart)
-- Headless setup for agents (no password, the human claims the workspace later): [start.md](https://openworklabs.com/start.md), which uses the `openwork-bootstrap` CLI from https://openworklabs.com/install.sh (requires Node.js 20+; installs the bootstrap CLI, not the desktop app).
+- Headless setup for agents (no password, the human claims the workspace later): [start.md](https://openworklabs.com/start.md), which uses the `openwork-bootstrap` CLI from https://openworklabs.com/install.sh (requires stable Node.js 24.x, version 24.22.1 or newer within that major; the installer fetches a private checksum-verified Node.js 24.22.1 when needed; installs the bootstrap CLI, not the desktop app).
 - Skill: [set-up-openwork-team](https://openworklabs.com/.well-known/agent-skills/set-up-openwork-team/SKILL.md)
 
 ### Path 3: "Inside my agent" — connect the OpenWork MCP Gateway

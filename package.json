@@ -2,6 +2,9 @@
   "name": "@different-ai/openwork-workspace",
   "private": true,
   "version": "0.0.0",
+  "engines": {
+    "node": ">=24.22.1 <25"
+  },
   "scripts": {
     "sdk:generate": "pnpm --filter @openwork/sdk generate",
     "sdk:check": "pnpm --filter @openwork/sdk generate:check && pnpm --filter @openwork/sdk typecheck",
@@ -9,6 +12,7 @@
     "den:contract": "node scripts/den-contract.mjs",
     "hooks:install": "node scripts/install-git-hooks.mjs",
     "test:contracts": "pnpm --filter @openwork-ee/den-api test:contract-tools",
+    "test:node-runtime": "node --test scripts/tests/node-runtime-baseline.test.mjs apps/server/test/node-runtime.test.mjs .devcontainer/node-runtime.test.mjs packaging/helm/openwork-ee/tests/node-runtime.mjs",
     "dev": "OPENWORK_DEV_MODE=1 OPENWORK_ELECTRON_REMOTE_DEBUG_PORT=${OPENWORK_ELECTRON_REMOTE_DEBUG_PORT:-9823} pnpm --filter @openwork/desktop dev",
     "dev:worktree": "OPENWORK_DEV_MODE=1 OPENWORK_DEV_PROFILE=auto OPENWORK_ELECTRON_USE_MOCK_KEYCHAIN=${OPENWORK_ELECTRON_USE_MOCK_KEYCHAIN:-1} OPENWORK_ELECTRON_REMOTE_DEBUG_PORT=0 PORT=0 pnpm --filter @openwork/desktop dev",
     "dev:electron": "OPENWORK_DEV_MODE=1 pnpm --filter @openwork/desktop dev:electron",

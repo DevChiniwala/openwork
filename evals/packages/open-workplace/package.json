@@ -16,6 +16,6 @@
     "test": "node --test src/*.test.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.22.1 <25"
   }
 }

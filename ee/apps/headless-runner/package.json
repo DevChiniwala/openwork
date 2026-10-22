@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Cheap headless agent sessions: OpenWork AI Gateway for the model, OpenWork MCP for tools, a small scratch filesystem, and optional kept files and a computer per conversation.",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=24.22.1 <25"
   },
   "scripts": {
     "dev": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" tsx watch src/server.ts",
