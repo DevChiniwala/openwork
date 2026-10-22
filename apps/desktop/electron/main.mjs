@@ -197,6 +197,8 @@ const applicationMenu = createApplicationMenu({
 });
 
 let browserPanel = null;
+// Must match COMPUTER_POPOUT_PREFIX in the app's computer-popout.ts.
+const COMPUTER_POPOUT_NAME = /^openwork-computer-view-\d+$/;
 
 // Keep each chat's chosen computer in app data outside the workspace.
 const computerTargetsPath = () => path.join(app.getPath("userData"), "computer-use-targets.json");
@@ -2719,7 +2721,25 @@ async function createMainWindowInner() {
     recoverRendererCrash(details);
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The computer use watch view, popped out of the chat (see computer-popout.ts).
+    // The chat renders into it, so it never loads anything else.
+    if (url === "about:blank" && COMPUTER_POPOUT_NAME.test(frameName)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          title: "Computer",
+          frame: false,
+          alwaysOnTop: true,
+          fullscreenable: false,
+          maximizable: false,
+          minimizable: false,
+          skipTaskbar: true,
+          minWidth: 280,
+          minHeight: 200,
+        },
+      };
+    }
     if (url.startsWith("file://")) {
       try {
         runDetachedTask("open local file", () => shell.openPath(fileURLToPath(url)));
@@ -2739,6 +2759,17 @@ async function createMainWindowInner() {
       runDetachedTask("open external URL", () => openExternalUrl(url));
     }
     return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("did-create-window", (child, { frameName }) => {
+    if (!COMPUTER_POPOUT_NAME.test(frameName)) return;
+    // Above other apps' windows, so the agent's work stays visible while OpenWork is behind them.
+    child.setAlwaysOnTop(true, "floating");
+    child.webContents.on("will-navigate", (event) => event.preventDefault());
+    child.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    const closeWithMain = () => { if (!child.isDestroyed()) child.close(); };
+    mainWindow?.once("closed", closeWithMain);
+    child.once("closed", () => mainWindow?.off("closed", closeWithMain));
   });
 
   // A link clicked in the inline PDF viewer reaches both handlers below for
