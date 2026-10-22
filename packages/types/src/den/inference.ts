@@ -62,6 +62,38 @@ export const INFERENCE_WINDOW_DURATIONS_MS: Record<
   monthly: 30 * 24 * 60 * 60 * 1000,
 } as const;
 
+export function isInferenceWindowType(value: unknown): value is InferenceWindowType {
+  return typeof value === "string" && INFERENCE_WINDOW_TYPES.some((windowType) => windowType === value);
+}
+
+/**
+ * The organization used its OpenWork Models allowance for one window. It lasts until that window resets, so it is
+ * not a rate limit and clients must not retry it: the gateway answers 429 with these markers, `retry-after` and
+ * `x-should-retry: false`. The body never names the organization and holds no digits, because engines retry any
+ * error whose text mentions a 5xx/429 status or a rate limit.
+ */
+export const OPENWORK_MODELS_ALLOWANCE_ERROR_CODE = "openwork_models_allowance_reached";
+export const OPENWORK_MODELS_ALLOWANCE_SOURCE = "openwork_models";
+export const OPENWORK_MODELS_ALLOWANCE_MESSAGE = "Your workspace used its OpenWork Models allowance.";
+
+export function openWorkModelsAllowanceErrorBody() {
+  return {
+    error: {
+      message: OPENWORK_MODELS_ALLOWANCE_MESSAGE,
+      type: "usage_limit_error",
+      param: null,
+      code: OPENWORK_MODELS_ALLOWANCE_ERROR_CODE,
+      source: OPENWORK_MODELS_ALLOWANCE_SOURCE,
+    },
+  } as const;
+}
+
+export function hasOpenWorkModelsAllowanceHttpMarker(response: Pick<Response, "status" | "headers">): boolean {
+  return response.status === 429
+    && response.headers.get("X-OpenWork-Error-Code") === OPENWORK_MODELS_ALLOWANCE_ERROR_CODE
+    && response.headers.get("X-OpenWork-Usage-State") === "blocked";
+}
+
 // For upstreamModel values, please get from models.dev/api.json provider = openrouter.models.id
 
 export const INFERENCE_MODEL_ALIASES = {
