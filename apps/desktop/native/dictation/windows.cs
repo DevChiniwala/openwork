@@ -15,6 +15,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Windows.Foundation;
 using Windows.Globalization;
 using Windows.Media.SpeechRecognition;
 
@@ -35,6 +36,26 @@ static class OpenWorkDictation {
       else builder.Append(c);
     }
     return builder.Append('"').ToString();
+  }
+
+  // The .NET Framework compiler cannot find the WinRT GetAwaiter extensions,
+  // so WinRT async calls complete through their own handler instead.
+  static Task<T> Wait<T>(IAsyncOperation<T> operation) {
+    var done = new TaskCompletionSource<T>();
+    operation.Completed = (info, status) => {
+      if (status == AsyncStatus.Completed) done.TrySetResult(info.GetResults());
+      else done.TrySetException(info.ErrorCode ?? new OperationCanceledException());
+    };
+    return done.Task;
+  }
+
+  static Task Wait(IAsyncAction action) {
+    var done = new TaskCompletionSource<bool>();
+    action.Completed = (info, status) => {
+      if (status == AsyncStatus.Completed) done.TrySetResult(true);
+      else done.TrySetException(info.ErrorCode ?? new OperationCanceledException());
+    };
+    return done.Task;
   }
 
   static void Emit(string json) {
@@ -78,14 +99,14 @@ static class OpenWorkDictation {
       return;
     }
     recognizer.Constraints.Add(new SpeechRecognitionTopicConstraint(SpeechRecognitionScenario.Dictation, "dictation"));
-    var compiled = await recognizer.CompileConstraintsAsync();
+    var compiled = await Wait(recognizer.CompileConstraintsAsync());
     if (compiled.Status != SpeechRecognitionResultStatus.Success) {
       Finish(compiled.Status == SpeechRecognitionResultStatus.NetworkFailure ? "network" : "language-not-supported");
       return;
     }
     var session = recognizer.ContinuousRecognitionSession;
     // Pauses are part of dictating; only an explicit stop ends the session.
-    session.AutoStopSilenceTimeout = TimeSpan.FromMinutes(10);
+    session.AutoStopSilenceTimeout = System.TimeSpan.FromMinutes(10);
     recognizer.HypothesisGenerated += (sender, args) => {
       lock (Gate) {
         if (finished) return;
@@ -113,12 +134,12 @@ static class OpenWorkDictation {
         : args.Status == SpeechRecognitionResultStatus.MicrophoneUnavailable ? "audio-capture"
         : "network");
     };
-    await session.StartAsync();
+    await Wait(session.StartAsync());
     Emit("{\"type\":\"ready\"}");
   }
 
   static async void Restart() {
-    try { await recognizer.ContinuousRecognitionSession.StartAsync(); }
+    try { await Wait(recognizer.ContinuousRecognitionSession.StartAsync()); }
     catch (Exception error) { Finish(ErrorCode(error)); }
   }
 
@@ -129,7 +150,7 @@ static class OpenWorkDictation {
     }
     // Inside the composer's 1.5 s stop window, so the last words still land.
     var timeout = new Timer(state => Finish(null), null, 1200, Timeout.Infinite);
-    try { await recognizer.ContinuousRecognitionSession.StopAsync(); }
+    try { await Wait(recognizer.ContinuousRecognitionSession.StopAsync()); }
     catch (Exception) { Finish(null); }
     GC.KeepAlive(timeout);
   }
