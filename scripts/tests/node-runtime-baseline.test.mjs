@@ -53,6 +53,13 @@ test("GitHub standalone Node jobs and runtime matrices pin the security release"
   for (const match of release.matchAll(/^\s+node:\s*"([^"]+)"/gm)) assert.equal(match[1], baseline);
 });
 
+test("image publication uses an immutable setup-node action", () => {
+  const workflow = read(".github/workflows/publish-ee-images.yml");
+  const refs = [...workflow.matchAll(/uses:\s*actions\/setup-node@([^\s#]+)/g)];
+  assert.ok(refs.length > 0, "check the Node setup step before publication checks");
+  for (const [, ref] of refs) assert.match(ref, /^[a-f0-9]{40}$/, "package-write workflows must not use mutable action refs");
+});
+
 test("standalone Undici imports and overrides use the security releases", () => {
   for (const [directory, version] of [
     ["apps/desktop", "6.29.1"], ["apps/server", "6.29.1"],
