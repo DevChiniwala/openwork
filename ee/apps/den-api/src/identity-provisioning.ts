@@ -96,11 +96,15 @@ function emailDomainMatches(emailDomain: string, configured: string) {
 }
 
 /**
- * Sign-in with another method (e.g. Google) using an email on an
+ * Sign-in with another method (e.g. Google) using a verified email on an
  * organization's verified SSO domain joins that organization (Team plan and
- * up), as Better Auth's domain provisioning did.
+ * up), as Better Auth's domain provisioning did, but never with an unverified
+ * email.
  */
-export async function provisionVerifiedDomainMembership(input: { userId: UserId; email: string }) {
+export async function provisionVerifiedDomainMembership(input: { userId: UserId; email: string; emailVerified: boolean }) {
+  // The email's domain is the only proof of belonging here, so the provider
+  // must have verified the email; an unverified address could claim any domain.
+  if (!input.emailVerified) return
   const emailDomain = input.email.trim().toLowerCase().split("@")[1]
   if (!emailDomain) return
   const providers = await db

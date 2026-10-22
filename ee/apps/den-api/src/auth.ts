@@ -1279,15 +1279,17 @@ export const auth = betterAuth({
         return;
       }
 
-      // Signing in (e.g. with Google) on an organization's verified SSO domain
-      // joins it on the Team plan and up; Free organizations use invitations.
-      await provisionVerifiedDomainMembership({
-        userId: normalizeDenTypeId("user", newSession.user.id),
-        email: newSession.user.email,
-      });
-
       const requirement = await findEnterpriseAuthRequirementForUserId(newSession.user.id);
       if (!requirement) {
+        // Signing in (e.g. with Google) with a verified email on an
+        // organization's verified SSO domain joins it on the Team plan and up;
+        // Free organizations use invitations. Only after the enterprise sign-in
+        // requirement passed, so a refused sign-in never grants membership.
+        await provisionVerifiedDomainMembership({
+          userId: normalizeDenTypeId("user", newSession.user.id),
+          email: newSession.user.email,
+          emailVerified: newSession.user.emailVerified === true,
+        });
         return;
       }
 
