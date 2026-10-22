@@ -32,6 +32,7 @@ import { applyBrandAppName } from "./brand-app-name.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createComputerControl } from "@openwork/computer-use/computer-control";
 import { createLocalComputerAdapter } from "./computer-local.mjs";
+import { createComputerScripting } from "./computer-scripting.mjs";
 import { remoteComputerAdapters } from "./computer-targets.mjs";
 import { resetPermissionEntry, resolvePermissionEntry } from "./computer-permission-entry.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
@@ -205,6 +206,13 @@ let computerPermissionEntry = null;
 const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ fallbackName: APP_NAME })
   .catch(() => ({ name: APP_NAME, bundleId: null, ours: false })));
 const computerControl = createComputerControl({
+  // Blender reads the bridge from disk, so packaged builds unpack it beside app.asar.
+  runScript: createComputerScripting({
+    stateDir: path.join(app.getPath("userData"), "computer-scripting"),
+    bridgeScript: path.join(__dirname, "computer-scripting", "openwork_blender.py").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+  }),
+  // Where computer steps spend their time: on this computer, or waiting for the model.
+  onTiming: (_sessionId, step) => console.info(`[computer] ${step.name} computer ${Math.round(step.computerMs)} ms${step.modelMs === undefined ? "" : ` · model ${Math.round(step.modelMs)} ms`}`),
   runProgram: async (request, host, signal) => (await import("@openwork/computer-use/runtime")).runComputerProgram(request, host, signal),
   browserTask: (request, options) => browserPanel?.browserTask(request, options) ?? Promise.resolve({ ok: false, code: "browser_unavailable" }),
   readRemoteFeatureEnabled: async () => {
@@ -270,6 +278,7 @@ const uiControlServer = createUiControlServer({
   browserTask: (args, options) => browserPanel?.browserTask(args, options) ?? { ok: false, code: "browser_unavailable" },
   computerTask: (args, options) => computerControl.execute(args, options),
   computerProgram: (args, options) => computerControl.program(args, options),
+  computerScript: (args, options) => computerControl.script(args, options),
   listWebMcpTools: (args, options) => browserPanel?.listWebMcpTools(args, options) ?? {
     ok: false,
     error: "The built-in browser is not ready.",
@@ -2022,7 +2031,7 @@ const desktopCommandHandlers = {
   },
   "computerAnswerRequest": async (event, input) => {
       assertComputerSender(event);
-      return computerControl.answerRequest({ sessionId: String(input?.sessionId ?? ""), answer: input?.answer });
+      return computerControl.answerRequest({ sessionId: String(input?.sessionId ?? ""), answer: input?.answer, ...(typeof input?.id === "string" ? { id: input.id } : {}) });
   },
   "computerSetFeatureEnabled": async (event, enabled) => {
       assertComputerSender(event);

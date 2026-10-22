@@ -17,7 +17,8 @@
     "snapshot:build": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" tsx scripts/build-snapshot.ts",
     "test": "tsx --test src/*.test.ts",
     "snapshot:build:daytona": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" tsx scripts/build-daytona-snapshot.ts",
-    "proof:live": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" tsx scripts/prove-computer.ts"
+    "proof:live": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" tsx scripts/prove-computer.ts",
+    "snapshot:build:freestyle-desktop": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=development\" tsx scripts/build-freestyle-desktop-snapshot.ts"
   },
   "dependencies": {
     "@openwork/sandbox": "workspace:*",

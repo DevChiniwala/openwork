@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { channel } from "node:diagnostics_channel";
+import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { test } from "@openwork/testkit";
 import { createStartupLog, startupPhase, withStartupPhase } from "../../apps/desktop/electron/startup-log.mjs";
-import { startupPhaseSync } from "../../apps/server/src/startup-phase.js";
+import { startupPhase as serverStartupPhase, startupPhaseSync } from "../../apps/server/src/startup-phase.js";
+import { extractArchive } from "../../apps/server/src/selfhost-web.js";
 import { composeDiagnosticsBundleJson } from "../../apps/app/src/app/lib/diagnostics-bundle";
 
 function lab() { return mkdtempSync(join(tmpdir(), "exp-spl-unit-")); }
@@ -37,7 +39,7 @@ test("persists paired monotonic timings for overlapping phases, including error 
   } finally { log.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("a real three-second main-thread block retains the completed extraction phase before the timer resumes", async () => {
+test("an artificial three-second main-thread block retains phase attribution before the timer resumes", async () => {
   const directory = lab();
   const log = createStartupLog({ directory });
   try {
@@ -57,6 +59,28 @@ test("a real three-second main-thread block retains the completed extraction pha
     assert.ok(rows.indexOf(stall) < rows.findIndex((row) => row.event === "end" && row.phase === "plugin-deps.extract"));
     assert.equal(rows.filter((row) => row.event === "stall").length, 1);
   } finally { log.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("async extraction lasting over three seconds keeps its phase open without reporting a main-thread stall", async () => {
+  const directory = lab();
+  const log = createStartupLog({ directory });
+  let ticks = 0;
+  const heartbeat = setInterval(() => { ticks += 1; }, 25);
+  try {
+    await serverStartupPhase("plugin-deps.extract", () => extractArchive("fixture.tgz", "fixture.tgz", directory, {
+      // Exercise the real Promise/close-event extractor with a real child;
+      // its slow work belongs off-thread, not in the artificial busy-wait above.
+      spawnImpl: (_command, _args, options) => spawn(process.execPath, ["-e", "setTimeout(() => {}, 3100)"], options),
+    }));
+    const rows = records(log.filePath);
+    const start = rows.find((row) => row.event === "start" && row.phase === "plugin-deps.extract");
+    const end = rows.find((row) => row.event === "end" && row.id === start?.id);
+    assert.ok(start && end);
+    assert.ok(end.durationMs >= 3000);
+    assert.equal(end.status, "ok");
+    assert.ok(ticks > 5, "main timers keep running while the child is pending");
+    assert.equal(rows.filter((row) => row.event === "stall").length, 0);
+  } finally { clearInterval(heartbeat); log.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
 test("heartbeat detects an unattributed stall on resume and records last completed phase", async () => {

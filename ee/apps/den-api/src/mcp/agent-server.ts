@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server"
 import { workflowArtifactAppServerCapabilities } from "./workflow-artifact-app.js"
 import { SKILLS_EXTENSION_ID } from "./skills-extension.js"
+import type { ConnectToolView } from "./connect-tool-view.js"
 
 /**
  * Connect steering routes requests; it does not repeat tool rules. With App
@@ -11,7 +12,7 @@ import { SKILLS_EXTENSION_ID } from "./skills-extension.js"
  * connections disabled), the previous Workflow-bound save_artifact_view
  * guidance applies unchanged.
  */
-function agentMcpDetailedInstructions(appServers: boolean): string {
+function agentMcpDetailedInstructions(appServers: boolean, toolShapes = false): string {
   return [
     "When asked what can be connected or to browse quick adds, call search_capabilities with type connectors and any descriptive query. This returns the legacy version 1 connectorCatalog envelope, including Google Workspace and Microsoft 365. Released clients may render their existing browse catalog; new clients intentionally ignore it. No new setup card is introduced. Setup options are not executable capabilities or proof of connection. Organization administrators manage setup in the organization Connections dashboard. Named-service searches include legacy setup suggestions only with explicit intent connect, type omitted, all, or mcp, and no matching mcp connection; modern clients ignore these catalogs. Never invent credentials or claim setup is finished. Existing connection actions take priority.",
     "This OpenWork Cloud MCP server uses standard MCP tools, resources, structured results, and list-changed notifications.",
@@ -29,7 +30,10 @@ function agentMcpDetailedInstructions(appServers: boolean): string {
     "After importing, retrieve the resolved marketplace detail and report each plugin's cloudReadiness. An import or plugin binding is not proof that an MCP connection is usable: relay needs_admin_setup or needs_signin as the next human action instead of claiming the connection is ready. Connectors from Claude/Cowork plugins are optional: their skills work immediately, and get_skill lists each optional connection with how to connect it.",
     "To remove an organization connection (the connector in OpenWork, never data in the connected service), act only on the user's explicit request: search for removing a connection; when requestMcpConnectionRemoval is returned, list connections with getMcpConnections, and if more than one could be the one the user means, ask which first. Call it once with that connection's exact name as expectedName. It removes nothing: give the person handoff.url and handoff.instructions to confirm in OpenWork, then list connections to check it is gone; never say it was removed before that. On connection_in_use, tell the user which plugins need it and send detachFromPlugins only if they agree. When requestMcpConnectionRemoval is not returned, or the result is forbidden, relay that an organization owner or admin removes it in the Connections dashboard.",
     "Do not invent OAuth-client, credential, or local-extension setup. Organization connections are managed in the OpenWork Cloud dashboard / Settings > Connect; when a connection or marketplace readiness state requires administrator setup or member sign-in, relay that exact action.",
-    "External MCP matches include the provider-advertised argumentsSchema, schemaDigest, and invocation.argumentsField. Put an object matching argumentsSchema in execute_capability.body and copy schemaDigest into execute_capability.schemaDigest. OpenWork always attempts the downstream provider call even when local schema checks find a mismatch; schemaGuidance is advisory (returned as openwork/schemaGuidance alongside provider results): if the provider succeeded, accept the result and do not retry because of the warning; if it failed, use the warning to correct the arguments or search again.",
+    toolShapes
+      ? "Every match is an MCP tool with an inputSchema; call execute_capability with its name and arguments matching that inputSchema (an OpenWork API operation takes path, query, and body inside arguments)."
+      : "External MCP matches include the provider-advertised argumentsSchema, schemaDigest, and invocation.argumentsField. Put an object matching argumentsSchema in execute_capability.body and copy schemaDigest into execute_capability.schemaDigest.",
+    "OpenWork always attempts the downstream provider call even when local schema checks find a mismatch; schemaGuidance is advisory (returned as openwork/schemaGuidance alongside provider results): if the provider succeeded, accept the result and do not retry because of the warning; if it failed, use the warning to correct the arguments or search again.",
     "If the provider returns invalid_capability_arguments, correct the listed issues and retry once with changed arguments; never retry the same arguments unchanged. If it returns unknown_capability, call search_capabilities again before retrying.",
     "When the user explicitly asks to connect or reconnect a service, search for that service by name with intent connect. Ordinary capability searches must omit intent connect: blocked connection matches are informational and must not trigger sign-in cards or automatic status calls. Only propose authorization when an explicitly requested operation actually depends on that connection. Explicit connection searches render a card when the result identifies one connection. Do not execute the same status again when the search response includes connectionAction. For an explicit connection request without a card, execute that exact status match once. When execute_capability fails with needs_connection or connection_not_connected, execute that connection's status capability (mcp:<connectionId>:*) once for the same card. For member-owned OAuth connections in OpenWork desktop, ask the user to click Connect or Reconnect on the inline card; desktop handles authorization directly, so do not send them to Den. For other actions, name connectionStatus.connectionName and relay connectionStatus.action exactly in text, distinguishing the member's Your Connections page, the organization Connections dashboard, and the provider's own admin console. Probes are live: after the human fixes the connector, search again in the same task; otherwise do not retry unchanged or improvise workarounds through other tools.",
     "Successful postMarketplacesPlugins, postPluginsAccess, and postMarketplacesAccess calls return the ordinary operation response; report the verified outcome in text.",
@@ -38,11 +42,21 @@ function agentMcpDetailedInstructions(appServers: boolean): string {
 
 export const AGENT_MCP_GUIDANCE_URI = "openwork://agent/guidance.md"
 
-function agentMcpInstructions(appServers: boolean): string {
+/** What the full tool view does instead of searching; every other rule is shared. */
+const FULL_TOOL_VIEW_INSTRUCTIONS = [
+  "Every connection action, Workflow, App and remote session you may use is its own tool: <service>.<action>, run-workflow.<name>, open-app.<name> and remote-session.<action>. Where the guidance says search_capabilities or execute_capability, call these tools (a capability a connection card names is den.<capability>); prepare_app takes their names, and execute_capability_script calls tools.<service>.<action>.",
+  "connection_status shows the sign-in card for a service that is not ready; use it only for an explicit connect request or a failed connection. Relay the connection's exact action; a downstream failure does not mean OpenWork needs reconnecting. Never invent credentials or claim setup is ready.",
+]
+
+function agentMcpInstructions(appServers: boolean, toolView: ConnectToolView = "search", toolShapes = false): string {
   return [
     `Read ${AGENT_MCP_GUIDANCE_URI} with resources/read before working; it contains the full connection, remote-session, import, and Workflow rules.`,
-    "Search capabilities with 2-4 keyword variants; execute only exact returned names. Copy external argumentsSchema into body and schemaDigest into schemaDigest. Schema guidance is advisory; never repeat a successful provider call because of it.",
-    "Only use intent connect for an explicit connect/reconnect request. Discovery must not trigger sign-in. Relay the connection's exact action; a downstream failure does not mean OpenWork needs reconnecting. Never invent credentials or claim setup is ready.",
+    ...(toolView === "full" ? FULL_TOOL_VIEW_INSTRUCTIONS : [
+      toolShapes
+        ? "Search capabilities with 2-4 keyword variants; execute only exact returned names, with arguments matching each match's inputSchema. Schema guidance is advisory; never repeat a successful provider call because of it."
+        : "Search capabilities with 2-4 keyword variants; execute only exact returned names. Copy external argumentsSchema into body and schemaDigest into schemaDigest. Schema guidance is advisory; never repeat a successful provider call because of it.",
+      "Only use intent connect for an explicit connect/reconnect request. Discovery must not trigger sign-in. Relay the connection's exact action; a downstream failure does not mean OpenWork needs reconnecting. Never invent credentials or claim setup is ready.",
+    ]),
     "Use list_skills/get_skill for authorized skills and follow the matching skill before creating or sharing one. update_skill publishes an immutable version.",
     appServers
       ? "For Apps read build-an-app with get_skill, then use prepare_app/create_app/read_app/update_app; never substitute local HTML or legacy views. Open Apps via their discovered capability."
@@ -57,9 +71,20 @@ export const LEGACY_AGENT_MCP_INSTRUCTIONS = agentMcpInstructions(false)
 /** Rolled out with `remote-session:status`; one rule, the details live in its description. */
 const REMOTE_SESSION_STATUS_INSTRUCTIONS = "To follow remote sessions, call remote-session:status with all of their commandIds or Cloud sessionIds and waitMs instead of calling remote-session:read repeatedly; read only for the transcript or the full answer."
 
+/**
+ * A full-view tools/list is the member's own, so clients may reuse it only for
+ * the same authorization, and briefly: tools/list_changed reaches streams on
+ * this replica only, so other replicas' clients refetch after this.
+ */
+const FULL_TOOL_VIEW_CACHE_HINTS = { "tools/list": { ttlMs: 60_000, cacheScope: "private" as const } }
+
 export function createAgentMcpServer(options: {
   appServers?: boolean
   remoteSessionStatus?: boolean
+  /** Which tools/list this request gets; see connect-tool-view.ts. */
+  toolView?: ConnectToolView
+  /** Describe search matches as MCP tools (`connectToolShapes`). */
+  toolShapes?: boolean
   /** Advertise the MCP Skills Extension (SEP-2640); its handlers are registered by the caller. */
   skillsExtension?: boolean
   /** Short always-on list of the member's skills, appended to the instructions. */
@@ -81,9 +106,10 @@ export function createAgentMcpServer(options: {
       tools: { listChanged: true },
       resources: { listChanged: true },
     },
-    instructions: [options.appServers === false ? LEGACY_AGENT_MCP_INSTRUCTIONS : AGENT_MCP_INSTRUCTIONS,
+    instructions: [agentMcpInstructions(options.appServers !== false, options.toolView, options.toolShapes),
       ...(options.remoteSessionStatus ? [REMOTE_SESSION_STATUS_INSTRUCTIONS] : []),
       ...(options.skillIndex ? [options.skillIndex] : [])].join("\n"),
+    ...(options.toolView === "full" ? { cacheHints: FULL_TOOL_VIEW_CACHE_HINTS } : {}),
   })
   server.registerResource("agent-guidance", AGENT_MCP_GUIDANCE_URI, {
     title: "OpenWork agent guidance",
@@ -93,7 +119,7 @@ export function createAgentMcpServer(options: {
     contents: [{
       uri: AGENT_MCP_GUIDANCE_URI,
       mimeType: "text/markdown",
-      text: agentMcpDetailedInstructions(options.appServers !== false),
+      text: agentMcpDetailedInstructions(options.appServers !== false, options.toolShapes),
     }],
   }))
   return server

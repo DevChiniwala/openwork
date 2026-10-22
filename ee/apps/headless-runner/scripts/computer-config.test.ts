@@ -23,3 +23,14 @@ test("VM and desktop capabilities require explicit operator configuration", () =
   assert.equal(vm?.sandboxClass, "linux-vm")
   assert.throws(() => loadConfig({ ...env, HEADLESS_COMPUTER_DESKTOP: "true" }), /HEADLESS_COMPUTER_CLASS=linux-vm/)
 })
+
+test("a Freestyle desktop needs its desktop snapshot, and persistence and the viewer domain come from env", () => {
+  const env = { ...base, HEADLESS_COMPUTER: "freestyle", FREESTYLE_API_KEY: "test", HEADLESS_COMPUTER_DESKTOP: "true" }
+  assert.throws(() => loadConfig(env), /snapshot:build:freestyle-desktop/)
+  const computer = loadConfig({ ...env, HEADLESS_COMPUTER_SNAPSHOT: "workbot-desktop-freestyle", HEADLESS_COMPUTER_PERSISTENT: "true", HEADLESS_COMPUTER_DOMAIN: "computers.example.com" }).computer
+  assert.equal(computer?.desktop, true)
+  assert.equal(computer?.persistent, true)
+  assert.equal(computer?.endpointDomain, "computers.example.com")
+  assert.equal(loadConfig({ ...env, HEADLESS_COMPUTER_SNAPSHOT: "desktop" }).computer?.persistent, false)
+  assert.throws(() => loadConfig({ ...env, HEADLESS_COMPUTER_SNAPSHOT: "desktop", HEADLESS_COMPUTER_DOMAIN: "https://bad" }), /lowercase domain/)
+})

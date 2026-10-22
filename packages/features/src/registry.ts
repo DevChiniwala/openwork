@@ -175,6 +175,20 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  connectToolShapes: {
+    label: "Connect: MCP tool shapes in capability search",
+    description: "Capability search returns each match as an MCP tool with one inputSchema, and execute_capability takes its arguments. Matches keep the older fields, so desktops released before this still work.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  connectStandardTools: {
+    label: "Connect: standard tools for tool-search clients",
+    description: "Agents that search tools themselves, such as Claude Code, see every connection action, Workflow and App they may use as its own tool instead of searching OpenWork first.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES

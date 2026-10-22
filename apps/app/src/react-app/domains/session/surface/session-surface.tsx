@@ -1175,10 +1175,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
     props.onModelChange(nextModel, variant);
     setModelPickerOpen(false);
   }, [props.onModelChange, sessionModel]);
+  // Only this conversation's setting changes. A conversation without its own
+  // model already routes to the global default here; writing a remembered
+  // model's setting globally would pair it with a different default model.
   const handleModelVariantChange = useCallback((value: string | null) => {
     sessionModel.setVariant(value);
-    props.onModelVariantChange(value);
-  }, [props.onModelVariantChange, sessionModel]);
+  }, [sessionModel]);
   const handleOpenModelPicker = useCallback(() => {
     props.onModelClick(props.sessionId);
   }, [props.onModelClick, props.sessionId]);

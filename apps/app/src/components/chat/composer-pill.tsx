@@ -13,6 +13,7 @@ import {
   COMPOSER_BADGE_META_CLASS,
   attachmentChipIcon,
   attachmentChipMeta,
+  composerBadgeLogoClass,
   composerBadgeSlotClass,
   composerPillBadge,
   lineCount,
@@ -52,7 +53,7 @@ function BadgeSlot(props: { badge: ComposerBadge }) {
   if (logo) {
     return (
       <span className={composerBadgeSlotClass(props.badge, true)}>
-        <img src={logo} alt="" decoding="async" className="size-3.5 object-contain" onError={() => setFailed((current) => current + 1)} />
+        <img src={logo} alt="" decoding="async" className={composerBadgeLogoClass(slot)} onError={() => setFailed((current) => current + 1)} />
       </span>
     )
   }

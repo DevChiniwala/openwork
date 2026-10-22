@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, gte, isNotNull, isNull, lt, lte, or, sql } from "@openwork-ee/den-db/drizzle"
 import { AuthUserTable, ConfigObjectTable, MemberTable, OrganizationTable, TelemetryEventTable } from "@openwork-ee/den-db/schema"
-import { adminOpportunitiesSchema } from "@openwork/types/den/admin-organization"
+import { adminOpportunitiesSchema, adminOpportunityOverviewSchema } from "@openwork/types/den/admin-organization"
 import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { z } from "zod"
@@ -9,6 +9,8 @@ import { adminRoute, queryValidator } from "../../middleware/index.js"
 import { denTypeIdSchema, forbiddenSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
 import { ADMIN_MAX_PAGE_OFFSET, normalizeAdminPageRequest, sanitizeAdminSearchForLike } from "./scale-performance.js"
+import { registerAdminOpportunityAccountRoutes } from "./opportunity-accounts.js"
+import { readAdminOpportunityOverview } from "./opportunity-overview.js"
 
 // A transparent heuristic, not an employer directory. A verified address on an
 // unlisted domain is a signal only; never merge organizations by email domain.
@@ -140,6 +142,16 @@ export async function readAdminOpportunities(input: z.infer<typeof querySchema>,
 }
 
 export function registerAdminOpportunitiesRoute<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
+  app.get("/v1/admin/opportunities/overview", describeRoute({
+    tags: ["Admin"], summary: "Get this week's actionable platform activity",
+    description: "Platform-admin-only Monday-to-now UTC summary compared with the same elapsed period last week. Counts registered accounts, current joined human memberships and organization-scoped observed telemetry. Returns daily signup and membership counts, at most eight records per signal list, and a prioritized queue built from transparent, dated signals and recorded internal follow-ups. Missing telemetry does not establish inactivity or service health. No emails, content, credentials or external enrichment.",
+    responses: { 200: jsonResponse("Weekly opportunity overview returned.", adminOpportunityOverviewSchema),
+      401: jsonResponse("Authentication required.", unauthorizedSchema), 403: jsonResponse("Platform admin access required.", forbiddenSchema) },
+  }), adminRoute(), async c => {
+    c.header("Cache-Control", "no-store")
+    return c.json(await readAdminOpportunityOverview())
+  })
+  registerAdminOpportunityAccountRoutes(app)
   // Internal platform-admin reporting, not an organization product entitlement.
   app.get("/v1/admin/opportunities", describeRoute({
     tags: ["Admin"], summary: "Find organizations with observed app adoption",

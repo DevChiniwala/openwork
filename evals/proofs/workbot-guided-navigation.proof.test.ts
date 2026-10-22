@@ -73,8 +73,8 @@ test("Workbot offers a document it mentions and the conversation stays open besi
     const chat = await probe.eventually(() => probe.dom("[data-workbot-workspace-chat]"), { within: 3000, label: "the conversation opens beside the computer", until: layout => layout.elements.length === 1 });
     await user.see({ text: "Check the budget site on your computer" });
     await user.notSee({ role: "button", label: "Open Computer" });
-    expect(await probe.url()).toContain("/computer");
-    evidence.recordAssertionEvidence("The same conversation is open beside Workbot's computer", "Earlier question visible in the floating chat on /computer", chat.elements.length === 1);
+    expect(await probe.url()).toContain("/browser");
+    evidence.recordAssertionEvidence("The same conversation is open beside Workbot's computer", "Earlier question visible in the floating chat on /browser, the computer's Browser view", chat.elements.length === 1);
     await user.screenshot();
   });
   await step("after: asking Workbot to open a document shows it opening, then says it opened, beside the same conversation", async () => {
