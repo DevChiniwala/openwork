@@ -47,7 +47,7 @@ export const shadowAiFaq = [
   }
 ];
 
-export const shadowAiMarkdown = `# Manage shadow AI without taking away the tools people like
+export const shadowAiMarkdown = `# Manage shadow AI — Shadow AI governance that keeps work moving
 
 Shadow AI is employees using unsanctioned AI tools at work. OpenWork gives IT one controlled path for model traffic, while teams keep the AI coding tools and agents they prefer.
 

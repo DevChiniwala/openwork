@@ -97,7 +97,7 @@ const pricing = `# OpenWork pricing — free, team, and enterprise
 Prices exclude taxes.
 `
 
-const enterprise = `# A privacy-first alternative to Claude Cowork for your organization
+const enterprise = `# OpenWork Enterprise — AI governance, gateway and SSO
 
 > AI your team wants. Control IT needs. An approved path for employee AI with company sign-in, model permissions, provider choice including AWS Bedrock, and visibility into routed usage.
 

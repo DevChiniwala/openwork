@@ -20,7 +20,7 @@ export default async function ShadowAiPage() {
     <main id="main-content" className="mx-auto w-full max-w-[1176px] px-6 pb-8">
       <section className="governance-hero">
         <p className="governance-label">Shadow AI governance</p>
-        <h1 className="governance-title mt-5 max-w-[960px]">Bring AI into the open.<br /><span className="font-pixel">Not to a halt.</span></h1>
+        <h1 className="governance-title mt-5 max-w-[960px]">Shadow AI governance.<br /><span className="font-pixel">Keep work moving.</span></h1>
         <div className="mt-8 grid gap-8 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:gap-20">
           <div>
             <p className="max-w-[650px] text-lg leading-8 text-[var(--lp-body)]">People are already using AI at work. Manage shadow AI with an approved path for models, tools, and company data—not a blanket ban on useful work.</p>

@@ -5,7 +5,7 @@ import { getGithubData } from "../../lib/github";
 import { withSocialMetadata } from "../../lib/seo";
 
 export const metadata = withSocialMetadata({
-  title: "OpenWork Enterprise — AI gateway, SSO and agent governance",
+  title: "OpenWork Enterprise — AI governance, gateway and SSO",
   description:
     "Give teams an approved AI path with company SSO, SCIM, permissions, AWS Bedrock, and usage visibility. Local-first desktop, cloud management, and deployment options.",
   alternates: {
