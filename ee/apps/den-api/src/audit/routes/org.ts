@@ -5,7 +5,8 @@
 //
 // Not declared here (generated elsewhere as domain_audit by the existing /v1/audit emitter):
 //   GET /v1/audit/event-types, GET /v1/audit/export, GET /v1/audit/operations,
-//   GET /v1/audit/operations/:operationId/events, GET /v1/audit/usage, PATCH /v1/audit/settings
+//   GET /v1/audit/operations/:operationId/events, GET /v1/audit/usage, PATCH /v1/audit/settings,
+//   PUT /v1/admin/organizations/:organizationId/audit-retention
 
 import type { AuditRouteAttribution, AuditRouteClass, AuditRouteDeclaration, AuditRouteMethod } from "./types.js"
 
@@ -208,6 +209,7 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   admin("PUT", "/v1/admin/organizations/:organizationId/control-panel/access", "tenant_change", "organization.benefit_setting.update", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
   admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants", "tenant_change", "organization.benefit_grant.create", { changeEvidence: "routes/admin/organization-control-panel.ts", notes: "Grant and change evidence commit together. Reason text is not copied to audit snapshots." }),
   admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants/:grantId/revoke", "tenant_change", "organization.benefit_grant.revoke", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
+  admin("GET", "/v1/admin/organizations/:organizationId/audit-retention", "tenant_read", "organization.audit_retention.read", { notes: "Retention window, revision and whether age-based cleanup is on. The change route is declared domain_audit (./existing.ts)." }),
 
   // SCIM v2 provisioning (bearer token)
   handler("GET", "/api/auth/scim/v2/Schemas", "tenant_read", "scim.schema.list", "scim.provisioning", "scim_metadata", null, SCIM_PROOF),

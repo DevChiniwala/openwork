@@ -460,6 +460,23 @@ export async function bootDen(options: { env?: Record<string, string> } = {}) {
     })
   }
 
+  /** A platform administrator calls a /v1/admin endpoint. */
+  async function asPlatformAdmin(method: Method, pathname: string, body?: unknown): Promise<Call> {
+    platformAdmin ??= await signUp("Platform Admin", platformAdminEmail)
+    return request(platformAdmin.token, method, pathname, { body })
+  }
+
+  /**
+   * ARRANGE ONLY: move an organization's recorded operations back in time, as
+   * if they had been recorded `days` ago and their attachment window had
+   * closed. Never use this to observe an outcome.
+   */
+  async function arrangeAuditOperationsAged(orgId: string, days: number): Promise<void> {
+    const { client } = await import("../../src/db.js")
+    if (!("getConnection" in client)) throw new Error("arrangeAuditOperationsAged needs MySQL mode")
+    await client.execute("UPDATE audit_operation SET first_recorded_at = NOW(3) - INTERVAL ? DAY, attachment_expires_at = NOW(3) - INTERVAL ? DAY WHERE organization_id = ? AND outcome <> 'running'", [days, days, orgId])
+  }
+
   /** Request helper bound to one person and one organization, sending what Den Web sends: bearer and session cookie. */
   function as(session: Session, orgId: string) {
     return (method: Method, pathname: string, body?: unknown, headers?: Record<string, string>) =>
@@ -541,6 +558,8 @@ export async function bootDen(options: { env?: Record<string, string> } = {}) {
     memberIdOf,
     createTeam,
     setFeature,
+    asPlatformAdmin,
+    arrangeAuditOperationsAged,
     as,
     async close() {
       const { client } = await import("../../src/db.js")

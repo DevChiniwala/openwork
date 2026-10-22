@@ -4,11 +4,17 @@ import { MAX_AUDIT_RETENTION_CANDIDATES, MAX_AUDIT_RETENTION_OPERATIONS, preview
 import { and, asc, eq, sql } from "@openwork-ee/den-db/drizzle"
 import { AuditOperationTable, AuditPolicyTable, OrganizationTable } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId, typeId } from "@openwork-ee/utils/typeid"
-import type { AuditCategory } from "@openwork/types/den/audit"
+import { DEFAULT_AUDIT_RETENTION_DAYS, type AuditCategory } from "@openwork/types/den/audit"
 import { z } from "zod"
 
 export const PILOT_DEFAULT_CATEGORIES: readonly AuditCategory[] = ["change", "security", "execution", "access", "request", "lifecycle"]
 export const PILOT_SYSTEM_ACTOR = "den-api.audit-pilot"
+const DAY_MS = 86_400_000
+
+/** The retention window as previewAuditRetention's maxAgeMs. */
+export function auditRetentionMaxAgeMs(retentionDays: number) {
+  return retentionDays * DAY_MS
+}
 const pilotCategorySchema = z.enum(["change", "security", "execution", "access", "read", "request", "lifecycle"])
 const pilotConfigSchema = z.object({
   organizationId: typeId.schema("organization"),
@@ -104,10 +110,13 @@ All five configuration options are required for initialization. Cloud supports
 only delete_oldest; operator supports keep_all or delete_oldest. paid_overage,
 prices and currency are unsupported. Allowance is retained OPERATION capacity:
 one operation may contain many requests/events; requests and bytes are not units.
-No retention days are guaranteed. keep_all thresholds are not hard storage limits.
-delete_oldest is a declaration of intended future oldest-eligible whole-operation
-retention, PREVIEW ONLY in this pilot: no deletion, cleanup worker or billing.
-Any destructive implementation needs separate rollout; this CLI cannot activate it.
+Retention is time-based: 90 days by default, set per organization by OpenWork
+platform admins in /admin from 1 to 365 days (this CLI always writes the 90-day
+default). History older than the window is deleted only where the
+auditRetentionCleanup feature is on for the organization (off by default); keep_all
+policies are never cleaned up. keep_all thresholds are not hard storage limits.
+delete_oldest capacity eviction remains PREVIEW ONLY: no capacity deletion or billing.
+This CLI cannot turn cleanup on.
 
 Categories default to change,security,execution,access,request,lifecycle.
 Configurable categories: change,security,execution,access,read,request,lifecycle.
@@ -119,8 +128,8 @@ explicit false is a kill switch. This initializer never changes them.
 Ready organizations now lazily initialize missing policies ON during capture or
 GET usage, with a system audit.policy.initialized event. Temporary server defaults:
 6,000,000 retained OPERATIONS (not child events), 300-second attachment window,
-the default categories above, cloud/delete_oldest for Enterprise or operator/keep_all
-for explicit self-hosted entitlement. No cap enforcement, billing or cleanup.
+90-day retention, the default categories above, cloud/delete_oldest for Enterprise or operator/keep_all
+for explicit self-hosted entitlement. No cap enforcement or billing.
 Existing OFF preferences remain OFF on re-enable; custom configuration is preserved.
 The manual CLI still requires explicit settings and rejects every existing policy,
 including automatically provisioned ones. Neither source nor mode grants entitlement.
@@ -139,7 +148,8 @@ new settings; it cannot be combined with --apply or configuration options.
 Reads a coherent policy/operation snapshot from one read view (no locks), with
 at most 10000 operations. Larger/inconsistent snapshots fail explicitly as
 incomplete. At most 1000 candidates are returned, with selectionComplete and
-remainingEligibleDeletions. The digest/confirmation is informational only.
+remainingEligibleDeletions. Age candidates use the stored retention days.
+The digest/confirmation is informational only.
 No job/delivery protection integration exists yet; malformed operation kinds fail
 closed. Legacy rows are excluded, unchanged and not counted retroactively.
 On an uncertain database/commit failure, inspect policy/history before retrying.
@@ -156,7 +166,7 @@ export function pilotConfigSummary(input: PilotConfig, flags: PilotFlags, mode: 
     auditCaptureEnabled: flags.auditCaptureEnabled === true, auditVisibilityEnabled: flags.auditVisibilityEnabled === true,
     policyEventBypassesTrafficFlag: true, coverage: "partial_provider_configuration_and_audit_access",
     billing: "disabled", cleanup: "preview_only", deletionEnabled: false, scheduledWork: false,
-    legacy: "untouched", guaranteedRetentionDays: null,
+    legacy: "untouched", retentionDays: DEFAULT_AUDIT_RETENTION_DAYS, retentionCleanup: "feature_auditRetentionCleanup",
   }
 }
 
@@ -185,18 +195,18 @@ export async function initializeAuditPilot(database: AuditDatabase, input: Pilot
     const policy: AuditPolicy = {
       organizationId, revision: 1, source: config.source, enabled: true, categories: config.categories,
       allowance: config.allowance, excessMode: config.excessMode, effectiveAt: now.toISOString(),
-      captureStartedAt: null, attachmentWindowSeconds: config.attachmentWindowSeconds,
+      captureStartedAt: null, attachmentWindowSeconds: config.attachmentWindowSeconds, retentionDays: DEFAULT_AUDIT_RETENTION_DAYS,
     }
     // The policy primary key rejects a concurrent initialization; no lock is taken.
     await tx.insert(AuditPolicyTable).values({
       organization_id: organizationId, revision: policy.revision, source: policy.source, enabled: policy.enabled,
       categories: policy.categories, allowance: policy.allowance, excess_mode: policy.excessMode,
-      effective_at: now, capture_started_at: null, attachment_window_seconds: policy.attachmentWindowSeconds,
+      effective_at: now, capture_started_at: null, attachment_window_seconds: policy.attachmentWindowSeconds, retention_days: policy.retentionDays,
     })
     const after = {
       organizationId, revision: policy.revision, source: policy.source, enabled: policy.enabled,
       categories: [...policy.categories], allowance: policy.allowance, excessMode: policy.excessMode,
-      effectiveAt: policy.effectiveAt, attachmentWindowSeconds: policy.attachmentWindowSeconds,
+      effectiveAt: policy.effectiveAt, attachmentWindowSeconds: policy.attachmentWindowSeconds, retentionDays: policy.retentionDays,
     }
     const event = await appendAuditEvent(tx, {
       context: {
@@ -222,7 +232,7 @@ export async function previewPilotRetention(database: AuditDatabase, inputOrgani
   const organizationId = normalizeDenTypeId("organization", parsed.data)
   return database.transaction(async (tx) => {
     await requireOrganization(tx, organizationId)
-    const [policy] = await tx.select({ revision: AuditPolicyTable.revision, allowance: AuditPolicyTable.allowance, excessMode: AuditPolicyTable.excess_mode, source: AuditPolicyTable.source })
+    const [policy] = await tx.select({ revision: AuditPolicyTable.revision, allowance: AuditPolicyTable.allowance, excessMode: AuditPolicyTable.excess_mode, source: AuditPolicyTable.source, retentionDays: AuditPolicyTable.retention_days })
       .from(AuditPolicyTable).where(eq(AuditPolicyTable.organization_id, organizationId)).limit(1)
     if (!policy) throw new AuditPilotError("audit_pilot_policy_missing")
     if (policy.excessMode === "paid_overage" || policy.source === "cloud" && policy.excessMode !== "delete_oldest") throw new AuditPilotError("audit_pilot_retention_unsupported_policy")
@@ -239,7 +249,7 @@ export async function previewPilotRetention(database: AuditDatabase, inputOrgani
     if (rows.length !== state.retainedOperations || rows.some((row) => !/^[a-z][a-z0-9_.-]{0,127}$/.test(row.kind))) throw new AuditPilotError("audit_pilot_retention_incomplete_snapshot")
     const preview = previewAuditRetention({
       organizationId, now: new Date().toISOString(),
-      policy: { revision: policy.revision, allowance: policy.allowance, excessMode: policy.excessMode, maxAgeMs: null },
+      policy: { revision: policy.revision, allowance: policy.allowance, excessMode: policy.excessMode, maxAgeMs: auditRetentionMaxAgeMs(policy.retentionDays) },
       installationMaximumOperations: null, retainedOperations: state.retainedOperations, maxCandidates: MAX_AUDIT_RETENTION_CANDIDATES,
       operations: rows.map((row) => ({ id: row.id, organizationId: row.organizationId, firstRecordedAt: row.firstRecordedAt.toISOString(), outcome: row.outcome,
         attachmentExpiresAt: row.attachmentExpiresAt.toISOString(), trustedJobPending: false, deliveryProtectedUntil: null })),

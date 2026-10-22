@@ -66,6 +66,7 @@ contains 'schedule: "30 3 * * *"'
 contains 'timeZone: "Etc/UTC"'
 contains 'concurrencyPolicy: Forbid'
 contains 'value: "http://openwork-ee-den-api:8788/internal/audit/usage/refresh"'
+contains 'value: "http://openwork-ee-den-api:8788/internal/audit/retention/run"'
 contains "DEN_MAINTENANCE_TOKEN: \"$token\""
 count 'name: "openwork-ee-secret"' 2
 count 'key: "DEN_MAINTENANCE_TOKEN"' 2

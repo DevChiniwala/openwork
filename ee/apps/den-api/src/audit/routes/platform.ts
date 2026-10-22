@@ -144,6 +144,7 @@ export const platformAuditRoutes: readonly AuditRouteDeclaration[] = [
   platform("POST", "/v1/bootstrap/workspace", "workspace.bootstrap.create", "workspace.bootstrap", "workspace_bootstrap", null, "Public, rate limited; creates a provisional org and returns a preclaim assertion."),
 
   // Scheduled maintenance (bearer DEN_MAINTENANCE_TOKEN; 404 when unset)
+  platform("POST", "/internal/audit/retention/run", "audit.retention.run", "platform.maintenance", "audit_retention", null, "Called by the den-audit-usage cron (Helm CronJob) before the usage refresh. For each organization with a policy and the auditRetentionCleanup feature on, permanently deletes whole operations older than its retention window in bounded batches. Runs across organizations, so platform evidence only; deleted history is not re-recorded in the organization's log."),
   platform("POST", "/internal/audit/usage/refresh", "audit.usage.refresh", "platform.maintenance", "audit_usage", null, "Called by the den-audit-usage cron (Helm CronJob, Render cron job). Recomputes every organization's audit_state totals from stored rows; no organization activity, so platform evidence only."),
 
   // Global platform admin

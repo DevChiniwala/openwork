@@ -31,6 +31,21 @@ spec:
               command: ["node", "--input-type=module", "-e"]
               args:
                 - |
+                  // Retention first, so the refreshed totals reflect deleted history. It only
+                  // deletes for organizations with the auditRetentionCleanup feature on.
+                  try {
+                    const response = await fetch(process.env.RETENTION_URL, {
+                      method: "POST",
+                      headers: { authorization: `Bearer ${process.env.DEN_MAINTENANCE_TOKEN}` },
+                      signal: AbortSignal.timeout(300000),
+                    });
+                    const body = await response.text();
+                    if (!response.ok) throw new Error(String(response.status));
+                    console.log("Audit retention run completed", body);
+                  } catch (error) {
+                    console.error("Audit retention run failed", error instanceof Error ? error.message : "");
+                    process.exitCode = 1;
+                  }
                   try {
                     const response = await fetch(process.env.REFRESH_URL, {
                       method: "POST",
@@ -45,6 +60,8 @@ spec:
                     process.exitCode = 1;
                   }
               env:
+                - name: RETENTION_URL
+                  value: "http://{{ include "openwork-ee.denApiServiceName" . }}:{{ .Values.denApi.service.port }}/internal/audit/retention/run"
                 - name: REFRESH_URL
                   value: "http://{{ include "openwork-ee.denApiServiceName" . }}:{{ .Values.denApi.service.port }}/internal/audit/usage/refresh"
                 - name: DEN_MAINTENANCE_TOKEN

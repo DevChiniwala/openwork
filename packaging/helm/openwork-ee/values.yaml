@@ -271,6 +271,9 @@ denApi:
   # inference.retention. Needs a maintenance token: set secret.values.maintenanceToken,
   # or tokenSecret/tokenKey to read it from your own Secret. The token is also given
   # to den-api as DEN_MAINTENANCE_TOKEN. Without it, audit usage keeps its last totals.
+  # Before the refresh it calls POST /internal/audit/retention/run, which deletes audit
+  # history older than each organization's retention window only where the
+  # auditRetentionCleanup feature is on (off by default).
   auditUsage:
     enabled: false
     schedule: "30 3 * * *"

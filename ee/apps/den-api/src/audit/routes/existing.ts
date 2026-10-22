@@ -1,4 +1,4 @@
-import { auditReadCoveredRoutes, auditSettingsCoveredRoute, providerCoveredRoutes } from "../covered-routes.js"
+import { auditReadCoveredRoutes, auditRetentionCoveredRoute, auditSettingsCoveredRoute, providerCoveredRoutes } from "../covered-routes.js"
 import type { AuditRouteDeclaration, AuditRouteMethod } from "./types.js"
 
 // Routes whose dedicated emitters predate generic request capture. The generic
@@ -22,6 +22,12 @@ export const existingAuditRoutes: readonly AuditRouteDeclaration[] = [
     resource: { type: "audit_policy", idParam: null }, attribution: "org_context",
     changeEvidence: "routes/org/audit.ts:updateAuditCapture -> den-db setAuditCaptureState",
     notes: "Policy change and lifecycle evidence commit atomically; matching no-ops record nothing.",
+  },
+  {
+    method: auditRetentionCoveredRoute.method, path: auditRetentionCoveredRoute.path, class: "domain_audit", action: `audit.${auditRetentionCoveredRoute.action}`, kind: "audit.policy",
+    resource: { type: "audit_policy", idParam: "organizationId" }, attribution: "path:organizationId",
+    changeEvidence: "routes/admin/audit-retention.ts:updateAuditRetention -> den-db setAuditRetentionDays",
+    notes: "Platform admin only (actor the admin user, no member id, origin platform_admin). Like PATCH /v1/audit/settings, generic request capture records nothing here: a request intent would bind the old policy identity, and this route bumps the policy revision, so the outcome append would fail as audit_policy_changed. The route records its own audit.retention.updated lifecycle event (before/after retentionDays, revision, effectiveAt) in the same transaction as the change; matching no-ops, refusals and revision conflicts record nothing.",
   },
 ]
 

@@ -575,7 +575,12 @@ operations, events, logical bytes). That keeps each audit write independent, so
 writes never queue behind each other on a shared row. A daily CronJob recomputes
 the totals instead by calling den-api's `POST /internal/audit/usage/refresh`
 with a maintenance token. The audit usage screen shows when the totals were last
-measured. The CronJob is off by default. Turn it on with a token of 24 or more
+measured. Before refreshing, the same CronJob calls
+`POST /internal/audit/retention/run`, which deletes audit history older than each
+organization's retention window (90 days by default, set per organization in
+`/admin` up to 365 days), but only for organizations with the
+`auditRetentionCleanup` feature on; with the feature off nothing is deleted.
+The CronJob is off by default. Turn it on with a token of 24 or more
 characters, either in the chart Secret:
 
 ```yaml
@@ -603,6 +608,8 @@ The same token is passed to den-api as `DEN_MAINTENANCE_TOKEN`; den-api answers
 own scheduled caller, for example:
 
 ```sh
+curl -fsS -X POST -H "Authorization: Bearer $DEN_MAINTENANCE_TOKEN" \
+  http://<den-api>/internal/audit/retention/run
 curl -fsS -X POST -H "Authorization: Bearer $DEN_MAINTENANCE_TOKEN" \
   http://<den-api>/internal/audit/usage/refresh
 ```

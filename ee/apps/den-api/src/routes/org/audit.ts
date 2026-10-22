@@ -15,6 +15,7 @@ import { withAuditRetry } from "../../audit/retry.js"
 import { auditExportQuerySchema, auditOperationsQuerySchema, auditPageQuerySchema, listAuditEvents, listAuditExportEvents, listAuditOperations, readAuditUsage } from "../../audit/queries.js"
 import { db } from "../../db.js"
 import { env } from "../../env.js"
+import { organizationFeatureEnabled } from "../../features.js"
 import { jsonValidator, orgPermissionRoute } from "../../middleware/index.js"
 import { appLogger } from "../../observability/logger.js"
 import { resolvePermissionsForMember } from "../../permissions/resolve.js"
@@ -158,7 +159,7 @@ export function registerOrgAuditRoutes<T extends { Variables: Variables }>(app: 
       }
       if (rejection === "enterprise_plan_required") return c.json({ error: rejection, feature: "auditLogs", message: "Audit logs requires an Enterprise plan or explicit self-hosted installation entitlement." }, 402)
       if (rejection === "audit_capture_unavailable") return c.json({ error: rejection }, 409)
-      return c.json(await readAuditUsage({ database: db, organizationId: organization.organization.id }, env.auditCaptureEnabled))
+      return c.json(await readAuditUsage({ database: db, organizationId: organization.organization.id }, env.auditCaptureEnabled, await organizationFeatureEnabled(organization.organization.id, "auditRetentionCleanup")))
     } catch (error) {
       if (error instanceof AuditReadError) return c.json({ error: error.code }, error.status)
       if (error instanceof AuditLogError && (error.code === "audit_policy_changed" || error.code === "audit_policy_not_configured")) return c.json({ error: error.code }, 409)
@@ -199,11 +200,11 @@ export function registerOrgAuditRoutes<T extends { Variables: Variables }>(app: 
 
   app.get("/v1/audit/usage", describeAuditRoute({
     operationId: "getAuditUsage", tags: ["Organizations"], "x-mcp": false, summary: "Read audit retention usage",
-    description: `${coverage} Reads the stored policy and tenant totals, plus the oldest retained operation. Totals are recomputed by a scheduled usage refresh, not on every write; measuredAt is when they were last computed. Capture requires audit entitlement, organization captureOn and the deployment capture flag. A ready organization without a policy is lazily initialized ON, including on this GET, with one system lifecycle event. Temporary defaults: 6,000,000 retained OPERATIONS (not child events), 300-second grouping window, change/security/execution/access/request/lifecycle categories, cloud/delete_oldest for Enterprise or operator/keep_all for explicit self-hosted entitlement. Existing OFF and custom policies are preserved. These are provisional declarations, not enforced caps: no billing, cleanup or deletion is activated. Drains are not configured. Logical bytes are not physical database size; access capture may itself add one operation.`,
+    description: `${coverage} Reads the stored policy and tenant totals, plus the oldest retained operation. Totals are recomputed by a scheduled usage refresh, not on every write; measuredAt is when they were last computed. Capture requires audit entitlement, organization captureOn and the deployment capture flag. A ready organization without a policy is lazily initialized ON, including on this GET, with one system lifecycle event. Temporary defaults: 6,000,000 retained OPERATIONS (not child events), 300-second grouping window, change/security/execution/access/request/lifecycle categories, cloud/delete_oldest for Enterprise or operator/keep_all for explicit self-hosted entitlement. Existing OFF and custom policies are preserved. policy.retentionDays is how long history is kept: 90 days by default, set per organization by OpenWork platform admins up to 365 days. cleanup is age_based when history older than that window is deleted (the cleanup rollout is on for the organization and the policy is not keep_all), otherwise dry_run and nothing is deleted. Capacity numbers are provisional declarations, not enforced caps: no billing or capacity-based deletion. Drains are not configured. Logical bytes are not physical database size; access capture may itself add one operation.`,
     responses: { ...errors, 200: jsonResponse("Current stored audit policy and the last computed usage totals, without a history scan.", auditUsageResponseSchema) },
   } satisfies AuditRouteDescription), orgPermissionRoute("audit.view"), (c) => serveAudit(c, "usage", async (organizationId) => {
     parseQuery(z.object({}).strict(), c)
-    return c.json(await readAuditUsage({ database: db, organizationId }, "auditCaptureEnabled" in env && env.auditCaptureEnabled === true))
+    return c.json(await readAuditUsage({ database: db, organizationId }, "auditCaptureEnabled" in env && env.auditCaptureEnabled === true, await organizationFeatureEnabled(organizationId, "auditRetentionCleanup")))
   }))
 
   app.get("/v1/audit/export", describeAuditRoute({

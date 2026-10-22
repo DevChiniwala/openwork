@@ -207,8 +207,10 @@ async function eventPage(context: QueryContext, query: Page, binding: AuditCurso
  * Totals come from audit_state, which the scheduled usage refresh recomputes
  * (POST /internal/audit/usage/refresh); measuredAt says when. The append path
  * never updates them, so they lag live activity until the next refresh.
+ * cleanup is age_based only when the auditRetentionCleanup feature is on for the
+ * organization (and its policy is not keep_all); otherwise nothing is deleted.
  */
-export async function readAuditUsage(context: Pick<QueryContext, "database" | "organizationId">, captureEnabled: boolean) {
+export async function readAuditUsage(context: Pick<QueryContext, "database" | "organizationId">, captureEnabled: boolean, cleanupFeatureEnabled: boolean) {
   const organizationId = normalizeDenTypeId("organization", context.organizationId)
   return context.database.transaction(async (tx) => {
     const { entitlement } = await readAuditAvailability(tx, organizationId)
@@ -218,6 +220,6 @@ export async function readAuditUsage(context: Pick<QueryContext, "database" | "o
     const [state] = await tx.select({ retainedOperations: AuditStateTable.retained_operations, eventCount: AuditStateTable.event_count, logicalBytes: AuditStateTable.logical_bytes, measuredAt: AuditStateTable.updated_at }).from(AuditStateTable).where(eq(AuditStateTable.organization_id, organizationId)).limit(1)
     const policy = await readAuditPolicy(tx, organizationId)
     const [oldest] = await tx.select({ startedAt: AuditOperationTable.first_recorded_at }).from(AuditOperationTable).where(retained(organizationId)).orderBy(asc(AuditOperationTable.first_recorded_at), asc(AuditOperationTable.id)).limit(1)
-    return auditUsageResponseSchema.parse({ policy, entitlement, captureOn: policy?.enabled ?? false, captureAvailable, captureEnabled: entitlement.enabled && captureAvailable && policy?.enabled === true, retainedOperations: state?.retainedOperations ?? 0, eventCount: state?.eventCount ?? 0, logicalBytes: state?.logicalBytes ?? 0, oldestAvailableAt: oldest?.startedAt.toISOString() ?? null, measuredAt: state?.measuredAt.toISOString() ?? null, billing: "disabled", cleanup: "dry_run", drains: "not_configured" })
+    return auditUsageResponseSchema.parse({ policy, entitlement, captureOn: policy?.enabled ?? false, captureAvailable, captureEnabled: entitlement.enabled && captureAvailable && policy?.enabled === true, retainedOperations: state?.retainedOperations ?? 0, eventCount: state?.eventCount ?? 0, logicalBytes: state?.logicalBytes ?? 0, oldestAvailableAt: oldest?.startedAt.toISOString() ?? null, measuredAt: state?.measuredAt.toISOString() ?? null, billing: "disabled", cleanup: cleanupFeatureEnabled && policy && policy.excessMode !== "keep_all" ? "age_based" : "dry_run", drains: "not_configured" })
   })
 }

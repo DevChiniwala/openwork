@@ -86,12 +86,21 @@ export const auditCaptureCoverage: AuditCoverageDeclaration = {
   limitations: "No caller-supplied capacity, category, entitlement, source or retention changes; no external effects or deletion. Retained history remains readable after capture OFF or plan loss.",
 }
 
+export const auditRetentionCoverage: AuditCoverageDeclaration = {
+  status: "implemented_scoped", operationKinds: ["audit.policy"], actions: ["audit.retention.updated"], categories: ["lifecycle"],
+  capturePolicy: "OpenWork platform administrators only (adminRoute), for an entitled organization; a missing policy is first initialized with server defaults (90 days). Recorded whatever the capture state or category selection, like capture changes.",
+  resources: ["audit_policy"], snapshotPolicy: "Only retentionDays, revision and effectiveAt before/after.",
+  emitter: "src/routes/admin/audit-retention.ts:updateAuditRetention; den-db/audit-log.ts:setAuditRetentionDays",
+  failurePolicy: "Optimistic revision-guarded policy update (no row locks); required evidence failure rolls back the change. Stale revisions reject with audit_policy_changed; matching no-ops record nothing. Generic request capture is skipped for this route (domain_audit) so its own policy change cannot invalidate request evidence.",
+  limitations: "Changes the retention window only (1..365 days). Deletion of older history runs only through POST /internal/audit/retention/run for organizations with the auditRetentionCleanup feature on; the deletions themselves are not recorded as tenant events.",
+}
+
 export const defaultPolicyCoverage: AuditCoverageDeclaration = {
   status: "implemented_scoped", operationKinds: ["audit.policy"], actions: ["audit.policy.initialized"], categories: ["lifecycle"],
   capturePolicy: "Fresh locked literal org flag AND Enterprise/explicit self-hosted entitlement AND deployment capture availability. Lazy creation before capture snapshots, also on GET usage and first settings PATCH. Existing policies never updated by initialization.",
   resources: ["audit_policy", "organization"], snapshotPolicy: "before=null; allowlisted server defaults only, honest system actor den-api.audit-defaults; first event sets captureStartedAt.",
   emitter: "src/audit/capture.ts:initializeAuditPolicyInTx", failurePolicy: "No locks: the policy primary key decides a concurrent first initialization and only the creating request records the lifecycle event. Policy and lifecycle evidence commit atomically or roll back.",
-  limitations: "Temporary 6,000,000 retained OPERATIONS, not events; 300-second grouping; PILOT_DEFAULT_CATEGORIES; cloud/delete_oldest or operator/keep_all declarations grant no entitlement. No enforced cap, billing, cleanup, deletion, legacy backfill or forced restore on upgrade.",
+  limitations: "Temporary 6,000,000 retained OPERATIONS, not events; 300-second grouping; 90-day retention; PILOT_DEFAULT_CATEGORIES; cloud/delete_oldest or operator/keep_all declarations grant no entitlement. No enforced cap, billing, capacity deletion, legacy backfill or forced restore on upgrade; age-based deletion only with the auditRetentionCleanup feature.",
 }
 
 const tenantRouteClasses: readonly AuditRouteClass[] = ["tenant_read", "tenant_access", "tenant_change", "tenant_external", "tenant_job", "tenant_signal"]
@@ -101,7 +110,7 @@ export const routeAuditEventTypes: readonly string[] = [...new Set(tenantRouteDe
 
 export function supportedAuditEventTypes(): string[] {
   return [...new Set([
-    ...providerCoverage.actions, ...auditReadCoverage.actions, ...pilotPolicyCoverage.actions, ...auditCaptureCoverage.actions, ...defaultPolicyCoverage.actions,
+    ...providerCoverage.actions, ...auditReadCoverage.actions, ...pilotPolicyCoverage.actions, ...auditCaptureCoverage.actions, ...auditRetentionCoverage.actions, ...defaultPolicyCoverage.actions,
     ...routeAuditEventTypes, ...domainChangeEventTypes, ...auditServiceActionEventTypes(), ...auditJobOutcomeEventTypes,
   ])].sort()
 }
@@ -208,6 +217,7 @@ function boundary(limitations: string): AuditCoverageDeclaration {
 export const otherAuditSurfaces: readonly Readonly<{ location: string; surface: "route" | "mcp" | "job" | "service" | "cli"; coverage: AuditCoverageDeclaration }>[] = [
   { location: "ee/apps/den-api/src/audit/capture.ts", surface: "service", coverage: defaultPolicyCoverage },
   { location: "ee/apps/den-api/scripts/audit-pilot.ts", surface: "cli", coverage: pilotPolicyCoverage },
+  { location: "ee/apps/den-api/src/routes/admin/audit-retention.ts", surface: "route", coverage: auditRetentionCoverage },
   { location: "ee/apps/den-api/src/routes/admin", surface: "route", coverage: { ...genericRequestCoverage, limitations: "Organization-targeted admin routes declare path:<organizationId> attribution: actor is the platform admin user (no memberId), origin platform_admin, tenant is the validated target organization; other admin routes record to the platform store. DPA and complimentary-access changes use the single-writer legacy bridge (src/audit/domain/organization-settings.ts via writeLegacyOrChangesInTx): change event or legacy row inside the existing organization-locked transaction; free-text reasons are recorded only as reasonProvided." } },
   ...[
     "auth", "automations", "bootstrap", "cloud", "dev", "email", "me", "mcp", "telemetry", "version", "webhooks", "workers", "deprecated-memory.ts", "deprecated-skill-hubs.ts",
@@ -285,7 +295,7 @@ export const auditRolloutStatus = {
   coverageScope: "Every den-api route and HTTP-reachable better-auth endpoint is declared and checked in CI; only MCP consumption transport and the operational probes (GET /, /health, /ready) are excluded; other repository surfaces are declared boundaries.",
   legacyBridge: "single_writer", platformStore: "platform_audit_event",
   legacyBackfill: false, paidOverage: false,
-  billing: "disabled", retention: "preview_only", deletionEnabled: false, scheduledCleanup: false,
+  billing: "disabled", retention: "age_based", deletionEnabled: false, deletionFeature: "auditRetentionCleanup", scheduledCleanup: true,
   jobContextPropagation: false, drains: "not_configured",
   trafficCaptureFlag: "DEN_AUDIT_CAPTURE_ENABLED", visibilityFlag: "DEN_AUDIT_VISIBILITY_ENABLED", installationEntitlementFlag: "DEN_AUDIT_SELF_HOSTED_ENABLED",
 } satisfies Record<string, string | boolean>

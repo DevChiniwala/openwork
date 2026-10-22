@@ -2,12 +2,14 @@ import { AuditLogError, appendAuditEvent, readAuditPolicy, type AuditDatabase, t
 import { eq, sql } from "@openwork-ee/den-db/drizzle"
 import { AuditPolicyTable, OrganizationTable } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
-import type { AuditEntitlement } from "@openwork/types/den/audit"
+import { DEFAULT_AUDIT_RETENTION_DAYS, type AuditEntitlement } from "@openwork/types/den/audit"
 import { PILOT_DEFAULT_CATEGORIES } from "./pilot-policy.js"
 
 // Temporary server-owned declarations, not an enforced cap or a billing product.
 // Capacity counts retained OPERATIONS, never child events. Neither provenance
-// nor excess mode grants entitlement. No cleanup/deletion is enabled here.
+// nor excess mode grants entitlement. Retention defaults to 90 days; platform
+// admins set 1..365 per organization. Age-based deletion runs only where the
+// auditRetentionCleanup feature is on (POST /internal/audit/retention/run).
 export const PROVISIONAL_AUDIT_ALLOWANCE = 6_000_000
 export const PROVISIONAL_AUDIT_ATTACHMENT_WINDOW_SECONDS = 300
 export const PROVISIONAL_AUDIT_SYSTEM_ACTOR = "den-api.audit-defaults"
@@ -44,12 +46,13 @@ export async function initializeAuditPolicyInTx(tx: AuditTx, inputOrganizationId
     organizationId, revision: 1, source, enabled: true, categories: [...PILOT_DEFAULT_CATEGORIES],
     allowance: PROVISIONAL_AUDIT_ALLOWANCE, excessMode: source === "cloud" ? "delete_oldest" : "keep_all",
     effectiveAt: now.toISOString(), captureStartedAt: null, attachmentWindowSeconds: PROVISIONAL_AUDIT_ATTACHMENT_WINDOW_SECONDS,
+    retentionDays: DEFAULT_AUDIT_RETENTION_DAYS,
   }
   // On a duplicate key the existing row is left as it is (a no-op update).
   await tx.insert(AuditPolicyTable).values({
     organization_id: organizationId, revision: policy.revision, source: policy.source, enabled: policy.enabled,
     categories: policy.categories, allowance: policy.allowance, excess_mode: policy.excessMode,
-    effective_at: now, capture_started_at: null, attachment_window_seconds: policy.attachmentWindowSeconds,
+    effective_at: now, capture_started_at: null, attachment_window_seconds: policy.attachmentWindowSeconds, retention_days: policy.retentionDays,
   }).onDuplicateKeyUpdate({ set: { organization_id: sql`${AuditPolicyTable.organization_id}` } })
   const stored = await readAuditPolicy(tx, organizationId)
   // A concurrent first initialization committed after this transaction's read

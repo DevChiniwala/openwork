@@ -28,3 +28,6 @@ export const auditReadCoveredRoutes = [
 ] as const satisfies ReadonlyArray<{ method: "GET"; path: string; action: string }>
 
 export const auditSettingsCoveredRoute = { method: "PATCH", path: "/v1/audit/settings", action: "capture" } as const satisfies { method: "PATCH"; path: string; action: string }
+
+/** Platform admin sets an organization's audit retention window (routes/admin/audit-retention.ts). */
+export const auditRetentionCoveredRoute = { method: "PUT", path: "/v1/admin/organizations/:organizationId/audit-retention", action: "retention" } as const satisfies { method: "PUT"; path: string; action: string }
