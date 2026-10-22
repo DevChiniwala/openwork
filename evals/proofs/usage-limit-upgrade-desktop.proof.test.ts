@@ -25,7 +25,8 @@ test("an owner whose workspace used its OpenWork Models allowance sees when it r
   await step("before: with the new card off, the used-up allowance reads as too many requests", async () => {
     const before = await world.gatewayRequests();
     await send(user, probe, "Draft the Q4 hiring plan from these notes.");
-    await user.see({ text: "This model is receiving too many requests" }, { timeoutMs: 90_000 });
+    // Engine v1 calls it a rate limit; engine v2 shows the gateway's own words. Neither shows the new card.
+    await user.see({ text: /^(This model is receiving too many requests|Your workspace used its OpenWork Models allowance\.)$/ }, { timeoutMs: 90_000 });
     await user.notSee({ testId: "usage-limit-card" });
     await user.notSee({ text: /Retrying/ });
     const sent = await world.gatewayRequests() - before;

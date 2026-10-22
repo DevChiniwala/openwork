@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   INFERENCE_WINDOW_TYPES,
   OPENWORK_MODELS_ALLOWANCE_ERROR_CODE,
+  OPENWORK_MODELS_ALLOWANCE_MESSAGE,
   OPENWORK_MODELS_ALLOWANCE_SOURCE,
   isInferenceWindowType,
   type InferenceWindowType,
@@ -46,7 +47,8 @@ function allowanceBody(value: unknown): boolean {
 
 /**
  * Reads the classified allowance error from whatever shape the engine reports (v1 APIError with headers and body,
- * or v2 text naming HTTP 429 with the body). Anything else, including an ordinary 429, is not this limit.
+ * v2 text naming HTTP 429 with the body, or v2's bare gateway message). Anything else, including an ordinary 429, is
+ * not this limit.
  */
 export function parseOpenWorkModelsLimitError(value: unknown, now = Date.now()): OpenWorkModelsLimit | null {
   const records = [value, field(value, "data"), field(value, "cause"), field(field(value, "cause"), "data")];
@@ -58,7 +60,9 @@ export function parseOpenWorkModelsLimitError(value: unknown, now = Date.now()):
       && header(headers, "x-openwork-usage-state") === "blocked";
     const body = allowanceBody(field(record, "responseBody")) || allowanceBody(field(record, "message"));
     const http429 = statuses.includes(429) || /\bHTTP 429\b/.test(String(field(record, "message") ?? ""));
-    if (!http429 || !(marked || body)) continue;
+    // Engine v2 reports the gateway's exact message without the response; it is the gateway's own constant.
+    const gatewayMessage = field(record, "message") === OPENWORK_MODELS_ALLOWANCE_MESSAGE;
+    if (!(http429 && (marked || body)) && !gatewayMessage) continue;
     const windowType = header(headers, "x-openwork-limit-window-type");
     const resetHeader = header(headers, "x-openwork-limit-reset-at");
     const retryAfter = Number(header(headers, "retry-after") ?? NaN);

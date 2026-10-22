@@ -42,6 +42,13 @@ describe("a used-up OpenWork Models allowance", () => {
       .toEqual({ windowType: null, resetAt: null });
   });
 
+  test("engine v2's bare gateway message is the same limit, without a reset it cannot read", () => {
+    expect(parseOpenWorkModelsLimitError({ name: "UnknownError", data: { message: "Your workspace used its OpenWork Models allowance." } }, now))
+      .toEqual({ windowType: null, resetAt: null });
+    expect(presentOpencodeSessionError({ name: "UnknownError", data: { message: "Your workspace used its OpenWork Models allowance." } }).openworkModelsLimit)
+      .toEqual({ windowType: null, resetAt: null });
+  });
+
   test("an ordinary 429, another status or a spoofed header alone is not this limit", () => {
     expect(parseOpenWorkModelsLimitError({ name: "APIError", data: { message: "Too many requests", statusCode: 429, responseBody: "{}" } }, now)).toBeNull();
     expect(parseOpenWorkModelsLimitError({ ...v1Error(), data: { ...v1Error().data, statusCode: 503 } }, now)).toBeNull();
