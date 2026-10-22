@@ -1104,6 +1104,12 @@ export function createDesktopAutomationRunner(options) {
   // A native journal belongs to an account, not a short-lived token generation.
   // Retiring a credential aborts its poll, but never drops recovery receipts.
   const sessionRunners = new Map()
+  const background = new Set()
+  const track = (promise) => {
+    background.add(promise)
+    void promise.finally(() => background.delete(promise)).catch(() => {})
+    return promise
+  }
 
   const inventoryMinIntervalMs = options.inventoryMinIntervalMs ?? INVENTORY_MIN_INTERVAL_MS
   const now = options.now ?? Date.now
@@ -1293,7 +1299,7 @@ export function createDesktopAutomationRunner(options) {
     })().finally(() => {
       if (entry.reconcilePromise === promise) entry.reconcilePromise = null
     })
-    entry.reconcilePromise = promise
+    entry.reconcilePromise = track(promise)
     return promise
   }
 
@@ -1657,7 +1663,7 @@ export function createDesktopAutomationRunner(options) {
     })().finally(() => {
       if (state.requestDrain === promise) state.requestDrain = null
     })
-    state.requestDrain = promise
+    state.requestDrain = track(promise)
     return promise
   }
 
@@ -1831,8 +1837,8 @@ export function createDesktopAutomationRunner(options) {
       inventoryUnsupported: false,
     }
     current = state
-    void connectLoop(state)
-    if (state.controlCapable) void remoteSessionRequestLoop(state)
+    void track(connectLoop(state))
+    if (state.controlCapable) void track(remoteSessionRequestLoop(state))
   }
 
   const disabledReason = options.disabledReason ?? null
@@ -1894,7 +1900,7 @@ export function createDesktopAutomationRunner(options) {
       const state = current
       if (stopped || !state || !isCurrent(state)) return { polled: false }
       reportInventory(state)
-      reconcile(state).catch((error) => {
+      track(reconcile(state)).catch((error) => {
         options.log?.(`runner wake poll failed: ${error instanceof Error ? error.message : String(error)}`)
       })
       return { polled: true }
@@ -1904,6 +1910,15 @@ export function createDesktopAutomationRunner(options) {
       generation += 1
       pendingConfiguration = null
       if (current) retire(current, new Error("Desktop is shutting down"))
+      return (async () => {
+        await Promise.allSettled([...background])
+        // Aborting a generation does not cancel an atomic journal write already
+        // in flight. Drain the shared core's queue before a restart or teardown.
+        await Promise.allSettled([...sessionRunners.values()].map(async (entry) => {
+          const runner = await entry.runner
+          await runner.inspect()
+        }))
+      })()
     },
   }
 }
