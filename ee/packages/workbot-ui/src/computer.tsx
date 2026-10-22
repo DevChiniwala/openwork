@@ -67,10 +67,12 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
   const [rebuilding, setRebuilding] = useState(false);
   const [livePage, setLivePage] = useState<ScreencastPage | null>(null);
   const identity = host.identity ? `${host.identity.organizationId}:${host.identity.principalId}` : "";
+  const away = useAway(30_000) && !recording;
 
   useEffect(() => {
     const target = screen.current;
-    if (!target || paused) return;
+    // Nobody watching a hidden tab, so stop streaming until it is shown again.
+    if (!target || paused || away) return;
     setError(null); setConnected(false); setReconnecting(false); setLivePage(null);
     return connectDesktopViewer(target, host, { view, control, screencast: host.browserLiveView === true }, {
       paused: () => setPaused(true),
@@ -80,7 +82,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
       failed: (message) => { setConnected(false); setError(message); },
       page: setLivePage,
     });
-  }, [host, identity, view, control, paused, revision]);
+  }, [host, identity, view, control, paused, away, revision]);
 
   const action = async (next: "pause" | "resume" | "continue" | "rebuild") => {
     if (changing) return false;
@@ -196,6 +198,8 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
         rfb.scaleViewport = true;
         rfb.resizeSession = false;
         rfb.background = "#f5f6f7";
+        // Stronger zlib for the non-photo parts of the screen (noVNC defaults to 2) to save bandwidth.
+        rfb.compressionLevel = 6;
         candidate = rfb;
       } else {
         const stream = new ScreencastViewer(layer, streamUrl!);
@@ -287,9 +291,10 @@ export function LiveGlimpse({ view, onOpen }: { view: ComputerView; onOpen?(): v
   const host = workbotHost();
   const screen = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"connecting" | "live" | "unavailable">("connecting");
+  const away = useAway(30_000);
   useEffect(() => {
     const target = screen.current;
-    if (!target) return;
+    if (!target || away) return;
     setState("connecting");
     return connectDesktopViewer(target, host, { view, control: false }, {
       paused: () => setState("unavailable"),
@@ -298,7 +303,7 @@ export function LiveGlimpse({ view, onOpen }: { view: ComputerView; onOpen?(): v
       reconnecting: () => setState("connecting"),
       failed: () => setState("unavailable"),
     });
-  }, [host, view]);
+  }, [host, view, away]);
   if (state === "unavailable") return null;
   const label = view === "browser" ? "Workbot is browsing" : "Workbot is using its computer";
   return <button type="button" onClick={onOpen} disabled={!onOpen} aria-label={`${label}. Open the full view`}
@@ -325,6 +330,23 @@ function firstFrame(layer: HTMLElement, limit = 5_000) {
     };
     check();
   });
+}
+
+/** True once the page has been hidden for `delay` ms, so a quick tab switch keeps the stream. */
+function useAway(delay: number) {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sync = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === "hidden") timer = setTimeout(() => setAway(true), delay);
+      else setAway(false);
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => { clearTimeout(timer); document.removeEventListener("visibilitychange", sync); };
+  }, [delay]);
+  return away;
 }
 
 /** Replaces a computer that won't connect with a fresh one from the current image. Its disk is erased, so ask first. */

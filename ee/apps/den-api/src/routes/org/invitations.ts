@@ -21,7 +21,8 @@ import { isEmailAllowedForOrganization, listAssignableRoles, removeOrganizationM
 import type { PermissionDatabase } from "@openwork-ee/den-db/permissions"
 import { resolveTeamActorInTransaction, teamGrantDecisionInTransaction, teamGrantsForbiddenResponse, roleAssignmentDeniedHeaders, roleAssignmentDeniedResponse, roleAssignmentDenial, roleAssignmentDenialInTransaction, type RoleAssignmentDenial } from "../../permissions/team-grants.js"
 import { resolvePermissionsForMember } from "../../permissions/resolve.js"
-import { getOrganizationSeatAddEligibility } from "../../stripe-billing.js"
+import { getOrganizationSeatAddEligibility, getSeatPlanQuote } from "../../stripe-billing.js"
+import { seatPlanQuoteSchema } from "@openwork/types/den/billing-plans"
 import { DenEmailSendError, sendEmail } from "../../utils/email/send-email.js"
 import type { OrgRouteVariables } from "./shared.js"
 import {
@@ -83,6 +84,7 @@ const invitePaymentRequiredSchema = z.object({
   freeSeatCount: z.number(),
   message: z.string(),
   billingUrl: z.string().url().describe("Open in a browser to start seat billing; an owner can finish it there, then retry the invitation."),
+  quote: seatPlanQuoteSchema.describe("The Team plan with this person added: every person at the Team price. `available` is false when Team checkout is off for this organization or not sold on this deployment."),
 }).meta({ ref: "InvitePaymentRequiredError" })
 
 const invitationNotPendingSchema = z.object({
@@ -477,6 +479,11 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
     }
     if (invitationWrite.status === "payment_required") {
       const { seatEligibility } = invitationWrite
+      const quote = await getSeatPlanQuote({
+        organizationId: payload.organization.id,
+        currentCount: seatEligibility.currentCount,
+        teamPlanEnabled: payload.features.teamPlan,
+      })
       return c.json({
         error: "payment_required",
         reason: "seat_subscription_required",
@@ -485,6 +492,7 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         freeSeatCount: seatEligibility.freeSeatCount,
         message: `The Free plan is limited to ${seatEligibility.freeSeatCount} users, counting pending invitations. Upgrade to the Team plan at ${invitationBillingUrl()} to invite more people.`,
         billingUrl: invitationBillingUrl(),
+        quote,
       }, 402)
     }
 

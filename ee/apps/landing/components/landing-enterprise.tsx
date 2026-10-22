@@ -1,19 +1,33 @@
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, Folder, Laptop, MessageSquare, Paperclip } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { BookCallForm } from "./book-call-form";
 import { CoworkComparison } from "./cowork-comparison";
+import { BrandLogo } from "./lp-brand-logos";
+import { LpDemoAiGateway } from "./lp-demo-panels";
 import { LpArrowLink, LpSectionHeader } from "./lp-primitives";
+import { OpenCodeMark, TerminalMark } from "./lp-service-marks";
+import { LpTrustRow } from "./lp-trust-row";
+import { OpenWorkMark } from "./openwork-mark";
+import { RoadmapStatusPill } from "./roadmap-page";
 import { SiteFooter } from "./site-footer";
 import { SiteNav } from "./site-nav";
 import { enterpriseFaq } from "../lib/enterprise";
 import {
+  enterpriseAgents,
+  enterpriseAgentsNote,
   enterpriseControls,
   enterpriseDataBoundary,
+  enterpriseDataPath,
   enterpriseDeployments,
   enterpriseRollout,
-  type EnterpriseCard
+  enterpriseRolloutNote,
+  enterpriseShadowAi,
+  type EnterpriseAccess,
+  type EnterpriseAgentId,
+  type EnterpriseFact
 } from "../lib/enterprise-sections";
+import { capabilityRows } from "../lib/cowork-capabilities";
 import { TRUST_CENTER_URL } from "../lib/trust-center";
 
 type Props = {
@@ -21,198 +35,329 @@ type Props = {
   calUrl: string;
 };
 
-const body = "text-[15px] leading-[23px] text-[var(--lp-body)]";
-const section = "mt-28 scroll-mt-24 md:mt-36";
+const section = "mt-24 scroll-mt-24 md:mt-32";
+/** The product-window frame used by the roadmap and the homepage product tabs. */
+const productFrame =
+  "overflow-hidden rounded-[14px] bg-white shadow-[0_0_0_1px_rgba(1,22,39,0.08),0_2px_4px_rgba(1,22,39,0.04),0_32px_64px_-24px_rgba(1,22,39,0.22)]";
+/** White card on a tonal panel, as on the MCP gateway page. */
+const panelCard = "rounded-[14px] bg-white shadow-[0_0_0_1px_rgba(1,22,39,0.08),0_12px_24px_-16px_rgba(1,22,39,0.2)]";
 
-/** Tonal icon card, same pattern as CompareCards on the compare pages. */
-function IconCard({ card, children }: { card: EnterpriseCard; children?: ReactNode }) {
-  const Icon = card.icon;
+const agentMarks: Record<EnterpriseAgentId, ReactNode> = {
+  openwork: <OpenWorkMark className="h-[18px] w-[22px] object-contain" />,
+  opencode: <OpenCodeMark className="h-5 w-5" />,
+  "claude-code": <BrandLogo name="claude" className="h-5 w-5 text-[#D97757]" />,
+  codex: <TerminalMark className="h-5 w-5" />,
+  cursor: <BrandLogo name="cursor" className="h-5 w-5 text-[#111]" />
+};
+
+/** Hairline-topped title and detail, as on the MCP gateway page. */
+function Fact({ fact }: { fact: EnterpriseFact }) {
   return (
-    <li className="flex flex-col rounded-[20px] bg-[var(--lp-tonal)] p-6">
-      <Icon aria-hidden="true" strokeWidth={1.5} className="h-5 w-5 text-[var(--lp-ink)]" />
-      <h3 className="mt-8 text-[17px] font-medium leading-[24px] tracking-[-0.01em]">{card.title}</h3>
-      <p className="mt-2 flex-1 text-[14.5px] leading-[22px] text-[var(--lp-body)]">{card.detail}</p>
-      {children}
-    </li>
+    <div className="flex flex-col gap-2 border-t border-[var(--lp-border)] pt-5">
+      <h3 className="text-base font-medium tracking-[-0.01em]">{fact.title}</h3>
+      <p className="text-sm leading-[22px] text-[var(--lp-body)]">{fact.detail}</p>
+    </div>
   );
 }
 
-/** Architecture, not a simulated product dashboard: no invented usage or states. */
-function EnterpriseArchitecture() {
-  const step = "flex min-h-[64px] flex-col justify-center rounded-[10px] bg-white px-4 py-3";
-  const hop = "flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--lp-muted)]";
+function Access({ access }: { access: EnterpriseAccess }) {
+  return access === "ready" ? <RoadmapStatusPill status="ready" /> : <RoadmapStatusPill status="building" label="In progress" />;
+}
+
+function BoundaryCard({ title, state, rows }: { title: ReactNode; state: ReactNode; rows: { icon: ReactNode; label: string }[] }) {
   return (
-    <figure className="flex w-full flex-col gap-2 rounded-[24px] bg-[var(--lp-tonal)] p-5 lg:w-[420px] lg:shrink-0">
-      <figcaption className="px-1 pb-1.5 text-sm text-[var(--lp-muted)]">The approved model path</figcaption>
-      <div className={step}>
-        <span className="text-[14px] font-medium text-[var(--lp-ink)]">Employee workspace</span>
-        <span className="text-xs text-[var(--lp-muted)]">OpenWork or OpenCode + plugin · Local files stay on the computer</span>
+    <div className={`flex flex-col lg:w-[380px] lg:shrink-0 ${panelCard}`}>
+      <div className="flex min-h-[52px] flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-[#F0F1F3] px-4 py-3">
+        <span className="flex items-center gap-2 text-sm font-medium text-[#111827]">{title}</span>
+        <span className="flex items-center gap-1.5 text-xs text-[#4B5563]">{state}</span>
       </div>
-      <div className={hop}><span aria-hidden="true">↓</span>Prompts, responses, and selected file context</div>
-      <div className="flex min-h-[64px] flex-col justify-center rounded-[10px] bg-[var(--lp-ink)] px-4 py-3 text-[var(--lp-page)]">
-        <span className="text-[14px] font-medium">OpenWork AI gateway</span>
-        <span className="text-xs opacity-80">Company SSO · Permissions · Usage</span>
-      </div>
-      <div className={hop}><span aria-hidden="true">↓</span>Routed model requests</div>
-      <div className={step}>
-        <span className="text-[14px] font-medium text-[var(--lp-ink)]">Your approved model provider</span>
-        <span className="text-xs text-[var(--lp-muted)]">AWS Bedrock or another configured provider</span>
-      </div>
-    </figure>
+      <ul className="flex flex-col px-4 py-1.5">
+        {rows.map((row) => (
+          <li key={row.label} className="flex h-11 items-center gap-3 border-b border-[#F0F1F3] text-[13px] text-[#111827] last:border-b-0">
+            <span className="flex w-4 shrink-0 text-[#6B7280]" aria-hidden="true">{row.icon}</span>
+            {row.label}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
 export function LandingEnterprise(props: Props) {
   const calHref = props.calUrl || "#book";
-  const calProps = /^https?:\/\//.test(calHref) ? { target: "_blank", rel: "noreferrer" } : {};
+  const calExternal = /^https?:\/\//.test(calHref);
+  const calProps = calExternal ? { target: "_blank", rel: "noreferrer" } : {};
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[var(--lp-page)] text-[var(--lp-ink)]">
       <SiteNav stars={props.stars} callUrl={props.calUrl} active="enterprise" mobilePrimaryHref="#book" mobilePrimaryLabel="Contact sales" />
+
       <main id="main-content" className="mx-auto w-full max-w-[1176px] px-6 pb-8">
-        <section aria-labelledby="enterprise-heading" className="flex flex-col gap-12 pb-4 pt-12 md:pt-20 lg:flex-row lg:items-end lg:gap-16">
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] text-[var(--lp-muted)]">OpenWork Enterprise</p>
-            <h1 id="enterprise-heading" className="mt-5 text-[clamp(2.5rem,4.4vw,3.25rem)] font-medium leading-[1.08] tracking-[-0.045em]">
-              <span className="block">AI your team wants.</span>
-              <span className="block">Control IT needs.</span>
-            </h1>
-            <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-[var(--lp-body)] lg:text-lg">
-              Give employees an approved way to work with AI. Bring model traffic under company sign-in, permissions, and provider choice, without forcing everyone into the same agent.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a href={calHref} {...calProps} className="lp-pill-primary">Book a demo</a>
-              <a href="#controls" className="lp-pill-secondary">Explore the controls</a>
+        <section aria-labelledby="enterprise-heading" className="pt-12 md:pt-[72px]">
+          <p className="text-[13px] text-[var(--lp-muted)]">OpenWork Enterprise</p>
+          <h1
+            id="enterprise-heading"
+            className="mt-5 max-w-[880px] text-[40px] font-medium leading-[44px] tracking-[-0.045em] md:text-[60px] md:leading-[64px]"
+          >
+            <span className="block">AI your team wants.</span>
+            <span className="block">Control IT needs.</span>
+          </h1>
+          <p className="mt-5 max-w-[620px] text-[17px] leading-[27px] text-[var(--lp-body)] md:text-lg md:leading-7">
+            Give employees an approved way to work with AI. Company sign-in, permissions, and your choice of provider, without forcing everyone into the same agent.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <a href={calHref} {...calProps} className="lp-btn">
+              Book a demo
+            </a>
+            <a href="#comparison" className="lp-btn lp-btn--secondary">
+              Compare with Claude Cowork
+            </a>
+          </div>
+          <LpTrustRow />
+        </section>
+
+        <section id="controls" aria-label="What IT controls" className="mt-12 scroll-mt-24 md:mt-16">
+          <div className={productFrame}>
+            <LpDemoAiGateway />
+          </div>
+          <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {enterpriseControls.map((fact) => (
+              <Fact key={fact.title} fact={fact} />
+            ))}
+          </div>
+        </section>
+
+        <section aria-labelledby="shadow-ai-heading" className={section}>
+          <LpSectionHeader
+            id="shadow-ai-heading"
+            label="The shadow AI problem"
+            heading="The work is already happening. Give it an approved path."
+            headingLines={["The work is already happening.", "Give it an approved path."]}
+            right={<LpArrowLink href="/shadow-ai">Understand shadow AI</LpArrowLink>}
+          />
+          <div className="mt-10 grid gap-10 md:grid-cols-2">
+            <div>
+              <h3 className="flex h-10 items-center border-b border-[var(--lp-ink)] text-sm font-medium text-[var(--lp-muted)]">Without an approved path</h3>
+              <ul>
+                {enterpriseShadowAi.without.map((item) => (
+                  <li key={item} className="flex min-h-[48px] items-center border-b border-[var(--lp-border)] py-2 text-[15px] text-[var(--lp-body)]">
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-3">
-              {["SAML / OIDC + SCIM", "AWS Bedrock", "Local-first desktop"].map(item => (
-                <li key={item} className="flex items-center gap-2 text-[13px] text-[var(--lp-muted)]">
-                  <Check size={13} strokeWidth={2.6} className="shrink-0 text-[#047857]" aria-hidden="true" />
-                  {item}
+            <div>
+              <h3 className="flex h-10 items-center border-b border-[var(--lp-ink)] text-sm font-medium text-[var(--lp-ink)]">With OpenWork</h3>
+              <ul>
+                {enterpriseShadowAi.with.map((item) => (
+                  <li key={item} className="flex min-h-[48px] items-center gap-3 border-b border-[var(--lp-border)] py-2 text-[15px] text-[var(--lp-ink)]">
+                    <Check size={14} strokeWidth={2.6} className="shrink-0 text-[#047857]" aria-hidden="true" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="mt-6 max-w-[720px] text-[13px] leading-6 text-[var(--lp-muted)]">{enterpriseShadowAi.boundary}</p>
+        </section>
+
+        <section aria-labelledby="agents-heading" className={section}>
+          <LpSectionHeader
+            id="agents-heading"
+            label="Agent choice, with clear boundaries"
+            heading="Keep the tools. Know what’s connected."
+            headingLines={["Keep the tools.", "Know what’s connected."]}
+            right={<LpArrowLink href="/connect">Explore the MCP gateway</LpArrowLink>}
+          />
+          <div className="mt-10 border-b border-[var(--lp-border)]">
+            <div className="hidden h-10 grid-cols-[minmax(0,1fr)_220px_220px] items-center border-b border-[var(--lp-ink)] text-sm text-[var(--lp-muted)] md:grid" aria-hidden="true">
+              <span>Agent</span>
+              <span>Shared skills and connections</span>
+              <span>AI gateway models</span>
+            </div>
+            <ul aria-label="What each agent gets from OpenWork">
+              {enterpriseAgents.map((agent, index) => (
+                <li
+                  key={agent.id}
+                  className={`grid gap-3 py-4 md:min-h-[68px] md:grid-cols-[minmax(0,1fr)_220px_220px] md:items-center md:gap-0 md:py-3 ${index === 0 ? "border-t border-[var(--lp-ink)] md:border-t-0" : "border-t border-[var(--lp-border)]"}`}
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex w-[22px] shrink-0 justify-center">{agentMarks[agent.id]}</span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-[15px] font-medium text-[var(--lp-ink)]">{agent.name}</span>
+                      <span className="text-[13px] text-[var(--lp-muted)]">{agent.via}</span>
+                    </span>
+                  </span>
+                  <span className="flex items-center justify-between gap-3 pl-8 md:justify-start md:pl-0">
+                    <span className="text-[13px] text-[var(--lp-muted)] md:sr-only">Shared skills and connections</span>
+                    <Access access={agent.skills} />
+                  </span>
+                  <span className="flex items-center justify-between gap-3 pl-8 md:justify-start md:pl-0">
+                    <span className="text-[13px] text-[var(--lp-muted)] md:sr-only">AI gateway models</span>
+                    <Access access={agent.models} />
+                  </span>
                 </li>
               ))}
             </ul>
           </div>
-          <EnterpriseArchitecture />
+          <p className="mt-6 max-w-[720px] text-[13px] leading-6 text-[var(--lp-muted)]">{enterpriseAgentsNote}</p>
         </section>
-
-        <section aria-labelledby="shadow-ai-heading" className={section}>
-          <div id="shadow-ai-heading">
-            <LpSectionHeader label="The shadow AI problem" heading="The work is already happening. Give it an approved path." headingLines={["The work is already happening.", "Give it an approved path."]} />
-          </div>
-          <div className="mt-6 grid max-w-[960px] gap-6 md:grid-cols-2 md:gap-10">
-            <p className={body}>Personal AI accounts. Unmanaged API keys. Company context sent to providers IT never approved. Banning the tools doesn’t give people a better way to work.</p>
-            <p className={body}>OpenWork connects practical agent workflows with organizational controls. Govern model traffic routed through your gateway, with clear visibility into what that path covers, and what it does not.</p>
-          </div>
-          <div className="mt-6"><LpArrowLink href="/shadow-ai">Understand shadow AI</LpArrowLink></div>
-        </section>
-
-        <section id="controls" aria-labelledby="controls-heading" className={section}>
-          <div id="controls-heading">
-            <LpSectionHeader label="One organizational control plane" heading="Choose the access. Choose the models." headingLines={["Choose the access.", "Choose the models."]} right={<LpArrowLink href="/ai-governance">Explore AI governance</LpArrowLink>} />
-          </div>
-          <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {enterpriseControls.map(card => <IconCard key={card.title} card={card} />)}
-          </ul>
-        </section>
-
-        <section aria-labelledby="agents-heading" className={section}>
-          <div id="agents-heading">
-            <LpSectionHeader label="Agent choice, with clear boundaries" heading="Keep the tools. Know what’s connected." headingLines={["Keep the tools.", "Know what’s connected."]} right={<a href="/connect" className="lp-pill-secondary lp-pill-sm">Explore the MCP gateway</a>} />
-          </div>
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
-            <div className="flex flex-col gap-3 rounded-[24px] bg-[var(--lp-tonal)] p-6 md:p-8">
-              <span className="inline-flex h-[22px] w-fit items-center rounded-full bg-[#E7F6EE] px-[9px] text-xs font-semibold text-[#047857]">AI gateway model access</span>
-              <h3 className="mt-2 text-[20px] font-medium tracking-[-0.01em]">OpenWork &amp; OpenCode</h3>
-              <p className={body}>Use organizational AI gateway models in OpenWork, or in OpenCode with the <code className="mono text-[13px]">opencode-openwork</code> plugin.</p>
-            </div>
-            <div className="flex flex-col gap-3 rounded-[24px] bg-[var(--lp-tonal)] p-6 md:p-8">
-              <span className="inline-flex h-[22px] w-fit items-center rounded-full px-[9px] text-xs font-semibold text-[#5E6877] shadow-[inset_0_0_0_1px_#D3DAE4]">MCP access is not model routing</span>
-              <h3 className="mt-2 text-[20px] font-medium tracking-[-0.01em]">Claude Code, Codex &amp; Cursor</h3>
-              <p className={body}>Connect shared skills and connections through the MCP gateway. AI gateway model integration for these clients is in progress.</p>
-            </div>
-          </div>
-        </section>
-
-        <CoworkComparison id="enterprise-comparison-heading" label="OpenWork vs Claude Cowork" heading="Feature parity. Zero lock-in." className="mt-28 block md:mt-36" />
 
         <section aria-labelledby="data-heading" className={section}>
-          <div id="data-heading">
-            <LpSectionHeader label="A boundary you can explain" heading="Local files. A clear data boundary." headingLines={["Local files.", "A clear data boundary."]} right={<LpArrowLink href="/privacy">Read the privacy policy</LpArrowLink>} />
+          <LpSectionHeader
+            id="data-heading"
+            label="A boundary you can explain"
+            heading="Local files. A clear data boundary."
+            headingLines={["Local files.", "A clear data boundary."]}
+            right={<LpArrowLink href="/privacy">Read the privacy policy</LpArrowLink>}
+          />
+          <div className="mt-10 flex flex-col items-stretch gap-4 rounded-[20px] bg-[var(--lp-tonal)] p-5 md:p-8 lg:flex-row lg:items-center lg:gap-0">
+            <BoundaryCard
+              title="Employee’s computer"
+              state={
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--lp-status-dot)]" aria-hidden="true" />
+                  Stays here
+                </>
+              }
+              rows={[
+                { icon: <Folder size={16} strokeWidth={1.5} />, label: enterpriseDataPath.local[0] },
+                { icon: <Laptop size={16} strokeWidth={1.5} />, label: enterpriseDataPath.local[1] }
+              ]}
+            />
+            <div className="flex items-center justify-center lg:flex-1" aria-hidden="true">
+              <span className="hidden h-px flex-1 bg-[#9FB0C3] lg:block" />
+              <span className="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[var(--lp-ink)] shadow-[0_0_0_1px_rgba(1,22,39,0.1)]">
+                AI gateway
+              </span>
+              <span className="hidden h-px flex-1 bg-[#9FB0C3] lg:block" />
+            </div>
+            <BoundaryCard
+              title={
+                <>
+                  <BrandLogo name="aws" className="h-[18px] w-[18px] text-[#232F3E]" />
+                  AWS Bedrock
+                </>
+              }
+              state="Or another approved provider"
+              rows={[
+                { icon: <MessageSquare size={16} strokeWidth={1.5} />, label: enterpriseDataPath.provider[0] },
+                { icon: <Paperclip size={16} strokeWidth={1.5} />, label: enterpriseDataPath.provider[1] }
+              ]}
+            />
           </div>
-          <div className="mt-10 grid gap-8 md:grid-cols-3 md:gap-10">
-            {enterpriseDataBoundary.map(item => (
-              <div key={item.title} className="border-t border-[var(--lp-ink)] pt-5">
-                <h3 className="text-[17px] font-medium tracking-[-0.01em]">{item.title}</h3>
-                <p className={`mt-3 ${body}`}>{item.body}</p>
+          <div className="mt-8 grid gap-8 md:grid-cols-3">
+            {enterpriseDataBoundary.map((fact) => (
+              <Fact key={fact.title} fact={fact} />
+            ))}
+          </div>
+        </section>
+
+        <CoworkComparison
+          id="comparison-heading"
+          anchor="comparison"
+          label="OpenWork vs Claude Cowork"
+          heading="Control, without the lock-in."
+          groups={["Control and deployment"]}
+          right={<LpArrowLink href="/alternatives/claude-cowork">Compare all {capabilityRows.length} capabilities</LpArrowLink>}
+          className={`${section} block`}
+        />
+
+        <section aria-labelledby="deployment-heading" className={section}>
+          <LpSectionHeader
+            id="deployment-heading"
+            label="Deployment, on your terms"
+            heading="Start on the laptop. Choose the control plane."
+            headingLines={["Start on the laptop.", "Choose the control plane."]}
+          />
+          <div className="mt-10 grid border-y border-[var(--lp-border)] md:grid-cols-3">
+            {enterpriseDeployments.map((deployment, index) => (
+              <div
+                key={deployment.title}
+                className={`flex flex-col py-7 ${index === 0 ? "md:pr-8" : "border-t border-[var(--lp-border)] md:border-l md:border-t-0 md:px-8"}`}
+              >
+                <span className="text-sm text-[var(--lp-body)]">{deployment.label}</span>
+                <h3 className="mt-1.5 text-[24px] font-medium leading-[30px] tracking-[-0.03em]">{deployment.title}</h3>
+                <p className="mt-3 flex-1 text-sm leading-[22px] text-[var(--lp-body)]">{deployment.detail}</p>
+                <div className="mt-6">
+                  <LpArrowLink href={deployment.href}>{deployment.link}</LpArrowLink>
+                </div>
               </div>
             ))}
           </div>
         </section>
 
-        <section aria-labelledby="deployment-heading" className={section}>
-          <div id="deployment-heading">
-            <LpSectionHeader label="Deployment, on your terms" heading="Start on the laptop. Choose the control plane." headingLines={["Start on the laptop.", "Choose the control plane."]} />
+        <section aria-labelledby="enterprise-faq-heading" className={`${section} grid gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] md:gap-20`}>
+          <div className="flex flex-col items-start">
+            <h2 id="enterprise-faq-heading" className="text-[36px] font-light leading-[42px] tracking-[-0.015em]">
+              Before you roll out.
+            </h2>
+            <div className="mt-8 flex flex-col gap-3">
+              <LpArrowLink href={TRUST_CENTER_URL} external>
+                Visit the Trust Center
+              </LpArrowLink>
+              <LpArrowLink href="/ai-governance">Read the AI governance guide</LpArrowLink>
+              <LpArrowLink href="https://github.com/different-ai/openwork" external>
+                Inspect the source
+              </LpArrowLink>
+            </div>
           </div>
-          <ul className="mt-10 grid gap-3 md:grid-cols-3">
-            {enterpriseDeployments.map(card => (
-              <IconCard key={card.title} card={card}>
-                <div className="mt-6"><LpArrowLink href={card.href}>{card.link}</LpArrowLink></div>
-              </IconCard>
-            ))}
-          </ul>
-        </section>
-
-        <section aria-label="A proposed enterprise rollout" className={section}>
-          <LpSectionHeader label="A practical evaluation" heading="Prove the fit. Then expand." />
-          <ol className="mt-10 grid gap-8 md:grid-cols-3 md:gap-10">
-            {enterpriseRollout.map((phase, index) => (
-              <li key={phase.step} className="flex flex-col">
-                <div className="flex h-10 items-center border-b border-[var(--lp-ink)]">
-                  <span className="mono text-xs text-[var(--lp-muted)]">0{index + 1}</span>
-                </div>
-                <h3 className="mt-5 text-[17px] font-medium tracking-[-0.01em]">{phase.step}</h3>
-                <p className={`mt-3 ${body}`}>{phase.body}</p>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-6 text-[13px] leading-6 text-[var(--lp-muted)]">An evaluation plan, not a deployment guarantee. Timeline, scope, support, and commercial terms are agreed with your team.</p>
-        </section>
-
-        <section aria-labelledby="trust-heading" className="mt-28 flex flex-col justify-between gap-10 rounded-[24px] bg-[var(--lp-tonal)] px-7 py-12 md:mt-36 md:flex-row md:items-center md:px-14 md:py-[72px]">
-          <div className="max-w-[640px]">
-            <div className="text-[15px] text-[var(--lp-muted)]">Review the evidence</div>
-            <h2 id="trust-heading" className="mt-3 text-[34px] font-light leading-[41px] tracking-[-0.015em] md:text-[40px] md:leading-[48px]">Your security review starts here.</h2>
-            <p className={`mt-4 ${body}`}>Use the Trust Center for current security materials and the source for implementation details. Bring your deployment questions to the evaluation.</p>
-          </div>
-          <div className="flex shrink-0 flex-col items-start gap-3 sm:flex-row md:items-center">
-            <a href={TRUST_CENTER_URL} target="_blank" rel="noreferrer" className="lp-pill-primary">Visit the Trust Center</a>
-            <a href="https://github.com/different-ai/openwork" className="lp-pill-secondary">Inspect the source</a>
-          </div>
-        </section>
-
-        <section aria-labelledby="enterprise-faq-heading" className="mt-28 grid gap-8 md:mt-36 md:grid-cols-[1fr_1.5fr] md:gap-20">
-          <h2 id="enterprise-faq-heading" className="text-[36px] font-light leading-[42px] tracking-[-0.015em]">Before you roll out.</h2>
-          <div className="divide-y divide-[var(--lp-border)] border-y border-[var(--lp-border)]">
-            {enterpriseFaq.map(entry => (
-              <details key={entry.question} className="group py-5">
-                <summary className="flex cursor-pointer list-none items-start justify-between gap-5 rounded-sm text-base font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--lp-ink)] [&::-webkit-details-marker]:hidden">
+          <div className="border-b border-[var(--lp-border)]">
+            {enterpriseFaq.map((entry) => (
+              <details key={entry.question} className="group border-t border-[var(--lp-border)]">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-base font-medium [&::-webkit-details-marker]:hidden">
                   {entry.question}
-                  <ChevronRight aria-hidden="true" size={18} strokeWidth={1.5} className="mt-1 shrink-0 transition-transform duration-150 ease-out group-open:rotate-90 motion-reduce:transition-none" />
+                  <ChevronRight
+                    aria-hidden="true"
+                    size={18}
+                    strokeWidth={1.5}
+                    className="shrink-0 text-[var(--lp-muted)] transition-transform duration-150 ease-out group-open:rotate-90 motion-reduce:transition-none"
+                  />
                 </summary>
-                <p className="mt-4 pr-6 text-[15px] leading-7 text-[var(--lp-body)]">{entry.answer}</p>
+                <p className="max-w-[640px] pb-6 pr-8 text-[15px] leading-7 text-[var(--lp-body)]">{entry.answer}</p>
               </details>
             ))}
           </div>
         </section>
 
         <section aria-labelledby="contact-heading" className={section}>
-          <div id="contact-heading" className="mb-8">
-            <LpSectionHeader label="Make an approved path worth using" heading="Bring IT. Bring a real workflow." right={<a href={calHref} {...calProps} className="lp-pill-primary">Book a demo</a>} />
+          <div className="grid gap-10 rounded-[24px] bg-[var(--lp-tonal)] px-5 py-8 md:px-10 md:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-16 lg:p-14">
+            <div className="flex flex-col">
+              <div className="text-[15px] text-[var(--lp-muted)]">A practical evaluation</div>
+              <h2
+                id="contact-heading"
+                className="mt-3 text-[34px] font-light leading-[41px] tracking-[-0.015em] md:text-[40px] md:leading-[48px]"
+              >
+                <span className="block">Bring IT.</span>
+                <span className="block">Bring a real workflow.</span>
+              </h2>
+              <ol className="mt-8 flex flex-col">
+                {enterpriseRollout.map((step, index) => (
+                  <li key={step.title} className="flex gap-4 border-t border-[#D9E1EA] py-5">
+                    <span className="mono w-5 shrink-0 pt-px text-[13px] text-[var(--lp-muted)]">0{index + 1}</span>
+                    <span className="flex flex-col gap-1.5">
+                      <span className="text-base font-medium tracking-[-0.01em]">{step.title}</span>
+                      <span className="text-sm leading-[22px] text-[var(--lp-body)]">{step.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="border-t border-[#D9E1EA] pt-5 text-[13px] leading-6 text-[var(--lp-muted)]">{enterpriseRolloutNote}</p>
+              {calExternal ? (
+                <a href={calHref} {...calProps} className="lp-pill-primary mt-8 self-start">
+                  Book a demo
+                </a>
+              ) : null}
+            </div>
+            <div>
+              <BookCallForm />
+            </div>
           </div>
-          <BookCallForm />
         </section>
-        <div className="mt-16"><SiteFooter /></div>
+
+        <div className="mt-16">
+          <SiteFooter />
+        </div>
       </main>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CreditCard, RefreshCw } from "lucide-react";
+import { Check, CreditCard, LockKeyhole, RefreshCw } from "lucide-react";
 import { DenButton } from "../../_components/ui/button";
 import { DenActionList, DenActionRow } from "../../_components/ui/action-row";
 import { DenBadge } from "../../_components/ui/badge";
@@ -13,7 +13,19 @@ import { DenSectionHeader } from "../../_components/ui/section-header";
 import { DenUsageMeter } from "../../_components/ui/usage-meter";
 import { formatMoneyMinor, formatSubscriptionStatus, getErrorMessage, getRequestError, requestJson } from "../../_lib/den-flow";
 import { DashboardPageTemplate } from "../../_components/ui/dashboard-page-template";
-import { getInferenceRoute, getMembersRoute, getOrgAccessFlags, getWebRoute, permissionLockReason } from "../../_lib/den-org";
+import { getAiGatewayProvidersRoute, getInferenceRoute, getMembersRoute, getOrgAccessFlags, getWebRoute, orgFeatureEnabled, permissionLockReason } from "../../_lib/den-org";
+import {
+  billingNotConfiguredMessage,
+  isBillingNotConfiguredError,
+  parseBillingPlans,
+  parseBillingPlanSummary,
+  peopleLabel,
+  PLAN_MAX_ADD_PEOPLE,
+  startCheckout,
+  type BillingPlans,
+  type BillingPlanSummary,
+} from "../../_lib/billing-checkout";
+import { BillingPlanCard } from "./billing-plan-card";
 import { ORG_SCOPE_HEADER } from "../../_lib/org-scope";
 import { useDenFlow } from "../../_providers/den-flow-provider";
 import {
@@ -43,6 +55,9 @@ type StripeBilling = {
   seats: StripeSeatBilling;
   enterprise: StripeEnterpriseBilling | null;
   web: StripeWebBilling | null;
+  /** Plan tier and "N joined, M invited" counts; null from older Den APIs. */
+  plan: BillingPlanSummary | null;
+  plans: BillingPlans | null;
 };
 
 type StripeEnterpriseBilling = {
@@ -156,7 +171,29 @@ function parseStripeBilling(payload: unknown): StripeBilling | null {
     },
     enterprise: parseStripeEnterpriseBilling((value as { enterprise?: unknown }).enterprise),
     web: parseStripeWebBilling(payload),
+    plan: parseBillingPlanSummary(payload),
+    plans: parseBillingPlans(payload),
   };
+}
+
+/** Neutral lock, not an error (DESIGN C5). Line items use the short label; the row says why. */
+function NotSoldBadge({ short = false }: { short?: boolean }) {
+  return <DenBadge tone="neutral" icon={LockKeyhole}>{short ? "Not sold" : "Not sold on this deployment"}</DenBadge>;
+}
+
+/** `?addPeople=N` from a link that already knows who is being added (0 to 50). */
+function requestedAddPeopleFromUrl(): number | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("addPeople");
+  if (raw === null || !/^\d+$/.test(raw)) return null;
+  const value = Number(raw);
+  return value <= PLAN_MAX_ADD_PEOPLE ? value : null;
+}
+
+function checkoutOutcomeFromUrl(): "complete" | "canceled" | null {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("checkout");
+  return value === "complete" || value === "canceled" ? value : null;
 }
 
 const STRIPE_RETURN_POLL_ATTEMPTS = 20;
@@ -186,7 +223,10 @@ export function BillingDashboardScreen() {
   const [stripeBillingValue, setStripeBillingValue] = useState<StripeBilling | null>(null);
   const [stripeBillingOrgId, setStripeBillingOrgId] = useState<string | null>(null);
   const [stripeBusy, setStripeBusy] = useState(false);
-  const [stripeActionBusy, setStripeActionBusy] = useState<"seat-checkout" | "portal" | null>(null);
+  const [stripeActionBusy, setStripeActionBusy] = useState<"seat-checkout" | "plan-checkout" | "portal" | null>(null);
+  const [planNotSold, setPlanNotSold] = useState(false);
+  const [requestedAddPeople, setRequestedAddPeople] = useState<number | null>(null);
+  const [checkoutOutcome, setCheckoutOutcome] = useState<"complete" | "canceled" | null>(null);
   const [stripeError, setStripeError] = useState<string | null>(null);
   const [stripeReturnChecking, setStripeReturnChecking] = useState(false);
   const currentOrgIdRef = useRef(activeOrgId);
@@ -240,6 +280,12 @@ export function BillingDashboardScreen() {
     if (!sessionHydrated || !user) return;
     void refreshStripeBilling(false);
   }, [sessionHydrated, user, activeOrgId]);
+
+  // Read after commit: a client navigation (the Stripe return page) updates the URL after render.
+  useEffect(() => {
+    setRequestedAddPeople(requestedAddPeopleFromUrl());
+    setCheckoutOutcome(checkoutOutcomeFromUrl());
+  }, []);
 
   useEffect(() => {
     if (!sessionHydrated || !user || typeof window === "undefined") return;
@@ -321,6 +367,28 @@ export function BillingDashboardScreen() {
     }
   }
 
+  async function startTeamCheckout(addPeople: number) {
+    if (!canManageBillingSettings) {
+      setStripeError(permissionLockReason("billing.manage"));
+      return;
+    }
+
+    setStripeError(null);
+    try {
+      await runReauthableAction("plan-checkout", async () => {
+        setStripeActionBusy("plan-checkout");
+        // Stripe returns through the return page, which syncs the session and comes back here.
+        const { url } = await startCheckout({ type: "plan", plan: "team", addPeople, returnTo: "/dashboard/billing" });
+        window.location.href = url;
+      });
+    } catch (error) {
+      if (isBillingNotConfiguredError(error)) setPlanNotSold(true);
+      else setStripeError(error instanceof Error ? error.message : "Could not start Team checkout.");
+    } finally {
+      setStripeActionBusy(null);
+    }
+  }
+
   async function openStripePortal() {
     if (!canOpenPortal) {
       setStripeError(permissionLockReason("billing_portal.use"));
@@ -366,10 +434,30 @@ export function BillingDashboardScreen() {
   const aiRenewsOn = formatBillingDate(stripeBilling?.subscription?.currentPeriodEnd ?? null);
   const aiCancelling = stripeBilling?.subscription?.cancelAtPeriodEnd === true;
 
+  const planSummary = stripeBilling?.plan ?? null;
+  const planOffers = stripeBilling?.plans ?? null;
+  const teamPlanEnabled = orgFeatureEnabled(orgContext, "teamPlan");
+  // Plan first (DESIGN s12): with Team checkout on, the plan card replaces the
+  // legacy seat purchase and add-ons stay separate below.
+  const showPlanCard = teamPlanEnabled && planSummary !== null && planOffers !== null;
+  const peopleSummary = planSummary ? peopleLabel(planSummary) : `${activeMemberCount} ${activeMemberCount === 1 ? "person" : "people"}`;
+  const planActiveLabel = planSummary && planSummary.tier !== "free"
+    ? `${planSummary.tier === "enterprise" ? "Enterprise" : "Team"} is active for ${activeOrg?.name ?? "this workspace"}.`
+    : null;
+
   const seatsActive = seatBilling?.hasActiveSubscription === true;
   const freeSeatCount = seatBilling?.freeSeatCount ?? 0;
   const billableSeatCount = seatBilling?.billableSeatCount ?? 0;
-  const seatChargeMinor = seatBilling ? seatBilling.unitAmount * billableSeatCount : 0;
+  // The active seat subscription's quantity is what Stripe bills: every user,
+  // including pending invitations.
+  const seatUnitAmount = planSummary?.tier === "enterprise" && planSummary.source === "stripe" && planOffers
+    ? planOffers.enterprise.unitAmount
+    : seatBilling?.unitAmount ?? 0;
+  const seatChargeMinor = !seatBilling
+    ? 0
+    : seatsActive && seatBilling.subscription
+      ? seatUnitAmount * seatBilling.subscription.quantity
+      : seatBilling.unitAmount * billableSeatCount;
   const seatChargeLabel = seatBilling ? formatMoneyMinor(seatChargeMinor, seatBilling.currency) : null;
   const freeSeatsLeft = Math.max(0, freeSeatCount - activeMemberCount);
   const seatInterval = seatBilling?.interval ?? "month";
@@ -417,7 +505,9 @@ export function BillingDashboardScreen() {
       <DashboardPageTemplate
         icon={CreditCard}
         title="Billing"
-        description={webFeatureEnabled
+        description={showPlanCard
+          ? "Your plan and add-ons such as OpenWork Models are billed separately."
+          : webFeatureEnabled
           ? webComplimentary
             ? "OpenWork Web is included for this organization at no charge. The Team plan and built-in AI model access remain separate purchases."
             : "OpenWork Web, team seats, and built-in AI model access are separate purchases. Your expected monthly total reflects the subscriptions shown below."
@@ -429,6 +519,12 @@ export function BillingDashboardScreen() {
 
       {billingLockNotice ? (
         <DenNotice tone="neutral" className="mb-6" message={billingLockNotice} />
+      ) : null}
+
+      {checkoutOutcome === "complete" && planActiveLabel ? (
+        <DenNotice tone="info" icon={Check} className="mb-6" message={planActiveLabel} />
+      ) : checkoutOutcome === "canceled" ? (
+        <DenNotice tone="neutral" className="mb-6" message="Checkout canceled. Nothing was charged." />
       ) : null}
 
       {stripeReturnChecking ? (
@@ -456,6 +552,23 @@ export function BillingDashboardScreen() {
         </DenCard>
       ) : (
         <>
+      {showPlanCard && planSummary && planOffers ? (
+        <BillingPlanCard
+          key={requestedAddPeople ?? "auto"}
+          plan={planSummary}
+          plans={planOffers}
+          seatQuantity={seatsActive ? seatBilling?.subscription?.quantity ?? null : null}
+          seatInterval={seatBilling?.interval ?? "month"}
+          canManageBilling={canManageBillingSettings}
+          canOpenPortal={canOpenPortal}
+          requestedAddPeople={requestedAddPeople}
+          busy={stripeActionBusy === "plan-checkout" || stripeActionBusy === "portal" ? stripeActionBusy : null}
+          notSold={planNotSold}
+          onStartTeam={(addPeople) => void startTeamCheckout(addPeople)}
+          onOpenPortal={() => void openStripePortal()}
+        />
+      ) : null}
+
       <DenCard className="mb-6 !p-0" data-testid="billing-summary-card">
         <DenSectionHeader
           className="p-6 pb-4"
@@ -495,14 +608,18 @@ export function BillingDashboardScreen() {
             className="mx-4 rounded-[18px]"
             leading={
               <DenMarkTile
-                label={seatsConfigured ? `${activeMemberCount}/${freeSeatCount}` : String(activeMemberCount)}
-                active={seatsActive}
+                label={showPlanCard
+                  ? seatsActive && seatBilling?.subscription ? `${seatBilling.subscription.quantity}x` : String(planSummary?.people ?? activeMemberCount)
+                  : seatsConfigured ? `${activeMemberCount}/${freeSeatCount}` : String(activeMemberCount)}
+                active={seatsActive && (showPlanCard || billableSeatCount > 0)}
               />
             }
-            title={seatsActive ? "Team plan" : "Free plan"}
+            title={showPlanCard && planSummary ? `${planSummary.tier === "enterprise" ? "Enterprise" : planSummary.tier === "team" ? "Team" : "Free"} plan` : seatsActive ? "Team plan" : "Free plan"}
             description={
-              !seatsConfigured
-                ? `${activeMemberCount} active ${activeMemberCount === 1 ? "user" : "users"} · this deployment does not charge for users`
+              showPlanCard
+                ? peopleSummary
+                : !seatsConfigured
+                ? `${peopleSummary} · no seat charge`
                 : seatsActive
                   ? `${billableSeatCount} ${billableSeatCount === 1 ? "user" : "users"} × ${seatPrice}`
                   : `${activeMemberCount} of ${freeSeatCount} users on the Free plan · nothing to pay`
@@ -510,8 +627,12 @@ export function BillingDashboardScreen() {
             value={seatsActive ? seatChargeLabel ?? "" : formatMoneyMinor(0, seatBilling?.currency ?? "usd")}
             valueCaption={`per ${seatBilling?.interval ?? "month"}`}
             badge={
-              !seatsConfigured
-                ? <DenBadge tone="neutral">Not billed</DenBadge>
+              showPlanCard && planSummary
+                ? planSummary.tier === "free"
+                  ? <DenBadge tone="neutral">Free</DenBadge>
+                  : <DenBadge tone="success" icon={Check}>Active</DenBadge>
+                : !seatsConfigured
+                ? <NotSoldBadge short />
                 : seatsActive
                   ? <DenBadge tone="success" icon={Check}>Active</DenBadge>
                   : <DenBadge tone="neutral">Included</DenBadge>
@@ -529,7 +650,7 @@ export function BillingDashboardScreen() {
                   : webComplimentary
                     ? `${getOpenWorkWebQuantityDescription(webBilling.quantity, webQuantityDefinition)} covered · complimentary access`
                   : !webConfigured
-                    ? "This deployment does not sell OpenWork Web access"
+                    ? billingNotConfiguredMessage("web")
                     : webSubscribed
                       ? `${getOpenWorkWebQuantityDescription(webBilling.quantity, webQuantityDefinition)} × ${webPrice} · ${formatSubscriptionStatus(webStatus ?? "unknown")}`
                       : `${getOpenWorkWebQuantityDescription(webBilling.quantity, webQuantityDefinition)} · not subscribed`
@@ -540,7 +661,7 @@ export function BillingDashboardScreen() {
                 webComplimentary
                   ? <DenBadge tone="success" icon={Check}>Complimentary</DenBadge>
                   : !webBilling || !webConfigured
-                  ? <DenBadge tone="neutral">Not billed</DenBadge>
+                  ? <NotSoldBadge short />
                   : webPaymentFailed
                     ? <DenBadge tone="warning">Payment failed</DenBadge>
                     : webCancelling
@@ -559,7 +680,7 @@ export function BillingDashboardScreen() {
             title="AI model access"
             description={
               !aiConfigured
-                ? "This deployment does not sell model access · your team uses their own API keys"
+                ? `${billingNotConfiguredMessage("inference")} Your team uses its own providers.`
                 : aiActive
                   ? `${activeMemberCount} ${activeMemberCount === 1 ? "user" : "users"} × ${stripePrice} · billed for every member and pending invitation`
                   : "Not subscribed · your team uses their own API keys"
@@ -568,7 +689,7 @@ export function BillingDashboardScreen() {
             valueCaption={`per ${stripeBilling.interval}`}
             badge={
               !aiConfigured
-                ? <DenBadge tone="neutral">Not billed</DenBadge>
+                ? <NotSoldBadge short />
                 : aiPaymentFailed
                   ? <DenBadge tone="warning">Payment failed</DenBadge>
                   : aiActive
@@ -599,7 +720,7 @@ export function BillingDashboardScreen() {
               webComplimentary
                 ? <DenBadge tone="success" icon={Check}>Complimentary</DenBadge>
                 : !webBilling || !webConfigured
-                ? <DenBadge tone="neutral">Not billed</DenBadge>
+                ? <NotSoldBadge />
                 : webPaymentFailed
                   ? <DenBadge tone="warning">Payment failed</DenBadge>
                   : webCancelling
@@ -626,7 +747,7 @@ export function BillingDashboardScreen() {
                   webComplimentary
                     ? "OpenWork Web is included for this organization without a Stripe subscription or per-member charge."
                     : !webConfigured
-                    ? "OpenWork Web billing is not configured for this deployment."
+                    ? billingNotConfiguredMessage("web")
                     : webPaymentFailed
                       ? webPaymentStatus === "payment_failed"
                         ? "The latest payment failed, so OpenWork Web is locked. Update the payment method to restore access."
@@ -692,7 +813,7 @@ export function BillingDashboardScreen() {
                       : "Add or remove members to change what your organization is billed. Pending invitations are never billed."}
                   action={<DenButton variant="secondary" onClick={goToMembers}>Manage members</DenButton>}
                 />
-                {webComplimentary ? null : webSubscribed ? (
+                {webComplimentary || (!webConfigured && !webSubscribed) ? null : webSubscribed ? (
                   <DenActionRow
                     description={
                       webCancelling
@@ -769,7 +890,7 @@ export function BillingDashboardScreen() {
           />
         </DenActionList>
       </DenCard>
-      ) : (
+      ) : showPlanCard ? null : (
       <DenCard className="mb-6" data-testid="billing-seats-card">
         <DenSectionHeader
           title={seatsActive ? "Team plan" : "Free plan"}
@@ -780,7 +901,7 @@ export function BillingDashboardScreen() {
           }
           action={
             !seatsConfigured
-              ? <DenBadge tone="neutral">Not billed</DenBadge>
+              ? <NotSoldBadge />
               : seatsActive
                 ? <DenBadge tone="success" icon={Check}>Active</DenBadge>
                 : <DenBadge tone="neutral">Included</DenBadge>
@@ -865,7 +986,7 @@ export function BillingDashboardScreen() {
           description="Use OpenWork's built-in models with no API keys to manage. Separate from seats."
           action={
             !aiConfigured
-              ? <DenBadge tone="neutral">Not billed</DenBadge>
+              ? <NotSoldBadge />
               : aiPaymentFailed
                 ? <DenBadge tone="warning">Payment failed</DenBadge>
                 : aiActive
@@ -876,10 +997,14 @@ export function BillingDashboardScreen() {
 
         <DenNotice
           tone={!aiConfigured ? "neutral" : aiPaymentFailed ? "error" : "warning"}
+          icon={!aiConfigured ? LockKeyhole : undefined}
           className="mt-5"
+          action={!aiConfigured
+            ? <DenButton variant="secondary" size="sm" href={getAiGatewayProvidersRoute(activeOrg?.slug)}>Add a team provider</DenButton>
+            : undefined}
           message={
             !aiConfigured
-              ? "Model billing is not set up on this deployment, so nothing is charged for AI access. Your team connects their own provider keys instead."
+              ? `${billingNotConfiguredMessage("inference")} Your team uses its own providers instead.`
               : aiPaymentFailed
                 ? `Your last payment failed. Models stop working for everyone until it is settled. Seats and team access are not affected.${aiStatus ? ` Stripe reports this subscription as ${formatSubscriptionStatus(aiStatus).toLowerCase()}.` : ""}`
                 : `Billed for every member and pending invitation${seatsConfigured ? `, including the free ${freeSeatCount} seats` : ""}. Inviting someone increases this bill by ${stripePrice} per ${stripeBilling.interval}.`
@@ -899,6 +1024,7 @@ export function BillingDashboardScreen() {
           </div>
         ) : null}
 
+        {aiActive || aiConfigured ? (
         <DenActionList className="mt-5">
           {aiActive ? (
             <DenActionRow
@@ -919,20 +1045,16 @@ export function BillingDashboardScreen() {
                 </DenButton>
               }
             />
-          ) : (
+          ) : aiConfigured ? (
             <DenActionRow
-              description={
-                aiConfigured
-                  ? `Turning this on costs ${aiChargeLabel} per ${stripeBilling.interval} for your ${activeMemberCount} ${activeMemberCount === 1 ? "member" : "members"}, not ${stripePrice}. You subscribe from the OpenWork Models page.`
-                  : "See which models OpenWork ships with and how your team connects their own provider keys."
-              }
+              description={`Turning this on costs ${aiChargeLabel} per ${stripeBilling.interval} for your ${activeMemberCount} ${activeMemberCount === 1 ? "member" : "members"}, not ${stripePrice}. You subscribe from the OpenWork Models page.`}
               action={
                 <DenButton onClick={() => router.push(getInferenceRoute(activeOrg?.slug))}>
                   View OpenWork Models
                 </DenButton>
               }
             />
-          )}
+          ) : null}
           {aiActive ? (
             <DenActionRow
               description="To lower this bill, remove members you are no longer working with. There is no way to buy model access for only some of your team."
@@ -940,6 +1062,7 @@ export function BillingDashboardScreen() {
             />
           ) : null}
         </DenActionList>
+        ) : null}
       </DenCard>
         </>
       )}

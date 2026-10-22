@@ -24,13 +24,23 @@ organization override, deployment rollout row, or operator feature lock.
 | Slack Assistant (still needs the Slack connector set up) | `slackAssistant` |
 | Workbot sign-in and account connection | `workbotFirstRun`, `workbotInlineConnect` |
 | Content-free chat index for admins | `headlessSessionIndex` |
+| Automatic OpenCode v2 migration | `engineV2Upgrade`, `engineV2ForceUpgrade` |
+
+## Automatic OpenCode v2 migration
+
+Existing v1 installations copy their chats with a backup and move to OpenCode v2
+when idle; fresh installations start on v2. This is default product behavior,
+not an opt-in rollout. Organization and member overrides, killed rollout rows,
+and operator feature locks cannot stop migration or revert a migrated profile.
+Older desktop and worker clients still receive `enginePolicy: { upgrade: true }`.
+Cloud bootstrap sends positive compatibility signals on every launch, wake and
+checkpoint restore; it never rewrites engine state itself.
 
 ## Folded into another switch
 
 | Retired switch | Now controlled by |
 | --- | --- |
 | `workbotGuidedNavigation` | `workbotWorkspaceAssistant` |
-| `engineV2Upgrade` (the optional desktop invitation is gone) | `engineV2ForceUpgrade` ("Upgrade to OpenCode v2") |
 | `headlessStepTurns` | Saved step turns (generally available, including `headlessDurableTurns`) |
 
 The remaining switches stay off by default. An old override for a folded key

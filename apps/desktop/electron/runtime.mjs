@@ -282,16 +282,8 @@ export function openworkInstallMarkerPaths({ userDataDir, serverConfigPath, env 
 }
 
 /**
- * New installs start on OpenCode v2; updates keep the engine they had. An
- * explicit OPENWORK_ENGINE_V2_PREVIEW (dev, evals) always wins.
- * @param {{ markerPaths: string[], exists?: (filePath: string) => boolean, env?: NodeJS.ProcessEnv }} input
- * @returns {"v2" | undefined}
- */
-/**
- * New desktop versions move everyone still on OpenCode v1 to v2 in the
- * background. An explicitly pinned engine (OPENWORK_ENGINE_V2_PREVIEW, used by
- * test harnesses and support) or an explicit OPENWORK_ENGINE_AUTO_UPGRADE keeps
- * today's behavior.
+ * Migrate existing v1 installs in the background by default, independently of
+ * Den rollout policy. Explicit local engine/migration overrides always win.
  * @returns {boolean | undefined}
  */
 export function resolveDesktopEngineAutoUpgrade(env = process.env) {
@@ -299,6 +291,11 @@ export function resolveDesktopEngineAutoUpgrade(env = process.env) {
   return true;
 }
 
+/**
+ * Fresh installs can select v2 immediately; existing profiles migrate safely.
+ * @param {{ markerPaths: string[], exists?: (filePath: string) => boolean, env?: NodeJS.ProcessEnv }} input
+ * @returns {"v2" | undefined}
+ */
 export function resolveFreshInstallEngine({ markerPaths, exists = existsSync, env = process.env }) {
   if (env.OPENWORK_ENGINE_V2_PREVIEW?.trim()) return undefined;
   return markerPaths.some((filePath) => exists(filePath)) ? undefined : "v2";

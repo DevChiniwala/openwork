@@ -177,6 +177,52 @@ test("active engines block the copy and existing v2 chats are left untouched", {
   } finally { await engine?.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test("default boot copies history and selects healthy v2 despite legacy off policy", { skip: !bin, timeout: 60_000 }, async () => {
+  if (!bin) return;
+  const directory = await mkdtemp(join(tmpdir(), "openwork-default-history-"));
+  const overrides = { OPENWORK_RUNTIME_DB: join(directory, "runtime.sqlite"), OPENCODE_DB: join(directory, "v1.db"),
+    OPENWORK_ENGINE_V2_PREVIEW: "", OPENCODE_DISABLE_MODELS_FETCH: "1" };
+  const previous = new Map(Object.keys(overrides).map(key => [key, process.env[key]]));
+  let preview: ReturnType<typeof createEngineV2Preview> | undefined;
+  try {
+    const source = await fixture(directory, 8192);
+    const before = await digest(source);
+    Object.assign(process.env, overrides);
+    const config: ServerConfig = { host: "127.0.0.1", port: 0, token: "test", hostToken: "test", configPath: join(directory, "server.json"),
+      approval: { mode: "auto", timeoutMs: 1000 }, corsOrigins: [], workspaces: [], authorizedRoots: [directory], readOnly: false,
+      startedAt: Date.now(), tokenSource: "generated", hostTokenSource: "generated", logFormat: "json", logRequests: false };
+    preview = createEngineV2Preview({ config, deferStart: true, autoUpgradeIdle: async () => true });
+    preview.setForcePolicy({ upgrade: false });
+    preview.start();
+    preview.setForcePolicy({ upgrade: false });
+    assert.equal(preview.status().chatRouting, false, "v1 remains selected while copying");
+    const deadline = Date.now() + 45_000;
+    while (!preview.status().chatRouting) {
+      assert.notEqual(preview.status().migration.state, "error", preview.status().migration.error);
+      assert.ok(Date.now() < deadline, "the default automatic migration selects v2");
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(preview.status().running, true);
+    assert.equal(preview.status().engineOrigin, "forced");
+    assert.equal(preview.status().migration.state, "completed");
+    assert.equal(preview.status().migration.imported, 1);
+    assert.ok(preview.status().migration.backupPath, "automatic migration retains its pre-copy backup");
+    assert.equal(await digest(source), before, "the original v1 history is never modified");
+    preview.setForcePolicy({ upgrade: false });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(preview.status().chatRouting, true, "a late legacy off response cannot revert migration");
+    assert.ok(preview.connection());
+    assert.equal(readEngineV2PreviewState(config).automaticHistoryCopy, undefined);
+    assert.equal(readEngineV2PreviewState(config).autoUpgradeRetry, undefined);
+  } finally {
+    await preview?.stop();
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("closing OpenWork pauses a copy and startup resumes it before serving v2", { skip: !bin, timeout: 60_000 }, async () => {
   if (!bin) return;
   const directory = await mkdtemp(join(tmpdir(), "openwork-history-lifecycle-"));

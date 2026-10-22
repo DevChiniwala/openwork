@@ -78,10 +78,12 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
     };
     const directory = join(root, "workspace");
     await preview.syncWorkspaceMcp("workspace", directory);
-    assert.deepEqual(await mutations(), [
+    // Independent registrations may be read from the runtime store in either
+    // order. Assert both complete payloads, without prescribing their order.
+    assert.deepEqual(new Set(await mutations()), new Set([
       { method: "PUT", name: "openwork-cloud", config: { ...remote, protocol: "auto" } },
       { method: "PUT", name: "generic", config: remote },
-    ]);
+    ]));
     await preview.syncWorkspaceMcp("workspace", directory);
     assert.equal((await mutations()).length, 2, "healthy unchanged registrations are not restarted");
 
