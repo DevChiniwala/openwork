@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { after, test } from "node:test"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
-import { adminOpportunitiesSchema, adminOpportunityAccountSchema, adminOpportunityOverviewSchema } from "@openwork/types/den/admin-organization"
+import { adminOpportunitiesSchema, adminOpportunityAccountSchema, adminOpportunityOverviewSchema, adminSignupCompaniesSchema } from "@openwork/types/den/admin-organization"
 import { bootDen, summary } from "./harness.js"
 
 const den = await bootDen()
@@ -306,4 +306,49 @@ test("only a platform admin reads account context and records follow-ups, which 
   overview = adminOpportunityOverviewSchema.parse((await den.request(admin.token, "GET", "/v1/admin/opportunities/overview")).body)
   assert.ok(!overview.queue.some(item => item.organizationId === work.orgId), "dismissed accounts leave the queue")
   assert.equal(overview.hidden.dismissed, 1)
+})
+
+test("signups group by company domain across organizations with plan, paid status and recorded outreach", async () => {
+  // The weekly overview test moved these signups into 2030; future signups are not counted.
+  await query("UPDATE user SET email_verified = true, created_at = DATE_SUB(NOW(3), INTERVAL 90 DAY) WHERE id IN (?, ?)", [owner.userId, peer.userId])
+  const companies = async (search = "") => {
+    const response = await den.request(admin.token, "GET", `/v1/admin/opportunities/companies${search ? `?${search}` : ""}`)
+    assert.equal(response.status, 200, summary(response))
+    assert.equal(response.headers.get("cache-control"), "no-store")
+    return adminSignupCompaniesSchema.parse(response.body)
+  }
+  assert.equal((await den.request(owner.token, "GET", "/v1/admin/opportunities/companies")).status, 403)
+  const all = await companies("outreach=any&activity=all&search=example.test")
+  const studio = all.companies.find(row => row.domain === "studio.example.test")
+  assert.ok(studio)
+  assert.equal(studio.signups, 2)
+  assert.ok(studio.organizations >= 2)
+  assert.ok(studio.activeUsers >= 1, "earlier tests move some memberships, so at least the owner stays active")
+  assert.deepEqual(studio.outreach.status, "contacted")
+  assert.ok(studio.outreach.lastContactedAt)
+  assert.equal(studio.workspaces[0]?.members, 2)
+  assert.ok(!all.companies.some(row => row.domain === "gmail.com" || row.domain === "outlook.com"), "personal providers are not companies")
+  assert.ok(!JSON.stringify(all).includes(owner.email))
+  const soloCompany = all.companies.find(row => row.domain === "solo.example.test")
+  assert.deepEqual(soloCompany?.billing, { plan: "free", paying: false, modelsAddOn: false })
+  assert.equal(soloCompany?.outreach.status, "not_contacted")
+  // Work was contacted in the follow-up test, so by default only the uncontacted solo company remains.
+  assert.deepEqual((await companies("search=example.test")).companies.map(row => row.domain), ["solo.example.test"])
+
+  await query("UPDATE organization SET metadata = JSON_SET(COALESCE(metadata, JSON_OBJECT()), '$.plan', JSON_OBJECT('tier', 'team')) WHERE id = ?", [solo.orgId])
+  await query("INSERT INTO org_subscriptions (id, organization_id, type, status, stripe_customer_id, stripe_subscription_id, current_period_end) VALUES (?, ?, 'seat', 'active', 'cus_example', ?, DATE_ADD(NOW(3), INTERVAL 20 DAY))", [createDenTypeId("orgSubscription"), solo.orgId, `sub_${den.stamp}`])
+  const paying = await companies("billing=paying&search=example.test")
+  assert.deepEqual(paying.companies.map(row => [row.domain, row.billing.plan, row.billing.paying]), [["solo.example.test", "team", true]])
+  assert.equal((await companies("billing=not_paying&search=solo.example.test")).page.total, 0)
+  const adoption = await report("minMembers=1&outreach=not_contacted")
+  assert.ok(!adoption.organizations.some(row => row.id === work.orgId), "contacted organizations leave the not-contacted filter")
+  assert.deepEqual(adoption.organizations.find(row => row.id === solo.orgId)?.billing, { plan: "team", paying: true, modelsAddOn: false })
+  assert.equal((await report("minMembers=1&outreach=contacted")).organizations[0]?.outreach.status, "contacted")
+  assert.equal((await den.request(admin.token, "GET", "/v1/admin/opportunities/companies?sort=size")).status, 400)
+  const firstPage = await companies("outreach=any&activity=all&search=example.test&limit=1")
+  assert.ok(firstPage.nextCursor)
+  const secondPage = await companies(`outreach=any&activity=all&search=example.test&limit=1&cursor=${firstPage.nextCursor}`)
+  assert.equal(secondPage.nextCursor, null)
+  assert.equal(new Set([...firstPage.companies, ...secondPage.companies].map(row => row.domain)).size, 2)
+  assert.equal((await den.request(admin.token, "GET", `/v1/admin/opportunities/companies?outreach=contacted&limit=1&cursor=${firstPage.nextCursor}`)).status, 400)
 })

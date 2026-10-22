@@ -54,6 +54,16 @@ export const adminOrganizationInsightsSchema = adminOrganizationDetailSchema.ext
 }).meta({ ref: "AdminOrganizationInsights" })
 export type AdminOrganizationInsights = z.infer<typeof adminOrganizationInsightsSchema>
 
+// Billing comes from recorded subscriptions and the stored plan tier. "Paying" means a
+// current active subscription; trials are not paying.
+export const opportunityBillingSchema = z.object({
+  plan: z.enum(["free", "team", "enterprise"]), paying: z.boolean(), modelsAddOn: z.boolean(),
+})
+// Contacted means a platform admin recorded outreach, a reply or a meeting.
+export const opportunityOutreachSchema = z.object({
+  status: z.enum(["not_contacted", "contacted"]), lastContactedAt: z.string().datetime().nullable(),
+})
+
 export const adminOpportunitiesSchema = z.object({
   from: z.string().datetime(), to: z.string().datetime(), generatedAt: z.string().datetime(),
   nextCursor: z.string().nullable().describe("Pass as cursor with the same filters and sort to continue; null on the last page."),
@@ -62,10 +72,24 @@ export const adminOpportunitiesSchema = z.object({
     members: count, activeMembers: count, lastActiveAt: z.string().datetime(),
     companyEmailMembers: count, companyDomain: z.string().nullable(), companyDomainCount: count,
     skills: count, mcpConnections: count,
+    billing: opportunityBillingSchema, outreach: opportunityOutreachSchema,
   })).max(100),
   page: z.object({ limit: count, total: count, returned: count, hasMore: z.boolean() }),
 }).meta({ ref: "AdminOpportunities" })
 export type AdminOpportunities = z.infer<typeof adminOpportunitiesSchema>
+
+export const adminSignupCompaniesSchema = z.object({
+  from: z.string().datetime(), to: z.string().datetime(), generatedAt: z.string().datetime(),
+  nextCursor: z.string().nullable().describe("Pass as cursor with the same filters and sort to continue; null on the last page."),
+  companies: z.array(z.object({
+    domain: z.string(), signups: count, organizations: count, activeUsers: count,
+    firstSignupAt: z.string().datetime(), lastSignInAt: z.string().datetime().nullable(),
+    billing: opportunityBillingSchema, outreach: opportunityOutreachSchema,
+    workspaces: z.array(z.object({ id: z.string(), name: z.string(), members: count })).max(3),
+  })).max(100),
+  page: z.object({ limit: count, total: count, returned: count, hasMore: z.boolean() }),
+}).meta({ ref: "AdminSignupCompanies" })
+export type AdminSignupCompanies = z.infer<typeof adminSignupCompaniesSchema>
 
 const weeklyMetric = z.object({ current: count, previous: count })
 const weeklyOrganization = z.object({ id: z.string(), name: z.string(), current: count, previous: count })

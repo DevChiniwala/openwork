@@ -28,3 +28,22 @@ const PRIORITY_TONE = { high: "warning", medium: "info", low: "neutral" } as con
 export function PriorityBadge({ priority }: { priority: OpportunityItem["priority"] }) {
   return <DenBadge size="sm" tone={PRIORITY_TONE[priority]}>{priority === "high" ? "High" : priority === "medium" ? "Medium" : "Low"} priority</DenBadge>;
 }
+
+type Billing = { plan: "free" | "team" | "enterprise"; paying: boolean; modelsAddOn: boolean };
+type Outreach = { status: "not_contacted" | "contacted"; lastContactedAt: string | null };
+const PLAN_LABEL: Record<Billing["plan"], string> = { free: "Free", team: "Team", enterprise: "Enterprise" };
+
+// Matches the sales sheet's "Paying or not paying" and "Plan they are on" columns.
+export function BillingCell({ billing }: { billing: Billing }) {
+  return <div className="whitespace-nowrap">
+    <DenBadge size="sm" tone={billing.paying ? "success" : "neutral"}>{billing.paying ? "Paying" : "Not paying"}</DenBadge>
+    <p className="mt-1 text-xs text-[var(--dls-text-secondary)]">{PLAN_LABEL[billing.plan]}{billing.modelsAddOn ? " + Models add-on" : ""}</p>
+  </div>;
+}
+
+export function OutreachCell({ outreach }: { outreach: Outreach }) {
+  return <div className="whitespace-nowrap">
+    <DenBadge size="sm" tone={outreach.status === "contacted" ? "info" : "warning"}>{outreach.status === "contacted" ? "Contacted" : "Not contacted"}</DenBadge>
+    {outreach.lastContactedAt ? <p className="mt-1 text-xs text-[var(--dls-text-secondary)]">Last {shortDate(outreach.lastContactedAt)}</p> : null}
+  </div>;
+}

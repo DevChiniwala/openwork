@@ -1028,6 +1028,44 @@ export type AccountFollowUpActionInput = {
   confirmedOpportunity?: "expansion" | "commercial" | null;
 };
 
+export type AdminSignupCompanies = {
+  from: string;
+  to: string;
+  generatedAt: string;
+  /**
+   * Pass as cursor with the same filters and sort to continue; null on the last page.
+   */
+  nextCursor: string | null;
+  companies: Array<{
+    domain: string;
+    signups: number;
+    organizations: number;
+    activeUsers: number;
+    firstSignupAt: string;
+    lastSignInAt: string | null;
+    billing: {
+      plan: "free" | "team" | "enterprise";
+      paying: boolean;
+      modelsAddOn: boolean;
+    };
+    outreach: {
+      status: "not_contacted" | "contacted";
+      lastContactedAt: string | null;
+    };
+    workspaces: Array<{
+      id: string;
+      name: string;
+      members: number;
+    }>;
+  }>;
+  page: {
+    limit: number;
+    total: number;
+    returned: number;
+    hasMore: boolean;
+  };
+};
+
 export type AdminOpportunities = {
   from: string;
   to: string;
@@ -1048,6 +1086,15 @@ export type AdminOpportunities = {
     companyDomainCount: number;
     skills: number;
     mcpConnections: number;
+    billing: {
+      plan: "free" | "team" | "enterprise";
+      paying: boolean;
+      modelsAddOn: boolean;
+    };
+    outreach: {
+      status: "not_contacted" | "contacted";
+      lastContactedAt: string | null;
+    };
   }>;
   page: {
     limit: number;
@@ -8608,6 +8655,64 @@ export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses = {
 export type PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponse =
   PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses[keyof PostV1AdminOpportunitiesAccountsByOrganizationIdActionsResponses];
 
+export type GetV1AdminOpportunitiesCompaniesData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * active keeps companies with at least one person observed using the app in the last 30 days.
+     */
+    activity?: "active" | "all";
+    outreach?: "not_contacted" | "contacted" | "any";
+    billing?: "any" | "paying" | "not_paying";
+    sort?: "active" | "signups" | "recent" | "signin";
+    search?: string;
+    /**
+     * Maximum companies per page, from 1 to 100. Defaults to 50.
+     */
+    limit?: number;
+    /**
+     * Opaque nextCursor from the preceding page. Keep the same filters and sort; omit for the first page.
+     */
+    cursor?: string;
+    /**
+     * Compatibility for numbered admin pages. Use cursor for continued traversal; do not combine with cursor.
+     *
+     * @deprecated
+     */
+    offset?: string;
+  };
+  url: "/v1/admin/opportunities/companies";
+};
+
+export type GetV1AdminOpportunitiesCompaniesErrors = {
+  /**
+   * Invalid report filters.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminOpportunitiesCompaniesError =
+  GetV1AdminOpportunitiesCompaniesErrors[keyof GetV1AdminOpportunitiesCompaniesErrors];
+
+export type GetV1AdminOpportunitiesCompaniesResponses = {
+  /**
+   * Signup companies returned.
+   */
+  200: AdminSignupCompanies;
+};
+
+export type GetV1AdminOpportunitiesCompaniesResponse =
+  GetV1AdminOpportunitiesCompaniesResponses[keyof GetV1AdminOpportunitiesCompaniesResponses];
+
 export type GetV1AdminOpportunitiesData = {
   body?: never;
   path?: never;
@@ -8616,6 +8721,10 @@ export type GetV1AdminOpportunitiesData = {
     minMembers?: "1" | "2" | "5" | "10";
     companyEmail?: "0" | "1";
     setup?: "any" | "skills" | "mcp" | "both";
+    /**
+     * Whether a platform admin recorded outreach, a reply or a meeting for the organization.
+     */
+    outreach?: "any" | "not_contacted" | "contacted";
     sort?: "recent" | "active" | "members";
     search?: string;
     /**
