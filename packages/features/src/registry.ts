@@ -204,6 +204,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  auditRetentionCleanup: {
+    label: "Audit log retention cleanup",
+    description: "Permanently deletes audit history older than the organization's retention window.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES
