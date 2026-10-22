@@ -100,8 +100,8 @@ export class UpgradeLab {
       this.forward = spawn("ssh", ["-i", text(ssh.IdentityPath), "-p", String(ssh.Port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ExitOnForwardFailure=yes", "-N", "-L", "33489:127.0.0.1:33489", "-L", "38919:127.0.0.1:38919", "-L", "38920:127.0.0.1:38920", "core@127.0.0.1"], { stdio: "ignore" })
     }
     await until(async () => { try { this.sql("SELECT 1"); return true } catch { return false } }, "database")
-    run("podman", ["run", "-d", "--name", "exp-o2-redis", "--network", "host", "--volume", "exp-o2-redis-data:/data", "redis:7-alpine", "redis-server", "--port", "63489", "--bind", "127.0.0.1"])
-    run("podman", ["run", "-d", "--name", "exp-o2-mail", "--network", "host", "-e", "MP_SMTP_BIND_ADDR=127.0.0.1:10389", "-e", "MP_UI_BIND_ADDR=127.0.0.1:8099", "docker.io/axllent/mailpit:latest"])
+    run("podman", ["run", "-d", "--name", "exp-o2-redis", "--network", "host", "--volume", "exp-o2-redis-data:/data", `docker.io/library/redis@sha256:${amd64 ? "8be847644e195abc4c10c8d9936cfa45332eccc6b714fa7b186ff43f1f4d5579" : "12bd99f4555ce357cbe0c950ad42c7a86f76e807244995f0ad0a6b8949c3518a"}`, "redis-server", "--port", "63489", "--bind", "127.0.0.1"])
+    run("podman", ["run", "-d", "--name", "exp-o2-mail", "--network", "host", "-e", "MP_SMTP_BIND_ADDR=127.0.0.1:10389", "-e", "MP_UI_BIND_ADDR=127.0.0.1:8099", `docker.io/axllent/mailpit@sha256:${amd64 ? "938ce54b7b946ef3f45a03e119952cf7e67a7969d61f45a3ed055442a77e00f4" : "846fbb9d54be56bc6c1ad0f592239452448fac958545578743a9683277f0082f"}`])
   }
   publishedMigrate(image: string) {
     run("podman", ["run", "--rm", "--name", "exp-o2-migrate", "--network", "host", "-e", `DATABASE_URL=${dbUrl}`, "-e", "DEN_DB_ENCRYPTION_KEY=exp-o2-disposable-key-12345678901234567890", "--entrypoint", "sh", image, "-lc", "cd /app/ee/packages/den-db && node ./dist/scripts/bootstrap.js"])
