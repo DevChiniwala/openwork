@@ -93,7 +93,9 @@ test("flag off only returns a forced instance to v1", async () => {
       engineOrigin: "forced", engineForced: true }));
     const engine = createEngineV2Preview({ config });
     try {
-      for (let check = 0; check < 100 && engine.status().chatRouting; check++) await new Promise(resolve => setTimeout(resolve, 5));
+      // Routing changes in memory before its atomic persistence finishes. Wait
+      // for the durable receipt too, so the assertions cannot race that write.
+      for (let check = 0; check < 100 && (engine.status().chatRouting || readEngineV2PreviewState(config).engineOrigin !== "reverted"); check++) await new Promise(resolve => setTimeout(resolve, 5));
       assert.equal(engine.status().chatRouting, false);
       assert.equal(engine.status().engineOrigin, "reverted");
       assert.equal(engine.status().engineForced, false);
