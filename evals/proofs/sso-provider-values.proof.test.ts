@@ -54,7 +54,10 @@ savedSamlTest("generic setup follows the saved protocol despite unsaved form tab
     expect(labels[1]).toBe("IdP Issuer URL");
     await user.see({ role: "textbox", label: /^Users' email domain/ }, { value: "example.test" });
     expect((await probe.dom("details[open]")).elements).toHaveLength(0);
-    expect(await probe.text()).toContain("We recommend signing SAML assertions with SHA-256.");
+    const guidance = await probe.text();
+    expect(guidance).toContain("We recommend signing SAML assertions with SHA-256.");
+    expect(guidance).toContain("Your identity provider's own identifier (for example Microsoft Entra Identifier or Identity Provider Issuer). Not the Entity ID you give to your identity provider.");
+    expect(guidance).toContain("Your identity provider's login address (for example Login URL, Identity Provider Single Sign-On URL or SSO URL).");
     // Native keyboard disclosure avoids a selector-based click or app evaluation.
     await user.click({ role: "textbox", label: /^IdP Certificate/ });
     await user.press("Tab");
@@ -104,9 +107,18 @@ savedSamlTest("generic setup follows the saved protocol despite unsaved form tab
     expect(await world.setupPrecedesVerification()).toBe(true);
     expect(oidc.map(row => [row.label, row.value])).toEqual([["Sign-in URL", oidcConnection.signInUrl], ["Redirect URL", oidcConnection.redirectUrl]]);
     expect(oidc.some(row => row.value === savedConnection.acsUrl)).toBe(false);
-    expect((await probe.dom('[data-testid="sso-provider-setup"]')).elements[0].text).toContain("Also called Redirect URI.");
+    const outgoing = (await probe.dom('[data-testid="sso-provider-setup"]')).elements[0].text;
+    expect(outgoing).toContain("Where your identity provider sends users back after sign-in. Paste it exactly as the app's redirect URI (Callback URL, Sign-in redirect URI or Authorized redirect URI). It must match character for character.");
+    expect(outgoing).toContain("Optional. Some providers ask for it to start sign-in from their app portal (Sign on URL, Initiate login URI).");
+    expect(oidcConnection).not.toHaveProperty("clientSecret");
+    expect(oidcConnection.oidc).not.toHaveProperty("clientSecret");
     await user.click({ role: "button", label: "Edit connection" });
     await user.see({ role: "textbox", label: /^Client ID/ });
+    await user.see({ role: "textbox", label: /^Client Secret/ }, { value: "" });
+    const incoming = await probe.text();
+    expect(incoming).toContain("OpenWork doesn't return the saved secret.");
+    expect(incoming).toContain("Keep openid email profile. Each user needs an email address at your identity provider.");
+    await user.screenshot();
     await user.click({ role: "button", label: "SAML" });
     await user.see({ role: "textbox", label: /^IdP Certificate/ });
     expect(await checkCopies(user, probe, world)).toEqual(oidc);

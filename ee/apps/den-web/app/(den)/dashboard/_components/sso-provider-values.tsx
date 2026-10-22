@@ -24,15 +24,15 @@ export function getSsoSetupValues(connection: DenOrgSsoConnection): SetupValue[]
   // Switching an unsaved form tab must not expose the OIDC callback for SAML.
   if (connection.kind === "oidc") {
     return [
-      { key: "signin", label: "Sign-in URL", value: connection.signInUrl, hint: "Optional. Starts sign-in from OpenWork." },
-      { key: "redirect", label: "Redirect URL", value: connection.redirectUrl, hint: "Also called Redirect URI." },
+      { key: "signin", label: "Sign-in URL", value: connection.signInUrl, hint: "Optional. Some providers ask for it to start sign-in from their app portal (Sign on URL, Initiate login URI)." },
+      { key: "redirect", label: "Redirect URL", value: connection.redirectUrl, hint: "Where your identity provider sends users back after sign-in. Paste it exactly as the app's redirect URI (Callback URL, Sign-in redirect URI or Authorized redirect URI). It must match character for character." },
     ];
   }
   return [
-    { key: "entity", label: "Entity ID", value: getSamlEntityId(connection), hint: "Also called Identifier or Audience URI." },
-    { key: "acs", label: "ACS URL (Reply URL)", value: connection.acsUrl, hint: "Where your identity provider sends users back after sign-in. Also called Reply URL, Single sign-on URL or Assertion Consumer Service URL." },
-    { key: "signin", label: "Sign-in URL", value: connection.signInUrl, hint: "Optional. Starts sign-in from OpenWork." },
-    { key: "metadata", label: "Metadata URL", value: connection.metadataUrl, hint: "For identity providers that can import service provider metadata." },
+    { key: "entity", label: "Entity ID", value: getSamlEntityId(connection), hint: "Paste it as the app's identifier. Also called Identifier or Audience URI." },
+    { key: "acs", label: "ACS URL (Reply URL)", value: connection.acsUrl, hint: "Where your identity provider sends users back after sign-in. Also called Single sign-on URL or Assertion Consumer Service URL." },
+    { key: "signin", label: "Sign-in URL", value: connection.signInUrl, hint: "Optional. Some providers ask for it to start sign-in from their app portal (Sign on URL, Initiate login URI)." },
+    { key: "metadata", label: "Metadata URL", value: connection.metadataUrl, hint: "For identity providers that can import service provider metadata, instead of copying the values one by one." },
   ];
 }
 

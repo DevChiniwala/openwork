@@ -524,14 +524,14 @@ export function SsoScreen() {
                 <label className="block text-[14px] text-gray-700">
                   <span className="mb-2 block font-medium">{formMode === "saml" ? "IdP Issuer URL" : "Issuer URL"}</span>
                   <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="https://idp.example.com" disabled={ssoFormDisabled} />
-                  {formMode === "saml" ? <span className="mt-1 block text-[12px] text-gray-500">Also called Identifier, Entity ID or Issuer in your identity provider.</span> : <SsoOidcIssuerHint />}
+                  {formMode === "saml" ? <span className="mt-1 block text-[12px] text-gray-500">Your identity provider&apos;s own identifier (for example Microsoft Entra Identifier or Identity Provider Issuer). Not the Entity ID you give to your identity provider.</span> : <SsoOidcIssuerHint />}
                 </label>
                 {formMode === "saml" ? (
                   <>
                     <label className="block text-[14px] text-gray-700 md:col-span-2">
                       <span className="mb-2 block font-medium">SAML Entry Point</span>
                       <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={entryPoint} onChange={(event) => setEntryPoint(event.target.value)} placeholder="https://idp.example.com/sso" disabled={ssoFormDisabled} />
-                      <span className="mt-1 block text-[12px] text-gray-500">Your identity provider&apos;s sign-on URL. Also called SSO URL or Login URL.</span>
+                      <span className="mt-1 block text-[12px] text-gray-500">Your identity provider&apos;s login address (for example Login URL, Identity Provider Single Sign-On URL or SSO URL).</span>
                     </label>
                     <label className="block text-[14px] text-gray-700 md:col-span-2">
                       <span className="mb-2 block font-medium">IdP Certificate</span>
@@ -551,11 +551,12 @@ export function SsoScreen() {
                     <label className="block text-[14px] text-gray-700">
                       <span className="mb-2 block font-medium">Client Secret</span>
                       <DenSecretInput autoComplete="new-password" value={clientSecret} onChange={setClientSecret} placeholder="Secret is not returned after save" disabled={ssoFormDisabled} />
-                      <span className="mt-1 block text-[12px] text-gray-500">Client secrets are never returned by Den.</span>
+                      <span className="mt-1 block text-[12px] text-gray-500">OpenWork doesn&apos;t return the saved secret.</span>
                     </label>
                     <label className="block text-[14px] text-gray-700 md:col-span-2">
                       <span className="mb-2 block font-medium">Scopes</span>
                       <input className="w-full rounded-[18px] border border-gray-200 px-4 py-3" value={scopes} onChange={(event) => setScopes(event.target.value)} placeholder="openid email profile" disabled={ssoFormDisabled} />
+                      <span className="mt-1 block text-[12px] text-gray-500">Keep openid email profile. Each user needs an email address at your identity provider.</span>
                     </label>
                     <label className="block text-[14px] text-gray-700 md:col-span-2">
                       <span className="mb-2 block font-medium">Token endpoint auth method</span>

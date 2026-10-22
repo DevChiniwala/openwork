@@ -31,10 +31,10 @@ test("saved SAML has four generic rows in order, exact synonym hints and correct
   assert.deepEqual(rows.map(row => row.key), ["entity", "acs", "signin", "metadata"]);
   assert.deepEqual(rows.map(row => row.label), ["Entity ID", "ACS URL (Reply URL)", "Sign-in URL", "Metadata URL"]);
   assert.deepEqual(rows.map(row => row.hint), [
-    "Also called Identifier or Audience URI.",
-    "Where your identity provider sends users back after sign-in. Also called Reply URL, Single sign-on URL or Assertion Consumer Service URL.",
-    "Optional. Starts sign-in from OpenWork.",
-    "For identity providers that can import service provider metadata.",
+    "Paste it as the app's identifier. Also called Identifier or Audience URI.",
+    "Where your identity provider sends users back after sign-in. Also called Single sign-on URL or Assertion Consumer Service URL.",
+    "Optional. Some providers ask for it to start sign-in from their app portal (Sign on URL, Initiate login URI).",
+    "For identity providers that can import service provider metadata, instead of copying the values one by one.",
   ]);
   assert.deepEqual(rows.map(row => row.value), ["https://ow.ai.example.test", connection.acsUrl, connection.signInUrl, connection.metadataUrl]);
   assert.equal(rows.some(row => row.value === connection.redirectUrl), false);
@@ -54,7 +54,8 @@ test("saved OIDC alone exposes the original callback with neutral synonyms, even
   const oidc: DenOrgSsoConnection = { ...connection, kind: "oidc" };
   const rows = getSsoSetupValues(oidc);
   assert.deepEqual(rows.map(row => [row.label, row.value]), [["Sign-in URL", connection.signInUrl], ["Redirect URL", connection.redirectUrl]]);
-  assert.equal(rows[1].hint, "Also called Redirect URI.");
+  assert.equal(rows[0].hint, "Optional. Some providers ask for it to start sign-in from their app portal (Sign on URL, Initiate login URI).");
+  assert.equal(rows[1].hint, "Where your identity provider sends users back after sign-in. Paste it exactly as the app's redirect URI (Callback URL, Sign-in redirect URI or Authorized redirect URI). It must match character for character.");
   const html = render(oidc);
   assert.ok(html.includes(connection.redirectUrl));
   assert.ok(!html.includes(connection.acsUrl));
