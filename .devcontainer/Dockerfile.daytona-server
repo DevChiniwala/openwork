@@ -7,16 +7,25 @@ FROM daytonaio/sandbox:0.6.0
 
 USER root
 
+# Oracle MySQL 8.4 LTS, not Debian's default-mysql-server (MariaDB). Den
+# supports MySQL 8.0.16+ only (packages/docs/self-host/gateway-upgrade.mdx);
+# MariaDB returns JSON aggregates differently and broke AI Gateway usage.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    default-mysql-client \
-    default-mysql-server \
     git \
     procps \
     sudo \
     xz-utils \
+  && curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2023 -o /usr/share/keyrings/mysql-2023.asc \
+  && printf 'deb [signed-by=/usr/share/keyrings/mysql-2023.asc] https://repo.mysql.com/apt/debian %s mysql-8.4-lts\n' \
+    "$(. /etc/os-release && echo "$VERSION_CODENAME")" > /etc/apt/sources.list.d/mysql.list \
+  && apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    mysql-community-client \
+    mysql-community-server \
+  && mysqld --version | grep -q 'MySQL Community Server' \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /tmp/* \
   && printf 'daytona ALL=(ALL) NOPASSWD:ALL\n' >/etc/sudoers.d/daytona-openwork \
