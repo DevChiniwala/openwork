@@ -3,6 +3,8 @@ import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Lock } from "lucide-react";
 
+import { ProviderIcon } from "@/react-app/design-system/provider-icon";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -60,6 +62,16 @@ export function ClaudeImportView(props: ClaudeImportViewProps) {
   );
 }
 
+/** Section title with Claude's own mark, since every row in it came from Claude. */
+function SectionTitle(props: { children: string }) {
+  return (
+    <LayoutSectionItemTitle className="flex items-center gap-2">
+      <ProviderIcon providerId="anthropic" size={16} />
+      {props.children}
+    </LayoutSectionItemTitle>
+  );
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : t("claude_import.read_failed");
 }
@@ -75,8 +87,15 @@ function ClaudeCodeSection(props: ClaudeImportViewProps) {
       return props.client.listClaudeCodeSessions(props.workspaceId);
     },
   });
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Sessions not imported yet start ticked: the person came here to bring them over.
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<Map<string, ClaudeImportResult>>(new Map());
+  const selected = useMemo(
+    () => new Set((sessions.data ?? []).filter((item) => item.status === "new" && !excluded.has(item.sourceId) && !results.has(item.sourceId)).map((item) => item.sourceId)),
+    [sessions.data, excluded, results],
+  );
+  const setSelected = (next: Set<string>) =>
+    setExcluded(new Set((sessions.data ?? []).filter((item) => item.status === "new" && !next.has(item.sourceId)).map((item) => item.sourceId)));
   const importing = useMutation({
     mutationFn: async (ids: string[]) => {
       if (!props.client) return [];
@@ -84,7 +103,6 @@ function ClaudeCodeSection(props: ClaudeImportViewProps) {
     },
     onSuccess: async (next) => {
       setResults(new Map(next.map((result) => [result.sourceId, result])));
-      setSelected(new Set());
       await queryClient.invalidateQueries({ queryKey });
     },
   });
@@ -92,18 +110,16 @@ function ClaudeCodeSection(props: ClaudeImportViewProps) {
   return (
     <LayoutSectionItem>
       <LayoutSectionItemHeader>
-        <LayoutSectionItemTitle>{t("claude_import.code_title")}</LayoutSectionItemTitle>
-        <LayoutSectionItemHeaderActions>
-          <Button
-            size="sm"
-            disabled={selected.size === 0 || importing.isPending}
-            onClick={() => importing.mutate([...selected])}
-          >
-            {importing.isPending
-              ? t("claude_import.importing")
-              : t("claude_import.import_sessions", { count: selected.size })}
-          </Button>
-        </LayoutSectionItemHeaderActions>
+        <SectionTitle>{t("claude_import.code_title")}</SectionTitle>
+        {selected.size > 0 || importing.isPending ? (
+          <LayoutSectionItemHeaderActions>
+            <Button size="sm" disabled={importing.isPending} onClick={() => importing.mutate([...selected])}>
+              {importing.isPending
+                ? t("claude_import.importing")
+                : t("claude_import.import_sessions", { count: selected.size })}
+            </Button>
+          </LayoutSectionItemHeaderActions>
+        ) : null}
       </LayoutSectionItemHeader>
       {sessions.isPending ? (
         <ImportListSkeleton />
@@ -163,8 +179,9 @@ function ClaudeExportSection(props: ClaudeImportViewProps) {
     },
   });
 
+  const [dragging, setDragging] = useState(false);
   const choose = (next: File | undefined) => {
-    if (!next) return;
+    if (!next || !props.client) return;
     setFile(next);
     setItems(null);
     reading.mutate(next);
@@ -173,7 +190,7 @@ function ClaudeExportSection(props: ClaudeImportViewProps) {
   return (
     <LayoutSectionItem>
       <LayoutSectionItemHeader>
-        <LayoutSectionItemTitle>{t("claude_import.chats_title")}</LayoutSectionItemTitle>
+        <SectionTitle>{t("claude_import.chats_title")}</SectionTitle>
         <LayoutSectionItemHeaderActions>
           <input
             ref={input}
@@ -187,19 +204,15 @@ function ClaudeExportSection(props: ClaudeImportViewProps) {
             }}
           />
           <Button
-            variant={items ? "outline" : "default"}
+            variant="outline"
             size="sm"
             disabled={!props.client || reading.isPending || importing.isPending}
             onClick={() => input.current?.click()}
           >
             {file ? t("claude_import.choose_another_file") : t("claude_import.choose_export")}
           </Button>
-          {items ? (
-            <Button
-              size="sm"
-              disabled={selected.size === 0 || importing.isPending}
-              onClick={() => importing.mutate([...selected])}
-            >
+          {items && (selected.size > 0 || importing.isPending) ? (
+            <Button size="sm" disabled={importing.isPending} onClick={() => importing.mutate([...selected])}>
               {importing.isPending
                 ? t("claude_import.importing")
                 : t("claude_import.import_chats", { count: selected.size })}
@@ -211,7 +224,8 @@ function ClaudeExportSection(props: ClaudeImportViewProps) {
         <ImportListSkeleton />
       ) : reading.isError ? (
         <SettingsNotice tone="error">{errorMessage(reading.error)}</SettingsNotice>
-      ) : items ? (
+      ) : null}
+      {items ? (
         <>
           <SettingsListItemDescription className="px-3">{file?.name}</SettingsListItemDescription>
           <ImportList
@@ -223,7 +237,26 @@ function ClaudeExportSection(props: ClaudeImportViewProps) {
           />
           <SettingsNotice>{t("claude_import.export_scope_notice")}</SettingsNotice>
         </>
-      ) : null}
+      ) : reading.isPending ? null : (
+        <div
+          data-testid="claude-import-drop"
+          data-dragging={dragging || undefined}
+          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            choose(event.dataTransfer.files[0]);
+          }}
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-2xl border border-dashed border-dls-border px-4 py-6 text-center transition-colors",
+            dragging && "border-dls-text/40 bg-dls-hover",
+          )}
+        >
+          <span className="text-sm text-dls-text">{t("claude_import.drop_title")}</span>
+          <span className="text-xs text-muted-foreground">{t("claude_import.drop_hint")}</span>
+        </div>
+      )}
       {importing.isError ? <SettingsNotice tone="error">{errorMessage(importing.error)}</SettingsNotice> : null}
       <ExportHowTo />
     </LayoutSectionItem>
@@ -262,7 +295,7 @@ function ExportHowTo() {
 
 function CoworkRow() {
   return (
-    <SettingsListItem className="px-0 hover:bg-transparent">
+    <SettingsListItem className="border-0 px-0 hover:bg-transparent">
       <SettingsListItemContent>
         <span className="flex items-center gap-2 font-medium text-dls-text">
           <Lock className="size-3.5 text-muted-foreground" aria-hidden />
@@ -271,7 +304,7 @@ function CoworkRow() {
         <SettingsListItemDescription className="whitespace-normal">{t("claude_import.cowork_state")}</SettingsListItemDescription>
       </SettingsListItemContent>
       <SettingsListItemActions>
-        <Button variant="ghost" size="sm" onClick={() => void openDesktopUrl(`${CLAUDE_IMPORT_GUIDE_URL}#cowork-tasks`)}>
+        <Button variant="outline" size="sm" onClick={() => void openDesktopUrl(`${CLAUDE_IMPORT_GUIDE_URL}#cowork-tasks`)}>
           {t("claude_import.learn_more")}
         </Button>
       </SettingsListItemActions>
@@ -321,7 +354,7 @@ function ImportList(props: {
             checked={allSelected}
             onCheckedChange={(checked) => props.onSelectedChange(new Set(checked ? importable.map((item) => item.sourceId) : []))}
           />
-          {t("claude_import.select_all", { count: importable.length })}
+          {t("claude_import.select_all")}
         </label>
       ) : null}
       <SettingsList className="max-h-80 gap-y-0.5 overflow-y-auto">
@@ -350,7 +383,7 @@ function ImportList(props: {
                 {imported ? (
                   <>
                     <span className="text-xs text-muted-foreground">{t("claude_import.state_imported")}</span>
-                    <Button variant="ghost" size="xs" onClick={() => props.onOpenSession(result?.sessionId ?? item.sessionId)}>
+                    <Button variant="outline" size="sm" onClick={() => props.onOpenSession(result?.sessionId ?? item.sessionId)}>
                       {t("claude_import.open")}
                     </Button>
                   </>

@@ -30,6 +30,7 @@ test("an owner brings a Claude Code session into the workspace from Settings and
     await user.see({ text: fix.title }, { timeoutMs: WITHIN });
     await user.see({ text: notes.title });
     await user.see({ text: "Cowork tasks" });
+    await user.see({ text: "Drop your Claude export here" });
     await user.see({ text: "Not included in Claude's export. Save the files you need from each task." });
     const listed = (await probe.has(fix.title)) && (await probe.has(notes.title));
     expect(listed).toBe(true);
@@ -38,7 +39,9 @@ test("an owner brings a Claude Code session into the workspace from Settings and
   });
 
   await step("after: importing one session marks it Imported and leaves the other untouched", async () => {
-    await user.click({ role: "checkbox", label: fix.title });
+    // Sessions not imported yet start ticked; leave one out.
+    await user.see({ role: "button", label: "Import 2 sessions" });
+    await user.click({ role: "checkbox", label: notes.title });
     await user.click({ role: "button", label: "Import 1 session" });
     await user.see({ text: "Imported" }, { timeoutMs: WITHIN });
     await user.see({ role: "checkbox", label: notes.title });
@@ -62,10 +65,10 @@ test("an owner brings a Claude Code session into the workspace from Settings and
     await user.navigate(world.settingsUrl("import"));
     await user.see({ text: fix.title }, { timeoutMs: 60_000 });
     await user.see({ text: "Imported" });
-    await user.see({ role: "button", label: "Import" });
+    await user.see({ role: "button", label: "Import 1 session" });
     const stillImported = (await probe.dom('[aria-label="' + fix.title + '"][data-disabled]')).elements.length === 1;
     expect(stillImported).toBe(true);
-    evidence.recordAssertionEvidence("Re-opening Import keeps one copy", `"${fix.title}" still shows Imported and can't be ticked; nothing is selected to import`, stillImported);
+    evidence.recordAssertionEvidence("Re-opening Import keeps one copy", `"${fix.title}" still shows Imported and can't be ticked; only "${notes.title}" is offered`, stillImported);
     await user.screenshot();
   });
 });

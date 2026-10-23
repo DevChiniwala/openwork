@@ -22,6 +22,10 @@ What you can bring depends on where the conversation happened in Claude.
 
 All imports happen in **Settings → Import**, in the workspace you want the conversations to live in.
 
+<Frame caption="Settings → Import finds the Claude Code sessions saved for this folder. Chats come from your Claude export.">
+  <img src="/images/claude-import-settings.png" alt="The Import page in OpenWork settings, listing two Claude Code sessions ready to import, a drop area for a Claude export, and Cowork tasks marked as not available." />
+</Frame>
+
 <Note>
   Import is rolling out. If you don't see **Import** under your workspace in Settings, update OpenWork, or ask your OpenWork admin to turn on **Desktop: import Claude conversations**.
 </Note>
@@ -38,9 +42,13 @@ Claude Code saves every session in a folder on your computer. OpenWork reads the
     **Claude Code sessions in this folder** lists every session it found, newest first, with how many messages it has.
   </Step>
   <Step title="Choose and import">
-    Tick the sessions you want and select **Import**. Each one appears in your workspace's chat list straight away. Select **Open** to jump to it.
+    Sessions you haven't imported yet are already ticked. Untick any you want to leave behind and select **Import**. Each one appears in your workspace's chat list straight away. Select **Open** to jump to it.
   </Step>
 </Steps>
+
+<Frame caption="An imported Claude Code session reads like any other chat, including the tools Claude ran.">
+  <img src="/images/claude-import-chat.png" alt="An imported Claude Code session in OpenWork: the original question, a finished Read step, and Claude's answer." />
+</Frame>
 
 <Tip>
   Working across several folders? Switch workspace in the Settings sidebar and import each folder's sessions in turn.
@@ -94,7 +102,7 @@ Claude emails you when the export is ready. In our tests that took under a minut
 
 <Steps>
   <Step title="Open Settings → Import">
-    Under **Claude chats**, select **Choose Claude export** and pick your `conversations-…` file.
+    Under **Claude chats**, drop your `conversations-…` file onto the page, or select **Choose Claude export** and pick it.
   </Step>
   <Step title="Pick the conversations">
     OpenWork lists every conversation in the file, newest first, with conversations not yet imported already ticked. Untick anything you don't want.
@@ -135,7 +143,7 @@ Until Claude makes them exportable, bring the useful parts across yourself:
 
 <AccordionGroup>
   <Accordion title="Can I continue an imported conversation?">
-    Yes. An imported conversation is a regular OpenWork chat. Type a message and it continues with the model you have selected, with the imported history as context.
+    Yes. An imported conversation is a regular OpenWork chat. Type a message and it continues with the model you have selected, which sees the imported history: ask about something said in Claude and it can answer.
   </Accordion>
   <Accordion title="What happens if I import the same file twice?">
     Nothing is duplicated. Conversations you already imported show **Imported** and can't be ticked. Each conversation is imported once per workspace.
