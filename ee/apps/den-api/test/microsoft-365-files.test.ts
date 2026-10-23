@@ -118,6 +118,38 @@ test("folders, links, shortcuts and SharePoint libraries are addressed by drive 
   assert.equal(withoutSites.calls.length, 0)
 })
 
+test("without the all-files permission, Sites.Read.All never reaches files outside the member's own OneDrive", async () => {
+  const own = item({ parentReference: { driveId: "b!own", id: "root-1" } })
+  const { calls, request } = harness({
+    features: ["filesRead", "filesWrite", "sitesRead"], scopes: ["Files.ReadWrite", "Sites.Read.All"],
+    graph: ({ url }) => {
+      if (url.pathname === "/v1.0/me/drive") return json(200, { id: "b!own" })
+      if (url.pathname === "/v1.0/me/drive/items/shortcut-1") return json(200, { id: "shortcut-1", name: "Plan.docx", remoteItem: item({ id: "remote-1", parentReference: { driveId: "b!foreign", id: "f" } }) })
+      if (url.pathname === "/v1.0/sites") return json(200, { value: [] })
+      if (url.pathname.endsWith("/content")) return new Response("hello", { status: 200 })
+      return json(200, own)
+    },
+  })
+  const refused = async (path: string, init?: Parameters<typeof request>[1]) => {
+    const response = await request(path, init)
+    assert.equal(response.status, 409, path)
+    assert.equal((await response.json()).error, "needs_connection", path)
+  }
+  await refused("/v1/capabilities/microsoft-365/drive-file/item-9?driveId=b!foreign")
+  await refused("/v1/capabilities/microsoft-365/drive-file/shortcut-1")
+  await refused("/v1/capabilities/microsoft-365/drive-children?driveId=b!foreign")
+  await refused(`/v1/capabilities/microsoft-365/drive-item-by-link?url=${encodeURIComponent("https://contoso.sharepoint.com/:w:/s/team/EaBcD")}`)
+  await refused("/v1/direct-downloads/microsoft-365/drive-files/content?driveId=b!foreign&itemId=item-9")
+  await refused("/v1/capabilities/microsoft-365/drive-upload-sessions", { body: { driveId: "b!foreign", name: "Plan.docx", size: 12 } })
+  await refused("/v1/capabilities/microsoft-365/drive-files", { method: "PUT", body: { driveId: "b!foreign", path: "notes.md", content: "x" } })
+  assert.equal(calls.some(({ url }) => url.pathname.includes("b!foreign") || url.pathname.startsWith("/v1.0/shares/")), false, "no request reaches another drive")
+
+  const read = await request("/v1/capabilities/microsoft-365/drive-file/item-1?driveId=b!own")
+  assert.equal(read.status, 200, "the member's own drive still works with its id")
+  assert.equal((await read.json()).file.content, "hello")
+  assert.equal((await request("/v1/capabilities/microsoft-365/sites?query=finance")).status, 200, "site names stay available with the sites permission")
+})
+
 test("host pulls describe the exact file for the selected connection and stream it in bounded ranges", async () => {
   const { calls, identities, request } = harness({
     graph: ({ url, headers }) => {

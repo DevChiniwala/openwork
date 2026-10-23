@@ -30,6 +30,7 @@ import {
   driveItemNameSchema,
   driveItemSchema,
   graphError,
+  graphErrorStatus,
   graphItemIdSchema,
   needsConnectionSchema,
   upstreamErrorSchema,
@@ -300,7 +301,7 @@ export function registerMicrosoftDriveFileRoutes<T extends { Variables: OrgRoute
     try {
       return await run(granted.graph({ signal: c.req.raw.signal, timeoutMs }), context)
     } catch (error) {
-      return c.json(graphError(error), 502)
+      return c.json(graphError(error), graphErrorStatus(error))
     }
   }
 

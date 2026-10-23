@@ -16,8 +16,10 @@ import { clientSelectedFeatures, getNativeOAuthProvider, providerScopesSatisfy }
 import { listTeamsForMember } from "../../orgs.js"
 import { INTERNAL_CAPABILITY_CONNECTOR_HEADER, readInternalCapabilityConnectorId } from "../../session.js"
 import type { OrgRouteVariables } from "./shared.js"
-import { driveIdSchema, driveItemNameSchema, driveItemSchema, graphError, graphItemIdSchema, needsConnectionSchema, upstreamErrorSchema, type Microsoft365Access, type Microsoft365Identity } from "./microsoft-365-shared.js"
+import { driveIdSchema, driveItemNameSchema, driveItemSchema, graphError, graphErrorStatus, graphItemIdSchema, needsConnectionSchema, upstreamErrorSchema, type Microsoft365Access, type Microsoft365Identity } from "./microsoft-365-shared.js"
 import { registerMicrosoftDriveFileRoutes, type MicrosoftDriveFileRouteOptions } from "./microsoft-drive-files.js"
+
+const FILE_WRITE_FEATURES: readonly string[] = ["filesWrite", "filesFull"]
 
 const CONNECT_MICROSOFT_ACCOUNT_MESSAGE = "Connect your Microsoft work account first: open Settings > Connect and use Connect your account on the Microsoft 365 row, or connect from the OpenWork Cloud dashboard."
 
@@ -413,14 +415,20 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
     onError: (c) => c.json({ error: "invalid_request", message: "Request exceeds 1 MiB." }, 413),
   })
 
-  function graphClient(accessToken: string, signal?: AbortSignal, timeoutMs?: number) {
+  function graphClient(accessToken: string, signal?: AbortSignal, timeoutMs?: number, ownDriveOnly?: boolean) {
     return new MicrosoftGraphClient({
       accessToken,
       baseUrl: options.graphBaseUrl ?? env.microsoftGraphBaseUrl,
       fetch: options.fetch,
       signal,
       timeoutMs,
+      ownDriveOnly,
     })
+  }
+
+  /** Other drives, SharePoint included, need the all-files permission: full access to save there, read-all to read. */
+  function ownDriveOnly(token: Extract<Microsoft365AccessToken, { kind: "ok" }>, write: boolean) {
+    return !featureGranted(token, write ? ["filesFull"] : ["filesReadAll", "filesFull"])
   }
 
   const access: Microsoft365Access = async ({ features, label, ...identity }) => {
@@ -429,7 +437,8 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
     if (token.kind === "needs_connection" || token.kind === "policy_blocked") return { ok: false, status: token.kind === "policy_blocked" ? 403 : 409, body: { error: token.kind, message: token.message } }
     if (!featureEnabled(token, features)) return { ok: false, status: 409, body: { error: "needs_connection", message: disabledFeatureMessage(label) } }
     if (!featureGranted(token, features)) return { ok: false, status: 409, body: { error: "needs_connection", message: missingPermissionMessage(label) } }
-    return { ok: true, graph: (client = {}) => graphClient(token.accessToken, client.signal, client.timeoutMs) }
+    const write = features.every((feature) => FILE_WRITE_FEATURES.includes(feature))
+    return { ok: true, graph: (client = {}) => graphClient(token.accessToken, client.signal, client.timeoutMs, ownDriveOnly(token, write)) }
   }
 
   async function mutationClient(payload: OrgRouteVariables["organizationContext"], signal: AbortSignal, features: readonly string[], label: string) {
@@ -549,7 +558,7 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
       try {
         const { driveId, ...update } = c.req.valid("json")
         return c.json({ ok: true, file: await client.updateDriveItem({ driveId, itemId: c.req.valid("param").itemId }, update) })
-      } catch (error) { return c.json(graphError(error), 502) }
+      } catch (error) { return c.json(graphError(error), graphErrorStatus(error)) }
     },
   )
 
@@ -562,7 +571,7 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
       if (client instanceof Response) return client
       try {
         return c.json({ ok: true, file: await client.createDriveFolder(c.req.valid("json")) })
-      } catch (error) { return c.json(graphError(error), 502) }
+      } catch (error) { return c.json(graphError(error), graphErrorStatus(error)) }
     },
   )
 
@@ -715,7 +724,7 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
 
       try {
         const query = c.req.valid("query")
-        const client = graphClient(token.accessToken)
+        const client = graphClient(token.accessToken, undefined, undefined, ownDriveOnly(token, false))
         if (featureGranted(token, ["filesReadAll", "filesFull"])) {
           const from = query.pageToken ? Number(query.pageToken) : 0
           const page = await client.searchFiles({ query: query.query, maxResults: query.maxResults, from })
@@ -761,9 +770,9 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
       try {
         const { itemId } = c.req.valid("param")
         const { driveId } = c.req.valid("query")
-        return c.json({ ok: true, file: await graphClient(token.accessToken).getDriveItemWithContent({ driveId, itemId }) })
+        return c.json({ ok: true, file: await graphClient(token.accessToken, undefined, undefined, ownDriveOnly(token, false)).getDriveItemWithContent({ driveId, itemId }) })
       } catch (error) {
-        return c.json(graphError(error), 502)
+        return c.json(graphError(error), graphErrorStatus(error))
       }
     },
   )
@@ -869,10 +878,10 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
       }
 
       try {
-        const file = await graphClient(token.accessToken).putDriveTextFile(c.req.valid("json"))
+        const file = await graphClient(token.accessToken, undefined, undefined, ownDriveOnly(token, true)).putDriveTextFile(c.req.valid("json"))
         return c.json({ ok: true, file })
       } catch (error) {
-        return c.json(graphError(error), 502)
+        return c.json(graphError(error), graphErrorStatus(error))
       }
     },
   )

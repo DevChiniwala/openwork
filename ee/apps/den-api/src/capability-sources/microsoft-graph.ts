@@ -125,6 +125,11 @@ type MicrosoftGraphClientOptions = {
   maxJsonResponseBytes?: number
   maxContentCharacters?: number
   signal?: AbortSignal
+  /**
+   * Without an all-files permission the token can still reach SharePoint
+   * through Sites.Read.All, so only the member's own OneDrive is allowed.
+   */
+  ownDriveOnly?: boolean
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -489,6 +494,14 @@ export class MicrosoftGraphRequestError extends Error {
   }
 }
 
+/** A drive outside the member's own OneDrive, on a connection limited to that one. */
+export class MicrosoftGraphScopeError extends Error {
+  constructor() {
+    super("Files outside your own OneDrive need the Microsoft 365 permission to read all files the member can access (or full file access to save them). An admin can enable it on the Microsoft 365 connector in OpenWork Cloud -> Connectors; then reconnect your account.")
+    this.name = "MicrosoftGraphScopeError"
+  }
+}
+
 export class MicrosoftGraphMutationOutcomeUnknownError extends MicrosoftGraphRequestError {
   constructor(operation: string) {
     super(operation, 502, "The mutation outcome is unknown. Verify the current state before trying again; do not automatically retry.")
@@ -505,6 +518,8 @@ export class MicrosoftGraphClient {
   private readonly maxJsonResponseBytes: number
   private readonly maxContentCharacters: number
   private readonly signal?: AbortSignal
+  private readonly ownDriveOnly: boolean
+  private ownDriveId?: Promise<string>
 
   constructor(options: MicrosoftGraphClientOptions) {
     this.accessToken = options.accessToken
@@ -515,6 +530,7 @@ export class MicrosoftGraphClient {
     this.maxJsonResponseBytes = options.maxJsonResponseBytes ?? DEFAULT_MAX_JSON_RESPONSE_BYTES
     this.maxContentCharacters = options.maxContentCharacters ?? DEFAULT_MAX_CONTENT_CHARACTERS
     this.signal = options.signal
+    this.ownDriveOnly = options.ownDriveOnly ?? false
   }
 
   private url(path: string): URL {
@@ -717,6 +733,18 @@ export class MicrosoftGraphClient {
     }))
   }
 
+  /** Refuses another drive on a connection limited to the member's own OneDrive. */
+  private async assertReachable(driveId: string | undefined) {
+    if (!this.ownDriveOnly || !driveId) return
+    if (!this.ownDriveId) {
+      const url = this.url("me/drive")
+      url.searchParams.set("$select", "id")
+      this.ownDriveId = this.requestJson("Microsoft 365 OneDrive lookup", url).then((json) => (isRecord(json) ? readString(json, "id") : ""))
+      this.ownDriveId.catch(() => { this.ownDriveId = undefined })
+    }
+    if ((await this.ownDriveId) !== driveId) throw new MicrosoftGraphScopeError()
+  }
+
   /** The member's own OneDrive only; works with Files.Read. */
   async searchDriveItems(input: { query: string; maxResults: number }): Promise<Microsoft365DriveItem[]> {
     const escapedQuery = escapeOneDriveSearchPath(input.query)
@@ -728,6 +756,7 @@ export class MicrosoftGraphClient {
 
   /** Every OneDrive and SharePoint file the member can open, through Microsoft Search. Needs Files.Read.All. */
   async searchFiles(input: { query: string; maxResults: number; from: number }): Promise<{ files: Microsoft365DriveItem[]; nextFrom: number | null }> {
+    if (this.ownDriveOnly) throw new MicrosoftGraphScopeError()
     const json = await this.requestJson("Microsoft 365 file search", this.url("search/query"), {
       method: "POST",
       redirect: "error",
@@ -739,6 +768,7 @@ export class MicrosoftGraphClient {
 
   /** A folder's items, or a drive's top level when folderId is omitted. */
   async listDriveChildren(input: { driveId?: string; folderId?: string; maxResults: number; pageToken?: string }): Promise<{ files: Microsoft365DriveItem[]; nextPageToken: string | null }> {
+    await this.assertReachable(input.driveId)
     const path = input.folderId ? driveItemPath({ driveId: input.driveId, itemId: input.folderId }, "/children") : `${driveRootPath(input.driveId)}/children`
     const url = this.url(path)
     url.searchParams.set("$top", String(input.maxResults))
@@ -750,6 +780,7 @@ export class MicrosoftGraphClient {
 
   /** Resolves a OneDrive, SharePoint or Teams file link to its drive item. */
   async resolveSharingLink(link: string): Promise<Microsoft365DriveItem> {
+    if (this.ownDriveOnly) throw new MicrosoftGraphScopeError()
     const url = this.url(`shares/${encodeSharingUrl(link)}/driveItem`)
     url.searchParams.set("$select", DRIVE_ITEM_SELECT)
     return extractMicrosoftDriveItem(await this.requestJson("Microsoft 365 link lookup", url))
@@ -771,6 +802,7 @@ export class MicrosoftGraphClient {
   }
 
   async getDriveItem(ref: Microsoft365DriveRef): Promise<Microsoft365DriveItem> {
+    await this.assertReachable(ref.driveId)
     const url = this.url(driveItemPath(ref))
     url.searchParams.set("$select", DRIVE_ITEM_SELECT)
     return extractMicrosoftDriveItem(await this.requestJson("Microsoft 365 OneDrive item metadata", url))
@@ -778,6 +810,7 @@ export class MicrosoftGraphClient {
 
   /** Streams a file's bytes (or a PDF conversion of an Office file); the caller bounds and closes the body. */
   async downloadDriveContent(ref: Microsoft365DriveRef, input: { range?: string; format?: "pdf" } = {}): Promise<Response> {
+    await this.assertReachable(ref.driveId)
     const url = this.url(driveItemPath(ref, "/content"))
     if (input.format) url.searchParams.set("format", input.format)
     return this.request("Microsoft 365 file download", url, input.range ? { headers: { range: input.range } } : undefined)
@@ -792,6 +825,7 @@ export class MicrosoftGraphClient {
     | { parent: Microsoft365DriveRef; name: string; conflictBehavior: "fail" | "rename" },
   ): Promise<Microsoft365UploadSession> {
     const replacing = "replace" in input
+    await this.assertReachable(replacing ? input.replace.driveId : input.parent.driveId)
     const path = replacing
       ? driveItemPath(input.replace, "/createUploadSession")
       : driveItemPath(input.parent, `:/${encodeURIComponent(input.name)}:/createUploadSession`)
@@ -819,7 +853,10 @@ export class MicrosoftGraphClient {
       return { ...item, content: null, contentBase64: null, encoding: "none", contentType: item.mimeType || null, truncated: false, contentUnavailableReason: "file_too_large" }
     }
 
-    const contentUrl = this.url(driveItemPath(item.driveId ? { driveId: item.driveId, itemId: item.id } : ref, "/content"))
+    // A shortcut in the member's own drive points at a file in its owner's drive.
+    const target = !ref.driveId && item.id === ref.itemId ? ref : { driveId: item.driveId || ref.driveId, itemId: item.id }
+    await this.assertReachable(target.driveId)
+    const contentUrl = this.url(driveItemPath(target, "/content"))
     const response = await this.request("Microsoft 365 OneDrive item content", contentUrl)
     const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim() || item.mimeType || null
     const contentLength = Number(response.headers.get("content-length"))
@@ -861,6 +898,7 @@ export class MicrosoftGraphClient {
   }
 
   async putDriveTextFile(input: { driveId?: string; path: string; content: string }): Promise<Microsoft365DriveItem> {
+    await this.assertReachable(input.driveId)
     const encodedPath = encodeOneDrivePath(input.path)
     // Graph answers 201 for a new file and 200 when it replaces an existing one.
     return extractMicrosoftDriveItem(await this.requestMutation(
@@ -869,6 +907,7 @@ export class MicrosoftGraphClient {
   }
 
   async updateDriveItem(ref: Microsoft365DriveRef, input: { name?: string; parentId?: string }): Promise<Microsoft365DriveItem> {
+    await this.assertReachable(ref.driveId)
     return extractMicrosoftDriveItem(await this.requestMutation(
       "Microsoft 365 OneDrive item rename or move", driveItemPath(ref), "PATCH", 200, {
         name: input.name,
@@ -878,6 +917,7 @@ export class MicrosoftGraphClient {
   }
 
   async createDriveFolder(input: { driveId?: string; parentId: string; name: string }): Promise<Microsoft365DriveItem> {
+    await this.assertReachable(input.driveId)
     return extractMicrosoftDriveItem(await this.requestMutation(
       "Microsoft 365 OneDrive folder create", driveItemPath({ driveId: input.driveId, itemId: input.parentId }, "/children"), "POST", 201,
       { name: input.name, folder: {}, "@microsoft.graph.conflictBehavior": "fail" },

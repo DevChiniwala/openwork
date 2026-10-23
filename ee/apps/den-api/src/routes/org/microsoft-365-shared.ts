@@ -1,6 +1,6 @@
 import { z } from "zod"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
-import { MicrosoftGraphMutationOutcomeUnknownError, MicrosoftGraphRequestError, type MicrosoftGraphClient } from "../../capability-sources/microsoft-graph.js"
+import { MicrosoftGraphMutationOutcomeUnknownError, MicrosoftGraphRequestError, MicrosoftGraphScopeError, type MicrosoftGraphClient } from "../../capability-sources/microsoft-graph.js"
 
 // Shared by the Microsoft 365 capability routes and their file transfer routes.
 
@@ -54,7 +54,15 @@ export type Microsoft365Access = (input: Microsoft365Identity & { features: read
   | { ok: false; status: 401 | 403 | 409 | 502; body: { error: string; message: string } }
 >
 
-export function graphError(error: unknown): { error: "microsoft_graph_error"; message: string; outcome?: "unknown"; retryable?: false } {
+/** 409 for a drive the connection may not reach (an admin can enable the permission); otherwise Graph failed (502). */
+export function graphErrorStatus(error: unknown): 409 | 502 {
+  return error instanceof MicrosoftGraphScopeError ? 409 : 502
+}
+
+export function graphError(error: unknown): { error: "microsoft_graph_error" | "needs_connection"; message: string; outcome?: "unknown"; retryable?: false } {
+  if (error instanceof MicrosoftGraphScopeError) {
+    return { error: "needs_connection", message: error.message }
+  }
   if (error instanceof MicrosoftGraphMutationOutcomeUnknownError) {
     return { error: "microsoft_graph_error", message: error.message, outcome: "unknown", retryable: false }
   }
