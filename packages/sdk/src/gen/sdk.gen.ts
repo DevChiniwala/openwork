@@ -1344,6 +1344,7 @@ export class DenClient extends HeyApiClient {
         teamPlan?: boolean | null;
         selfServeEnterprise?: boolean | null;
         orgPrompts?: boolean | null;
+        sessionTokenHashing?: boolean | null;
       };
     },
     options?: Options<never, ThrowOnError>,

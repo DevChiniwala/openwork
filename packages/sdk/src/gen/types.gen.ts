@@ -1196,7 +1196,8 @@ export type AdminFeature = {
     | "connectStandardTools"
     | "teamPlan"
     | "selfServeEnterprise"
-    | "orgPrompts";
+    | "orgPrompts"
+    | "sessionTokenHashing";
   label: string;
   description: string;
   since: string;
@@ -1263,6 +1264,7 @@ export type AdminOrganizationsPageResponse = {
       teamPlan: boolean;
       selfServeEnterprise: boolean;
       orgPrompts: boolean;
+      sessionTokenHashing: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1526,6 +1528,15 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      sessionTokenHashing: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
     };
     [key: string]: unknown;
   }>;
@@ -1617,6 +1628,7 @@ export type AdminOverviewResponse = {
       teamPlan: boolean;
       selfServeEnterprise: boolean;
       orgPrompts: boolean;
+      sessionTokenHashing: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -1872,6 +1884,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       orgPrompts: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sessionTokenHashing: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8321,6 +8342,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      sessionTokenHashing: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
     };
   };
 };
@@ -8359,6 +8389,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       teamPlan?: boolean | null;
       selfServeEnterprise?: boolean | null;
       orgPrompts?: boolean | null;
+      sessionTokenHashing?: boolean | null;
     };
   };
   path: {
@@ -8641,6 +8672,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       orgPrompts: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sessionTokenHashing: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10133,6 +10173,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       teamPlan: boolean;
       selfServeEnterprise: boolean;
       orgPrompts: boolean;
+      sessionTokenHashing: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -10388,6 +10429,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       orgPrompts: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sessionTokenHashing: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10475,6 +10525,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       teamPlan: boolean;
       selfServeEnterprise: boolean;
       orgPrompts: boolean;
+      sessionTokenHashing: boolean;
       /**
        * Compatibility field, always true. AI Gateway is available to every organization; deployment configuration and authorization still apply.
        *
@@ -10730,6 +10781,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       orgPrompts: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sessionTokenHashing: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;

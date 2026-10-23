@@ -253,6 +253,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  sessionTokenHashing: {
+    label: "Hashed sign-in sessions",
+    description: "Den keeps only a one-way hash of each sign-in session token, so a copy of the database cannot sign anyone in. New sessions are stored hashed and older ones convert the next time they are used; turn on only once every Den replica runs a release that reads both forms.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES

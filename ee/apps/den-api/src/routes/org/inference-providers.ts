@@ -6,6 +6,7 @@ import { GATEWAY_PROVIDER_CREDENTIAL_KINDS, GATEWAY_PROVIDER_CREDENTIAL_MODES, G
 import { GATEWAY_MEMBER_SIGN_IN_METHODS, gatewayAwsSsoSettingsSchema, gatewayMemberConnectionsResponseSchema } from "@openwork/types/den/inference"
 import type { Context, Hono, MiddlewareHandler } from "hono"
 import { attributeAuditRequest, auditSessionUserAttribution } from "../../audit/request-capture.js"
+import { sessionTokenMatches } from "../../session-token.js"
 import type {} from "hono/request-id"
 import { describeRoute, type DescribeRouteOptions } from "hono-openapi"
 import { z } from "zod"
@@ -345,7 +346,7 @@ type OauthState = typeof GatewayProviderOauthStateTable.$inferSelect
  */
 async function loadBrowserSignInAttempt(c: Context, handle: string, method: GatewayMemberSignInMethod) {
   const cookieToken = await readSignedSessionCookieToken(c)
-  const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(eq(AuthSessionTable.token, cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
+  const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(sessionTokenMatches(cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
   if (!session) return { response: c.json({ error: "browser_signin_required", message: "Sign in to OpenWork in this browser, then continue here." }, 401) }
   const [entry] = await db.select().from(GatewayProviderOauthStateTable).where(eq(GatewayProviderOauthStateTable.state, handle)).limit(1)
   const attempt = entry ? readGoogleOAuthAttempt(entry.code_verifier) : null
@@ -883,7 +884,7 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
       const attempt = entry ? readGoogleOAuthAttempt(entry.code_verifier) : null
       if (!entry || !attempt || entry.used_at || entry.expires_at.getTime() <= Date.now()) throw new GatewayWriteError(400, "oauth_entry_expired", "This connection attempt expired or was already used. Start Connect again.")
       const cookieToken = await readSignedSessionCookieToken(c)
-      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(eq(AuthSessionTable.token, cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
+      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(sessionTokenMatches(cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
       if (!session) return c.json({ status: "sign_in_required" })
       if (attempt.userId !== session.userId) return c.json({ status: "account_mismatch" })
       const [provider] = await db.select().from(GatewayProviderTable).where(eq(GatewayProviderTable.id, entry.gateway_provider_id))
@@ -915,7 +916,7 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
     c.header("Referrer-Policy", "no-referrer")
     try {
       const cookieToken = await readSignedSessionCookieToken(c)
-      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(eq(AuthSessionTable.token, cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
+      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(sessionTokenMatches(cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
       if (!session) return c.json({ error: "browser_signin_required", message: "Sign in to OpenWork in this browser, then continue here." }, 401)
       const [entry] = await db.select().from(GatewayProviderOauthStateTable).where(eq(GatewayProviderOauthStateTable.state, c.req.valid("query").attempt)).limit(1)
       const attempt = entry ? readGoogleOAuthAttempt(entry.code_verifier) : null
@@ -979,7 +980,7 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
     // Read the live session row so a revoked/expired cookie cannot use cached auth.
     const cookieToken = await readSignedSessionCookieToken(c)
     const [browserSession] = cookieToken ? await db.select({ id: AuthSessionTable.id, token: AuthSessionTable.token, userId: AuthSessionTable.userId }).from(AuthSessionTable)
-      .where(and(eq(AuthSessionTable.token, cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
+      .where(and(sessionTokenMatches(cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
     const signInMessage = "Sign in to Den in this browser with the same OpenWork account that started Connect, then start Connect again."
     if (!browserSession) return fail(signInMessage)
     if (!query.state) return fail("Missing state.")
@@ -1239,7 +1240,7 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
     try {
       const input = c.req.valid("json")
       const cookieToken = await readSignedSessionCookieToken(c)
-      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(eq(AuthSessionTable.token, cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
+      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(sessionTokenMatches(cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
       if (!session) return c.json({ error: "browser_signin_required", message: "Sign in to OpenWork in this browser, then continue here." }, 401)
       const [entry] = await db.select().from(GatewayProviderOauthStateTable).where(eq(GatewayProviderOauthStateTable.state, input.attempt)).limit(1)
       const attempt = entry ? readGoogleOAuthAttempt(entry.code_verifier) : null
@@ -1277,7 +1278,7 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
     try {
       const input = c.req.valid("json")
       const cookieToken = await readSignedSessionCookieToken(c)
-      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(eq(AuthSessionTable.token, cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
+      const [session] = cookieToken ? await db.select().from(AuthSessionTable).where(and(sessionTokenMatches(cookieToken), gt(AuthSessionTable.expiresAt, new Date()))).limit(1) : []
       if (!session) return c.json({ error: "browser_signin_required", message: "Sign in to OpenWork in this browser, then continue here." }, 401)
       const [entry] = await db.select().from(GatewayProviderOauthStateTable).where(eq(GatewayProviderOauthStateTable.state, input.attempt)).limit(1)
       const attempt = entry ? readGoogleOAuthAttempt(entry.code_verifier) : null

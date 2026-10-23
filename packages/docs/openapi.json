@@ -4878,7 +4878,8 @@
               "connectStandardTools",
               "teamPlan",
               "selfServeEnterprise",
-              "orgPrompts"
+              "orgPrompts",
+              "sessionTokenHashing"
             ]
           },
           "label": {
@@ -5137,6 +5138,9 @@
                     "orgPrompts": {
                       "type": "boolean"
                     },
+                    "sessionTokenHashing": {
+                      "type": "boolean"
+                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -5173,6 +5177,7 @@
                     "teamPlan",
                     "selfServeEnterprise",
                     "orgPrompts",
+                    "sessionTokenHashing",
                     "gatewayDashboard"
                   ]
                 },
@@ -6774,6 +6779,63 @@
                         "override",
                         "overrideApplies"
                       ]
+                    },
+                    "sessionTokenHashing": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
                     }
                   },
                   "required": [
@@ -6804,7 +6866,8 @@
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise",
-                    "orgPrompts"
+                    "orgPrompts",
+                    "sessionTokenHashing"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -7258,6 +7321,9 @@
                     "orgPrompts": {
                       "type": "boolean"
                     },
+                    "sessionTokenHashing": {
+                      "type": "boolean"
+                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -7294,6 +7360,7 @@
                     "teamPlan",
                     "selfServeEnterprise",
                     "orgPrompts",
+                    "sessionTokenHashing",
                     "gatewayDashboard"
                   ]
                 },
@@ -8895,6 +8962,63 @@
                         "override",
                         "overrideApplies"
                       ]
+                    },
+                    "sessionTokenHashing": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
                     }
                   },
                   "required": [
@@ -8925,7 +9049,8 @@
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise",
-                    "orgPrompts"
+                    "orgPrompts",
+                    "sessionTokenHashing"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -36003,6 +36128,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "sessionTokenHashing": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -36033,7 +36215,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "orgPrompts"
+                        "orgPrompts",
+                        "sessionTokenHashing"
                       ]
                     }
                   },
@@ -37725,6 +37908,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "sessionTokenHashing": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -37755,7 +37995,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "orgPrompts"
+                        "orgPrompts",
+                        "sessionTokenHashing"
                       ]
                     }
                   },
@@ -38088,6 +38329,16 @@
                         ]
                       },
                       "orgPrompts": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sessionTokenHashing": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -41751,6 +42002,9 @@
                         "orgPrompts": {
                           "type": "boolean"
                         },
+                        "sessionTokenHashing": {
+                          "type": "boolean"
+                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -41787,6 +42041,7 @@
                         "teamPlan",
                         "selfServeEnterprise",
                         "orgPrompts",
+                        "sessionTokenHashing",
                         "gatewayDashboard"
                       ]
                     },
@@ -43388,6 +43643,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "sessionTokenHashing": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -43418,7 +43730,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "orgPrompts"
+                        "orgPrompts",
+                        "sessionTokenHashing"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }
@@ -43621,6 +43934,9 @@
                         "orgPrompts": {
                           "type": "boolean"
                         },
+                        "sessionTokenHashing": {
+                          "type": "boolean"
+                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -43657,6 +43973,7 @@
                         "teamPlan",
                         "selfServeEnterprise",
                         "orgPrompts",
+                        "sessionTokenHashing",
                         "gatewayDashboard"
                       ]
                     },
@@ -45258,6 +45575,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "sessionTokenHashing": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -45288,7 +45662,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "orgPrompts"
+                        "orgPrompts",
+                        "sessionTokenHashing"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }

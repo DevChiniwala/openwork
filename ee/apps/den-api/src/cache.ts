@@ -12,6 +12,7 @@ import { bumpGeneration, readManyThroughGeneration, readThroughGeneration, type 
 import { roleIncludesOwner } from "./organization-member-guards.js"
 import { deploymentServiceReadinessSchema, type DeploymentServiceReadiness } from "@openwork/types/den/service-readiness"
 import { getDenSessionExpiresAt, getDenSessionRefreshCutoff } from "./session-lifetime.js"
+import { isSessionTokenDigest, sessionTokenDigest, sessionTokenMatches, storedSessionTokenDigest } from "./session-token.js"
 
 type OrgId = typeof OrganizationTable.$inferSelect.id
 type MemberId = typeof MemberTable.$inferSelect.id
@@ -411,7 +412,8 @@ function parseCachedActiveGrant(raw: string | null) {
   return id ? { id } : null
 }
 
-function parseCachedAuthSession(raw: string | null, now: Date): CachedAuthSession | null {
+/** A cached session for the client `token` it was looked up by; entries never store the token. */
+function parseCachedAuthSession(raw: string | null, now: Date, token: string): CachedAuthSession | null {
   if (!raw) {
     return null
   }
@@ -429,7 +431,6 @@ function parseCachedAuthSession(raw: string | null, now: Date): CachedAuthSessio
   const session = parsed.session
   const user = parsed.user
   const id = readDenId("session", session.id)
-  const token = readString(session.token)
   const userId = readDenId("user", session.userId)
   const expiresAt = readDate(session.expiresAt)
   const createdAt = readDate(session.createdAt)
@@ -548,6 +549,25 @@ async function loadOrgMembers(organizationId: OrgId): Promise<CachedOrgMember[]>
   })
 }
 
+/**
+ * Once sessionTokenHashing is on, a session still stored as its token is
+ * rewritten as the hash the first time it is used (session-token.ts).
+ */
+async function hashLegacySessionToken(sessionId: DenTypeId<"session">, token: string) {
+  try {
+    // Lazy import: features.ts reads its rollouts through this module.
+    const { deploymentFeatureEnabled } = await import("./features.js")
+    if (!(await deploymentFeatureEnabled("sessionTokenHashing"))) return
+    await db
+      .update(AuthSessionTable)
+      .set({ token: sessionTokenDigest(token) })
+      .where(and(eq(AuthSessionTable.id, sessionId), eq(AuthSessionTable.token, token)))
+  } catch (error) {
+    // The session is valid either way; it is hashed on a later use.
+    console.error("openwork_session_token_hash_failed", { error })
+  }
+}
+
 async function loadAuthSession(token: string, now: Date): Promise<CachedAuthSession | null> {
   const rows = await db
     .select({
@@ -575,16 +595,20 @@ async function loadAuthSession(token: string, now: Date): Promise<CachedAuthSess
     })
     .from(AuthSessionTable)
     .innerJoin(AuthUserTable, eq(AuthSessionTable.userId, AuthUserTable.id))
-    .where(and(eq(AuthSessionTable.token, token), gt(AuthSessionTable.expiresAt, now)))
+    .where(and(sessionTokenMatches(token), gt(AuthSessionTable.expiresAt, now)))
     .limit(1)
 
   const row = rows[0]
   if (!row) {
     return null
   }
+  if (!isSessionTokenDigest(row.session.token)) {
+    await hashLegacySessionToken(row.session.id, row.session.token)
+  }
   return {
     session: {
       ...row.session,
+      token,
       id: normalizeDenTypeId("session", row.session.id),
       userId: normalizeDenTypeId("user", row.session.userId),
       activeOrganizationId: row.session.activeOrganizationId
@@ -755,8 +779,10 @@ async function invalidateFeatures() {
 
 async function getAuthSessionResult(token: string): Promise<CacheResult<CachedAuthSession | null>> {
   const now = new Date()
-  const keyInput = { parent: "auth", child: "session", id: token } as const
-  const revokedKeyInput = { parent: "auth", child: "session-revoked", id: token } as const
+  // Keyed by the token's hash, so Redis holds no usable token either.
+  const digest = sessionTokenDigest(token)
+  const keyInput = { parent: "auth", child: "session", id: digest } as const
+  const revokedKeyInput = { parent: "auth", child: "session-revoked", id: digest } as const
   const key = cacheKey(keyInput)
   const revokedKey = cacheKey(revokedKeyInput)
   const redis = activeRedisClient
@@ -765,7 +791,7 @@ async function getAuthSessionResult(token: string): Promise<CacheResult<CachedAu
       if (await redis.get(revokedKey)) {
         return { value: null, source: "cache" }
       }
-      const cached = parseCachedAuthSession(await redis.get(key), now)
+      const cached = parseCachedAuthSession(await redis.get(key), now, token)
       if (cached) {
         return { value: cached, source: "cache" }
       }
@@ -782,7 +808,8 @@ async function getAuthSessionResult(token: string): Promise<CacheResult<CachedAu
   const ttl = Math.min(AUTH_SESSION_MAX_TTL_SECONDS, Math.ceil((loaded.session.expiresAt.getTime() - now.getTime()) / 1000))
   if (ttl > 0) {
     try {
-      await setUnlessRevoked({ redis, key, revokedKey, value: JSON.stringify(loaded), ttlSeconds: ttl })
+      const { token: _token, ...session } = loaded.session
+      await setUnlessRevoked({ redis, key, revokedKey, value: JSON.stringify({ ...loaded, session }), ttlSeconds: ttl })
     } catch (error) {
       console.error("openwork_cache_set_failed", { ...cacheLogDetails(keyInput), error })
     }
@@ -864,30 +891,45 @@ async function getActiveGrant(grantId: OAuthConsentId) {
   return loaded
 }
 
+/**
+ * The cache ids a session token form is keyed under: its hash, and while
+ * replicas from before hashing may still run, a client's token itself.
+ */
+function authSessionCacheIds(token: string): string[] {
+  const digest = storedSessionTokenDigest(token)
+  return digest === sessionTokenDigest(token) ? [digest, token] : [digest]
+}
+
+/** Accepts a client's token or a stored or sealed form of it (session-token.ts). */
 async function deleteAuthSession(token: string) {
-  const keyInput = { parent: "auth", child: "session", id: token } as const
-  const key = cacheKey(keyInput)
-  try {
-    const cached = parseCachedAuthSession(await activeRedisClient?.get(key) ?? null, new Date())
-    await activeRedisClient?.del(key)
-    if (cached) {
-      await deleteAuthSessionId(cached.session.id)
+  for (const id of authSessionCacheIds(token)) {
+    const keyInput = { parent: "auth", child: "session", id } as const
+    const key = cacheKey(keyInput)
+    try {
+      const cached = parseCachedAuthSession(await activeRedisClient?.get(key) ?? null, new Date(), token)
+      await activeRedisClient?.del(key)
+      if (cached) {
+        await deleteAuthSessionId(cached.session.id)
+      }
+    } catch (error) {
+      console.error("openwork_cache_delete_failed", { ...cacheLogDetails(keyInput), error })
     }
-  } catch (error) {
-    console.error("openwork_cache_delete_failed", { ...cacheLogDetails(keyInput), error })
   }
 }
 
+/** Accepts a client's token or a stored or sealed form of it (session-token.ts). */
 async function revokeAuthSession(token: string) {
-  const revokedKeyInput = { parent: "auth", child: "session-revoked", id: token } as const
   // Revocation tombstones stop a concurrent cache-miss loader from repopulating
   // a deleted session without adding a live DB check to cache hits. Write the
   // tombstone and delete the entry independently, as revokeAuthGrant does:
   // Redis can refuse writes (out of memory) while it still accepts deletes.
-  try {
-    await activeRedisClient?.set(cacheKey(revokedKeyInput), "1", "EX", AUTH_SESSION_MAX_TTL_SECONDS)
-  } catch (error) {
-    console.error("openwork_cache_delete_failed", { ...cacheLogDetails(revokedKeyInput), error })
+  for (const id of authSessionCacheIds(token)) {
+    const revokedKeyInput = { parent: "auth", child: "session-revoked", id } as const
+    try {
+      await activeRedisClient?.set(cacheKey(revokedKeyInput), "1", "EX", AUTH_SESSION_MAX_TTL_SECONDS)
+    } catch (error) {
+      console.error("openwork_cache_delete_failed", { ...cacheLogDetails(revokedKeyInput), error })
+    }
   }
   await deleteAuthSession(token)
 }

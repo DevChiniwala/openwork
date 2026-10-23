@@ -46,6 +46,8 @@ import {
 } from "./session-lifetime.js";
 import { DEN_ACCOUNT_CONFIG, DEN_USER_CONFIG } from "./account-linking-policy.js";
 import { cache } from "./cache.js";
+import { deploymentFeatureEnabled } from "./features.js";
+import { hashSessionTokens } from "./session-token.js";
 import { auditBetterAuthAfter, auditBetterAuthBefore, auditBetterAuthRefusal, auditBetterAuthSessionAfter, auditBetterAuthSessionBefore, BETTER_AUTH_AUDIT_AFTER_PATHS, BETTER_AUTH_AUDIT_BEFORE_PATHS, BETTER_AUTH_SESSION_AFTER_PATHS, BETTER_AUTH_SESSION_BEFORE_PATHS, noteOAuthConsentReference, noteOAuthRevocation, noteOAuthTokenIssuance, type BetterAuthHookSession } from "./audit/better-auth.js";
 import { auditUserUpdateAfter, auditUserUpdateBefore, recordAccountDeleted, recordIdentityLinked, recordIdentityUnlinked } from "./audit/domain/account.js";
 import { auditSessionMethod, auditSessionRevokeReason, recordSessionCreated, recordSessionRevoked } from "./audit/domain/sessions.js";
@@ -779,9 +781,13 @@ export const auth = betterAuth({
       : undefined,
   socialProviders:
     Object.keys(socialProviders).length > 0 ? socialProviders : undefined,
-  database: drizzleAdapter(db, {
+  // Session tokens are stored hashed once sessionTokenHashing is on (src/session-token.ts).
+  database: hashSessionTokens(drizzleAdapter(db, {
     provider: "mysql",
     schema,
+  }), {
+    secret: env.betterAuthSecret,
+    hashTokens: () => deploymentFeatureEnabled("sessionTokenHashing"),
   }),
   account: DEN_ACCOUNT_CONFIG,
   user: DEN_USER_CONFIG,
@@ -964,6 +970,11 @@ export const auth = betterAuth({
         },
       },
       delete: {
+        // revoke-other-sessions keeps the caller's session by comparing tokens, but
+        // a hashed row listed by user carries a sealed reference: keep it by id.
+        before: async (session, context) => {
+          if (context?.path === "/revoke-other-sessions" && session.id === context.context.session?.session.id) return false;
+        },
         after: async (session, context) => {
           if (typeof session.token === "string") {
             // Sign-out deletes the backing session row, so cached hits must be cleared here.
