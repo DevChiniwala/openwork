@@ -308,7 +308,8 @@
         "default": "./src/den/environment-variables.ts"
       },
       "development": "./src/den/environment-variables.ts",
-      "default": "./src/den/environment-variables.ts"
+      "bun": "./src/den/environment-variables.ts",
+      "default": "./dist/den/environment-variables.js"
     },
     "./den/credential-prompt": {
       "types": {

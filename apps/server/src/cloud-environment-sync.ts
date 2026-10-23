@@ -1,4 +1,5 @@
 import {
+  environmentVariableKeyProblem,
   resolvedEnvironmentVariablesResponseSchema,
   type ResolvedEnvironmentVariable,
 } from "@openwork/types/den/environment-variables";
@@ -83,11 +84,15 @@ export async function fetchResolvedEnvironmentVariables(
   return { kind: "ok", variables: parsed.data.environmentVariables };
 }
 
-/** The environment for the engine: variables with a value, keyed by name. */
+/**
+ * The environment for the engine: variables with a value, keyed by name. Keys
+ * Den would refuse (reserved, or ones that make programs run other commands)
+ * are dropped here too, so an older or compromised Den can't set them.
+ */
 export function environmentFromVariables(variables: readonly ResolvedEnvironmentVariable[]): Record<string, string> {
   const environment: Record<string, string> = {};
   for (const variable of variables) {
-    if (variable.value !== null) environment[variable.key] = variable.value;
+    if (variable.value !== null && environmentVariableKeyProblem(variable.key) === null) environment[variable.key] = variable.value;
   }
   return environment;
 }
@@ -127,14 +132,15 @@ export class CloudEnvironmentSync {
       && this.session.orgId === session.orgId
       && this.session.token === session.token;
     if (same) return Promise.resolve();
-    const switchedOrganization = this.session !== null
-      && (this.session.baseUrl !== session.baseUrl || this.session.orgId !== session.orgId);
+    const changedIdentity = this.session !== null;
     this.generation += 1;
     this.session = session;
-    if (switchedOrganization) {
-      // Another organization's values must never stay in the next engine.
+    if (changedIdentity) {
+      // Another person's or organization's values must never be shown or stay
+      // in the next engine; the new session's values arrive with the run below.
       this.variables = [];
       this.available = false;
+      this.lastRun = null;
       this.publish();
     }
     this.startInterval();

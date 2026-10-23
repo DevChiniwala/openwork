@@ -133,7 +133,7 @@ const adminAssignmentSchema = z.object({
   email: z.string().nullable(),
   /** An admin value is stored for this assignment. Values are never returned. */
   hasValue: z.boolean(),
-  updatedAt: z.string(),
+  updatedAt: z.string().datetime(),
 })
 
 const adminVariableSchema = z.object({
@@ -145,8 +145,8 @@ const adminVariableSchema = z.object({
   assignments: z.array(adminAssignmentSchema),
   /** How many people set their own value (per_member). */
   memberValueCount: z.number().int(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
 }).meta({ ref: "EnvironmentVariable" })
 
 const adminListSchema = z.object({
@@ -169,7 +169,7 @@ const memberVariableSchema = z.object({
   /** Assignments that give the caller a value, by name; choose one with my-assignment. */
   assignments: z.array(environmentVariableAssignmentOptionSchema),
   selectedAccessId: z.string().nullable(),
-  updatedAt: z.string(),
+  updatedAt: z.string().datetime(),
 }).meta({ ref: "MemberEnvironmentVariable" })
 
 const memberListSchema = z.object({

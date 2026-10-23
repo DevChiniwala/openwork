@@ -68,3 +68,13 @@ test("keys the desktop owns can't be deployed", () => {
   assert.match(environmentVariableKeyProblem("1BAD") ?? "", /letters/)
   assert.equal(environmentVariableKeyProblem(""), "Enter a key.")
 })
+
+test("keys that make programs run other commands can't be deployed", () => {
+  for (const key of ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_SSH_COMMAND", "git_askpass", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES",
+    "BASH_ENV", "PROMPT_COMMAND", "PYTHONSTARTUP", "PERL5OPT", "JAVA_TOOL_OPTIONS", "npm_config_script_shell", "BASH_FUNC_x%%", "EDITOR"]) {
+    assert.notEqual(environmentVariableKeyProblem(key), null, key)
+  }
+  for (const key of ["GITHUB_TOKEN", "ANTHROPIC_API_KEY", "HTTPS_PROXY", "COMPANY_API_URL", "SENTRY_DSN"]) {
+    assert.equal(environmentVariableKeyProblem(key), null, key)
+  }
+})

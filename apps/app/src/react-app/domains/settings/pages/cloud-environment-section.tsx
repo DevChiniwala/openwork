@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { t } from "@/i18n";
 import { clearOpenworkEnvSystemContextCache } from "@/react-app/domains/session/sync/env-context";
+import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
 import { ManagedInDenBadge } from "@/react-app/domains/settings/cloud/managed-in-den-badge";
 import { SettingsNotice } from "@/react-app/domains/settings/settings-section";
@@ -29,16 +30,38 @@ import { EnvironmentVariableTableRevealButton } from "./environment-variable-tab
 
 const MASKED_VALUE_DISPLAY = "••••••••";
 
-export function cloudEnvironmentQueryKey(runtimeKey?: string | null) {
-  return ["settings", "environment", "cloud", runtimeKey];
+const CLOUD_ENVIRONMENT_QUERY_ROOT = ["settings", "environment", "cloud"] as const;
+
+/**
+ * Cached per signed-in person and organization: another account's values,
+ * including a person's own revealable ones, must never render for the next.
+ */
+export function cloudEnvironmentQueryKey(runtimeKey: string | null | undefined, identity: string | null) {
+  return [...CLOUD_ENVIRONMENT_QUERY_ROOT, runtimeKey, identity];
+}
+
+/** The verified Den identity the cached values belong to; null while signed out or unverified. */
+function useCloudEnvironmentIdentity(): string | null {
+  const auth = useDenAuth();
+  const verified = auth.isSignedIn ? auth.verifiedIdentity : null;
+  return verified ? `${verified.principalId}:${verified.organizationId}` : null;
 }
 
 /** Organization variables, for the local list to mark keys the organization replaces. */
 export function useCloudEnvironment(client: OpenworkServerClient | null, runtimeKey?: string | null) {
+  const identity = useCloudEnvironmentIdentity();
+  const queryClient = useQueryClient();
+  // Signing out or switching accounts drops every other identity's cached values.
+  useEffect(() => {
+    queryClient.removeQueries({
+      queryKey: [...CLOUD_ENVIRONMENT_QUERY_ROOT],
+      predicate: (query) => query.queryKey[4] !== identity || identity === null,
+    });
+  }, [identity, queryClient]);
   return useQuery({
-    queryKey: cloudEnvironmentQueryKey(runtimeKey),
+    queryKey: cloudEnvironmentQueryKey(runtimeKey, identity),
     queryFn: async (): Promise<OpenworkCloudEnvironmentStatus | null> => {
-      if (!client) return null;
+      if (!client || !identity) return null;
       try {
         return await client.getCloudEnvironment();
       } catch {
@@ -46,7 +69,7 @@ export function useCloudEnvironment(client: OpenworkServerClient | null, runtime
         return null;
       }
     },
-    enabled: client !== null,
+    enabled: client !== null && identity !== null,
     staleTime: 30_000,
   });
 }
@@ -58,14 +81,15 @@ export function useCloudEnvironment(client: OpenworkServerClient | null, runtime
  */
 function useRefreshCloudEnvironmentOnOpen(client: OpenworkServerClient | null, runtimeKey?: string | null) {
   const queryClient = useQueryClient();
+  const identity = useCloudEnvironmentIdentity();
   useEffect(() => {
-    if (!client) return;
+    if (!client || !identity) return;
     let cancelled = false;
     void client.syncCloudEnvironment().then((next) => {
-      if (!cancelled) queryClient.setQueryData(cloudEnvironmentQueryKey(runtimeKey), next);
+      if (!cancelled) queryClient.setQueryData(cloudEnvironmentQueryKey(runtimeKey, identity), next);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [client, queryClient, runtimeKey]);
+  }, [client, queryClient, runtimeKey, identity]);
 }
 
 /** Where an admin-provisioned value comes from, as the person sees it. */
@@ -258,6 +282,7 @@ export function CloudEnvironmentSection(props: {
 }) {
   const { activeOrgName } = useCloudSession();
   const queryClient = useQueryClient();
+  const identity = useCloudEnvironmentIdentity();
   const { data } = useCloudEnvironment(props.client, props.runtimeKey);
   useRefreshCloudEnvironmentOnOpen(props.client, props.runtimeKey);
   const [editing, setEditing] = useState<OpenworkCloudEnvironmentVariable | null>(null);
@@ -270,8 +295,8 @@ export function CloudEnvironmentSection(props: {
   const refresh = async () => {
     clearOpenworkEnvSystemContextCache();
     const next = await props.client?.syncCloudEnvironment().catch(() => null);
-    if (next) queryClient.setQueryData(cloudEnvironmentQueryKey(props.runtimeKey), next);
-    else await queryClient.invalidateQueries({ queryKey: cloudEnvironmentQueryKey(props.runtimeKey) });
+    if (next) queryClient.setQueryData(cloudEnvironmentQueryKey(props.runtimeKey, identity), next);
+    else await queryClient.invalidateQueries({ queryKey: cloudEnvironmentQueryKey(props.runtimeKey, identity) });
   };
 
   const clear = async (variable: OpenworkCloudEnvironmentVariable) => {

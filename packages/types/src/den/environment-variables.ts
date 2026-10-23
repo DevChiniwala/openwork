@@ -32,6 +32,24 @@ const RESERVED_KEYS = new Set([
 ])
 const RESERVED_PREFIXES = ["OPENWORK_", "OPENCODE_", "BUN_", "ELECTRON_"]
 
+/**
+ * Names that make a program on the desktop load or run something else: the
+ * dynamic loader, Git (GIT_CONFIG_* can set core.sshCommand), shells, language
+ * runtimes, package managers and editors or pagers tools launch. A variable
+ * must only ever be data, never a way to run commands on recipients' computers.
+ */
+const CODE_EXECUTION_KEYS = new Set([
+  "BASH_ENV", "ENV", "ZDOTDIR", "PROMPT_COMMAND", "SHELLOPTS", "BASHOPTS", "IFS", "PS4", "CDPATH",
+  "SSH_ASKPASS", "SSH_AUTH_SOCK", "SUDO_ASKPASS", "EDITOR", "VISUAL", "PAGER", "MANPAGER", "BROWSER", "LESSOPEN", "LESSCLOSE",
+  "PYTHONSTARTUP", "PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE", "PYTHONINSPECT",
+  "PERL5OPT", "PERL5LIB", "PERLLIB", "PERL5DB", "RUBYOPT", "RUBYLIB", "NODE_PATH", "NODE_REPL_EXTERNAL_MODULE",
+  "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH",
+  "PHPRC", "PHP_INI_SCAN_DIR", "TCLLIBPATH", "LUA_INIT", "LUA_PATH", "LUA_CPATH",
+  "NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG", "NPM_CONFIG_SCRIPT_SHELL", "NPM_CONFIG_NODE_OPTIONS",
+  "GCONV_PATH", "HOSTALIASES", "RESOLV_HOST_CONF", "LOCPATH", "NLSPATH", "MALLOC_CHECK_",
+])
+const CODE_EXECUTION_PREFIXES = ["LD_", "DYLD_", "GIT_", "BASH_FUNC_", "NPM_CONFIG_", "YARN_", "PNPM_", "PIP_", "UV_", "CARGO_", "RUSTC_"]
+
 /** Why a key cannot be deployed, or null when it can. */
 export function environmentVariableKeyProblem(key: string): string | null {
   if (!key) return "Enter a key."
@@ -41,6 +59,9 @@ export function environmentVariableKeyProblem(key: string): string | null {
   if (RESERVED_KEYS.has(upper)) return `${key} is used by the desktop app and can't be deployed.`
   const prefix = RESERVED_PREFIXES.find((candidate) => upper.startsWith(candidate))
   if (prefix) return `Keys starting with ${prefix} are reserved for OpenWork.`
+  if (CODE_EXECUTION_KEYS.has(upper)) return `${key} can make programs run other commands, so it can't be deployed.`
+  const runner = CODE_EXECUTION_PREFIXES.find((candidate) => upper.startsWith(candidate))
+  if (runner) return `Keys starting with ${runner} can change how programs run, so they can't be deployed.`
   return null
 }
 
@@ -87,7 +108,7 @@ export const resolvedEnvironmentVariableSchema = z.object({
   assignments: z.array(environmentVariableAssignmentOptionSchema),
   selectedAccessId: z.string().nullable(),
   value: z.string().nullable(),
-  updatedAt: z.string(),
+  updatedAt: z.string().datetime(),
 })
 export type ResolvedEnvironmentVariable = z.infer<typeof resolvedEnvironmentVariableSchema>
 

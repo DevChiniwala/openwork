@@ -153,6 +153,34 @@ describe("CloudEnvironmentSync", () => {
     expect(sync.status().variables).toEqual([]);
   });
 
+  test("never puts keys that make programs run other commands in the engine", async () => {
+    const { fetchImpl } = den([{ status: 200, body: { environmentVariables: [
+      variable({}),
+      variable({ id: "evr_2", key: "GIT_CONFIG_COUNT", value: "1" }),
+      variable({ id: "evr_3", key: "LD_PRELOAD", value: "/tmp/x.so" }),
+    ] } }]);
+    const sync = new CloudEnvironmentSync({ fetchImpl, reloadEngine: recorder().reloadEngine });
+    await sync.setSession(session);
+    sync.stop();
+
+    expect(cloudEnvironmentOverlay()).toEqual({ API_TOKEN: "secret" });
+  });
+
+  test("another account's values are cleared as soon as the session changes", async () => {
+    const { fetchImpl } = den([
+      { status: 200, body: { environmentVariables: [variable({ valueMode: "per_member", source: "own", editable: true, assignments: [], selectedAccessId: null, value: "first-person" })] } },
+      { status: 503 },
+    ]);
+    const sync = new CloudEnvironmentSync({ fetchImpl, reloadEngine: recorder().reloadEngine });
+    await sync.setSession(session);
+    // Same organization, another person: their fetch fails, but nothing of the first person's remains.
+    await sync.setSession({ ...session, token: "another-person" });
+    sync.stop();
+
+    expect(sync.status().variables).toEqual([]);
+    expect(cloudEnvironmentOverlay()).toEqual({});
+  });
+
   test("retries an engine change the pool could not apply yet", async () => {
     const { fetchImpl } = den([
       { status: 200, body: { environmentVariables: [variable({})] } },
