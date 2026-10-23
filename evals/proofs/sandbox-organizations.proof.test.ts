@@ -66,7 +66,7 @@ test("a platform admin creates a sandbox organization from /admin and people who
 
   await step("Avery opens the link, sees what the sandbox includes and joins", async () => {
     await avery.navigate(joinLink);
-    await avery.see({ testId: "join-sandbox-connectors" }, { text: "Outlook, Calendar, Drive, Jira, Confluence", timeoutMs: 30_000 });
+    await avery.see({ testId: "join-sandbox-connectors" }, { text: /Outlook, Calendar, Drive, Jira, Confluence/, timeoutMs: 30_000 });
     await avery.screenshot();
     await avery.click({ testId: "join-sandbox-submit" });
     await avery.see({ testId: "join-org-success" }, { timeoutMs: 30_000 });
