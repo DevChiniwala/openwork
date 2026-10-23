@@ -43,6 +43,9 @@ export function modelRecoveryView(issue: WorkbotModelIssue, options: WorkbotMode
     const primary: ModelRecoveryView["primary"] = !options || paidReady ? null
       : offerModels ? { kind: "link", label: "Get OpenWork Models", path: MODELS_PAGE }
         : options.hasModelsSubscription ? null
+          // No in-conversation purchase (billing not offered here, or upgrades not rolled out): a model admin still
+          // gets Den's Models page, which rechecks billing and shows only what this workspace can do.
+          : confirmed && options.canManageModels ? { kind: "link", label: "Review OpenWork Models", path: MODELS_PAGE }
           : billingCapable ? null
             : { kind: "locked", label: "Ask an admin for OpenWork Models", reason: "Only people with billing access can get OpenWork Models." };
     const note = !options ? null

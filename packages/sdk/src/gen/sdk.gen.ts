@@ -1311,6 +1311,7 @@ export class DenClient extends HeyApiClient {
         workbotDocuments?: boolean | null;
         workbotDocumentEditing?: boolean | null;
         workbotWorkspaceAssistant?: boolean | null;
+        workbotIncludedModels?: boolean | null;
         workbotUsageRecovery?: boolean | null;
         usageLimitUpgrade?: boolean | null;
         automationCalendar?: boolean | null;
@@ -16796,7 +16797,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get Workbot settings
    *
-   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.
+   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotIncludedModels or workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.
    */
   public getV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -16809,7 +16810,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Set Workbot's default model
    *
-   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.
+   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotIncludedModels or workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.
    */
   public putV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(
     parameters: {
@@ -16837,7 +16838,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Check whether Workbot has an AI provider
    *
-   * Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. The managed Luna default with workbotUsageRecovery uses the member's Models access and needs no custom Gateway provider. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.
+   * Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. With workbotIncludedModels or workbotUsageRecovery, the managed default uses the member's included OpenWork models and needs no custom Gateway provider while the member is entitled to them. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.
    */
   public getV1OrgWorkbotReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -17123,7 +17124,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get my Workbot model recovery options
    *
-   * Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.
+   * Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotIncludedModels or workbotUsageRecovery. Purchase and in-conversation upgrade hints need workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.
    */
   public getWorkbotModelRecovery<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<

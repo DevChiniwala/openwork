@@ -1,5 +1,5 @@
 import { createServer as createHttpServer } from "node:http";
-import { WORKBOT_FREE_LUNA_ID, WORKBOT_PAID_LUNA_ID } from "@openwork/types/den/workbot-settings";
+import { WORKBOT_FREE_LUNA_ID, WORKBOT_PAID_LUNA_ID, type WorkbotAccessReason } from "@openwork/types/den/workbot-settings";
 import { Hono } from "hono";
 import type { HeadlessModelAccess } from "@openwork-ee/headless-protocol";
 import type { WorkbotActor } from "@openwork-ee/workbot-server";
@@ -9,7 +9,7 @@ import { loadConfig } from "../src/server/config.js";
 import { registerWorkbotRoutes } from "../src/server/routes.js";
 
 /** Real Workbot request/error path. Synthetic Den grants, local runner, no external access or provisioning. */
-export async function workbotAccessFixture(input: { actor: WorkbotActor; runnerUrl: string; modelAccess: HeadlessModelAccess; managed?: boolean }) {
+export async function workbotAccessFixture(input: { actor: WorkbotActor; runnerUrl: string; modelAccess: HeadlessModelAccess; managed?: boolean; refusal?: WorkbotAccessReason }) {
   let paidAccessRestored = false;
   const denServer = createHttpServer(async (req, res) => {
     let raw = ""; for await (const chunk of req) raw += chunk;
@@ -18,7 +18,7 @@ export async function workbotAccessFixture(input: { actor: WorkbotActor; runnerU
     res.setHeader("content-type", "application/json");
     res.statusCode = input.managed || paidAccessRestored ? 200 : 403;
     res.end(JSON.stringify(input.managed || paidAccessRestored ? { token: "fixture-mcp-token", modelAccess: input.managed ? { ...input.modelAccess, protocol: free ? "openai-responses" : "openai", model: "openai/gpt-6-luna" } : input.modelAccess }
-      : { error: "workbot_turn_access_denied", reason: "gateway_member_access_missing", raw: "fixture-secret-must-not-reach-browser" }));
+      : { error: "workbot_turn_access_denied", reason: input.refusal ?? "gateway_member_access_missing", raw: "fixture-secret-must-not-reach-browser" }));
   });
   await new Promise<void>(resolve => denServer.listen(0, "127.0.0.1", resolve));
 

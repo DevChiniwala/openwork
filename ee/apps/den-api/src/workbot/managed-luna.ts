@@ -2,12 +2,53 @@ import { and, eq, isNotNull, isNull } from "@openwork-ee/den-db/drizzle"
 import { InferenceOrgUpstreamProviderKeyTable, MemberTable, OrganizationTable } from "@openwork-ee/den-db/schema"
 import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { INFERENCE_FREE_MODEL_ID, INFERENCE_MODEL_ALIASES } from "@openwork/types/den/inference"
-import { WORKBOT_FREE_LUNA_ID, WORKBOT_PAID_LUNA_ID } from "@openwork/types/den/workbot-settings"
+import { isWorkbotManagedLuna, WORKBOT_FREE_LUNA_ID, WORKBOT_PAID_LUNA_ID } from "@openwork/types/den/workbot-settings"
 import type { HeadlessModelAccess } from "@openwork-ee/headless-protocol"
 import { db } from "../db.js"
 import { env } from "../env.js"
+import { getOrganizationFeatures, type FeatureMap } from "../features.js"
 import { ensureMemberInferenceKey, getMemberInferenceAccess, issueMemberFreeInferenceCredential, organizationAllowsManagedModels, readInferenceMetadata } from "../inference.js"
 import { CloudAgentGatewayAccessError, type CloudAgentGatewayActor } from "./gateway-model.js"
+
+/**
+ * Whether Workbot routes its default through the member's included OpenWork models. `workbotIncludedModels` is the
+ * default on its own; `workbotUsageRecovery` adds in-conversation upgrades and has always implied it.
+ */
+export function workbotIncludedModelsEnabled(features: Pick<FeatureMap, "workbotIncludedModels" | "workbotUsageRecovery">): boolean {
+  return features.workbotIncludedModels || features.workbotUsageRecovery
+}
+
+export async function workbotIncludedModelsEnabledFor(organizationId: string, userId: string): Promise<boolean> {
+  return workbotIncludedModelsEnabled(await getOrganizationFeatures(organizationId, { userId }))
+}
+
+/** The managed starter is the default only while no custom model is saved; a saved custom model is never migrated. */
+export function workbotUsesManagedDefault(chosen: string | null): boolean {
+  return chosen === null || isWorkbotManagedLuna(chosen)
+}
+
+type ManagedLunaState = Awaited<ReturnType<typeof workbotManagedLunaState>>
+
+/**
+ * Whether this member's included models can start a turn, or would report their own limit or setup state.
+ * Paid members keep the paid route so a setup gap says so; free members with no free entitlement (policy or a
+ * disabled allowance) are not routed there, so Workbot uses the workspace's Gateway instead.
+ */
+export function workbotManagedLunaRoutable(state: ManagedLunaState): boolean {
+  return state.paid ? state.allowed : state.allowed && ["free", "exhausted"].includes(state.free.kind)
+}
+
+/**
+ * Workbot's model for a new turn when the caller did not pin one: the member's included model when routable,
+ * otherwise null so the turn uses the workspace's AI Gateway default. A failed entitlement read keeps the managed
+ * selection; the turn then reauthorizes it and reports its own state instead of a misleading Gateway refusal.
+ */
+export async function workbotIncludedDefaultModel(actor: CloudAgentGatewayActor, chosen: string | null): Promise<string | null> {
+  if (chosen === WORKBOT_PAID_LUNA_ID) return chosen
+  const state = await workbotManagedLunaState(actor).catch(() => null)
+  if (!state) return WORKBOT_FREE_LUNA_ID
+  return workbotManagedLunaRoutable(state) ? state.model : null
+}
 
 /** Same member entitlement as desktop Models. No Gateway provider/grant or saved-default mutations. */
 export async function workbotManagedLunaState(actor: CloudAgentGatewayActor) {

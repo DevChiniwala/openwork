@@ -1177,6 +1177,7 @@ export type AdminFeature = {
     | "workbotDocuments"
     | "workbotDocumentEditing"
     | "workbotWorkspaceAssistant"
+    | "workbotIncludedModels"
     | "workbotUsageRecovery"
     | "usageLimitUpgrade"
     | "automationCalendar"
@@ -1240,6 +1241,7 @@ export type AdminOrganizationsPageResponse = {
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotIncludedModels: boolean;
       workbotUsageRecovery: boolean;
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
@@ -1348,6 +1350,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotIncludedModels: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1564,6 +1575,7 @@ export type AdminOverviewResponse = {
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotIncludedModels: boolean;
       workbotUsageRecovery: boolean;
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
@@ -1672,6 +1684,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotIncludedModels: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8043,6 +8064,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      workbotIncludedModels: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       workbotUsageRecovery: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8198,6 +8228,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       workbotDocuments?: boolean | null;
       workbotDocumentEditing?: boolean | null;
       workbotWorkspaceAssistant?: boolean | null;
+      workbotIncludedModels?: boolean | null;
       workbotUsageRecovery?: boolean | null;
       usageLimitUpgrade?: boolean | null;
       automationCalendar?: boolean | null;
@@ -8333,6 +8364,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotIncludedModels: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9911,6 +9951,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotIncludedModels: boolean;
       workbotUsageRecovery: boolean;
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
@@ -10019,6 +10060,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotIncludedModels: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10223,6 +10273,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       workbotDocuments: boolean;
       workbotDocumentEditing: boolean;
       workbotWorkspaceAssistant: boolean;
+      workbotIncludedModels: boolean;
       workbotUsageRecovery: boolean;
       usageLimitUpgrade: boolean;
       automationCalendar: boolean;
@@ -10331,6 +10382,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       workbotWorkspaceAssistant: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      workbotIncludedModels: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -36720,7 +36780,7 @@ export type GetWorkbotModelRecoveryErrors = {
     error: "insufficient_scope";
   };
   /**
-   * Usage recovery is off.
+   * Included models and usage recovery are off.
    */
   404: {
     error: "feature_disabled";

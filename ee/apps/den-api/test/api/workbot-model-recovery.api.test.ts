@@ -157,3 +157,67 @@ test("a member-level rollout reaches only that member's recovery and readiness",
   assert.equal(field(readiness.body, "gatewayRequired"), false, "the pilot's managed Luna default needs no custom Gateway provider")
   assert.equal((await den.request(await den.mintMcpToken(owner, orgId), "GET", path)).status, 404, "members without the override keep the organization setting")
 })
+
+test("included models start Workbot without a provider, keep purchases with upgrades, and fall back when not entitled", async () => {
+  const path = "/v1/workbot/model-recovery"
+  const { WORKBOT_DEFAULT_MODEL_ID, WORKBOT_FREE_LUNA_ID } = await import("@openwork/types/den/workbot-settings")
+  const { orgId, owner } = await den.createOrg(await den.signUp("Included Owner"), "Included models workspace")
+  const member = await den.newMember(owner, orgId, "Included Member")
+  const ownerToken = await den.mintMcpToken(owner, orgId)
+  const memberToken = await den.mintMcpToken(member, orgId)
+  const run = (token: string, body: Record<string, unknown> = {}) => den.request(token, "POST", "/v1/workbot/run-token", { body })
+  const session = async (token: string) => (await den.request(token, "GET", "/v1/workbot/session")).body
+
+  // Off: the previous behavior. Workbot needs the workspace's Gateway and never mints included access.
+  assert.equal(field(await session(memberToken), "model"), WORKBOT_DEFAULT_MODEL_ID)
+  assert.equal(field(await session(memberToken), "usageRecovery"), false)
+  assert.equal((await run(memberToken)).status, 403)
+  assert.equal((await run(memberToken, { model: WORKBOT_FREE_LUNA_ID })).status, 403)
+  assert.equal((await den.request(memberToken, "GET", path)).status, 404)
+
+  assert.equal((await den.setFeature(orgId, "workbotIncludedModels", true)).status, 200)
+  assert.equal(field(await session(memberToken), "model"), WORKBOT_FREE_LUNA_ID, "no provider needed: the member's free Auto is the default")
+  assert.equal(field(await session(memberToken), "usageRecovery"), true, "the limit card is available with included models")
+  const firstTurn = await run(memberToken)
+  assert.equal(firstTurn.status, 200, summary(firstTurn))
+  assert.equal(field(firstTurn.body, "modelAccess", "protocol"), "openai-responses", "a turn without a pinned model uses included Auto")
+  assert.equal((await run(memberToken, { model: WORKBOT_FREE_LUNA_ID })).status, 200)
+  assert.deepEqual((await den.as(member, orgId)("GET", "/v1/org/workbot-readiness")).body, { gatewayRequired: false, hasGatewayProvider: false })
+  const ownerOptions = await den.request(ownerToken, "GET", path)
+  assert.equal(ownerOptions.status, 200, summary(ownerOptions))
+  assert.equal(field(ownerOptions.body, "purchaseEligible"), false, "in-conversation purchase stays with workbotUsageRecovery")
+  assert.equal(field(ownerOptions.body, "paidContinuation"), "unavailable")
+  assert.equal(field(ownerOptions.body, "canManageModels"), true)
+
+  // Exhausted: the member's own allowance, reported with its reset; no checkout until upgrades roll out.
+  const [{ db }, { eq }, { InferenceFreeUsageBucketTable, OrganizationTable }, { normalizeDenTypeId }, { freeInferenceDigest }, { freeInferenceWindow, INFERENCE_USAGE_CONVERSION_FACTOR }] = await Promise.all([
+    import("../../src/db.js"), import("@openwork-ee/den-db/drizzle"), import("@openwork-ee/den-db/schema"),
+    import("@openwork-ee/utils/typeid"), import("@openwork-ee/utils/free-inference-digest"), import("@openwork/types/den/inference"),
+  ])
+  const window = freeInferenceWindow()
+  await db.insert(InferenceFreeUsageBucketTable).values({ id: freeInferenceDigest("included-bucket", owner.userId), identity_hash: freeInferenceDigest("member", owner.userId),
+    window_start_at: window.start, window_end_at: window.end, limit_amount: 5 * INFERENCE_USAGE_CONVERSION_FACTOR, used_amount: 5 * INFERENCE_USAGE_CONVERSION_FACTOR })
+  const exhausted = await den.request(ownerToken, "GET", path)
+  assert.equal(field(exhausted.body, "freeExhausted"), true)
+  assert.equal(field(exhausted.body, "freeResetsAt"), window.end.toISOString())
+  assert.equal(field(exhausted.body, "canUpgrade"), false)
+  assert.equal(field(await session(ownerToken), "model"), WORKBOT_FREE_LUNA_ID, "an exhausted allowance stays on Auto so the turn reports the limit, not a missing provider")
+  assert.equal((await den.setFeature(orgId, "workbotUsageRecovery", true)).status, 200)
+  assert.equal(field((await den.request(ownerToken, "GET", path)).body, "canUpgrade"), true, "upgrades add the purchase on top")
+  assert.equal((await den.setFeature(orgId, "workbotUsageRecovery", false)).status, 200)
+
+  // Not entitled (workspace policy blocks managed models): Workbot keeps the workspace Gateway instead of a dead route.
+  await db.update(OrganizationTable).set({ metadata: { dpaSigned: true } }).where(eq(OrganizationTable.id, normalizeDenTypeId("organization", orgId)))
+  assert.equal(field(await session(memberToken), "model"), WORKBOT_DEFAULT_MODEL_ID)
+  assert.equal(field((await den.as(member, orgId)("GET", "/v1/org/workbot-readiness")).body, "gatewayRequired"), true)
+  const blocked = await run(memberToken)
+  assert.equal(blocked.status, 403)
+  assert.notEqual(field(blocked.body, "reason"), "model_access_unavailable", "the refusal names the Gateway state, not the blocked included route")
+  await db.update(OrganizationTable).set({ metadata: {} }).where(eq(OrganizationTable.id, normalizeDenTypeId("organization", orgId)))
+
+  // Kill switch: no new included turns; turning it back on restores the default.
+  assert.equal((await den.setFeature(orgId, "workbotIncludedModels", false)).status, 200)
+  assert.equal((await run(memberToken, { model: WORKBOT_FREE_LUNA_ID })).status, 403)
+  assert.equal((await den.request(memberToken, "GET", path)).status, 404)
+  assert.equal(field(await session(memberToken), "model"), WORKBOT_DEFAULT_MODEL_ID)
+})

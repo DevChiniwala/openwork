@@ -123,6 +123,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotIncludedModels: {
+    label: "Workbot: included OpenWork models by default",
+    description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   workbotUsageRecovery: {
     label: "Workbot: usage limits and upgrades",
     description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",

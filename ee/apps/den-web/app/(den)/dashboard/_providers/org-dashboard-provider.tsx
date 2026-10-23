@@ -360,7 +360,7 @@ export function OrgDashboardProvider({
       const context = await loadOrgContext(targetOrg.id);
       if (!isCurrent()) return;
       if (linkedOrgId) {
-        if (!orgFeatureEnabled(context, "workbotUsageRecovery")) throw new Error("Workbot recovery links are off for this workspace. A platform admin can turn them on.");
+        if (!orgFeatureEnabled(context, "workbotIncludedModels") && !orgFeatureEnabled(context, "workbotUsageRecovery")) throw new Error("Workbot recovery links are off for this workspace. A platform admin can turn them on.");
         // Consume only after the exact workspace loaded. Later explicit switches stay authoritative.
         const url = new URL(window.location.href);
         url.searchParams.delete("workbotOrganizationId");
