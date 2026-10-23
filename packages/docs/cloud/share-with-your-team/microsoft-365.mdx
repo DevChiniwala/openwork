@@ -10,12 +10,15 @@ permissions.
 
 ## Before you start
 
-You need the **Manage OAuth apps** permission in OpenWork (included for
-organization owners and admins) and permission to manage an app registration
-in your company's Microsoft Entra tenant. Organization-wide consent also
-requires an authorized Entra administrator, such as a Cloud Application
-Administrator or Application Administrator for the delegated permissions used
-here. Azure subscription Owner access alone does not grant that authority.
+You need an OpenWork role that can open and save the connector settings.
+Organization owners and admins have it by default. A custom role needs **View
+all connections**, **Manage connections** (to add the connector), **View OAuth
+apps**, and **Manage OAuth apps**. You also need permission to manage an app
+registration in your company's Microsoft Entra tenant. Organization-wide
+consent also requires an authorized Entra administrator, such as a Cloud
+Application Administrator or Application Administrator for the delegated
+permissions used here. Azure subscription Owner access alone does not grant
+that authority.
 
 Use your existing company tenant and sign-in configuration. Connecting
 Microsoft 365 does not require changing your domain federation or SSO setup.
@@ -42,9 +45,10 @@ applications**. Select your existing OpenWork Microsoft 365 app.
 For a new setup, choose **New registration**, name it **OpenWork Microsoft 365
 Connector**, and select the single-tenant account type (**Single tenant only**
 or **Accounts in this organizational directory only**, depending on the portal).
-Register the app, then open **Authentication › Add a platform › Web** and add
-the exact callback copied from OpenWork. If registration already offered a
-redirect URI field, you can set the **Web** callback there instead.
+Register the app, then open **Authentication**, choose **Add Redirect URI**
+(**Add a platform** in older portals), select **Web**, and add the exact
+callback copied from OpenWork. If registration already offered a redirect URI
+field, you can set the **Web** callback there instead.
 
 <Frame caption="Microsoft's example registration form. Use your own tenant and the callback shown by OpenWork.">
   ![Microsoft Entra application registration form showing the application name, account types, and redirect URI](https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-create-service-principal-portal/create-app.png)
@@ -149,8 +153,9 @@ your enabled choices; do not substitute application permissions.
 Saving permissions does not add new Microsoft grants to existing member
 connections. If a new choice needs access their account has not already
 granted, grant any required admin consent and ask affected members to sign in
-again. OpenWork may show **Reconnect** for those accounts. An existing broader
-grant can already cover the new choice, so not every change requires sign-in.
+again. OpenWork shows **Sign in** (or **Reconnect**) for those accounts. An
+existing broader grant can already cover the new choice, so not every change
+requires sign-in.
 
 ## 5. Grant admin consent
 
@@ -177,10 +182,12 @@ calendar, file, or chat access. See Microsoft's
 
 ## 6. Connect and test a member account
 
-Each person opens **My Library › Microsoft 365 › Sign in** in OpenWork Cloud,
-selects their company account, and completes sign-in. In the desktop app, open
-**Library** from the main sidebar (or **Settings › Library**), choose the
-**Connectors** filter, and select **Sign in** for Microsoft 365.
+Each person opens **My Library** in OpenWork Cloud and chooses **Sign in** on
+Microsoft 365. On the connections page that opens, they choose **Sign in** again
+on the highlighted Microsoft 365 row, select their company account, and
+complete sign-in. In the desktop app, open **Library** from the main sidebar
+(or **Settings › Library**), choose the **Connectors** filter, and select
+**Sign in** for Microsoft 365.
 
 If Microsoft 365 is missing from their Library, an OpenWork administrator
 should check that the connector is set up and the member has access.
@@ -216,6 +223,8 @@ only the secret does not itself disconnect existing member accounts.
 
 <Warning>
 Changing the client ID or tenant ID disconnects existing member accounts for
-that connector. Treat switching apps or tenants as a migration: review the new
-app's permissions and consent, and plan for members to sign in again.
+that connector. This includes entering a different identifier for the same
+tenant, such as its domain name instead of its tenant ID. Treat switching apps
+or tenants as a migration: review the new app's permissions and consent, and
+plan for members to sign in again.
 </Warning>
