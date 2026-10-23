@@ -7298,7 +7298,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Create an environment variable
    *
-   * Creates an environment variable for the agents of everyone, chosen teams or chosen people. With valueMode admin each assignment carries its own value (a person in several gets the most specific: directly to them, then their teams, then everyone; they can choose another). With valueMode per_member each person sets their own value. Only send a value the person gave you for this purpose. Requires the environment_variables.manage permission and a recent sign-in.
+   * Creates an environment variable for the agents of everyone, chosen teams or chosen people. With valueMode admin each assignment carries its own value (a person in several gets the most specific: directly to them, then their teams, then everyone; they can choose another). With valueMode per_member each person sets their own value. Agents: only send values the person explicitly asked to deploy, with confirmed true (409 confirmation_required otherwise). Requires the environment_variables.manage permission and a recent sign-in.
    */
   public postV1EnvironmentVariables<ThrowOnError extends boolean = false>(
     parameters: {
@@ -7400,7 +7400,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Update an environment variable
    *
-   * Changes an environment variable's name, key, description, how it gets its value, or its assignments (send assignments to replace them; an assignment without value keeps its stored value). Values the new state no longer uses are removed. Agents and API keys get 409 confirmation_required when the change would replace or remove a value that is already set: ask the person, then send again with replaceExisting true. Requires the environment_variables.manage permission and a recent sign-in.
+   * Changes an environment variable's name, key, description, how it gets its value, or its assignments (send assignments to replace them; an assignment without value keeps its stored value). Values the new state no longer uses are removed. Agents and API keys get 409 confirmation_required when the change sets new values (send confirmed true once the person asked for them) or replaces or removes a value that is already set (ask the person, then send replaceExisting true). Requires the environment_variables.manage permission and a recent sign-in.
    */
   public patchV1EnvironmentVariablesByEnvironmentVariableId<ThrowOnError extends boolean = false>(
     parameters: {

@@ -71,7 +71,7 @@ test("keys the desktop owns can't be deployed", () => {
 
 test("keys that make programs run other commands can't be deployed", () => {
   for (const key of ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_SSH_COMMAND", "git_askpass", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES",
-    "BASH_ENV", "PROMPT_COMMAND", "PYTHONSTARTUP", "PERL5OPT", "JAVA_TOOL_OPTIONS", "npm_config_script_shell", "BASH_FUNC_x%%", "EDITOR", "TAR_OPTIONS", "tar_options", "MAKEFLAGS", "RSYNC_RSH", "PS1", "VIMINIT", "EXINIT", "viminit", "NVIM_APPNAME"]) {
+    "BASH_ENV", "PROMPT_COMMAND", "PYTHONSTARTUP", "PERL5OPT", "JAVA_TOOL_OPTIONS", "npm_config_script_shell", "BASH_FUNC_x%%", "EDITOR", "TAR_OPTIONS", "tar_options", "MAKEFLAGS", "RSYNC_RSH", "PS1", "VIMINIT", "EXINIT", "viminit", "NVIM_APPNAME", "NODE_TLS_REJECT_UNAUTHORIZED", "SSLKEYLOGFILE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"]) {
     assert.notEqual(environmentVariableKeyProblem(key), null, key)
   }
   for (const key of ["GITHUB_TOKEN", "ANTHROPIC_API_KEY", "HTTPS_PROXY", "COMPANY_API_URL", "SENTRY_DSN"]) {

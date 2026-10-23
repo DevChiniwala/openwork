@@ -3812,6 +3812,7 @@ export type EnvironmentVariableCreate = {
         value?: string | null;
       }
   >;
+  confirmed?: boolean;
 };
 
 export type EnvironmentVariableUpdate = {
@@ -3841,6 +3842,7 @@ export type EnvironmentVariableUpdate = {
         value?: string | null;
       }
   >;
+  confirmed?: boolean;
   replaceExisting?: boolean;
 };
 

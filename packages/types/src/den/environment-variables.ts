@@ -52,10 +52,13 @@ const CODE_EXECUTION_KEYS = new Set([
   "LESS", "LESSKEYIN", "LESSKEY", "MANOPT", "MANROFFOPT", "GROFF_COMMAND_PREFIX", "FPATH", "PS0", "PS1", "PS2", "PS3",
   // More editors, pagers and terminals tools launch.
   "FCEDIT", "SELECTED_EDITOR", "SYSTEMD_PAGER", "SYSTEMD_EDITOR", "PSQL_PAGER", "PSQL_EDITOR", "SVN_EDITOR", "HGEDITOR", "TERMINAL",
+  // Weakening or logging TLS: with a proxy these would expose recipients' traffic and credentials.
+  "NODE_TLS_REJECT_UNAUTHORIZED", "SSLKEYLOGFILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "AWS_CA_BUNDLE",
+  "PYTHONHTTPSVERIFY", "CURL_SSL_BACKEND", "NODE_USE_ENV_PROXY",
   // Editor startup commands (vi/Vim run these as Ex commands, which can call the shell).
   "VIMINIT", "GVIMINIT", "EXINIT", "MYVIMRC", "MYGVIMRC", "VIMRUNTIME", "VIM", "EMACSLOADPATH", "EMACSNATIVELOADPATH", "INPUTRC",
 ])
-const CODE_EXECUTION_PREFIXES = ["LD_", "DYLD_", "GIT_", "BASH_FUNC_", "NPM_CONFIG_", "YARN_", "PNPM_", "PIP_", "UV_", "CARGO_", "RUSTC_", "HG", "RSYNC_", "NVIM_"]
+const CODE_EXECUTION_PREFIXES = ["LD_", "DYLD_", "GIT_", "BASH_FUNC_", "NPM_CONFIG_", "YARN_", "PNPM_", "PIP_", "UV_", "CARGO_", "RUSTC_", "HG", "RSYNC_", "NVIM_", "NODE_TLS_", "SSL_"]
 
 /** Why a key cannot be deployed, or null when it can. */
 export function environmentVariableKeyProblem(key: string): string | null {

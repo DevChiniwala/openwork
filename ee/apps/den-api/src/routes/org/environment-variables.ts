@@ -95,6 +95,8 @@ const createSchema = z.object({
   valueMode: environmentVariableValueModeSchema,
   /** Who receives it: everyone, teams and people, each with its own value when an admin sets values. */
   assignments: z.array(assignmentWriteSchema).max(1000).default([]),
+  /** Agents and API keys: true once the person explicitly asked to deploy these values. */
+  confirmed: z.boolean().optional(),
 }).strict().meta({ ref: "EnvironmentVariableCreate" })
 
 const updateSchema = z.object({
@@ -104,6 +106,8 @@ const updateSchema = z.object({
   valueMode: environmentVariableValueModeSchema.optional(),
   /** Replaces who receives it. An assignment that leaves out value keeps the value stored for the same target. */
   assignments: z.array(assignmentWriteSchema).max(1000).optional(),
+  /** Agents and API keys: true once the person explicitly asked to deploy the values this change sets. */
+  confirmed: z.boolean().optional(),
   /** Agents and API keys: true once the person agreed to replace or remove values that are already set. */
   replaceExisting: z.boolean().optional(),
 }).strict().meta({ ref: "EnvironmentVariableUpdate" })
@@ -635,7 +639,7 @@ export function registerOrgEnvironmentVariableRoutes<T extends { Variables: OrgR
     describeRoute({
       tags: [TAG],
       summary: "Create an environment variable",
-      description: "Creates an environment variable for the agents of everyone, chosen teams or chosen people. With valueMode admin each assignment carries its own value (a person in several gets the most specific: directly to them, then their teams, then everyone; they can choose another). With valueMode per_member each person sets their own value. Only send a value the person gave you for this purpose. Requires the environment_variables.manage permission and a recent sign-in.",
+      description: "Creates an environment variable for the agents of everyone, chosen teams or chosen people. With valueMode admin each assignment carries its own value (a person in several gets the most specific: directly to them, then their teams, then everyone; they can choose another). With valueMode per_member each person sets their own value. Agents: only send values the person explicitly asked to deploy, with confirmed true (409 confirmation_required otherwise). Requires the environment_variables.manage permission and a recent sign-in.",
       responses: {
         201: jsonResponse("Environment variable created.", adminResponseSchema),
         400: jsonResponse("The request was invalid.", invalidRequestSchema),
@@ -659,6 +663,11 @@ export function registerOrgEnvironmentVariableRoutes<T extends { Variables: OrgR
       try {
         const writes = await validateAssignments(organizationId, input.assignments)
         const plan = planAccess({ valueMode: input.valueMode, existing: [], writes })
+        if (isMachineCaller(c) && plan.changed.length > 0 && input.confirmed !== true) {
+          throw new RouteFailure(409, "confirmation_required",
+            "These values reach people's desktop agents. Only deploy values the person explicitly asked for; tell them which assignments get a value, then send again with confirmed true.",
+            plan.changed)
+        }
         await db.transaction(async (tx) => {
           const row = {
             id,
@@ -692,7 +701,7 @@ export function registerOrgEnvironmentVariableRoutes<T extends { Variables: OrgR
     describeRoute({
       tags: [TAG],
       summary: "Update an environment variable",
-      description: "Changes an environment variable's name, key, description, how it gets its value, or its assignments (send assignments to replace them; an assignment without value keeps its stored value). Values the new state no longer uses are removed. Agents and API keys get 409 confirmation_required when the change would replace or remove a value that is already set: ask the person, then send again with replaceExisting true. Requires the environment_variables.manage permission and a recent sign-in.",
+      description: "Changes an environment variable's name, key, description, how it gets its value, or its assignments (send assignments to replace them; an assignment without value keeps its stored value). Values the new state no longer uses are removed. Agents and API keys get 409 confirmation_required when the change sets new values (send confirmed true once the person asked for them) or replaces or removes a value that is already set (ask the person, then send replaceExisting true). Requires the environment_variables.manage permission and a recent sign-in.",
       responses: {
         200: jsonResponse("Environment variable updated.", adminResponseSchema),
         400: jsonResponse("The request was invalid.", invalidRequestSchema),
@@ -726,6 +735,12 @@ export function registerOrgEnvironmentVariableRoutes<T extends { Variables: OrgR
           const valueMode = input.valueMode ?? variable.valueMode
           const plan = planAccess({ valueMode, existing: access, writes })
           const dropsOwnValues = variable.valueMode === "per_member" && valueMode !== "per_member"
+          const setsValues = plan.changed.some((key) => !plan.replaced.includes(key))
+          if (machine && setsValues && input.confirmed !== true) {
+            throw new RouteFailure(409, "confirmation_required",
+              "These values reach people's desktop agents. Only deploy values the person explicitly asked for; tell them which assignments get a value, then send again with confirmed true.",
+              plan.changed.filter((key) => !plan.replaced.includes(key)))
+          }
           if (machine && input.replaceExisting !== true && (plan.replaced.length > 0 || dropsOwnValues)) {
             throw new RouteFailure(409, "confirmation_required",
               "This change replaces or removes values that are already set. Tell the person which, and only if they agree, send it again with replaceExisting true.",

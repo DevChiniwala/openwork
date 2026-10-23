@@ -143,11 +143,11 @@ test("agents set values only after confirming and never read them", async () => 
   const ownerToken = await den.mintMcpToken(owner, orgId)
   const memberToken = await den.mintMcpToken(agentMember, orgId)
 
-  // An admin's agent creates a variable with a value.
-  const created = await den.callMcpTool(ownerToken, "execute_capability", {
-    name: "postEnvironmentVariables",
-    body: { name: "Company API", key: "COMPANY_API_URL", valueMode: "admin", assignments: [{ type: "everyone", value: "https://api.example.test" }] },
-  })
+  // An admin's agent creates a variable with a value, only once it confirms the person asked for it.
+  const createBody = { name: "Company API", key: "COMPANY_API_URL", valueMode: "admin", assignments: [{ type: "everyone", value: "https://api.example.test" }] }
+  const unconfirmedCreate = await den.callMcpTool(ownerToken, "execute_capability", { name: "postEnvironmentVariables", body: createBody })
+  assert.equal(field(unconfirmedCreate.body, "error"), "confirmation_required", unconfirmedCreate.raw.slice(0, 400))
+  const created = await den.callMcpTool(ownerToken, "execute_capability", { name: "postEnvironmentVariables", body: { ...createBody, confirmed: true } })
   assert.equal(created.isError, false, created.raw.slice(0, 400))
   const companyId = text(field(created.body, "environmentVariable", "id"), "company id")
   assert.deepEqual(resolved((await den.as(agentMember, orgId)("GET", "/v1/environment-variables/resolved")).body, "COMPANY_API_URL"), { value: "https://api.example.test", source: "everyone", editable: false })

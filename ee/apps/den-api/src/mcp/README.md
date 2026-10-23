@@ -135,9 +135,12 @@ desktop while it syncs (`GET /v1/environment-variables/resolved` is
   which assignment applies (`putEnvironmentVariablesMyAssignment`), or show the
   person a private field (`postEnvironmentVariablesValuePrompt`). These are
   full-view tools too.
-- Admin create/update accept values from agents. An update that would replace
-  or remove a stored value answers 409 `confirmation_required` (with `affected`)
-  until it is sent again with `replaceExisting: true`.
+- Admin create/update accept values from agents only with `confirmed: true`
+  (otherwise 409 `confirmation_required`, with `affected`). An update that would
+  replace or remove a stored value also needs `replaceExisting: true`.
+- Keys that make programs run commands or weaken TLS (Git, loader, shell,
+  interpreter, package-manager and editor configuration, `NODE_TLS_*`, `SSL_*`,
+  `SSLKEYLOGFILE`, …) are refused, and dropped again by the desktop.
 - Every change is audited (`audit/domain/environment-variables.ts`) without values.
 - All of it is hidden unless the organization has `environmentVariables`.
 
