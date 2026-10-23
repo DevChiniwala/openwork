@@ -399,6 +399,10 @@ const RAW_BETTER_AUTH_MUTATION_DENIALS: readonly (readonly [string, string])[] =
   ["/api-key/delete", "Use the Den API key API to manage organization API keys."],
   ["/scim/generate-token", "Use the Den SCIM API to manage SCIM tokens."],
   ["/scim/delete-provider-connection", "Use the Den SCIM API to manage SCIM providers."],
+  // Device sign-ins are decided only on Den web's /device page (POST /v1/auth/device/decision),
+  // which shows the requesting client from the stored code first (GHSA-q84f-53jg-9ppm).
+  ["/device/approve", "Approve command-line sign-ins on the Den device page."],
+  ["/device/deny", "Deny command-line sign-ins on the Den device page."],
 ];
 
 export function getRawBetterAuthMutationDenial(path: string) {
