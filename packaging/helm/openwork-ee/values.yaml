@@ -71,6 +71,11 @@ config:
     visibilityEnabled: "true"
   auth:
     passwordBreachScreeningEnabled: "false"
+  email:
+    # Where replies to invitation emails and their "Report abuse" link go, such as
+    # your IT help desk. Leave blank to send replies to the person who invited them.
+    # Renders EMAIL_SUPPORT_ADDRESS.
+    supportAddress: ""
   githubConnector:
     appId: ""
     clientId: ""
