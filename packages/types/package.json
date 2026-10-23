@@ -308,7 +308,9 @@
         "default": "./src/den/prompts.ts"
       },
       "development": "./src/den/prompts.ts",
-      "default": "./src/den/prompts.ts"
+      "bun": "./src/den/prompts.ts",
+      "browser": "./src/den/prompts.ts",
+      "default": "./dist/den/prompts.js"
     },
     "./den/credential-prompt": {
       "types": {
