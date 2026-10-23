@@ -10,11 +10,15 @@ import tls from "node:tls";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 import {
+  deleteEnv,
   desktopBootstrapPath,
+  envKey,
+  mergeEnv,
   normalizeWorkspaceRootPath,
   openworkEnvStorePath,
   openworkServerConfigPath,
   resolveWorkspaceOpencodeConfigPath,
+  setEnv,
 } from "@openwork/paths";
 import {
   dedupeCertificates,
@@ -318,31 +322,33 @@ export function resolveEvalLocalServerDelayMs(env = process.env) {
   return Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
 }
 
+// Saved variables never replace inherited ones. On Windows a saved `PATH` is
+// the inherited `Path`, so names compare case-insensitively there.
 export function reconcileInjectedUserEnv({
   processEnv,
   inheritedEnv,
   userEnv,
   previouslyInjectedKeys = new Set(),
+  platform = process.platform,
 }) {
+  const opts = { platform };
+  const inheritedKey = (key) => envKey(inheritedEnv, key, opts);
   for (const key of previouslyInjectedKeys) {
-    if (Object.prototype.hasOwnProperty.call(userEnv, key)) continue;
-    if (Object.prototype.hasOwnProperty.call(inheritedEnv, key)) {
-      processEnv[key] = inheritedEnv[key];
+    if (envKey(userEnv, key, opts) !== undefined) continue;
+    const inherited = inheritedKey(key);
+    if (inherited !== undefined) {
+      setEnv(processEnv, key, inheritedEnv[inherited], opts);
     } else {
-      delete processEnv[key];
+      deleteEnv(processEnv, key, opts);
     }
   }
 
   for (const [key, value] of Object.entries(userEnv)) {
-    if (Object.prototype.hasOwnProperty.call(inheritedEnv, key)) continue;
-    processEnv[key] = value;
+    if (inheritedKey(key) !== undefined) continue;
+    setEnv(processEnv, key, value, opts);
   }
 
-  return new Set(
-    Object.keys(userEnv).filter(
-      (key) => !Object.prototype.hasOwnProperty.call(inheritedEnv, key),
-    ),
-  );
+  return new Set(Object.keys(userEnv).filter((key) => inheritedKey(key) === undefined));
 }
 
 export function commandMatchesPackagedSidecar(command, sidecarDirs = []) {
@@ -771,6 +777,13 @@ export function resolveUserEnvFilePath(env = process.env) {
 const USER_ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const USER_ENV_RESERVED_PREFIXES = ["OPENWORK_", "OPENCODE_"];
 
+// Windows reads `opencode_config` as OPENCODE_CONFIG, so reserved prefixes
+// match case-insensitively there.
+export function isReservedUserEnvKey(key, platform = process.platform) {
+  const name = platform === "win32" ? key.toUpperCase() : key;
+  return USER_ENV_RESERVED_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
 // Synchronous, best-effort; absent or malformed returns {}. Reserved prefixes
 // are stripped so a tampered file can never shadow OPENWORK_* / OPENCODE_*.
 function loadUserEnvFile(env = process.env) {
@@ -784,7 +797,7 @@ function loadUserEnvFile(env = process.env) {
       const { key, value } = entry;
       if (typeof key !== "string" || typeof value !== "string") continue;
       if (!USER_ENV_KEY_PATTERN.test(key)) continue;
-      if (USER_ENV_RESERVED_PREFIXES.some((p) => key.startsWith(p))) continue;
+      if (isReservedUserEnvKey(key)) continue;
       out[key] = value;
     }
     return out;
@@ -1403,14 +1416,16 @@ export async function resolveSystemCaEnv(options) {
  * @param {NodeJS.ProcessEnv} [baseEnv]
  * @param {NodeJS.ProcessEnv} [caEnv]
  * @param {NodeJS.ProcessEnv} [extra]
+ * @param {NodeJS.Platform} [platform]
  * @returns {NodeJS.ProcessEnv}
  */
-export function mergeSystemCaChildEnv(baseEnv = {}, caEnv = {}, extra = {}) {
-  return {
-    ...baseEnv,
-    ...(Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : caEnv),
-    ...extra,
-  };
+export function mergeSystemCaChildEnv(baseEnv = {}, caEnv = {}, extra = {}, platform = process.platform) {
+  const opts = { platform };
+  return mergeEnv([
+    baseEnv,
+    envKey(baseEnv, "NODE_EXTRA_CA_CERTS", opts) === undefined ? caEnv : {},
+    extra,
+  ], opts);
 }
 
 export function createRuntimeManager({
@@ -1470,7 +1485,7 @@ export function createRuntimeManager({
     systemCaPromise ??= withStartupPhase("ca.bundle", () => resolveSystemCa({
       tlsModule: tls,
       userDataDir,
-      parentEnv: { ...loadUserEnvFile(process.env), ...process.env },
+      parentEnv: mergeEnv([loadUserEnvFile(process.env), process.env]),
     }));
     return systemCaPromise;
   }
@@ -1602,12 +1617,11 @@ export function createRuntimeManager({
       ? await ensureDevModePaths()
       : null;
     const userEnvPathEnv = devPaths
-      ? {
-          ...process.env,
+      ? mergeEnv([process.env, {
           HOME: devPaths.homeDir,
           USERPROFILE: devPaths.homeDir,
           XDG_CONFIG_HOME: devPaths.xdgConfigHome,
-        }
+        }])
       : process.env;
     const userEnv = loadUserEnvFile(userEnvPathEnv);
     injectedUserEnvKeys = reconcileInjectedUserEnv({
@@ -1616,36 +1630,30 @@ export function createRuntimeManager({
       userEnv,
       previouslyInjectedKeys: injectedUserEnvKeys,
     });
-    const baseEnv = {
-      ...userEnv,
-      ...process.env,
-      BUN_CONFIG_DNS_RESULT_ORDER: "verbatim",
-    };
-    const caEnv = Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : (await systemCa()).childEnv;
+    // mergeEnv keeps one entry per Windows name, so a child never sees both a
+    // saved `PATH` and the inherited `Path` and picks one by spelling.
+    const baseEnv = mergeEnv([userEnv, process.env, { BUN_CONFIG_DNS_RESULT_ORDER: "verbatim" }]);
+    const caEnv = envKey(baseEnv, "NODE_EXTRA_CA_CERTS") === undefined ? (await systemCa()).childEnv : {};
     // Bun honors Node's NODE_EXTRA_CA_CERTS, so bundled Bun sidecars inherit
     // the exported OS trust store through the same child env variable.
     const env = mergeSystemCaChildEnv(baseEnv, caEnv, extra);
-    const pathKey =
-      Object.prototype.hasOwnProperty.call(env, "PATH") ||
-      !Object.prototype.hasOwnProperty.call(env, "Path")
-        ? "PATH"
-        : "Path";
+    const pathKey = envKey(env, "PATH") ?? "PATH";
     const pathEnv = enrichedPath(sidecarDirs, env[pathKey]);
     if (pathEnv) {
       env[pathKey] = pathEnv;
     }
-    if (devPaths) {
-      env.OPENWORK_DEV_MODE = "1";
-      env.HOME = devPaths.homeDir;
-      env.USERPROFILE = devPaths.homeDir;
-      env.XDG_CONFIG_HOME = devPaths.xdgConfigHome;
-      env.XDG_DATA_HOME = devPaths.xdgDataHome;
-      env.XDG_CACHE_HOME = devPaths.xdgCacheHome;
-      env.XDG_STATE_HOME = devPaths.xdgStateHome;
-      env.OPENCODE_CONFIG_DIR = devPaths.opencodeConfigDir;
-      env.OPENCODE_TEST_HOME = devPaths.homeDir;
-    }
-    return env;
+    if (!devPaths) return env;
+    return mergeEnv([env, {
+      OPENWORK_DEV_MODE: "1",
+      HOME: devPaths.homeDir,
+      USERPROFILE: devPaths.homeDir,
+      XDG_CONFIG_HOME: devPaths.xdgConfigHome,
+      XDG_DATA_HOME: devPaths.xdgDataHome,
+      XDG_CACHE_HOME: devPaths.xdgCacheHome,
+      XDG_STATE_HOME: devPaths.xdgStateHome,
+      OPENCODE_CONFIG_DIR: devPaths.opencodeConfigDir,
+      OPENCODE_TEST_HOME: devPaths.homeDir,
+    }]);
   }
 
   function resolveBinaryInfo(baseName, extraPaths = []) {

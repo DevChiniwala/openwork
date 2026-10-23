@@ -156,6 +156,10 @@ jobs:
         run: bun --conditions=development test apps/server/test/web-ui-origin.test.ts
       - name: Test OneDrive and SharePoint pulls and saves
         run: bun --conditions=development test apps/server/test/drive-files-microsoft.test.ts
+      - name: Test Windows environment variable names match in any case
+        run: |
+          node --test packages/paths/env.test.mjs apps/desktop/test/runtime-env.test.mjs
+          bun test apps/server/test/windows-env-names.test.ts
       - name: Setup headless Chrome for locator regression
         uses: ./.github/actions/setup-browser
       - name: Run eval framework tests (spec lint and its fixtures)

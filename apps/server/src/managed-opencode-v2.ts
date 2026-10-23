@@ -1,3 +1,4 @@
+import { envKey, setEnv } from "@openwork/paths";
 import { startupPhase } from "./startup-phase.js";
 import type { EnginePermissionRule } from "./managed-policy-rules.js";
 import { agentPermissionEngineV2Rules, type AgentPermissionRule, type EngineV2PermissionRule } from "./agent-permission-engine.js";
@@ -322,6 +323,35 @@ export function renderOpencodeV2Config(input: {
   };
 }
 
+// The engine needs OS paths and locale settings, not the server's provider,
+// cloud, database, or control-plane credentials. Unknown keys stay private.
+const ENGINE_INHERITED_ENV = [
+  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP",
+  "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "CI",
+  "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
+  "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+  "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
+];
+
+/** Caller values win; on Windows each name matches any spelling (`Path`, `windir`) and is passed once. */
+export function inheritedEngineEnv(
+  env: NodeJS.ProcessEnv | undefined,
+  parentEnv: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string> {
+  const opts = { platform };
+  const read = (source: NodeJS.ProcessEnv | undefined, name: string) => {
+    const key = envKey(source, name, opts);
+    return key === undefined ? undefined : source?.[key];
+  };
+  const inherited: Record<string, string> = {};
+  for (const name of ENGINE_INHERITED_ENV) {
+    const value = read(env, name) ?? read(parentEnv, name);
+    if (value !== undefined) setEnv(inherited, name, value, opts);
+  }
+  return inherited;
+}
+
 export async function createManagedOpencodeV2Server(
   options: ManagedOpencodeV2ServerOptions,
 ): Promise<ManagedOpencodeV2Server> {
@@ -356,19 +386,7 @@ async function createManagedOpencodeV2ServerInner(
   // already has stored agent permissions.
   let agentPermissionsPluginWritten = false;
   const opencodeModelsUrl = (options.env?.OPENCODE_MODELS_URL ?? process.env.OPENCODE_MODELS_URL)?.replace(/\/+$/, "");
-  // The engine needs OS paths and locale settings, not the server's provider,
-  // cloud, database, or control-plane credentials. Unknown keys stay private.
-  const inherited: Record<string, string> = {};
-  for (const key of [
-    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP",
-    "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "CI",
-    "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
-    "SystemRoot", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-    "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR",
-  ]) {
-    const value = options.env?.[key] ?? process.env[key];
-    if (value !== undefined) inherited[key] = value;
-  }
+  const inherited = inheritedEngineEnv(options.env);
   // A caller may deliberately provide a config file; never inherit the server's
   // OPENCODE_CONFIG or OPENCODE_PURE settings implicitly.
   if (options.env?.OPENCODE_CONFIG) inherited.OPENCODE_CONFIG = options.env.OPENCODE_CONFIG;
