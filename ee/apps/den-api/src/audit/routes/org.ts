@@ -252,6 +252,7 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   handler("POST", "/v1/auth/device/decision", "tenant_access", "auth.device_code.decide", "auth.device", "device_code", null, "Credential issuance: approval binds the CLI session to the chosen organization. Org proof: decideDeviceUserCode verifies the session user's active membership in body organizationId, then (beforeEffect) attributes org + user + member before the code is decided (fails closed). Denials and approvals without an organization stay in the platform store (user-scoped)."),
 
   // Invitation acceptance (session user, org from the invitation)
+  handler("POST", "/v1/sandbox-join", "tenant_external", "sandbox_organization.join", "sandbox.join", "sandbox_organization", null, "Org proof: the sandbox join token -> sandbox_organization.organizationId; attributed before the membership write. Actor = the joining session user without a member id (not yet a member). Joins as member only.", { external: SEAT_SYNC }),
   handler("POST", "/v1/orgs/invitations/accept", "tenant_external", "invitation.accept", "invitation.management", "invitation", null, "Org proof: pending invitation row whose email matches the verified session user -> invitation.organizationId; attributed through acceptInvitationForUser beforeEffect (before any write). Actor = invitee user without a member id (not yet a member).", { external: SEAT_SYNC }),
 
   // Signed webhooks

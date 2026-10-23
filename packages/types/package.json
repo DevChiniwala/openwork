@@ -410,6 +410,14 @@
       "development": "./src/den/organization-grants.ts",
       "default": "./src/den/organization-grants.ts"
     },
+    "./den/sandbox-organizations": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/sandbox-organizations.d.ts",
+        "default": "./src/den/sandbox-organizations.ts"
+      },
+      "development": "./src/den/sandbox-organizations.ts",
+      "default": "./src/den/sandbox-organizations.ts"
+    },
     "./den/admin-organization": {
       "types": {
         "openwork-build": "./dist/types/src/den/admin-organization.d.ts",

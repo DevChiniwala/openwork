@@ -23,6 +23,7 @@ import { registerOrgDesktopPolicyRoutes } from "./desktop-policies.js"
 import { registerOrgEgressDiagnosticRoutes } from "./egress-diagnostics.js"
 import { registerOrgInventoryRevisionRoutes } from "./inventory-revision.js"
 import { registerOrgInvitationRoutes } from "./invitations.js"
+import { registerOrgSandboxJoinRoutes } from "./sandbox-join.js"
 import { registerGoogleWorkspaceRoutes } from "./google-workspace.js"
 import { registerOrgInstallLinkRoutes } from "./install-links.js"
 import { registerOrgInferenceProviderRoutes } from "./inference-providers.js"
@@ -96,6 +97,7 @@ export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & Req
   registerOrgScimRoutes(app)
   registerOrgSsoRoutes(app)
   registerOrgInvitationRoutes(app)
+  registerOrgSandboxJoinRoutes(app)
   registerOrgInstallLinkRoutes(app)
   registerOrgLlmProviderRoutes(app)
   registerOrgInferenceProviderRoutes(app)

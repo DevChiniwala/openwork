@@ -275,7 +275,7 @@ function checkSsoResolveMissRateLimit(key: string) {
   return checkRateLimit(key, SSO_RESOLVE_DOMAIN_MISS_RATE_LIMIT_MAX, SSO_RESOLVE_DOMAIN_RATE_LIMIT_WINDOW_MS, Date.now())
 }
 
-async function setRequestActiveOrganization(
+export async function setRequestActiveOrganization(
   c: {
     get: (key: "session") => { id?: string | null } | null
     req: { raw: Request }

@@ -245,6 +245,8 @@ import type {
   GetV1AdminOrganizationsResponses,
   GetV1AdminOverviewErrors,
   GetV1AdminOverviewResponses,
+  GetV1AdminSandboxOrgsErrors,
+  GetV1AdminSandboxOrgsResponses,
   GetV1AdminServicesErrors,
   GetV1AdminServicesResponses,
   GetV1AdminUsersByUserIdInferenceUsageErrors,
@@ -551,6 +553,8 @@ import type {
   GetV1ResourcesMarketplaceCapabilitiesErrors,
   GetV1ResourcesMarketplaceCapabilitiesResponses,
   GetV1ResourcesResponses,
+  GetV1SandboxJoinPreviewErrors,
+  GetV1SandboxJoinPreviewResponses,
   GetV1ScimErrors,
   GetV1ScimResponses,
   GetV1SkillHubsErrors,
@@ -716,6 +720,14 @@ import type {
   PostV1AdminOrganizationsByOrganizationIdControlPanelGrantsResponses,
   PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionErrors,
   PostV1AdminOrganizationsByOrganizationIdEnterpriseSubscriptionResponses,
+  PostV1AdminSandboxOrgsBySandboxIdCloseErrors,
+  PostV1AdminSandboxOrgsBySandboxIdCloseResponses,
+  PostV1AdminSandboxOrgsBySandboxIdExtendErrors,
+  PostV1AdminSandboxOrgsBySandboxIdExtendResponses,
+  PostV1AdminSandboxOrgsBySandboxIdRotateLinkErrors,
+  PostV1AdminSandboxOrgsBySandboxIdRotateLinkResponses,
+  PostV1AdminSandboxOrgsErrors,
+  PostV1AdminSandboxOrgsResponses,
   PostV1AdminServicesCheckErrors,
   PostV1AdminServicesCheckResponses,
   PostV1AdminUsersByUserIdInferenceUsageResetErrors,
@@ -971,6 +983,8 @@ import type {
   PostV1RemoteSessionsStatusResponses,
   PostV1RemoteSessionsStopErrors,
   PostV1RemoteSessionsStopResponses,
+  PostV1SandboxJoinErrors,
+  PostV1SandboxJoinResponses,
   PostV1ScimReconcileErrors,
   PostV1ScimReconcileResponses,
   PostV1ScimTokenErrors,
@@ -1319,6 +1333,7 @@ export class DenClient extends HeyApiClient {
         administratorRecovery?: boolean | null;
         nativeDictation?: boolean | null;
         organizationGrants?: boolean | null;
+        sandboxOrgs?: boolean | null;
         connectionMcpServers?: boolean | null;
         liveProviderSync?: boolean | null;
         agentConnectionRemoval?: boolean | null;
@@ -1876,6 +1891,151 @@ export class DenClient extends HeyApiClient {
       PostV1AdminServicesCheckErrors,
       ThrowOnError
     >({ url: "/v1/admin/services/check", ...options });
+  }
+
+  /**
+   * List sandbox organizations
+   *
+   * Lists try-it-out organizations with their join link, members, connectors and when they end. Sandboxes whose time ran out are closed first. Platform administrators only.
+   */
+  public getV1AdminSandboxOrgs<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetV1AdminSandboxOrgsResponses,
+      GetV1AdminSandboxOrgsErrors,
+      ThrowOnError
+    >({ url: "/v1/admin/sandbox-orgs", ...options });
+  }
+
+  /**
+   * Create a sandbox organization
+   *
+   * Creates an organization owned by the calling admin with included models, optional extra Free Auto usage, one per-person OAuth connector for each fictional workplace app, and a join link that joins people as members until the sandbox ends. Platform administrators only.
+   */
+  public postV1AdminSandboxOrgs<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string;
+      connectorBaseUrl: string | null;
+      days: number;
+      memberLimit: number;
+      allowedEmailDomains: Array<string>;
+      extraFreeAutoUsd: number | null;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "name" },
+            { in: "body", key: "connectorBaseUrl" },
+            { in: "body", key: "days" },
+            { in: "body", key: "memberLimit" },
+            { in: "body", key: "allowedEmailDomains" },
+            { in: "body", key: "extraFreeAutoUsd" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminSandboxOrgsResponses,
+      PostV1AdminSandboxOrgsErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/sandbox-orgs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Replace a sandbox join link
+   *
+   * Issues a new join link; the old link stops working immediately. Existing members are unaffected. Platform administrators only.
+   */
+  public postV1AdminSandboxOrgsBySandboxIdRotateLink<ThrowOnError extends boolean = false>(
+    parameters: {
+      sandboxId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sandboxId" }] }]);
+    return (options?.client ?? this.client).post<
+      PostV1AdminSandboxOrgsBySandboxIdRotateLinkResponses,
+      PostV1AdminSandboxOrgsBySandboxIdRotateLinkErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/sandbox-orgs/{sandboxId}/rotate-link",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Extend or reopen a sandbox
+   *
+   * Adds days from now or from the current end, whichever is later, reopens the join link and turns included models back on. Platform administrators only.
+   */
+  public postV1AdminSandboxOrgsBySandboxIdExtend<ThrowOnError extends boolean = false>(
+    parameters: {
+      sandboxId: string;
+      days: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sandboxId" },
+            { in: "body", key: "days" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PostV1AdminSandboxOrgsBySandboxIdExtendResponses,
+      PostV1AdminSandboxOrgsBySandboxIdExtendErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/sandbox-orgs/{sandboxId}/extend",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Close a sandbox
+   *
+   * Stops the join link and included models now. The organization, its members, connectors and data are kept and the sandbox can be reopened. Platform administrators only.
+   */
+  public postV1AdminSandboxOrgsBySandboxIdClose<ThrowOnError extends boolean = false>(
+    parameters: {
+      sandboxId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sandboxId" }] }]);
+    return (options?.client ?? this.client).post<
+      PostV1AdminSandboxOrgsBySandboxIdCloseResponses,
+      PostV1AdminSandboxOrgsBySandboxIdCloseErrors,
+      ThrowOnError
+    >({
+      url: "/v1/admin/sandbox-orgs/{sandboxId}/close",
+      ...options,
+      ...params,
+    });
   }
 
   /**
@@ -6561,6 +6721,53 @@ export class DenClient extends HeyApiClient {
       url: "/v1/invitations/{invitationId}/link",
       ...options,
       ...params,
+    });
+  }
+
+  /**
+   * Preview a sandbox join link
+   *
+   * Returns the sandbox organization's name, whether it is still accepting people, when it ends and which workplace apps it connects.
+   */
+  public getV1SandboxJoinPreview<ThrowOnError extends boolean = false>(
+    parameters: {
+      token: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "token" }] }]);
+    return (options?.client ?? this.client).get<
+      GetV1SandboxJoinPreviewResponses,
+      GetV1SandboxJoinPreviewErrors,
+      ThrowOnError
+    >({
+      url: "/v1/sandbox-join/preview",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Join a sandbox organization
+   *
+   * Joins the signed-in person to the sandbox organization as a member and makes it their active organization. Joining again is harmless.
+   */
+  public postV1SandboxJoin<ThrowOnError extends boolean = false>(
+    parameters: {
+      token: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "token" }] }]);
+    return (options?.client ?? this.client).post<PostV1SandboxJoinResponses, PostV1SandboxJoinErrors, ThrowOnError>({
+      url: "/v1/sandbox-join",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     });
   }
 

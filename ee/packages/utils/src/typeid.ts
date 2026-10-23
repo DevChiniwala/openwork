@@ -134,6 +134,7 @@ export const idTypesMapNameToPrefix = {
   accountFollowUpAction: "afa",
   orgPrompt: "osp",
   orgPromptAccess: "ospa",
+  sandboxOrganization: "sbx",
 } as const
 
 export const denTypeIdPrefixes = idTypesMapNameToPrefix

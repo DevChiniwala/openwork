@@ -1172,6 +1172,7 @@ export type AdminFeature = {
     | "administratorRecovery"
     | "nativeDictation"
     | "organizationGrants"
+    | "sandboxOrgs"
     | "connectionMcpServers"
     | "liveProviderSync"
     | "agentConnectionRemoval"
@@ -1239,6 +1240,7 @@ export type AdminOrganizationsPageResponse = {
       administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
+      sandboxOrgs: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -1295,6 +1297,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sandboxOrgs: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1603,6 +1614,7 @@ export type AdminOverviewResponse = {
       administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
+      sandboxOrgs: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -1659,6 +1671,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sandboxOrgs: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8117,6 +8138,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      sandboxOrgs: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       connectionMcpServers: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8364,6 +8394,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       administratorRecovery?: boolean | null;
       nativeDictation?: boolean | null;
       organizationGrants?: boolean | null;
+      sandboxOrgs?: boolean | null;
       connectionMcpServers?: boolean | null;
       liveProviderSync?: boolean | null;
       agentConnectionRemoval?: boolean | null;
@@ -8447,6 +8478,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sandboxOrgs: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -9459,6 +9499,293 @@ export type PostV1AdminServicesCheckResponses = {
 export type PostV1AdminServicesCheckResponse =
   PostV1AdminServicesCheckResponses[keyof PostV1AdminServicesCheckResponses];
 
+export type GetV1AdminSandboxOrgsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/admin/sandbox-orgs";
+};
+
+export type GetV1AdminSandboxOrgsErrors = {
+  /**
+   * Invalid sandbox or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Sandbox not found, or sandbox organizations are turned off.
+   */
+  404: NotFoundError;
+};
+
+export type GetV1AdminSandboxOrgsError = GetV1AdminSandboxOrgsErrors[keyof GetV1AdminSandboxOrgsErrors];
+
+export type GetV1AdminSandboxOrgsResponses = {
+  /**
+   * Sandbox organizations.
+   */
+  200: {
+    enabled: boolean;
+    sandboxes: Array<{
+      id: string;
+      organizationId: string;
+      name: string;
+      state: "open" | "expired" | "closed";
+      joinLink: string;
+      memberCount: number;
+      memberLimit: number;
+      connectorBaseUrl: string | null;
+      connectorCount: number;
+      allowedEmailDomains: Array<string>;
+      expiresAt: string;
+      closedAt: string | null;
+      createdAt: string;
+    }>;
+  };
+};
+
+export type GetV1AdminSandboxOrgsResponse = GetV1AdminSandboxOrgsResponses[keyof GetV1AdminSandboxOrgsResponses];
+
+export type PostV1AdminSandboxOrgsData = {
+  body: {
+    name: string;
+    connectorBaseUrl: string | null;
+    days: number;
+    memberLimit: number;
+    allowedEmailDomains: Array<string>;
+    extraFreeAutoUsd: number | null;
+  };
+  path?: never;
+  query?: never;
+  url: "/v1/admin/sandbox-orgs";
+};
+
+export type PostV1AdminSandboxOrgsErrors = {
+  /**
+   * Invalid sandbox or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Sandbox not found, or sandbox organizations are turned off.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminSandboxOrgsError = PostV1AdminSandboxOrgsErrors[keyof PostV1AdminSandboxOrgsErrors];
+
+export type PostV1AdminSandboxOrgsResponses = {
+  /**
+   * Sandbox created.
+   */
+  200: {
+    sandbox: {
+      id: string;
+      organizationId: string;
+      name: string;
+      state: "open" | "expired" | "closed";
+      joinLink: string;
+      memberCount: number;
+      memberLimit: number;
+      connectorBaseUrl: string | null;
+      connectorCount: number;
+      allowedEmailDomains: Array<string>;
+      expiresAt: string;
+      closedAt: string | null;
+      createdAt: string;
+    };
+  };
+};
+
+export type PostV1AdminSandboxOrgsResponse = PostV1AdminSandboxOrgsResponses[keyof PostV1AdminSandboxOrgsResponses];
+
+export type PostV1AdminSandboxOrgsBySandboxIdRotateLinkData = {
+  body?: never;
+  path: {
+    sandboxId: string;
+  };
+  query?: never;
+  url: "/v1/admin/sandbox-orgs/{sandboxId}/rotate-link";
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdRotateLinkErrors = {
+  /**
+   * Invalid sandbox or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Sandbox not found, or sandbox organizations are turned off.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdRotateLinkError =
+  PostV1AdminSandboxOrgsBySandboxIdRotateLinkErrors[keyof PostV1AdminSandboxOrgsBySandboxIdRotateLinkErrors];
+
+export type PostV1AdminSandboxOrgsBySandboxIdRotateLinkResponses = {
+  /**
+   * Updated sandbox.
+   */
+  200: {
+    sandbox: {
+      id: string;
+      organizationId: string;
+      name: string;
+      state: "open" | "expired" | "closed";
+      joinLink: string;
+      memberCount: number;
+      memberLimit: number;
+      connectorBaseUrl: string | null;
+      connectorCount: number;
+      allowedEmailDomains: Array<string>;
+      expiresAt: string;
+      closedAt: string | null;
+      createdAt: string;
+    };
+  };
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdRotateLinkResponse =
+  PostV1AdminSandboxOrgsBySandboxIdRotateLinkResponses[keyof PostV1AdminSandboxOrgsBySandboxIdRotateLinkResponses];
+
+export type PostV1AdminSandboxOrgsBySandboxIdExtendData = {
+  body: {
+    days: number;
+  };
+  path: {
+    sandboxId: string;
+  };
+  query?: never;
+  url: "/v1/admin/sandbox-orgs/{sandboxId}/extend";
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdExtendErrors = {
+  /**
+   * Invalid sandbox or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Sandbox not found, or sandbox organizations are turned off.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdExtendError =
+  PostV1AdminSandboxOrgsBySandboxIdExtendErrors[keyof PostV1AdminSandboxOrgsBySandboxIdExtendErrors];
+
+export type PostV1AdminSandboxOrgsBySandboxIdExtendResponses = {
+  /**
+   * Updated sandbox.
+   */
+  200: {
+    sandbox: {
+      id: string;
+      organizationId: string;
+      name: string;
+      state: "open" | "expired" | "closed";
+      joinLink: string;
+      memberCount: number;
+      memberLimit: number;
+      connectorBaseUrl: string | null;
+      connectorCount: number;
+      allowedEmailDomains: Array<string>;
+      expiresAt: string;
+      closedAt: string | null;
+      createdAt: string;
+    };
+  };
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdExtendResponse =
+  PostV1AdminSandboxOrgsBySandboxIdExtendResponses[keyof PostV1AdminSandboxOrgsBySandboxIdExtendResponses];
+
+export type PostV1AdminSandboxOrgsBySandboxIdCloseData = {
+  body?: never;
+  path: {
+    sandboxId: string;
+  };
+  query?: never;
+  url: "/v1/admin/sandbox-orgs/{sandboxId}/close";
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdCloseErrors = {
+  /**
+   * Invalid sandbox or request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform administrator required.
+   */
+  403: ForbiddenError;
+  /**
+   * Sandbox not found, or sandbox organizations are turned off.
+   */
+  404: NotFoundError;
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdCloseError =
+  PostV1AdminSandboxOrgsBySandboxIdCloseErrors[keyof PostV1AdminSandboxOrgsBySandboxIdCloseErrors];
+
+export type PostV1AdminSandboxOrgsBySandboxIdCloseResponses = {
+  /**
+   * Updated sandbox.
+   */
+  200: {
+    sandbox: {
+      id: string;
+      organizationId: string;
+      name: string;
+      state: "open" | "expired" | "closed";
+      joinLink: string;
+      memberCount: number;
+      memberLimit: number;
+      connectorBaseUrl: string | null;
+      connectorCount: number;
+      allowedEmailDomains: Array<string>;
+      expiresAt: string;
+      closedAt: string | null;
+      createdAt: string;
+    };
+  };
+};
+
+export type PostV1AdminSandboxOrgsBySandboxIdCloseResponse =
+  PostV1AdminSandboxOrgsBySandboxIdCloseResponses[keyof PostV1AdminSandboxOrgsBySandboxIdCloseResponses];
+
 export type PostV1AdminAdminsData = {
   body?: never;
   path?: never;
@@ -10148,6 +10475,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
+      sandboxOrgs: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -10204,6 +10532,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sandboxOrgs: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10500,6 +10837,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
+      sandboxOrgs: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -10556,6 +10894,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       organizationGrants: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      sandboxOrgs: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -19441,6 +19788,108 @@ export type GetV1InvitationsByInvitationIdLinkResponses = {
 
 export type GetV1InvitationsByInvitationIdLinkResponse =
   GetV1InvitationsByInvitationIdLinkResponses[keyof GetV1InvitationsByInvitationIdLinkResponses];
+
+export type GetV1SandboxJoinPreviewData = {
+  body?: never;
+  path?: never;
+  query: {
+    token: string;
+  };
+  url: "/v1/sandbox-join/preview";
+};
+
+export type GetV1SandboxJoinPreviewErrors = {
+  /**
+   * Invalid link.
+   */
+  400: InvalidRequestError;
+  /**
+   * Unknown link, or sandbox organizations are turned off.
+   */
+  404: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Too many attempts.
+   */
+  429: {
+    error: string;
+    message: string;
+  };
+};
+
+export type GetV1SandboxJoinPreviewError = GetV1SandboxJoinPreviewErrors[keyof GetV1SandboxJoinPreviewErrors];
+
+export type GetV1SandboxJoinPreviewResponses = {
+  /**
+   * Sandbox preview.
+   */
+  200: {
+    organizationName: string;
+    state: "open" | "expired" | "closed" | "full";
+    expiresAt: string;
+    connectors: Array<string>;
+  };
+};
+
+export type GetV1SandboxJoinPreviewResponse = GetV1SandboxJoinPreviewResponses[keyof GetV1SandboxJoinPreviewResponses];
+
+export type PostV1SandboxJoinData = {
+  body: {
+    token: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/v1/sandbox-join";
+};
+
+export type PostV1SandboxJoinErrors = {
+  /**
+   * Invalid request.
+   */
+  400: InvalidRequestError;
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Verify your email first, or this account was removed from the sandbox.
+   */
+  403: ForbiddenError;
+  /**
+   * Unknown link, or sandbox organizations are turned off.
+   */
+  404: NotFoundError;
+  /**
+   * The sandbox is closed, ended, full, or limited to other email domains.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Too many attempts.
+   */
+  429: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PostV1SandboxJoinError = PostV1SandboxJoinErrors[keyof PostV1SandboxJoinErrors];
+
+export type PostV1SandboxJoinResponses = {
+  /**
+   * Joined.
+   */
+  200: {
+    organizationId: string;
+    alreadyMember: boolean;
+  };
+};
+
+export type PostV1SandboxJoinResponse = PostV1SandboxJoinResponses[keyof PostV1SandboxJoinResponses];
 
 export type PostV1OrgsByOrganizationIdInstallLinksData = {
   body: CreateInstallLinkRequest;

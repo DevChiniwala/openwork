@@ -74,6 +74,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  sandboxOrgs: {
+    label: "Sandbox organizations",
+    description: "Platform admins create try-it-out organizations from /admin with fictional workplace connectors, included models and a shareable join link that expires.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
   connectionMcpServers: {
     label: "Connect: an MCP server for each connection",
     description: "Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.",
