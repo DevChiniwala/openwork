@@ -14,8 +14,9 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
-    {{- if eq .Values.config.administratorRecovery.mode "check" }}
-    {{/* Keep check logs available for roster review until the next upgrade. */}}
+    {{- $recovery := .Values.config.administratorRecovery }}
+    {{- if or ($recovery.team | trim) ($recovery.organization | trim) (not (empty $recovery.teams)) }}
+    {{/* Keep recovery outcome logs available for review until the next upgrade. */}}
     "helm.sh/hook-delete-policy": before-hook-creation
     {{- else }}
     {{- with .Values.migrations.hookDeletePolicy }}
@@ -73,6 +74,10 @@ spec:
               value: {{ .Values.config.administratorRecovery.team | quote }}
             - name: DEN_ADMINISTRATOR_RECOVERY_TEAMS
               value: {{ .Values.config.administratorRecovery.teams | toJson | quote }}
+            {{- if ne .Values.config.administratorRecovery.expectedMembers nil }}
+            - name: DEN_ADMINISTRATOR_RECOVERY_EXPECTED_MEMBERS
+              value: {{ .Values.config.administratorRecovery.expectedMembers | quote }}
+            {{- end }}
             {{- if .Values.migrations.writersStoppedFor0097 }}
             - name: DEN_DB_0097_WRITERS_STOPPED
               value: "1"

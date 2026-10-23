@@ -55,10 +55,14 @@ config:
     selfServeEnterprise: ""       # default off (cloud only) · Owners can buy Enterprise by card at the planned per-person price.
   # END GENERATED features
   administratorRecovery:
-    # First run check and read the migrate Job log; check makes no database writes.
-    # Normal schema upgrades must have completed with recovery disabled first.
-    # Set apply only after reviewing the resolved organization, team and full roster.
-    mode: apply
+    # Processed only with config.features.administratorRecovery on. Flag off is a
+    # silent recovery no-op; normal database upgrades remain unchanged.
+    # Flag on defaults to read-only check. Use apply only for the chosen team;
+    # the normal application/database upgrade must already have completed.
+    mode: check
+    # Optional active roster count. Mismatch refuses before any recovery writes.
+    # Count does not detect a same-size swap; exact roster binding is still pending.
+    expectedMembers: null
     # Organization ID or exact slug. May be empty only when exactly one org exists.
     organization: ""
     # Existing designated non-SCIM Admin team ID or exact name. Check prints its ID;

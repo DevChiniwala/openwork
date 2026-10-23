@@ -52,6 +52,7 @@ async function permissionInventory() {
     grants: await rows("SELECT * FROM permission_set_permission ORDER BY id"),
     links: await rows("SELECT * FROM permission_set_team ORDER BY id"),
     roster: await rows("SELECT * FROM team_member ORDER BY id"),
+    featureOverrides: await rows("SELECT * FROM organization_feature ORDER BY organization_id,feature_key"),
   }
 }
 function configure(teams: Record<string, string>) {
@@ -100,9 +101,22 @@ test("enabled recovery requires an explicit target; kill and operator-off overri
   const signedIn = await den.signIn(`platform-admin+${den.stamp}@example.test`)
   const token = text(field(signedIn.body, "token"), "platform admin session")
   assert.equal((await den.request(token, "PUT", "/v1/admin/features/administratorRecovery", { body: { killed: true } })).status, 200)
+  process.env.DEN_FEATURE_ADMINISTRATOR_RECOVERY = "true"
   assert.equal(await recoverAdministratorsFromEnv(), 0)
   assert.equal((await den.request(token, "PUT", "/v1/admin/features/administratorRecovery", { body: { killed: false } })).status, 200)
+  process.env.DEN_FEATURE_ADMINISTRATOR_RECOVERY = ""
   assert.deepEqual(await permissionInventory(), before)
+})
+
+test("an explicit organization denial wins over a Helm flag enable in apply mode", async () => {
+  process.env.DEN_FEATURE_ADMINISTRATOR_RECOVERY = "true"
+  assert.equal((await den.setFeature(org.orgId, "administratorRecovery", false)).status, 200)
+  configure({ [org.orgId]: "not-a-team" })
+  const before = await permissionInventory()
+  assert.equal(await recoverAdministratorsFromEnv(), 0)
+  assert.deepEqual(await permissionInventory(), before)
+  process.env.DEN_FEATURE_ADMINISTRATOR_RECOVERY = ""
+  assert.equal((await den.setFeature(org.orgId, "administratorRecovery", true)).status, 200)
 })
 
 test("ordinary, other-organization and SCIM-mapped teams are refused without a partial permission repair", async () => {

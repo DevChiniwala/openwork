@@ -1269,75 +1269,15 @@ the Job environment when `secret.create=true`, because pre-install hooks run
 before normal chart resources. Avoid sharing `kubectl describe job` output
 without redacting secrets.
 
-## Admin-team permission recovery: check, review, apply
+## Admin-team permission recovery
 
-This opt-in repair gives an existing **designated, non-SCIM Admin team** the
-14 former super-admin permissions. It does not reconstruct recipients from
-history or change direct member roles. The feature is off by default.
+### Quick example — dummy installation
 
-First complete the normal application/database upgrade with recovery disabled
-and `administratorRecovery.mode: apply` (the default). An explicit `check` runs
-before the bootstrap's write steps: it does **not** migrate, repair the schema,
-reconcile defaults, create grants or change the migration ledger. It refuses an
-unbootstrapped database or pending migrations; finish the normal disabled upgrade
-before checking. Do not use check as a substitute for a schema upgrade.
-
-### 1. Check the intended team
-
-Edit your existing installation values file, preserving its other settings:
-
-```yaml
-config:
-  features:
-    administratorRecovery: "false"  # Preview can run while application is disabled.
-  administratorRecovery:
-    mode: check
-    organization: ""              # Omit only when the database has exactly one org.
-    team: "admins"                # Exact team name OR team ID.
-    teams: {}                     # Leave empty when using organization/team.
-```
-
-With multiple organizations, set `organization` to the intended organization's
-ID or exact slug. A team is resolved **within that organization**. Zero matches,
-ambiguous names, ordinary teams, other-org IDs and SCIM mappings/projections
-refuse; a name alone does not make a team an Admin team.
-
-```sh
-helm upgrade <release> <chart> --namespace <namespace> -f values.yaml
-kubectl --namespace <namespace> logs job/<fullname>-migrate
-```
-
-`<fullname>` is the chart's resolved release name, including any fullname
-override. Check-mode hook Jobs are retained until the next upgrade so their
-logs can be read. Each JSON check header prints the resolved organization and
-team IDs/names, existing active custom-role IDs/names, feature state, action and
-roster count. Recipient lines print
-**every active member of that team**, with membership ID, display name, role and
-connection/setup-agent status. Email columns are not selected or logged, and
-address-like display labels are replaced with `[email omitted]`. Membership IDs
-still distinguish people with the same or redacted names. Owners are marked unchanged. Existing Admin-role
-user decisions remain in force; the preview is not a complete effective-access
-difference against every other role.
-
-### 2. Read and retain the check log
-
-Independently approve the **complete roster and the 14-key policy**, not merely
-the team name. If the action is `enable_feature_before_apply`, the feature must
-be enabled for apply. `already_consumed_no_recreation` means this organization
-already has a recovery fence; apply will not recreate an archived/deleted role.
-
-Logs contain membership information, not credentials; restrict log access and
-retain the reviewed output privately before the next upgrade replaces the Job:
-
-```sh
-umask 077
-kubectl --namespace <namespace> logs job/<fullname>-migrate > recovery-check.log
-```
-
-### 3. Apply using the resolved IDs
-
-Copy the organization and team IDs printed by check into the values file, then
-set `mode: apply` and enable the feature:
+**Prerequisite:** complete the normal application/database upgrade with the
+recovery feature disabled first. This example is synthetic: namespace
+`my-openwork`, release `openwork`, one organization **Example Corp**, and its
+only designated, non-SCIM Admin team `admins`. Keep your usual `values.yaml`
+untouched; add a separate **recovery.yaml** overlay:
 
 ```yaml
 config:
@@ -1345,41 +1285,133 @@ config:
     administratorRecovery: "true"
   administratorRecovery:
     mode: apply
-    organization: "<resolved-organization-id>"
-    team: "<resolved-team-id>"
-    teams: {}
+    team: admins
+    expectedMembers: 4
 ```
 
-Run the same `helm upgrade` command. The normal bootstrap runs, then the repair
-creates its visible permission role once. API-pod restart is not a repair trigger.
-Owner key revocations, removal from the team and role deletion are not undone by
-replaying the repair. Disabling the feature stops future repairs; it does not
-revoke existing grants. Review existing custom roles separately: this version
-does not merge or replace an attached role.
+#### 1. Run the repair and read the Job log
 
-**Roster binding/fingerprint remains a follow-up.** Ordinary admins can rename
-teams. Pinning the checked team ID for apply prevents a name from being redirected
-to a different designated team, but an authorized roster change between check
-and apply is still included. Later authorized additions inherit the team's role.
-The check log is review information, not a signed approval token.
+```sh
+helm upgrade openwork <chart> --namespace my-openwork -f values.yaml -f recovery.yaml
+kubectl --namespace my-openwork get jobs
+umask 077
+kubectl --namespace my-openwork logs job/<name-ending-in-migrate> > recovery.log
+```
 
-The existing batch form is also supported, with org IDs **or slugs** as keys and
-team IDs **or exact names** as values:
+Find the Job whose name ends in `-migrate`; its prefix follows the chart fullname
+and any override. Recovery Jobs are retained until the next upgrade, including
+refusals. Read the log even if Helm reports a failed upgrade.
+
+**Illustrative REFUSED output**, generated by the real compiled checker on lab
+Example Corp data, with random IDs normalized to obvious dummy placeholders.
+The lab initially had an extra fifth member. These are not real people or IDs:
+
+```text
+ADMIN RECOVERY REFUSED — nothing was changed. Expected 4 members in team admins (tem_00000000000000000000000001), found 5.
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000001","name":"Example Owner","role":"owner","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":true}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000002","name":"Example Admin","role":"member","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":false}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000003","name":"Example Teammate","role":"member","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":false}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000004","name":"Example Member","role":"member","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":false}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000005","name":"Example Extra Member","role":"member","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":false}
+Next step 1: If this list is right, set expectedMembers to 5 and run again.
+Next step 2: Otherwise, ask the owner to remove the person from the team first, then run again.
+```
+
+Approve the **whole list**, not just its count. If five is correct, change the
+overlay's count to five. Otherwise ask the owner to remove the unexpected person
+before retrying. The synthetic owner removed the fifth member, so the same
+four-member overlay then produced this **real-output-derived illustrative log**:
+
+```text
+APPLIED — these 4 members now have the 14 permissions
+{"event":"administrator_recovery_applied","organization":{"id":"org_00000000000000000000000001","slug":"org_00000000000000000000000001","name":"Example Corp"},"team":{"id":"tem_00000000000000000000000001","name":"admins"},"role":{"id":"pms_00000000000000000000000001","name":"Restored administrator permissions"},"peopleCount":4}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000001","name":"Example Owner","role":"owner","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":true}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000002","name":"Example Admin","role":"member","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":false}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000003","name":"Example Teammate","role":"member","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":false}
+{"event":"administrator_recovery_recipient","memberId":"mem_00000000000000000000000004","name":"Example Member","role":"member","viaTeam":true,"connected":true,"setupAgent":false,"ownerUnchanged":false}
+UNDO — Members > Roles: unlink or delete Restored administrator permissions (pms_00000000000000000000000001). Disabling or removing the recovery setting stops future runs; it does not revoke these permissions.
+Existing Admin-role user decisions remain in force; owners already had all permissions.
+```
+
+`role` is the direct role; `viaTeam: true` shows that the recovery is through
+this team. Owners are listed but already had all permissions. Do not copy the
+illustrative IDs into a real installation.
+
+#### 2. Verify in Den
+
+Open **Members > Roles**, find **Restored administrator permissions** and inspect
+its team and 14-key policy. As an intended recipient, test changing a different
+non-owner test member's role, then restore that test member's role. If undo is
+needed, the owner can unlink or delete this custom role in **Members > Roles**.
+The repair does not undo unrelated actions performed while access was granted.
+
+#### 3. Drop the overlay on the next upgrade
+
+```sh
+helm upgrade openwork <chart> --namespace my-openwork -f values.yaml
+```
+
+Do not pass `recovery.yaml` or `--reuse-values`. The feature returns to its
+disabled default; the granted role stays. Disabling/removing the setting stops
+future runs, **not existing access**. Re-running an already-consumed repair
+prints `ALREADY APPLIED` and does not recreate access the owner removed.
+
+### Optional: preview first
+
+Use the same overlay with `mode: check` (the default mode when the flag is on),
+then run the same two-file Helm command and read the migrate Job log. It prints
+the resolved organization/team, existing custom roles and full active roster,
+plus what apply would do, without database changes. Change only the overlay to
+`mode: apply` after approval. A count mismatch refuses in check mode too.
+
+### Multiple Admin teams and multiple organizations
+
+A **name** is accepted only when the organization has exactly one designated,
+non-SCIM Admin team. With several Admin teams, name selection refuses and prints
+the candidate IDs/names. Use the intended team's ID, even if its name is unique.
+Ordinary admins can rename teams; they cannot use renaming to get past this
+multiple-Admin-team refusal. IDs remain stable and still require designation,
+same-org scope and no SCIM mappings/projections.
+
+When more than one organization exists, add its ID or exact slug:
 
 ```yaml
 config:
   administratorRecovery:
-    mode: check
-    organization: ""
-    team: ""
-    teams:
-      "<organization-id-or-slug>": "<team-id-or-name>"
+    organization: "<organization-id-or-slug>"
+    team: "<designated-admin-team-id>"
 ```
 
-Use the map **or** the single `organization`/`team` fields, never both. In apply
-mode each explicitly selected organization's feature must be enabled; other
-organizations are not implicitly repaired. Prefer IDs from check for the apply
-map as well.
+The alternative `teams` map also accepts org IDs/slugs and team IDs/names. Use it
+**instead of** the single `organization`/`team` fields, never both. Duplicate org
+aliases and ambiguous matches refuse rather than choosing a first row.
+
+### Detailed behavior and caveats
+
+- The **explicit feature flag** is the ON/OFF switch. Flag off is a silent
+  recovery no-op: no target resolution, preview or repair writes. Ordinary
+  database upgrades continue normally. Neither the chart nor bootstrap enables
+  the flag automatically. Global kill and an explicit org override false win
+  even over an installation-level enable. Hosted Cloud uses only its existing
+  per-org override, not a new operator tool.
+- `check` and `apply` are maintenance operations on an already-upgraded database.
+  They refuse missing migration receipts or pending migrations instead of running
+  migration, schema-repair or default-reconciliation writes first. Check is a
+  read-only transaction; apply validates the count before any repair write.
+- Logs list every active team membership with ID, display name, direct role and
+  via-team/connection/setup-agent status. Email columns are not selected/logged;
+  address-like labels are redacted. Restrict log access and save the reviewed log
+  privately before the next upgrade replaces the Job.
+- Existing Admin-role user decisions remain in force. The roster output is not a
+  complete effective-access difference against every other role. Existing custom
+  roles are not merged or replaced; review them separately.
+- **Expected count is not exact roster binding.** A same-size swap is not caught;
+  fingerprint/roster binding remains a follow-up. An authorized change before apply
+  is included. Later authorized additions inherit the team's role.
+- Apply uses existing permission storage and does not change direct member roles,
+  built-in Admin defaults or ownership. A permanent fence prevents replay after
+  owner key revocation, roster removal or role deletion. API-pod restart is not a
+  repair trigger. Physical deletion of all repair history is outside this fence.
 
 ## Install links
 
