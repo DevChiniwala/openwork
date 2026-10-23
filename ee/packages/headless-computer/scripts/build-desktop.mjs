@@ -1,12 +1,12 @@
 import { build } from "esbuild";
 import { copyFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { desktopIdentity } from "./desktop-identity.mjs";
+import { desktopIdentity, GUEST_OPTIONAL_PACKAGES } from "./desktop-identity.mjs";
 
 const guest = await build({
   absWorkingDir: fileURLToPath(new URL("..", import.meta.url)),
   entryPoints: ["src/desktop-guest.mjs"], outfile: "dist/desktop-guest.mjs", bundle: true,
-  platform: "node", format: "esm", target: "node22", metafile: true,
+  platform: "node", format: "esm", target: "node22", metafile: true, external: GUEST_OPTIONAL_PACKAGES,
   // TypeScript's bundled CommonJS runtime also resolves its own file location.
   // The guest is a standalone ESM file with no installed node_modules.
   banner: { js: "import { createRequire } from 'node:module'; import { fileURLToPath as guestFileURLToPath } from 'node:url'; import { dirname as guestDirname } from 'node:path'; const require = createRequire(import.meta.url); const __filename = guestFileURLToPath(import.meta.url); const __dirname = guestDirname(__filename);" },

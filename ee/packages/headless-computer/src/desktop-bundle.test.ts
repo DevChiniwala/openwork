@@ -6,7 +6,23 @@ import { join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
+import { isBuiltin } from "node:module"
 import { build } from "esbuild"
+import { GUEST_OPTIONAL_PACKAGES } from "../scripts/desktop-identity.mjs"
+
+test("the guest and its identity don't depend on which optional packages the workspace has installed", async () => {
+  const guest = await build({
+    absWorkingDir: fileURLToPath(new URL("..", import.meta.url)), entryPoints: ["src/desktop-guest.mjs"], bundle: true,
+    platform: "node", format: "esm", target: "node22", metafile: true, write: false, logLevel: "silent", external: GUEST_OPTIONAL_PACKAGES,
+  })
+  // A require esbuild can't resolve in this install would be bundled in one where it can, so each must be listed.
+  const unresolved = Object.values(guest.metafile.inputs).flatMap(input => input.imports)
+    .filter(imported => imported.external && imported.path !== "<runtime>" && !isBuiltin(imported.path)).map(imported => imported.path)
+  assert.deepEqual([...new Set(unresolved)].filter(path => !GUEST_OPTIONAL_PACKAGES.includes(path)), [])
+  // The real build leaves every listed package to a plain runtime require, even where this workspace installed it.
+  const built = await readFile(new URL("../dist/desktop-guest.mjs", import.meta.url), "utf8")
+  for (const name of GUEST_OPTIONAL_PACKAGES) assert.ok(built.includes(`require("${name}")`), `${name} must stay outside the guest bundle`)
+})
 
 test("the deployed desktop bundle validates its image without local package assets", async () => {
   const directory = await mkdtemp(join(tmpdir(), "desktop-bundle-"))

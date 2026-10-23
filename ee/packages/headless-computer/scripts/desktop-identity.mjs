@@ -20,6 +20,13 @@ export const IMAGE_FILES = [
 ];
 
 /**
+ * Packages the guest's dependencies only try to load (TypeScript's source maps, ws's native helpers), each in a try
+ * block with a fallback. esbuild would bundle them whenever the workspace happens to have them installed, so the guest,
+ * and its identity, would depend on what else was installed. The guest never ships them.
+ */
+export const GUEST_OPTIONAL_PACKAGES = ["bufferutil", "source-map-support", "utf-8-validate"];
+
+/**
  * The guest's compatibility identity: the bytes of every repository file esbuild bundled into the guest (from its
  * metafile), the name and version of every installed package it bundled, and the image files above. Anything the guest
  * doesn't contain, such as the rest of the lockfile, Mac-only code or tests, leaves the identity unchanged, so it no
