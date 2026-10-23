@@ -65,6 +65,10 @@
       "description": "Invitation preview, acceptance, creation, and cancellation routes."
     },
     {
+      "name": "Sandbox organizations",
+      "description": "Preview and join a sandbox organization with its shareable join link."
+    },
+    {
       "name": "Members",
       "description": "Organization member management routes."
     },

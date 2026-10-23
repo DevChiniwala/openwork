@@ -24,7 +24,10 @@ import { assertPublicUrl } from "./capability-sources/url-guard.js"
 import { db } from "./db.js"
 import { env } from "./env.js"
 import { updateOrganizationFeatureOverrides } from "./features.js"
-import { createOrganizationForUser, ensureBootstrapMembershipForOrganization, isEmailAllowedForOrganization } from "./orgs.js"
+import { cache } from "./cache.js"
+import { ensureMemberGatewayKey } from "./gateway-keys.js"
+import { runPostOrganizationMemberChangeHooks } from "./organization-member-hooks.js"
+import { createOrganizationForUser, isEmailAllowedForOrganization } from "./orgs.js"
 import { getInvitationOrigin } from "./routes/org/shared.js"
 
 type UserId = DenTypeId<"user">
@@ -235,30 +238,45 @@ export async function previewSandboxJoin(token: string): Promise<(SandboxJoinPre
 
 export type SandboxJoinResult =
   | { status: "joined"; organizationId: DenTypeId<"organization">; alreadyMember: boolean }
-  | { status: "not_found" | "closed" | "expired" | "full" | "removed" }
+  | { status: "not_found" | "closed" | "expired" | "full" | "removed" | "email_verification_required" }
   | { status: "domain_not_allowed"; allowedEmailDomains: string[] }
 
-/** Joins the signed-in person as a member (never an admin). Idempotent for existing members. */
-export async function joinSandbox(input: { token: string; userId: string; email: string }): Promise<SandboxJoinResult> {
-  const row = await findByToken(input.token)
-  if (!row) return { status: "not_found" }
+/**
+ * Joins the signed-in person as a member (never an admin). Idempotent for existing members. The sandbox row is
+ * locked while seats are counted and the membership is written, so concurrent joins cannot exceed the seat limit.
+ */
+export async function joinSandbox(input: { token: string; userId: string; email: string; emailVerified: boolean }): Promise<SandboxJoinResult> {
+  const found = await findByToken(input.token)
+  if (!found) return { status: "not_found" }
   const userId = normalizeDenTypeId("user", input.userId)
-  const [existing] = await db.select({ id: MemberTable.id }).from(MemberTable)
-    .where(and(eq(MemberTable.organizationId, row.organizationId), eq(MemberTable.userId, userId), isNull(MemberTable.removedAt), isNotNull(MemberTable.joinedAt))).limit(1)
-  if (existing) return { status: "joined", organizationId: row.organizationId, alreadyMember: true }
+  const result = await db.transaction(async (tx): Promise<SandboxJoinResult | { status: "added"; organizationId: DenTypeId<"organization">; memberId: DenTypeId<"member"> }> => {
+    const [row] = await tx.select().from(SandboxOrganizationTable).where(eq(SandboxOrganizationTable.id, found.id)).limit(1).for("update")
+    if (!row || row.joinToken !== input.token) return { status: "not_found" }
+    const members = await tx.select({ userId: MemberTable.userId, removedAt: MemberTable.removedAt }).from(MemberTable)
+      .where(and(eq(MemberTable.organizationId, row.organizationId), isNotNull(MemberTable.joinedAt)))
+    const mine = members.filter(member => member.userId === userId)
+    if (mine.some(member => member.removedAt === null)) return { status: "joined", organizationId: row.organizationId, alreadyMember: true }
+    if (mine.length > 0) return { status: "removed" }
 
-  const state = sandboxState(row)
-  if (state === "expired") {
-    await closeExpiredSandboxes(null)
-    return { status: "expired" }
-  }
-  if (state === "closed") return { status: "closed" }
-  const [org] = await db.select({ allowedEmailDomains: OrganizationTable.allowedEmailDomains }).from(OrganizationTable).where(eq(OrganizationTable.id, row.organizationId)).limit(1)
-  if (!org) return { status: "not_found" }
-  if (!isEmailAllowedForOrganization(org.allowedEmailDomains, input.email)) return { status: "domain_not_allowed", allowedEmailDomains: org.allowedEmailDomains ?? [] }
-  if (await joinedMemberCount(row.organizationId) >= row.memberLimit) return { status: "full" }
+    const state = sandboxState(row)
+    if (state !== "open") return { status: state }
+    const [org] = await tx.select({ allowedEmailDomains: OrganizationTable.allowedEmailDomains }).from(OrganizationTable).where(eq(OrganizationTable.id, row.organizationId)).limit(1)
+    if (!org) return { status: "not_found" }
+    if (!isEmailAllowedForOrganization(org.allowedEmailDomains, input.email)) return { status: "domain_not_allowed", allowedEmailDomains: org.allowedEmailDomains ?? [] }
+    // A domain limit is only as strong as the email proof behind it.
+    if ((org.allowedEmailDomains?.length ?? 0) > 0 && !input.emailVerified) return { status: "email_verification_required" }
+    if (members.filter(member => member.removedAt === null).length >= row.memberLimit) return { status: "full" }
 
-  const member = await ensureBootstrapMembershipForOrganization({ organizationId: row.organizationId, userId, role: "member", email: input.email })
-  if (!member) return { status: "removed" }
-  return { status: "joined", organizationId: row.organizationId, alreadyMember: false }
+    const memberId = createDenTypeId("member")
+    await tx.insert(MemberTable).values({ id: memberId, organizationId: row.organizationId, userId, role: "member", joinedAt: new Date() })
+    return { status: "added", organizationId: row.organizationId, memberId }
+  })
+  if (result.status === "expired") await closeExpiredSandboxes(null)
+  if (result.status !== "added") return result
+  // Same effects as any other join, after the membership commits: caches, billing quantities and the member's gateway key.
+  await cache.org.deleteMemberList(result.organizationId)
+  await cache.org.deleteMembership({ organizationId: result.organizationId, userId })
+  await runPostOrganizationMemberChangeHooks({ organizationId: result.organizationId, memberId: result.memberId, change: "added" })
+  await ensureMemberGatewayKey({ organizationId: result.organizationId, memberId: result.memberId })
+  return { status: "joined", organizationId: result.organizationId, alreadyMember: false }
 }

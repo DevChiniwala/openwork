@@ -9,6 +9,9 @@ import { bootDen, field, list, summary, text } from "./harness.js"
 
 const den = await bootDen({ env: { DEN_DEPLOYMENT: "cloud", INFERENCE_FREE_ENABLED: "true" } })
 after(() => den.close())
+const { client } = await import("../../src/db.js")
+/** ARRANGE ONLY: the person confirmed their email address (the inbox step is a separate journey). */
+const verify = (userId: string) => client.execute("UPDATE user SET email_verified = true WHERE id = ?", [userId])
 
 const admin = await den.signUp("Platform Admin", `platform-admin+${den.stamp}@example.test`)
 const create = (body: Record<string, unknown>) => den.request(admin.token, "POST", "/v1/admin/sandbox-orgs", {
@@ -98,7 +101,22 @@ test("replacing the link stops the old one; a domain-limited sandbox refuses oth
   assert.notEqual(newToken, oldToken)
   assert.equal((await den.request(null, "GET", `/v1/sandbox-join/preview?token=${oldToken}`)).status, 404)
   const insider = await den.signUp("Allowed Person", `allowed+${den.stamp}@allowed.test`)
+  const unverified = await join(insider.token, newToken)
+  assert.equal(unverified.status, 403, `an unproven address cannot satisfy a domain limit: ${summary(unverified)}`)
+  assert.equal(field(unverified.body, "error"), "email_verification_required")
+  await verify(insider.userId)
   assert.equal((await join(insider.token, newToken)).status, 200)
+})
+
+test("people joining at the same moment cannot take more seats than the sandbox has", async () => {
+  const sandbox = field((await create({ memberLimit: 3 })).body, "sandbox")
+  const joinToken = tokenOf(sandbox)
+  const people = await Promise.all(Array.from({ length: 8 }, (_, index) => den.signUp(`Rush Person ${String.fromCharCode(97 + index)}`)))
+  const results = await Promise.all(people.map((person) => join(person.token, joinToken)))
+  assert.equal(results.filter((result) => result.status === 200).length, 2, results.map((result) => result.status).join(","))
+  assert.ok(results.filter((result) => result.status !== 200).every((result) => field(result.body, "error") === "sandbox_full"))
+  const listed = list(field((await den.request(admin.token, "GET", "/v1/admin/sandbox-orgs")).body, "sandboxes"))
+  assert.equal(listed.find((entry) => entry.id === field(sandbox, "id"))?.memberCount, 3)
 })
 
 test("the kill switch stops join links everywhere without deleting sandboxes", async () => {

@@ -425,6 +425,7 @@ const openApiOptions: Parameters<typeof generateSpecs>[1] = {
       { name: "Users", description: "Current user and membership routes." },
       { name: "Organizations", description: "Organization creation, context, brand assets, and install links." },
       { name: "Invitations", description: "Invitation preview, acceptance, creation, and cancellation routes." },
+      { name: "Sandbox organizations", description: "Preview and join a sandbox organization with its shareable join link." },
       { name: "Members", description: "Organization member management routes." },
       { name: "Teams", description: "Organization team management routes." },
       { name: "Permissions", description: "Organization permissions: the permission catalog, Member, Admin and team permission sets, their history, and each member's effective permissions." },

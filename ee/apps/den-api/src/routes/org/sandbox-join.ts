@@ -89,13 +89,15 @@ export function registerOrgSandboxJoinRoutes<T extends { Variables: OrgRouteVari
         if (!audited.ok) return audited.response
       }
 
-      const result = await joinSandbox({ token: c.req.valid("json").token, userId: user.id, email })
+      const result = await joinSandbox({ token: c.req.valid("json").token, userId: user.id, email, emailVerified: user.emailVerified === true })
       switch (result.status) {
         case "joined":
           await setRequestActiveOrganization(c, result.organizationId)
           return c.json({ organizationId: result.organizationId, alreadyMember: result.alreadyMember })
         case "not_found":
           return c.json(notFound, 404)
+        case "email_verification_required":
+          return c.json({ error: "email_verification_required", message: "Verify your email address before joining this sandbox." }, 403)
         case "removed":
           return c.json({ error: "membership_removed", message: "Your access to this sandbox was removed." }, 403)
         case "closed":
