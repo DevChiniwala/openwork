@@ -79,6 +79,15 @@ export function featureDefinition(key: FeatureKey): FeatureDefinition {
   return FEATURES[key]
 }
 
+/** Internal docs are read in the open-source repo, on the default branch. */
+export const FEATURE_DOCS_BASE_URL = "https://github.com/different-ai/openwork/blob/dev/"
+
+/** Link to the feature's internal doc, or null when it has none yet. */
+export function featureDocsUrl(key: FeatureKey): string | null {
+  const docs = featureDefinition(key).docs
+  return docs ? `${FEATURE_DOCS_BASE_URL}${docs}` : null
+}
+
 export function featureAvailableOn(key: FeatureKey, deployment: FeatureDeployment): boolean {
   return featureDefinition(key).deployments.includes(deployment)
 }

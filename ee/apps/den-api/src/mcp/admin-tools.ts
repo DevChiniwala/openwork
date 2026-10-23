@@ -10,7 +10,7 @@ import { parseOrganizationPlan, type PlanTier } from "../entitlements.js"
 import { normalizeOrganizationMetadata } from "../organization-limits.js"
 import { readFeatureRollouts } from "@openwork-ee/den-db/organization-features"
 import { updateFeatureRollout, updateOrganizationFeatureOverrides } from "../features.js"
-import { FEATURE_KEYS, featureAvailableOn, featureDefinition, featureKeySchema, featureRollout, resolveFeature } from "@openwork/features"
+import { FEATURE_KEYS, featureAvailableOn, featureDefinition, featureDocsUrl, featureKeySchema, featureRollout, resolveFeature } from "@openwork/features"
 import { updateOrganizationMetadata } from "../organization-metadata.js"
 import { runPlatformAdminPlatformAction, runPlatformAdminServiceAction, type PlatformAdminAuditActor } from "../audit/mcp-service-audit.js"
 import { readWorkbotAdoptionReport, workbotAdoptionInputSchema } from "../workbot/adoption-report.js"
@@ -548,7 +548,7 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
     "den_list_features",
     {
       description:
-        "Admin read tool: every feature in the registry with the deployments it exists on and this deployment's state (on or off for everyone, kill switch, operator lock).",
+        "Admin read tool: every feature in the registry with its author, internal docs link, the deployments it exists on and this deployment's state (on or off for everyone, kill switch, operator lock).",
       inputSchema: z.object({}),
     },
     async () =>
@@ -561,6 +561,8 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
             return {
               key,
               label: definition.label,
+              author: definition.author,
+              docsUrl: featureDocsUrl(key),
               deployments: definition.deployments,
               available: featureAvailableOn(key, env.features.deployment),
               ...featureRollout(key, rollouts),

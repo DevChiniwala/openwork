@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { FEATURE_KEYS, FEATURES, mapFeatures, type FeatureKey } from "@openwork/features";
+import { FEATURE_KEYS, FEATURES, featureDocsUrl, mapFeatures, type FeatureKey } from "@openwork/features";
 import { DenButton } from "../../app/(den)/_components/ui/button";
 import { DenSwitch } from "../../app/(den)/_components/ui/switch";
 import { requestAdmin, sendAdmin } from "./admin-request";
@@ -151,6 +151,10 @@ export function AdminOrganizationFeatureControls({ organizationId, memberId, ref
                   <span className="block text-sm font-medium text-slate-700">{definition.label}</span>
                   <span id={`admin-feature-source-${key}`} className="mt-1 block text-xs text-slate-500" data-testid={`admin-capability-source-${key}`}>{memberId && state.source === "everyone" ? `Organization setting: ${state.enabled ? "on" : "off"}` : describeSource(state)}</span>
                   <span className="mt-1 block text-xs leading-5 text-slate-500">{definition.description}</span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    Author @{definition.author}
+                    {featureDocsUrl(key) ? <> · <a href={featureDocsUrl(key) ?? undefined} target="_blank" rel="noreferrer" className="font-medium text-slate-700 underline-offset-2 hover:underline">Internal docs</a></> : null}
+                  </span>
                 </span>
               </label>
               {state.override !== null && state.overrideApplies ? <DenButton variant="ghost" size="inline" type="button"

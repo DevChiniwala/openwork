@@ -3,6 +3,8 @@ import { test } from "node:test"
 import {
   FEATURE_KEYS,
   FEATURES,
+  FEATURE_DOCS_BASE_URL,
+  featureDocsUrl,
   featureKeySchema,
   featureLockEnvName,
   mapFeatures,
@@ -21,6 +23,19 @@ test("without stored state, every feature follows its registry default", () => {
     assert.equal(resolved.enabled, FEATURES[key].default)
     assert.equal(resolved.source, "everyone")
     assert.equal(resolved.overrideApplies, true)
+  }
+})
+
+test("every feature names its author, and docs link to internal docs in the repo", () => {
+  for (const key of FEATURE_KEYS) {
+    assert.match(FEATURES[key].author, /^[A-Za-z0-9-]+$/, key)
+    const docs = FEATURES[key].docs
+    if (docs === undefined) {
+      assert.equal(featureDocsUrl(key), null)
+    } else {
+      assert.ok(docs.startsWith("docs/") && !docs.startsWith("docs/../"), key)
+      assert.equal(featureDocsUrl(key), `${FEATURE_DOCS_BASE_URL}${docs}`)
+    }
   }
 })
 

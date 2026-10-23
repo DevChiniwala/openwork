@@ -118,6 +118,51 @@ function renderSchema() {
 
 const problems = []
 
+// Features declared before internal docs were required. This list only
+// shrinks: write the doc, set `docs`, and remove the key here.
+const FEATURES_WITHOUT_DOCS = new Set([
+  "administratorRecovery", "organizationGrants", "sandboxOrgs", "organizationAutomationSettings",
+  "connectionMcpServers", "agentConnectionRemoval", "enterprisePlan", "workbotDocuments",
+  "workbotDocumentEditing", "workbotWorkspaceAssistant", "workbotIncludedModels", "workbotUsageRecovery",
+  "usageLimitUpgrade", "automationCalendar", "removeOpencodeZen", "computerUse", "browserLiveView",
+  "browserFloatingView", "remoteComputers", "desktopSignInReturn", "activationChecklist",
+  "connectStandardTools", "teamPlan", "selfServeEnterprise", "orgPrompts", "sessionTokenHashing",
+])
+
+/** The internal doc exists under docs/ (not the published packages/docs) and its images resolve. */
+function featureDocsProblems(key, docs) {
+  if (docs === undefined) {
+    return FEATURES_WITHOUT_DOCS.has(key)
+      ? []
+      : [`Feature "${key}" needs docs: an internal doc such as docs/features/${key}/README.md that explains it, with a screenshot next to it if it is visual (see .opencode/skills/add-a-feature).`]
+  }
+  if (FEATURES_WITHOUT_DOCS.has(key)) {
+    return [`Feature "${key}" has docs now: remove it from FEATURES_WITHOUT_DOCS in scripts/features-sync.mjs.`]
+  }
+  if (typeof docs !== "string" || !/^docs\/.+\.md$/.test(docs) || docs.includes("..")) {
+    return [`Feature "${key}" docs must be a Markdown file under docs/ (internal docs, not packages/docs), got ${JSON.stringify(docs)}.`]
+  }
+  const docPath = path.join(root, docs)
+  let text = ""
+  try {
+    text = readFileSync(docPath, "utf8")
+  } catch {
+    return [`Feature "${key}" docs points at ${docs}, which does not exist.`]
+  }
+  const found = []
+  for (const match of text.matchAll(/!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|<img\b[^>]*\bsrc=["']([^"']+)["']/g)) {
+    const target = match[1] ?? match[2]
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("#")) continue
+    const imagePath = target.startsWith("/") ? path.join(root, target) : path.join(path.dirname(docPath), decodeURIComponent(target))
+    try {
+      statSync(imagePath)
+    } catch {
+      found.push(`Feature "${key}" docs ${docs} shows ${target}, which does not exist.`)
+    }
+  }
+  return found
+}
+
 function compareOrWrite(filePath, next) {
   const current = readFileSync(filePath, "utf8").toString()
   if (current === next) return
@@ -152,6 +197,10 @@ if (check) {
       continue
     }
     if (definition.deployments.length === 0) problems.push(`Feature "${key}" must exist on at least one deployment.`)
+    if (typeof definition.author !== "string" || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(definition.author)) {
+      problems.push(`Feature "${key}" needs an author: the GitHub handle of the person who owns it, e.g. author: "benjaminshafii".`)
+    }
+    problems.push(...featureDocsProblems(key, definition.docs))
     const ageMonths = (now.getUTCFullYear() - Number(since[1])) * 12 + (now.getUTCMonth() + 1 - Number(since[2]))
     if (!definition.permanent && ageMonths > 6) {
       problems.push(`Feature "${key}" has been a rollout since ${definition.since}. Finish it and delete the flag and its checks, or mark it permanent: true if the switch is part of the product (see .opencode/skills/add-a-feature).`)
