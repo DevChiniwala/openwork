@@ -15,6 +15,7 @@
     "./computer-control": "./computer-control.mjs",
     "./computer-remote": "./computer-remote.mjs",
     "./computer-x11-driver": "./computer-x11-driver.mjs",
+    "./computer-windows-driver": "./computer-windows-driver.mjs",
     "./browser-task": "./browser-task.mjs",
     "./browser-demonstration": "./browser-demonstration.mjs",
     "./cloud": {

@@ -34,6 +34,7 @@ import { createComputerControl } from "@openwork/computer-use/computer-control";
 import { createLocalComputerAdapter } from "./computer-local.mjs";
 import { createComputerScripting } from "./computer-scripting.mjs";
 import { remoteComputerAdapters } from "./computer-targets.mjs";
+import { createWindowsComputerAdapter } from "./computer-windows.mjs";
 import { resetPermissionEntry, resolvePermissionEntry } from "./computer-permission-entry.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import {
@@ -220,11 +221,12 @@ const computerHelperBundle = () => [process.resourcesPath, path.resolve(__dirnam
 const readComputerPermissionEntry = () => (computerPermissionEntry ??= resolvePermissionEntry({ helperBundle: computerHelperBundle(), fallbackName: APP_NAME })
   .catch(() => ({ name: APP_NAME, bundleId: null, ours: false })));
 const computerControl = createComputerControl({
+  // App scripting drives Mac apps; Windows does not offer computer_script.
   // Blender reads the bridge from disk, so packaged builds unpack it beside app.asar.
-  runScript: createComputerScripting({
+  ...(process.platform !== "win32" ? { runScript: createComputerScripting({
     stateDir: path.join(app.getPath("userData"), "computer-scripting"),
     bridgeScript: path.join(__dirname, "computer-scripting", "openwork_blender.py").replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
-  }),
+  }) } : {}),
   // Where computer steps spend their time: on this computer, or waiting for the model.
   onTiming: (_sessionId, step) => console.info(`[computer] ${step.name} computer ${Math.round(step.computerMs)} ms${step.modelMs === undefined ? "" : ` · model ${Math.round(step.modelMs)} ms`}`),
   runProgram: async (request, host, signal) => (await import("@openwork/computer-use/runtime")).runComputerProgram(request, host, signal),
@@ -240,7 +242,10 @@ const computerControl = createComputerControl({
     return (await response.json())?.enabled === true;
   },
   // This computer first, then any configured VM (see computer-targets.mjs).
-  adapters: [createLocalComputerAdapter({
+  adapters: [process.platform === "win32" ? createWindowsComputerAdapter({
+    resourcesPath: process.resourcesPath,
+    appRoot: path.resolve(__dirname, ".."),
+  }) : createLocalComputerAdapter({
     resourcesPath: process.resourcesPath,
     appRoot: path.resolve(__dirname, ".."),
     permissionEntry: async () => (await readComputerPermissionEntry()).name,

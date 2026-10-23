@@ -62,7 +62,7 @@ function fixture(options = {}) {
   };
   /** @type {import("@openwork/computer-use/computer-control").ComputerAdapter} */
   const remote = { ...adapter, id: "vm", label: "VM", placement: "remote" };
-  const control = createComputerControl({ adapters: options.remote ? [adapter, remote] : [adapter], readRemoteFeatureEnabled: options.authority, runProgram: options.runProgram, runScript: options.runScript, onTiming: options.onTiming, browserTask: options.browserTask, onRequest: (_sessionId, value) => { requests.push(value); }, idleMs: options.idleMs ?? 90_000 });
+  const control = createComputerControl({ adapters: options.remote ? [adapter, remote] : [adapter], readRemoteFeatureEnabled: options.authority, runProgram: options.runProgram, runScript: options.runScript, onTiming: options.onTiming, browserTask: options.browserTask, onRequest: (_sessionId, value) => { requests.push(value); }, idleMs: options.idleMs ?? 90_000, platform: options.platform });
   return { control, calls, requests, selected, emit: value => emit(value), disconnect: () => disconnect() };
 }
 
@@ -136,6 +136,13 @@ test("Stop ends the current task and the next turn works without asking again", 
   await f.control.endTurn({ sessionId: "chat" });
   assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_discover", args: {} })).ok, true);
   assert.deepEqual(f.requests, []);
+});
+
+for (const [platform, expected] of [["win32", "local"], ["darwin", "local"], ["linux", "vm"]]) test(`a new chat on ${platform} starts on ${expected === "local" ? "this computer" : "an available VM"}`, async (t) => {
+  const f = fixture({ remote: true, authority: async () => true, platform }); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.setRemoteEnabled(true);
+  assert.equal((await f.control.snapshot({ sessionId: "chat" })).targetId, expected);
 });
 
 test("changing computers preserves Stop until the next turn", async (t) => {

@@ -384,7 +384,7 @@ export function ComputerPanel({ sessionId, slot, enabled, canStop, controlsBusy,
   const footer = <>
     <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
       <div className="min-w-0 flex-1 basis-24 text-xs text-muted-foreground">
-        <p className="truncate" title={presentation.windowTitle}>{presentation.windowTitle || presentation.appName || "This Mac"}</p>
+        <p className="truncate" title={presentation.windowTitle}>{presentation.windowTitle || presentation.appName || "This computer"}</p>
         <p className="mt-0.5">{stopPending ? "Stop not yet confirmed" : paused ? presentation.canContinue ? "Ready when you are" : "Waiting for your input to finish" : "Watch only"}</p>
       </div>
       {!stopPending ? <Button

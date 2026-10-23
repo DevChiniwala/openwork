@@ -3,6 +3,7 @@ import { AlertTriangle, Monitor } from "lucide-react"
 import type { ComputerPermission, ComputerSnapshot } from "@openwork/types/desktop-ipc"
 
 import { desktopBridge } from "@/app/lib/desktop"
+import { isMacPlatform } from "@/app/utils"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -127,7 +128,8 @@ export function ComputerControl({ sessionId }: { sessionId: string }) {
         {snapshot?.busyElsewhere ? <p>Another chat is using the computer. This chat can use it when that task finishes.</p> : null}
         <div className="flex flex-wrap gap-2">
           {working ? <Button size="sm" variant="destructive" disabled={busy !== null} aria-busy={busy === "halt"} data-testid="session-computer-stop" onClick={() => void act("halt")}>Stop</Button> : null}
-          {!remote ? <Button size="sm" variant={ready ? "outline" : "default"} disabled={busy !== null || !snapshot} data-testid="session-computer-setup" onClick={() => { setOpen(false); openSetup(sessionId) }}>{ready ? "macOS permissions" : "Set up"}</Button> : null}
+          {/* System permissions exist only for this Mac; Windows and VMs need none. */}
+          {!remote && isMacPlatform() ? <Button size="sm" variant={ready ? "outline" : "default"} disabled={busy !== null || !snapshot} data-testid="session-computer-setup" onClick={() => { setOpen(false); openSetup(sessionId) }}>{ready ? "macOS permissions" : "Set up"}</Button> : null}
         </div>
       </PopoverContent>
     </Popover>

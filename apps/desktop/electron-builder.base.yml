@@ -114,6 +114,7 @@ win:
       to: helpers
       filter:
         - openwork-dictation.exe
+        - openwork-computer-use.exe
     - from: resources/sidecars
       to: sidecars
       filter:
