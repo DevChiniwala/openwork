@@ -14,14 +14,8 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
-    {{- $recovery := .Values.config.administratorRecovery }}
-    {{- if and (not .Values.secret.create) (or ($recovery.team | trim) ($recovery.organization | trim) (not (empty $recovery.teams))) }}
-    {{/* Retain recovery logs only when credentials use existing Secret references. */}}
-    "helm.sh/hook-delete-policy": before-hook-creation
-    {{- else }}
     {{- with .Values.migrations.hookDeletePolicy }}
     "helm.sh/hook-delete-policy": {{ . | quote }}
-    {{- end }}
     {{- end }}
   {{- end }}
 spec:
