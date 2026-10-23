@@ -150,12 +150,56 @@ test("Rebuilding the computer stops the running turn before the runner replaces 
   assert.deepEqual(calls[rebuild]?.body, { action: "rebuild" })
 })
 
-test("Computer says when its image is out of date instead of asking to reconnect", async t => {
+test("Computer rebuilds an out-of-date computer by itself, but not under a running turn", async t => {
   const signed = member("outdated")
-  let viewer: { status: number; body: unknown } = { status: 409, body: { error: "desktop_outdated" } }
+  const connected = { state: "connected", url: "wss://viewer.example.test/vnc/synthetic", expiresAt: Date.now() + 60_000, paused: false }
+  let current = false
+  let stillOutdated = false
+  let busy = false
+  const rebuilds: unknown[] = []
   t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
     const parsed = new URL(url instanceof Request ? url.url : url)
-    if (parsed.pathname.endsWith("/desktop/viewer")) return new Response(JSON.stringify(viewer.body), { status: viewer.status, headers: { "content-type": "application/json" } })
+    if (parsed.pathname.endsWith("/desktop/viewer")) return current ? Response.json(connected) : Response.json({ error: "desktop_outdated" }, { status: 409 })
+    if (parsed.pathname.endsWith("/desktop/action")) {
+      rebuilds.push(typeof init?.body === "string" ? JSON.parse(init.body) : null)
+      await new Promise(resolve => setTimeout(resolve, 20))
+      current = !stillOutdated
+      return Response.json({ ok: true })
+    }
+    if (init?.method === "PUT") return Response.json({ id: parsed.pathname.split("/").at(-1) })
+    return Response.json({ turns: [], messages: [], finalAssistantText: "", ...(busy ? { status: "busy" } : {}) })
+  })
+  t.mock.method(console, "error", () => {})
+  const app = new Hono<AppEnv>()
+  registerWorkbotRoutes(app, {
+    config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => signed.den },
+    member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
+  })
+  const open = () => app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })
+  // The Browser view and the chat's live glimpse open together: one rebuild, then both connect.
+  const opened = await Promise.all([open(), open()])
+  assert.deepEqual(opened.map(response => response.status), [200, 200])
+  assert.deepEqual(await opened[0]!.json(), connected)
+  assert.deepEqual(rebuilds, [{ action: "rebuild" }])
+  // Rebuilding stops a running turn, so while one runs the person decides.
+  current = false
+  busy = true
+  const waiting = await open()
+  assert.equal(waiting.status, 409)
+  assert.deepEqual(await waiting.json(), { error: "desktop_outdated", message: "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." })
+  assert.equal(rebuilds.length, 1)
+  // A fresh computer that is still out of date needs an operator, not another rebuild.
+  busy = false
+  stillOutdated = true
+  assert.deepEqual(await (await open()).json(), { error: "desktop_outdated", message: "Your computer still needs an update after rebuilding. Ask your workspace admin for help." })
+  assert.equal(rebuilds.length, 2)
+})
+
+test("Computer asks to reconnect for other desktop failures", async t => {
+  const signed = member("unresponsive")
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    const parsed = new URL(url instanceof Request ? url.url : url)
+    if (parsed.pathname.endsWith("/desktop/viewer")) return Response.json({ error: "desktop_unresponsive" }, { status: 409 })
     if (init?.method === "PUT") return Response.json({ id: parsed.pathname.split("/").at(-1) })
     return Response.json({ turns: [], messages: [], finalAssistantText: "" })
   })
@@ -165,11 +209,7 @@ test("Computer says when its image is out of date instead of asking to reconnect
     config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => signed.den },
     member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
   })
-  const open = () => app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })
-  const outdated = await open()
-  assert.equal(outdated.status, 409)
-  assert.deepEqual(await outdated.json(), { error: "desktop_outdated", message: "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." })
+  const response = await app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })
   // Other runner codes, including ones this Workbot doesn't know, keep the reconnect message.
-  viewer = { status: 409, body: { error: "desktop_unresponsive" } }
-  assert.deepEqual(await (await open()).json(), { error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." })
+  assert.deepEqual(await response.json(), { error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." })
 })

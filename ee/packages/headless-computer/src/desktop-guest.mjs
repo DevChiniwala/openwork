@@ -116,11 +116,11 @@ server.on("upgrade", (request, socket, head) => {
     // Private stdio cannot be pre-bound by the command account. The VNC
     // process itself enforces view-only, independently of noVNC's controls.
     const viewer = spawn("/usr/bin/python3", ["-I", viewerScript, ticket.view, ticket.control ? "control" : "view"], { stdio: ["pipe", "pipe", "ignore"] });
-    const transport = { destroy: () => { viewer.stdin.destroy(); viewer.stdout.destroy(); viewer.kill("SIGTERM"); } };
+    const vnc = { destroy: () => { viewer.stdin.destroy(); viewer.stdout.destroy(); viewer.kill("SIGTERM"); } };
     sockets.add(ws);
-    transports.set(ws, transport);
+    transports.set(ws, vnc);
     const deadline = setTimeout(() => ws.close(1000, "Renew viewer access"), 60_000);
-    const close = () => { clearTimeout(deadline); sockets.delete(ws); transports.delete(ws); transport.destroy(); ws.close(); };
+    const close = () => { clearTimeout(deadline); sockets.delete(ws); transports.delete(ws); vnc.destroy(); ws.close(); };
     viewer.stdout.on("data", data => { if (ws.readyState === WebSocket.OPEN) ws.send(data, { binary: true }); });
     ws.on("message", (data, binary) => {
       if (!binary || Date.now() >= until || ticket.generation !== tickets.generation) return close();

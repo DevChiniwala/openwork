@@ -227,12 +227,17 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     })
   })
 
-  /** The runner's desktop codes in the person's words; anything else reads as a reconnectable outage. */
-  const desktopFailure = (c: Context<AppEnv>, operation: string, code: string) => {
-    console.error("[workbot] desktop unavailable", { operation, code })
-    if (code === "desktop_outdated") return c.json({ error: code, message: "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." }, 409)
+  /**
+   * The runner's desktop codes in the person's words; anything else reads as a reconnectable outage. `rebuilt`: Workbot
+   * already rebuilt the computer, so rebuilding again won't help.
+   */
+  const desktopFailure = (c: Context<AppEnv>, operation: string, code: string, rebuilt = false) => {
+    console.error("[workbot] desktop unavailable", { operation, code, rebuilt })
+    if (code === "desktop_outdated") return c.json({ error: code, message: rebuilt ? "Your computer still needs an update after rebuilding. Ask your workspace admin for help." : "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." }, 409)
     return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
   }
+  /** One automatic rebuild per computer at a time: the Browser view and the chat's live glimpse can both find it outdated. */
+  const autoRebuilds = new Map<string, Promise<{ ok: boolean; error: string }>>()
 
   // No sandbox ids or preview credentials are accepted from the page: the member determines the computer.
   app.post("/v1/workbot/computer/:operation", async (c) => {
@@ -265,7 +270,22 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
         const body = viewer
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         if (body.data.control) await workbot.stop(actorOf(member))
-        const result = await client.desktopViewer(sessionId, { ...body.data, origin: new URL(config.publicUrl).origin })
+        const open = () => client.desktopViewer(sessionId, { ...body.data, origin: new URL(config.publicUrl).origin })
+        let result = await open()
+        // An outdated computer never connects and rebuilding is the only fix, so do it now instead of asking. Not under
+        // a running turn, though: rebuilding stops it, so that stays the person's Rebuild.
+        if (!result.ok && result.error === "desktop_outdated" && (!existing.ok || existing.value.status !== "busy")) {
+          let rebuilding = autoRebuilds.get(sessionId)
+          if (!rebuilding) {
+            console.error("[workbot] rebuilding an outdated computer")
+            rebuilding = client.desktopAction(sessionId, "rebuild").finally(() => autoRebuilds.delete(sessionId))
+            autoRebuilds.set(sessionId, rebuilding)
+          }
+          const rebuilt = await rebuilding
+          if (!rebuilt.ok) return desktopFailure(c, operation, rebuilt.error)
+          result = await open()
+          if (!result.ok) return desktopFailure(c, operation, result.error, true)
+        }
         if (!result.ok) return desktopFailure(c, operation, result.error)
         // A cold VM may take longer than the membership cache: verify again before sharing its stream.
         if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
