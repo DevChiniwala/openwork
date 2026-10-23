@@ -432,6 +432,10 @@ jobs:
     needs: [artifact-version, ee-images]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
     runs-on: ubuntu-latest
+    # Render deploy secrets belong to this environment; no deployment is recorded.
+    environment:
+      name: den-production
+      deployment: false
     steps:
       - name: Redeploy den-gateway on Render
         shell: bash

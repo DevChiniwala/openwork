@@ -71,6 +71,10 @@ jobs:
     if: github.event_name == 'push' || inputs.platform != 'windows-x64'
     name: Build + Publish alpha (aarch64-apple-darwin)
     runs-on: macos-14
+    # Apple signing secrets belong to this environment; no deployment is recorded.
+    environment:
+      name: macos-signing
+      deployment: false
     timeout-minutes: 180
     concurrency:
       group: alpha-macos-${{ inputs.channel_tag || 'alpha-macos-latest' }}

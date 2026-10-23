@@ -492,6 +492,10 @@ jobs:
       needs.verify-release.result == 'success' &&
       needs.resolve-release.outputs.build_electron == 'true'
     runs-on: ${{ matrix.platform }}
+    # Apple signing secrets belong to this environment; no deployment is recorded.
+    environment:
+      name: macos-signing
+      deployment: false
     timeout-minutes: 120
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
@@ -1354,6 +1358,10 @@ jobs:
     # must not mark an otherwise-published release run as failed.
     continue-on-error: true
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # The AUR key belongs to this environment; no deployment is recorded.
+    environment:
+      name: aur
+      deployment: false
     permissions:
       contents: read
     env:

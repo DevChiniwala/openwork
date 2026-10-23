@@ -67,6 +67,10 @@ jobs:
     name: Apply migrations
     if: github.repository == 'different-ai/openwork'
     runs-on: blacksmith-4vcpu-ubuntu-2204
+    # Production database credentials belong to this environment; no deployment is recorded.
+    environment:
+      name: den-database
+      deployment: false
 
     env:
       DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
