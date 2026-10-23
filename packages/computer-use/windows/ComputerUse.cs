@@ -354,18 +354,33 @@ static class OpenWorkComputerUse {
     return target;
   }
 
-  // The target itself, its own dialogs, and caption-less popups of the same app
-  // (menus, drop-downs, tooltips). Never another window of another app.
+  // The target itself, the windows it owns (dialogs, drop-downs, tooltips) and
+  // the menu it has open. Any other window, including an unowned popup of the
+  // same app, occludes the target and never receives its input.
   static bool Belongs(Target target, IntPtr hwnd) {
     if (hwnd == IntPtr.Zero) return false;
     var root = Native.GetAncestor(hwnd, 2);
     if (root == target.Hwnd) return true;
-    uint pid;
-    Native.GetWindowThreadProcessId(root, out pid);
+    uint pid, targetPid;
+    var thread = Native.GetWindowThreadProcessId(root, out pid);
     if (pid != target.Pid) return false;
     if (Native.GetAncestor(root, 3) == target.Hwnd) return true;
-    long style = Style(root, -16);
-    return (style & 0x80000000L) != 0 && (style & 0x00C00000L) != 0x00C00000L;
+    // Win32 menus and combo box lists have no owner window. The selected
+    // window's thread names the menu it opened and the combo box it focuses.
+    var kind = ClassOf(root);
+    if (kind != "#32768" && kind != "ComboLBox" || thread != Native.GetWindowThreadProcessId(target.Hwnd, out targetPid)) return false;
+    var info = new Native.GUITHREADINFO();
+    info.cbSize = Marshal.SizeOf(typeof(Native.GUITHREADINFO));
+    if (!Native.GetGUIThreadInfo(thread, ref info)) return false;
+    if (kind == "#32768") return info.hwndMenuOwner != IntPtr.Zero && Native.GetAncestor(info.hwndMenuOwner, 2) == target.Hwnd;
+    // Focus is on the combo box, or on the edit field inside an editable one.
+    var focus = info.hwndFocus;
+    for (int i = 0; i < 2 && focus != IntPtr.Zero; i++, focus = Native.GetParent(focus)) {
+      var combo = new Native.COMBOBOXINFO();
+      combo.cbSize = Marshal.SizeOf(typeof(Native.COMBOBOXINFO));
+      if (Native.GetComboBoxInfo(focus, ref combo) && combo.hwndList == root) return Native.GetAncestor(focus, 2) == target.Hwnd;
+    }
+    return false;
   }
 
   static bool Occluded(Target target, Native.RECT frame) {
@@ -869,6 +884,10 @@ static class OpenWorkComputerUse {
 static class Native {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [StructLayout(LayoutKind.Sequential)]
+  public struct GUITHREADINFO { public int cbSize; public uint flags; public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret; public RECT rcCaret; }
+  [StructLayout(LayoutKind.Sequential)]
+  public struct COMBOBOXINFO { public int cbSize; public RECT rcItem, rcButton; public uint stateButton; public IntPtr hwndCombo, hwndItem, hwndList; }
   [StructLayout(LayoutKind.Sequential)] public struct USEROBJECTFLAGS { public int fInherit, fReserved, dwFlags; }
   [StructLayout(LayoutKind.Sequential)] public struct WINDOWPLACEMENT { public int length, flags, showCmd; public POINT ptMinPosition, ptMaxPosition; public RECT rcNormalPosition; }
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -892,6 +911,9 @@ static class Native {
   [DllImport("user32.dll")] public static extern int GetWindowTextLengthW(IntPtr hwnd);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassNameW(IntPtr hwnd, StringBuilder name, int count);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+  [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint thread, ref GUITHREADINFO info);
+  [DllImport("user32.dll")] public static extern bool GetComboBoxInfo(IntPtr combo, ref COMBOBOXINFO info);
+  [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command);
