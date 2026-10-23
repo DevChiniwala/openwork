@@ -227,6 +227,50 @@ test("the actual bootstrap check refuses pending migrations and never runs migra
   }
 })
 
+test("packaged bootstrap exits unsuccessfully on apply failure without partial recovery writes", async () => {
+  configure("apply")
+  const before = await inventory(true)
+  await pool.query("CREATE TRIGGER recovery_link_failure BEFORE INSERT ON permission_set_team FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='exp-col injected bootstrap failure'")
+  try {
+    const bootstrap = fileURLToPath(new URL("../../../../packages/den-db/dist/scripts/bootstrap.js", import.meta.url))
+    await assert.rejects(promisify(execFile)(process.execPath, [bootstrap], { env: process.env, timeout: 30_000 }), (error: unknown) => {
+      assert.ok(isRecord(error))
+      assert.equal(error.code, 1)
+      assert.match(String(error.stderr), /exp-col injected bootstrap failure/)
+      return true
+    })
+    assert.deepEqual(await inventory(true), before)
+    assert.ok(!(await keys(direct)).includes("members.update"))
+    assert.ok((await keys(org.owner)).includes("members.update"))
+  } finally {
+    await pool.query("DROP TRIGGER recovery_link_failure")
+  }
+})
+
+test("normal bootstrap reconciles a missing default permission and its next rerun is unchanged", async () => {
+  const [admin] = await rows("SELECT id FROM permission_set WHERE organization_id=? AND default_key='admin'", [org.orgId])
+  assert.ok(admin && typeof admin.id === "string")
+  const defaults = await rows("SELECT * FROM permission_set_permission WHERE permission_set_id=? AND permission_key<>'permissions.view' ORDER BY id", [admin.id])
+  await pool.execute("DELETE FROM permission_set_permission WHERE permission_set_id=? AND permission_key='permissions.view'", [admin.id])
+  process.env.DEN_FEATURE_ADMINISTRATOR_RECOVERY = "false"
+  try {
+    const bootstrap = fileURLToPath(new URL("../../../../packages/den-db/dist/scripts/bootstrap.js", import.meta.url))
+    const first = await promisify(execFile)(process.execPath, [bootstrap], { env: process.env, timeout: 30_000 })
+    assert.match(first.stdout, /permission sets reconciled:.*1 changed, 1 rows added/)
+    assert.doesNotMatch(first.stdout, /permission reconciliation failed|administrator_recovery_/)
+    const added = await rows("SELECT source,status FROM permission_set_permission WHERE permission_set_id=? AND permission_key='permissions.view'", [admin.id])
+    assert.deepEqual(added, [{ source: "reconcile", status: "allow" }])
+    assert.deepEqual(await rows("SELECT * FROM permission_set_permission WHERE permission_set_id=? AND permission_key<>'permissions.view' ORDER BY id", [admin.id]), defaults)
+    const committed = await inventory(true)
+    const second = await promisify(execFile)(process.execPath, [bootstrap], { env: process.env, timeout: 30_000 })
+    assert.match(second.stdout, /permission sets reconciled:.*0 changed, 0 rows added/)
+    assert.deepEqual(await inventory(true), committed)
+    assert.ok((await keys(direct)).includes("permissions.view"))
+  } finally {
+    process.env.DEN_FEATURE_ADMINISTRATOR_RECOVERY = "true"
+  }
+})
+
 test("apply accepts a team name in the single organization and keeps stable ID support after a rename", async () => {
   assert.equal((await den.setFeature(org.orgId, "administratorRecovery", true)).status, 200)
   configure("apply")
