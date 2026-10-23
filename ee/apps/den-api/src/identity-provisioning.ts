@@ -1,5 +1,6 @@
 import { and, eq } from "@openwork-ee/den-db/drizzle"
 import { MemberTable, OrganizationTable, ScimProviderTable, SsoProviderTable } from "@openwork-ee/den-db/schema"
+import { emailDomainMatches } from "./account-linking-policy.js"
 import { db } from "./db.js"
 import { getOrganizationEntitlements, parseOrganizationPlan } from "./entitlements.js"
 import { runPostOrganizationMemberChangeHooks } from "./organization-member-hooks.js"
@@ -88,11 +89,6 @@ export async function provisionSsoMembership(input: { organizationId: OrgId; use
     email: input.email,
   })
   return "provisioned"
-}
-
-function emailDomainMatches(emailDomain: string, configured: string) {
-  return configured.split(",").map((domain) => domain.trim().toLowerCase()).filter(Boolean)
-    .some((domain) => emailDomain === domain || emailDomain.endsWith(`.${domain}`))
 }
 
 /**

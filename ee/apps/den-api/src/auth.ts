@@ -44,7 +44,7 @@ import {
   DEN_SESSION_EXPIRES_IN_SECONDS,
   DEN_SESSION_UPDATE_AGE_IN_SECONDS,
 } from "./session-lifetime.js";
-import { DEN_ACCOUNT_CONFIG } from "./account-linking-policy.js";
+import { DEN_ACCOUNT_CONFIG, DEN_USER_CONFIG } from "./account-linking-policy.js";
 import { cache } from "./cache.js";
 import { auditBetterAuthAfter, auditBetterAuthBefore, auditBetterAuthRefusal, auditBetterAuthSessionAfter, auditBetterAuthSessionBefore, BETTER_AUTH_AUDIT_AFTER_PATHS, BETTER_AUTH_AUDIT_BEFORE_PATHS, BETTER_AUTH_SESSION_AFTER_PATHS, BETTER_AUTH_SESSION_BEFORE_PATHS, noteOAuthConsentReference, noteOAuthRevocation, noteOAuthTokenIssuance, type BetterAuthHookSession } from "./audit/better-auth.js";
 import { auditUserUpdateAfter, auditUserUpdateBefore, recordAccountDeleted, recordIdentityLinked, recordIdentityUnlinked } from "./audit/domain/account.js";
@@ -780,6 +780,7 @@ export const auth = betterAuth({
     schema,
   }),
   account: DEN_ACCOUNT_CONFIG,
+  user: DEN_USER_CONFIG,
   session: {
     expiresIn: DEN_SESSION_EXPIRES_IN_SECONDS,
     updateAge: DEN_SESSION_UPDATE_AGE_IN_SECONDS,
