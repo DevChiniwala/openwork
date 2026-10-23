@@ -25,6 +25,7 @@ import type { McpStatusMap, OpencodeEvent } from "../types";
 import { normalizeDirectoryPath } from "../utils";
 import { dispatchProviderCatalogChanged } from "./provider-events";
 import { attachmentMarker, attachmentNoteFilenames, composeV2Prompt, splitV2Prompt, wrapPastedText, type PromptAttachment } from "./v2-prompt-context";
+import { readShowThinkingPreference } from "../../react-app/kernel/local-preferences-storage";
 import {
   BACKGROUND_SHELL_FINISHED_EVENT,
   BACKGROUND_SHELL_NOTICE_KEY,
@@ -2699,7 +2700,13 @@ export function createClientV2(
       const promptResult = await request(
         "POST",
         `/api/session/${encodeURIComponent(parameters.sessionID)}/prompt`,
-        { text, ...(skills.length ? { skills } : {}) },
+        {
+          text,
+          ...(skills.length ? { skills } : {}),
+          // Settings › Show model reasoning. The engine plugin asks the provider
+          // for readable reasoning only while this is on.
+          metadata: { openwork: { showReasoning: readShowThinkingPreference() } },
+        },
         options?.signal,
       );
       return promptResult.response.ok ? successfulResult(promptResult, {}) : failedResult(promptResult);
