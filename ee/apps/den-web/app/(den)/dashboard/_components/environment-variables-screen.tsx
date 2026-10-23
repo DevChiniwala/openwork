@@ -106,7 +106,7 @@ export function EnvironmentVariablesScreen() {
                       </>
                     }
                     meta={values.missing ? audienceSummary(variable) : `${values.text} · ${audienceSummary(variable)}`}
-                    action={<ChevronRight aria-hidden className="h-4 w-4 text-gray-400" />}
+                    action={<ChevronRight aria-hidden className="h-4 w-4 text-gray-500" />}
                   />
                 );
               })}

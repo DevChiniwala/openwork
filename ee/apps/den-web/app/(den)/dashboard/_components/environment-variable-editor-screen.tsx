@@ -216,7 +216,7 @@ function EditorForm({ variable }: { variable: DenEnvironmentVariable | null }) {
         <div className="divide-y divide-gray-200 overflow-hidden rounded-[16px] border border-gray-200 bg-white">
           <div className="flex flex-wrap items-center gap-3 px-4 py-2.5" data-testid="environment-variable-everyone">
             <div className="flex min-w-48 flex-1 items-center gap-2 text-[14px] text-gray-900">
-              <Users aria-hidden className="h-4 w-4 text-gray-400" />
+              <Users aria-hidden className="h-4 w-4 text-gray-500" />
               <span className="truncate">Everyone in {organizationName}</span>
             </div>
             {everyone && adminValues ? <AssignmentValue draft={everyone} label="Everyone" onChange={(next) => update("everyone", next)} /> : null}
@@ -236,7 +236,7 @@ function EditorForm({ variable }: { variable: DenEnvironmentVariable | null }) {
             return (
               <div key={draft.target} className="flex flex-wrap items-center gap-3 px-4 py-2.5" data-testid="environment-variable-team">
                 <div className="flex min-w-48 flex-1 items-center gap-2 text-[14px] text-gray-900">
-                  <Users aria-hidden className="h-4 w-4 text-gray-400" />
+                  <Users aria-hidden className="h-4 w-4 text-gray-500" />
                   <span className="truncate">{label}</span>
                 </div>
                 {adminValues ? <AssignmentValue draft={draft} label={label} onChange={(next) => update(draft.target, next)} /> : null}
@@ -255,7 +255,7 @@ function EditorForm({ variable }: { variable: DenEnvironmentVariable | null }) {
             return (
               <div key={draft.target} className="flex flex-wrap items-center gap-3 px-4 py-2.5" data-testid="environment-variable-member">
                 <div className="flex min-w-48 flex-1 items-center gap-2 text-[14px] text-gray-900">
-                  <User aria-hidden className="h-4 w-4 text-gray-400" />
+                  <User aria-hidden className="h-4 w-4 text-gray-500" />
                   <span className="min-w-0 truncate">{label}</span>
                   {member?.user.email ? <span className="min-w-0 truncate text-[12px] text-gray-500">{member.user.email}</span> : null}
                 </div>

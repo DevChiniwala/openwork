@@ -35,7 +35,7 @@ function AssignmentChoice({ variable, onChanged }: { variable: DenMemberEnvironm
   const [error, setError] = useState<string | null>(null);
   return (
     <span className="flex shrink-0 items-center gap-2">
-      <Lock aria-hidden className="h-3.5 w-3.5 text-gray-400" />
+      <Lock aria-hidden className="h-3.5 w-3.5 text-gray-500" />
       <DenSelect
         aria-label={`Value to use for ${variable.key}`}
         value={variable.selectedAccessId ?? ""}
