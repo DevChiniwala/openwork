@@ -39,9 +39,18 @@ On September 5, 2026, PR #4517 had Actions and JavaScript/TypeScript results for
 3427828, but Python was added to default setup after that scan. GitHub consequently
 reported one missing result for the PR head or its merge commit e322949.
 
-## Exclude evals and tests from analysis
+## Exclude tooling, fixtures, evals and tests from analysis
 
-`.github/codeql/codeql-config.yml` excludes all `evals/` trees (including their
+`.github/codeql/codeql-config.yml` excludes root `scripts/` tooling (including
+build/release and docs/PDF scripts) and `fixtures/` directories anywhere in the
+repository. These are deliberate analysis exclusions: findings in those files
+will no longer be reported by CodeQL, not merely made non-blocking. Application
+code, package-local scripts, `.github/scripts/` and Actions workflows remain in
+scope unless they independently match a test exclusion. Build/release tooling
+still requires security review; being outside application runtime does not make
+it inherently safe.
+
+The configuration also excludes all `evals/` trees (including their
 shared packages), test-suite/support directories, and extension-independent test
 filenames such as `*.test.*`, `*.spec.*`, `*.e2e.*`, `test_*`, `*_test.*`,
 `test-*`, `*Test.*`, and `*Tests.*`. Compound names such as `*.api.test.ts`,
@@ -77,6 +86,26 @@ this file.
 
 See [custom configuration with default setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/manage-your-configuration/edit-default-setup#customizing-default-setup-with-a-configuration-file)
 and [CodeQL path patterns](https://docs.github.com/en/code-security/reference/code-scanning/workflow-configuration-options#specifying-directories-to-scan).
+
+## Optional Critical-only merge gate (repository setting)
+
+Path exclusions above do not change the live merge rule. A repository admin can
+separately edit Settings → Rules → Rulesets → **Require admin approval on dev**
+→ Code scanning results → CodeQL and set the security-alert threshold to
+**Critical** (`security_alerts_threshold: critical`). Set the non-security alert
+threshold to **None** (`alerts_threshold: none`) if the intended policy is that
+only Critical security findings block. Lower-severity findings in scanned code
+are still reported, but no longer block merges. Keep the other rules unchanged.
+
+GitHub's code-scanning rule has no production-path filter. The analysis exclusions
+define the scanned scope; the rule applies to all remaining results. This is a
+separate, repository-wide policy change, not something merging a config file
+activates. Restoring `high_or_higher` and `errors` restores the current thresholds.
+
+Run `node --test scripts/ci/codeql-config.test.mjs` to check representative tooling,
+fixture and test exclusions plus production paths that must stay in scope. This
+checks the configured glob contract locally, not a live CodeQL extraction; verify
+the next uploaded analysis after merging as described above.
 
 ## Detect
 
