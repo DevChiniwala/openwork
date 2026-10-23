@@ -84,14 +84,16 @@ async function printCheck(connection: mysql.Connection, target: Target, enabled:
   const team = await resolveTeam(connection, target, false)
   const [fence] = await connection.query<mysql.RowDataPacket[]>("SELECT archived_at FROM permission_set WHERE id=?", [stable("pms", target.organization.id)])
   const [people] = await connection.query<mysql.RowDataPacket[]>(
-    "SELECT DISTINCT m.id,m.role,m.user_id,m.is_setup_agent,u.name,COALESCE(u.email,i.email) AS email FROM team_member tm JOIN member m ON m.id=tm.org_membership_id AND m.organization_id=? LEFT JOIN user u ON u.id=m.user_id LEFT JOIN invitation i ON i.id=m.invite_id AND i.organization_id=m.organization_id WHERE tm.team_id=? AND m.removed_at IS NULL ORDER BY m.id",
+    "SELECT DISTINCT m.id,m.role,m.user_id,m.is_setup_agent,u.name FROM team_member tm JOIN member m ON m.id=tm.org_membership_id AND m.organization_id=? LEFT JOIN user u ON u.id=m.user_id WHERE tm.team_id=? AND m.removed_at IS NULL ORDER BY m.id",
     [target.organization.id, team.id],
   )
   const [roles] = await connection.query<mysql.RowDataPacket[]>("SELECT p.id,p.name FROM permission_set_team l JOIN permission_set p ON p.id=l.permission_set_id AND p.organization_id=l.organization_id WHERE l.organization_id=? AND l.team_id=? AND l.removed_at IS NULL AND p.archived_at IS NULL ORDER BY p.id", [target.organization.id, team.id])
   const action = fence.length ? "already_consumed_no_recreation" : enabled ? "would_apply" : "enable_feature_before_apply"
-  // JSON escapes untrusted names/newlines. Never include credentials or tokens.
-  console.log(JSON.stringify({ event: "administrator_recovery_check", organization: target.organization, team, existingRoles: roles.map((role) => ({ id: role.id, name: role.name })), featureEnabled: enabled, action, recoveryPermissionCount: 14, peopleCount: people.length, note: "Existing Admin default decisions remain in force; owners already have all permissions. This is not a roster fingerprint." }))
-  for (const person of people) console.log(JSON.stringify({ event: "administrator_recovery_recipient", memberId: person.id, name: person.name, email: person.email, role: person.role, connected: person.user_id !== null, setupAgent: person.is_setup_agent === 1, ownerUnchanged: person.role === "owner" }))
+  // JSON escapes untrusted names/newlines. Display labels can themselves be
+  // email addresses; omit address-like labels as well as email columns.
+  const log = (value: unknown) => console.log(JSON.stringify(value, (_key: string, part: unknown) => typeof part === "string" ? part.replace(/\S+@\S+/gu, "[email omitted]") : part))
+  log({ event: "administrator_recovery_check", organization: target.organization, team, existingRoles: roles.map((role) => ({ id: role.id, name: role.name })), featureEnabled: enabled, action, recoveryPermissionCount: 14, peopleCount: people.length, note: "Existing Admin default decisions remain in force; owners already have all permissions. This is not a roster fingerprint." })
+  for (const person of people) log({ event: "administrator_recovery_recipient", memberId: person.id, name: person.name, role: person.role, connected: person.user_id !== null, setupAgent: person.is_setup_agent === 1, ownerUnchanged: person.role === "owner" })
 }
 
 /** Deploy bootstrap only. Check uses a read-only transaction, even with the flag

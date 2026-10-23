@@ -36,6 +36,7 @@ async function inventory(ledger = false) {
     teams: await rows("SELECT * FROM team ORDER BY id"),
     roster: await rows("SELECT * FROM team_member ORDER BY id"),
     roles: await rows("SELECT id,role FROM member ORDER BY id"),
+    users: await rows("SELECT id,name FROM user ORDER BY id"),
     ledger: ledger ? await rows("SELECT * FROM __drizzle_migrations ORDER BY id") : [],
   }
   return result
@@ -70,24 +71,31 @@ await keys(outside)
 test("check infers the only organization, resolves a team name and prints the full roster without writes, even with the feature off", async () => {
   assert.equal((await rows("SELECT COUNT(*) AS count FROM organization"))[0]?.count, 1)
   configure()
-  const before = await inventory()
-  const events = await capture(async () => { assert.equal(await recoverAdministratorsFromEnv(), 0) })
-  assert.deepEqual(await inventory(), before)
-  const header = events.find((event) => event.event === "administrator_recovery_check")
-  assert.ok(header)
-  assert.equal(field(header, "organization", "id"), org.orgId)
-  assert.equal(field(header, "team", "id"), teamId)
-  assert.equal(field(header, "team", "name"), "admins")
-  assert.equal(header.featureEnabled, false)
-  assert.equal(header.action, "enable_feature_before_apply")
-  assert.equal(header.peopleCount, 3)
-  assert.equal(header.recoveryPermissionCount, 14)
-  assert.deepEqual(header.existingRoles, [])
-  const recipients = events.filter((event) => event.event === "administrator_recovery_recipient")
-  assert.deepEqual(recipients.map((event) => event.memberId).sort(), [org.owner.memberId, direct.memberId, inherited.memberId].sort())
-  assert.deepEqual(recipients.map((event) => event.email).sort(), [org.owner.email, direct.email, inherited.email].sort())
-  assert.equal(recipients.find((event) => event.memberId === org.owner.memberId)?.ownerUnchanged, true)
-  assert.ok(!(await keys(direct)).includes("members.update"))
+  // A person's display name may itself be their email address. The complete
+  // roster must remain reviewable by membership ID without leaking addresses.
+  await pool.execute("UPDATE user SET name=? WHERE id=?", [direct.email, direct.userId])
+  try {
+    const before = await inventory()
+    const events = await capture(async () => { assert.equal(await recoverAdministratorsFromEnv(), 0) })
+    assert.deepEqual(await inventory(), before)
+    const header = events.find((event) => event.event === "administrator_recovery_check")
+    assert.ok(header)
+    assert.equal(field(header, "organization", "id"), org.orgId)
+    assert.equal(field(header, "team", "id"), teamId)
+    assert.equal(field(header, "team", "name"), "admins")
+    assert.equal(header.featureEnabled, false)
+    assert.equal(header.action, "enable_feature_before_apply")
+    assert.equal(header.peopleCount, 3)
+    assert.equal(header.recoveryPermissionCount, 14)
+    assert.deepEqual(header.existingRoles, [])
+    const recipients = events.filter((event) => event.event === "administrator_recovery_recipient")
+    assert.deepEqual(recipients.map((event) => event.memberId).sort(), [org.owner.memberId, direct.memberId, inherited.memberId].sort())
+    assert.deepEqual(recipients.map((event) => event.name).sort(), [org.owner.name, "[email omitted]", inherited.name].sort())
+    assert.ok(recipients.every((event) => !("email" in event)))
+    for (const email of [org.owner.email, direct.email, inherited.email]) assert.ok(!JSON.stringify(events).includes(email), "check output contains no member email addresses")
+    assert.equal(recipients.find((event) => event.memberId === org.owner.memberId)?.ownerUnchanged, true)
+    assert.ok(!(await keys(direct)).includes("members.update"))
+  } finally { await pool.execute("UPDATE user SET name=? WHERE id=?", [direct.name, direct.userId]) }
 })
 
 test("missing, ordinary, SCIM and ambiguous team names refuse clearly; an ID still disambiguates legacy duplicate names", async () => {

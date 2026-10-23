@@ -1312,8 +1312,10 @@ override. Check-mode hook Jobs are retained until the next upgrade so their
 logs can be read. Each JSON check header prints the resolved organization and
 team IDs/names, existing active custom-role IDs/names, feature state, action and
 roster count. Recipient lines print
-**every active member of that team**, with membership ID, name/email, role and
-connection/setup-agent status. Owners are marked unchanged. Existing Admin-role
+**every active member of that team**, with membership ID, display name, role and
+connection/setup-agent status. Email columns are not selected or logged, and
+address-like display labels are replaced with `[email omitted]`. Membership IDs
+still distinguish people with the same or redacted names. Owners are marked unchanged. Existing Admin-role
 user decisions remain in force; the preview is not a complete effective-access
 difference against every other role.
 
