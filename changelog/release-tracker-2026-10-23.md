@@ -85,3 +85,39 @@ Pop computer and browser views out of chat, while Workbot, invitations, and self
 
 #### Lines of code changed since previous release
 79842 lines changed since `v0.18.60` (75653 insertions, 4189 deletions).
+
+## v0.18.62
+
+#### Commit
+`df15f868`
+
+#### Released at
+`2026-10-23T21:49:19Z`
+
+#### Title
+Work with OneDrive and SharePoint files in OpenWork
+
+#### One-line summary
+Agents can work with OneDrive and SharePoint files, while Workbot views and Den security and admin recovery get important fixes.
+
+#### Pull requests
+| PR | Audience | Decision | Reason |
+|---|---|---|---|
+| #6414 | desktop users | Included | The bundled OpenCode engine blocks unsafe non-web sign-in URLs from remote MCP servers |
+| #6434 | admins | Included | Opt-in administrator permission recovery works across common database encodings |
+| #6416 | self-hosters | Included | Self-hosted Den deployments receive fixes for recent Next.js security advisories |
+| #6429 | everyone | Included | Agents can find, open, edit, and save OneDrive and SharePoint files, including shared files |
+| #6432 | everyone | Included | Workbot Browser and Computer views reconnect, and outdated computers rebuild automatically |
+| #6419 | MCP clients | Included | Den admin tools require write access, scripts cannot call them, and credential reads are blocked |
+| #6424 | admins | Included | Operators can enable hashed Den sign-in session tokens without signing anyone out |
+
+#### Behavior changes and removals
+- The bundled OpenCode v1 engine now opens only web links for remote MCP sign-in and rejects other URL schemes.
+- Den admin writes now require `mcp:write`; scripts can no longer call admin tools, and `den_query` refuses credential and server-internal data.
+- When session-token hashing is enabled, Den stores a hash instead of each new sign-in token; existing sessions remain valid and users are not signed out.
+- Opt-in Den administrator permission recovery now works across common database encodings, including legacy latin1 and utf8mb3 schemas.
+- Workbot reconnects its Browser and Computer views, and automatically rebuilds an outdated computer when someone opens the view (unless a turn is running).
+- Agents can now search, open, edit, and save OneDrive and SharePoint files, including shared and Teams files; saved changes replace only the version that was pulled.
+
+#### Lines of code changed since previous release
+54583 lines changed since `v0.18.61` (43485 insertions, 11098 deletions).
