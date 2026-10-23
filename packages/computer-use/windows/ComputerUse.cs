@@ -757,7 +757,22 @@ static class OpenWorkComputerUse {
     if (inputs.Count > 0) Native.SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(Native.INPUT)));
   }
 
+  // Every injection re-verifies the target immediately before SendInput, so a
+  // window that took the foreground, or slid under the pointer, since the step
+  // began receives nothing. Only Release bypasses this: held keys and buttons
+  // must always come back up.
   static void Send(InputContext context, params Native.INPUT[] inputs) {
+    if (context.Cancel.WaitOne(0)) throw new Failure("cancelled", "Computer input stopped.");
+    if (!Belongs(context.Target, Native.GetForegroundWindow())) throw new Failure("focus_changed", "Another window came to the front. No further input was sent; observe again.");
+    foreach (var input in inputs) {
+      // Buttons and wheels act on the window under the pointer; plain moves do not.
+      if (input.type != 0 || (input.u.mi.dwFlags & ~0x0001u) == 0) continue;
+      Native.POINT at;
+      if (!Native.GetCursorPos(out at) || !Belongs(context.Target, Native.WindowFromPoint(at))) {
+        throw new Failure("covered", "Another window covers that point, so nothing was clicked. Observe again.");
+      }
+      break;
+    }
     context.Attempted = true;
     if (Native.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Native.INPUT))) != inputs.Length) {
       throw new Failure("input_refused", "Windows refused this input; a higher-privilege window or a secure prompt may be in front. Observe before continuing.");
