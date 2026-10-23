@@ -7,7 +7,7 @@ import { AUDIT_ROUTE_EVENT_SUFFIXES, type AuditRouteClass } from "./routes/types
 // principal (or the platform admin for admin tools). Tool calls that re-enter
 // den-api through invokeMcpOperation are recorded at the destination route and
 // never appear here. scripts/check-audit-route-coverage.ts validates the list
-// and renders it into COVERAGE.md.
+// without requiring a generated report.
 
 export type AuditServiceActionClass = Extract<AuditRouteClass, "tenant_change" | "tenant_external" | "tenant_job">
 

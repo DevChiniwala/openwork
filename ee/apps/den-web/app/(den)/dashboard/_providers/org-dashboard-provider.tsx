@@ -16,7 +16,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useDenFlow } from "../../_providers/den-flow-provider";
 import { getErrorMessage, getOrgLimitError, getOrgPaymentRequiredError, getRequestError, isReauthRequiredError, requestJson, WORKSPACE_REAUTH_SECURITY_MESSAGE } from "../../_lib/den-flow";
 import { ReauthDialog } from "../../_components/reauth-dialog";
-import { DenSecretRevealProvider } from "../../_components/ui/secret-input";
 import {
   type DenOrgContext,
   type DenOrgSummary,
@@ -361,7 +360,7 @@ export function OrgDashboardProvider({
       const context = await loadOrgContext(targetOrg.id);
       if (!isCurrent()) return;
       if (linkedOrgId) {
-        if (!orgFeatureEnabled(context, "workbotTeamLinks")) throw new Error("Team links are off for this workspace. A platform admin can turn them on.");
+        if (!orgFeatureEnabled(context, "workbotIncludedModels") && !orgFeatureEnabled(context, "workbotUsageRecovery")) throw new Error("Workbot recovery links are off for this workspace. A platform admin can turn them on.");
         // Consume only after the exact workspace loaded. Later explicit switches stay authoritative.
         const url = new URL(window.location.href);
         url.searchParams.delete("workbotOrganizationId");
@@ -1065,7 +1064,6 @@ export function OrgDashboardProvider({
 
   return (
     <OrgDashboardContext.Provider value={value}>
-      <DenSecretRevealProvider enabled={orgFeatureEnabled(orgContext, "secureSecretFields")}>
       {setupOrganizationId && (orgContext?.organization.id !== setupOrganizationId
         || activeOrgId !== setupOrganizationId || getRequestOrgScope() !== setupOrganizationId) ? (
         <div className="grid min-h-[420px] place-content-center gap-3 px-6 text-sm text-gray-600" data-testid="setup-workspace-restoring">
@@ -1073,7 +1071,6 @@ export function OrgDashboardProvider({
           {!orgBusy ? <button type="button" onClick={() => void refreshOrgData()} className="font-medium text-gray-900 underline underline-offset-4">Retry setup workspace</button> : null}
         </div>
       ) : children}
-      </DenSecretRevealProvider>
       <ReauthDialog
         open={reauthDialogOpen}
         user={user}

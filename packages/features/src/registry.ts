@@ -53,9 +53,23 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
-  cloudAgentGateway: {
-    label: "Cloud agents use the organization AI Gateway",
-    description: "Choose and run cloud-agent models through the organization's AI Gateway access instead of the runner's shared model credentials.",
+  nativeDictation: {
+    label: "Native dictation",
+    description: "Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  organizationGrants: {
+    label: "Organization control panel and grants",
+    description: "Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  connectionMcpServers: {
+    label: "Connect: an MCP server for each connection",
+    description: "Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -67,30 +81,9 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  offlineRecovery: {
-    label: "Connection failure presentation",
-    description: "Show compact App connection failures and a discreet offline indicator in OpenCode v2 conversations.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  secureSecretFields: {
-    label: "Secure keys in chat",
-    description: "When an agent sets up a connection, plugin or AI Gateway provider that needs keys, people enter them in private fields in the chat and the agent continues once they are saved. Key fields across OpenWork and OpenWork Cloud can be shown while typing and show saved keys as Replace rows.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  modelsAnalyticsUi: {
-    label: "Models analytics",
-    description: "Organization admins can view Models & usage analytics and shared model usage limits. Deprecated 2026-10-14: UI hidden behind modelsAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  taskAnalyticsUi: {
-    label: "Task analytics",
-    description: "Members with analytics access can view task activity and consumption, and admins can configure analytics integrations. Deprecated 2026-10-14: UI hidden behind taskAnalyticsUi (default off). Most likely delete within 4 weeks (by 2026-11-11) unless an org depends on it.",
+  agentConnectionRemoval: {
+    label: "Agents remove connections",
+    description: "People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -102,32 +95,11 @@ export const FEATURES = defineFeatures({
     deployments: ["cloud"],
     default: false,
   },
-  slackAssistant: {
-    label: "Slack Assistant",
-    description: "Answers Slack mentions and DMs for the organization after the Slack connector is set up.",
+  enterprisePlan: {
+    label: "Enterprise plan billing",
+    description: "Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page.",
     since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  workbotTeamLinks: {
-    label: "Workbot: team settings links",
-    description: "Members with team management access can open their organization's Workbot settings and app connections from Workbot.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  workbotFirstRun: {
-    label: "Workbot: first sign-in",
-    description: "People signing in to Workbot choose or create their workspace without leaving sign-in, with a clear next action when Workbot is unavailable.",
-    since: "2026-10",
-    deployments: everywhere,
-    default: false,
-  },
-  workbotInlineConnect: {
-    label: "Workbot: connect accounts",
-    description: "Members connect their assigned apps directly from Workbot and return to the same view after consent.",
-    since: "2026-10",
-    deployments: everywhere,
+    deployments: ["cloud"],
     default: false,
   },
   workbotDocuments: {
@@ -137,16 +109,37 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  workbotWorkspaceAssistant: {
-    label: "Workbot: workspace assistant",
-    description: "Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar.",
+  workbotDocumentEditing: {
+    label: "Workbot Documents: editing",
+    description: "Members choose Edit from a document preview. Full Office editing starts their Cloud workspace only when requested. Requires Workbot Documents.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
   },
-  workbotGuidedNavigation: {
-    label: "Workbot: show me in the workspace",
-    description: "Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Needs the workspace assistant.",
+  workbotWorkspaceAssistant: {
+    label: "Workbot: workspace assistant",
+    description: "Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  workbotIncludedModels: {
+    label: "Workbot: included OpenWork models by default",
+    description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  workbotUsageRecovery: {
+    label: "Workbot: usage limits and upgrades",
+    description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  usageLimitUpgrade: {
+    label: "Usage limits: one limit card with an upgrade",
+    description: "When free Auto, OpenWork Models or an AI Gateway budget runs out in the desktop app, one card says what ran out, when it resets and that the message is saved, with the upgrade or request that fits the person’s role and a way to keep working with another model.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -158,23 +151,48 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  engineV2ForceUpgrade: {
-    label: "Upgrade everyone to OpenCode v2",
-    description: "Desktop and web instances copy chats with a backup and switch to OpenCode v2 automatically when idle, without asking for consent.",
+  removeOpencodeZen: {
+    label: "Remove OpenCode Zen models",
+    description: "Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
   },
-  engineV2Upgrade: {
-    label: "Desktop: upgrade prompt to OpenCode v2",
-    description: "Desktop members still on OpenCode v1 see a short notice offering to upgrade: their chats are copied to v2 with a backup, then OpenWork switches engines.",
+  computerUse: {
+    label: "Computer use",
+    description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
   },
-  remoteSessionEvents: {
-    label: "Remote session events",
-    description: "MCP clients can subscribe to changes in their remote session receipts and read the current state after reconnecting.",
+
+  browserDemonstrations: {
+    label: "Workbot: teach browser tasks",
+    description: "Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+
+  browserLiveView: {
+    label: "Workbot: browser live view",
+    description: "Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+
+  browserFloatingView: {
+    label: "Desktop: floating and full-screen browser",
+    description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+
+  remoteComputers: {
+    label: "Desktop: computer use on remote computers",
+    description: "Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Configured and conversation-owned desktops open directly when enabled, including follow-ups and internal session renewal. Take over and Stop stay available.",
     since: "2026-10",
     deployments: everywhere,
     default: false,
@@ -186,9 +204,44 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
-  headlessDurableTurns: {
-    label: "Workbot: tasks keep going on their own",
-    description: "Workbot, Slack and Automations answers keep going after a restart, deploy or server failure, without waiting for someone to reopen the chat.",
+  desktopSignInReturn: {
+    label: "Desktop: sign-in returns you to the same task",
+    description: "Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  activationChecklist: {
+    label: "Get set up checklist",
+    description: "After their first answer, people see a Get set up checklist in Desktop and Workbot: invite a teammate, use a skill, add a model provider, share one on AI Gateway and connect an app, each checked off once it works.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  connectStandardTools: {
+    label: "Connect: standard tools",
+    description: "Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  teamPlan: {
+    label: "Team plan checkout",
+    description: "Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
+  selfServeEnterprise: {
+    label: "Self-serve Enterprise",
+    description: "Owners can buy Enterprise by card at the planned per-person price.",
+    since: "2026-10",
+    deployments: ["cloud"],
+    default: false,
+  },
+  orgPrompts: {
+    label: "Prompts",
+    description: "Admins write a system prompt for everyone and for each team on the team's Prompts tab. Desktops add the prompts that apply to a member to every agent's instructions: Everyone's first, then each team's by team name. Turning this off stops desktops adding them at their next sync; saved prompts are kept.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

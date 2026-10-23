@@ -1,3 +1,4 @@
+import { startupPhase, withStartupPhase } from "./startup-log.mjs";
 import { randomUUID, X509Certificate } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -281,8 +282,17 @@ export function openworkInstallMarkerPaths({ userDataDir, serverConfigPath, env 
 }
 
 /**
- * New installs start on OpenCode v2; updates keep the engine they had. An
- * explicit OPENWORK_ENGINE_V2_PREVIEW (dev, evals) always wins.
+ * Migrate existing v1 installs in the background by default, independently of
+ * Den rollout policy. Explicit local engine/migration overrides always win.
+ * @returns {boolean | undefined}
+ */
+export function resolveDesktopEngineAutoUpgrade(env = process.env) {
+  if (env.OPENWORK_ENGINE_V2_PREVIEW?.trim() || env.OPENWORK_ENGINE_AUTO_UPGRADE !== undefined) return undefined;
+  return true;
+}
+
+/**
+ * Fresh installs can select v2 immediately; existing profiles migrate safely.
  * @param {{ markerPaths: string[], exists?: (filePath: string) => boolean, env?: NodeJS.ProcessEnv }} input
  * @returns {"v2" | undefined}
  */
@@ -571,26 +581,41 @@ async function readJsonFile(targetPath, fallback) {
   }
 }
 
-function targetTriple() {
-  if (process.platform === "darwin") {
-    return process.arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
+function targetTriple(platform = process.platform, arch = process.arch) {
+  if (platform === "darwin") {
+    return arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
   }
-  if (process.platform === "linux") {
-    return process.arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu";
+  if (platform === "linux") {
+    return arch === "arm64" ? "aarch64-unknown-linux-gnu" : "x86_64-unknown-linux-gnu";
   }
-  if (process.platform === "win32") {
-    return process.arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+  if (platform === "win32") {
+    return arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
   }
   return null;
 }
 
-function binaryFileNames(baseName) {
-  const ext = process.platform === "win32" ? ".exe" : "";
-  const triple = targetTriple();
+function binaryFileNames(baseName, platform = process.platform, arch = process.arch) {
+  const ext = platform === "win32" ? ".exe" : "";
+  const triple = targetTriple(platform, arch);
   return [
-    triple ? `${baseName}-${triple}${ext}` : null,
     `${baseName}${ext}`,
+    triple ? `${baseName}-${triple}${ext}` : null,
   ].filter(Boolean);
+}
+
+export function bundledEngineEnv(sidecarDirs, { required = false, platform = process.platform, arch = process.arch } = {}) {
+  /** @type {NodeJS.ProcessEnv} */
+  const env = {};
+  for (const [base, key] of [["opencode", "OPENWORK_OPENCODE_BIN"], ["opencode2", "OPENWORK_OPENCODE2_BIN"]]) {
+    const candidates = sidecarDirs.flatMap((directory) =>
+      binaryFileNames(base, platform, arch).map((name) => path.resolve(directory, name)));
+    const binary = candidates.find((candidate) => {
+      try { return statSync(candidate).isFile(); } catch { return false; }
+    });
+    if (binary) env[key] = binary;
+    else if (required) throw new Error(`Missing packaged engine ${base}. Checked: ${candidates.join(", ")}`);
+  }
+  return env;
 }
 
 function isDirectory(targetPath) {
@@ -1442,11 +1467,11 @@ export function createRuntimeManager({
   let systemCaPromise = null;
 
   function systemCa() {
-    systemCaPromise ??= resolveSystemCa({
+    systemCaPromise ??= withStartupPhase("ca.bundle", () => resolveSystemCa({
       tlsModule: tls,
       userDataDir,
       parentEnv: { ...loadUserEnvFile(process.env), ...process.env },
-    });
+    }));
     return systemCaPromise;
   }
 
@@ -1666,6 +1691,12 @@ export function createRuntimeManager({
   }
 
   function resolveOpencodeBinary(opencodeBinPath) {
+    const end = startupPhase("engine.v1.resolve");
+    try { const result = resolveOpencodeBinaryInner(opencodeBinPath); end(); return result; }
+    catch (error) { end(true); throw error; }
+  }
+
+  function resolveOpencodeBinaryInner(opencodeBinPath) {
     const explicitPath = typeof opencodeBinPath === "string" ? opencodeBinPath.trim() : "";
     return explicitPath ? { path: explicitPath, source: "custom" } : resolveBinaryInfo("opencode");
   }
@@ -1857,7 +1888,7 @@ export function createRuntimeManager({
     // The inner start stops any previous runtime before mutating state, so a
     // throw below always happens with nothing left running.
     try {
-      return await startOpenworkServerInner(options);
+      return await withStartupPhase("server.start", () => startOpenworkServerInner(options));
     } catch (error) {
       resetRuntimeStatesAfterFailedServerStart(openworkServerState, engineState, options);
       throw error;
@@ -1887,8 +1918,12 @@ export function createRuntimeManager({
       engineState.opencodeBinSource = managedOpencode?.source ?? null;
     }
 
-    // Inject user env vars so the server and managed OpenCode inherit them.
-    const serverEnv = await buildChildEnv({});
+    // The embedded server resolves v2 independently of v1. Give both engines
+    // absolute bundled paths before loading it, never a PATH/cache download.
+    // Keep triple-name support for dev and older packaged layouts.
+    const engineEnv = bundledEngineEnv(sidecarDirs, { required: app.isPackaged });
+    if (managedOpencode) engineEnv.OPENWORK_OPENCODE_BIN = managedOpencode.path;
+    const serverEnv = await buildChildEnv(engineEnv);
     Object.assign(process.env, serverEnv);
 
     // Once the embedded server has a persisted registry, it is the source of
@@ -1950,6 +1985,7 @@ export function createRuntimeManager({
       localManagedMcpVaultKey,
       anonymousInference,
       freshInstallEngine,
+      engineAutoUpgrade: resolveDesktopEngineAutoUpgrade(),
     });
     inProcessServer = handle;
     openworkServerState.managedOpencodeExecution = handle.managedOpencodeExecution ?? null;
@@ -2183,6 +2219,10 @@ export function createRuntimeManager({
   }
 
   async function engineRestart(options = {}) {
+    return withStartupPhase("engine.restart.requested", () => engineRestartInner(options), options.diagnosticsCause ?? "requested");
+  }
+
+  async function engineRestartInner(options = {}) {
     const projectDir = engineState.projectDir;
     if (!projectDir) {
       throw new Error("OpenCode is not configured for a local workspace");
@@ -2216,6 +2256,10 @@ export function createRuntimeManager({
   }
 
   async function openworkServerRestart(options = {}) {
+    return withStartupPhase("server.restart.requested", () => openworkServerRestartInner(options), options.diagnosticsCause ?? "requested");
+  }
+
+  async function openworkServerRestartInner(options = {}) {
     const workspacePaths = prioritizeWorkspacePaths(engineState.projectDir, await listLocalWorkspacePaths(), {
       platform: workspacePlatform,
     });

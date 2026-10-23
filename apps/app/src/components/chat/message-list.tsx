@@ -42,6 +42,8 @@ import { BackgroundTaskNotice, BackgroundTasksLabel, BackgroundTasksMessage, bac
 import { sessionBackgroundShells, useBackgroundShellStore, type BackgroundShell } from "@/react-app/domains/session/status/background-shell-store"
 import { messageAutoAccessWall } from "@/app/lib/inference-access"
 import { AutoAccessNotice } from "@/react-app/domains/cloud/auto-access-ui"
+import { OpenWorkModelsLimitCard, useUsageLimitUpgrade } from "@/react-app/domains/cloud/usage-limit-card"
+import type { OpenWorkModelsLimit } from "@/react-app/domains/cloud/usage-limit-state"
 import { rejectedRecoveryFromMessage } from "@/react-app/domains/session/sync/rejected-turn"
 import { replyModelLabel, replyModelProvider } from "@/react-app/domains/session/sync/reply-model"
 import { ProviderIcon } from "@/react-app/design-system/provider-icon"
@@ -1081,7 +1083,7 @@ const MessageComponent = React.memo(
     if (isSessionErrorMessage(message)) {
       const presentation = sessionErrorPresentationFromUIMessage(message)
       if (presentation?.autoAccessWall) return <TranscriptAutoAccessNotice wall={presentation.autoAccessWall} />
-      return (
+      const errorMessage = (
         <ErrorMessage
           error={getMessagesText([message]) || "Session failed"}
           description={presentation?.description}
@@ -1094,6 +1096,8 @@ const MessageComponent = React.memo(
           changeModel={presentation !== null && ["provider-access-denied", "provider-unavailable", "provider-unreachable", "model-unavailable", "rate-limited", "conversation-too-long", "attachment-unsupported"].includes(presentation.kind)}
         />
       )
+      if (presentation?.openworkModelsLimit) return <TranscriptOpenWorkModelsLimit limit={presentation.openworkModelsLimit} fallback={errorMessage} />
+      return errorMessage
     }
 
     const backgroundShellNotice = backgroundShellNoticeFromMessage(message)
@@ -1123,6 +1127,13 @@ const MessageComponent = React.memo(
     )
   }
 )
+
+/** The organization used its OpenWork Models allowance: one usage-limit card when `usageLimitUpgrade` is on. */
+function TranscriptOpenWorkModelsLimit({ limit, fallback }: { limit: OpenWorkModelsLimit; fallback: React.ReactNode }) {
+  const { sessionId } = useMessageList()
+  if (!useUsageLimitUpgrade()) return fallback
+  return <div className="mx-auto w-full max-w-3xl px-2 py-2 md:px-10"><OpenWorkModelsLimitCard limit={limit} sessionId={sessionId} /></div>
+}
 
 function TranscriptAutoAccessNotice({ wall }: { wall: NonNullable<ReturnType<typeof messageAutoAccessWall>> }) {
   const { sessionId, workspaceId } = useMessageList()
@@ -1720,7 +1731,7 @@ function MessageGroup({
       {renderItems(proseItems, stepItems.length, collapseSteps || panelLive)}
       {lastTextMessage && !isStreaming && (
         <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 px-2 md:px-8">
-          <div className={cn("flex items-center gap-2 transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover/message-group:opacity-100 group-focus-within/message-group:opacity-100 max-lg:opacity-100 pointer-coarse:opacity-100", forkingMessageId && forkingMessageId === lastRealItem?.message.id ? "opacity-100" : "opacity-0")}>
+          <div className={cn("flex items-center gap-2 transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover/message-group:opacity-100 group-focus-within/message-group:opacity-100 pointer-coarse:opacity-100", forkingMessageId && forkingMessageId === lastRealItem?.message.id ? "opacity-100" : "opacity-0")}>
           <MessageActions data-testid="reply-actions" className="flex gap-0">
             <CopyMessageButton messages={renderableItems.map((item) => item.message)} />
             {lastRealItem ? (
@@ -1747,7 +1758,7 @@ function MessageGroup({
               not compounded opacity. Hidden actions retain their layout slot. */}
           {!isLiveGroup && resolvedReplyModel ? <span
             data-testid="reply-model"
-            className={cn("inline-flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground dark:text-foreground/70 transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover/message-group:opacity-100 group-focus-within/message-group:opacity-100 max-lg:opacity-100 pointer-coarse:opacity-100", isLastGroup ? "opacity-100" : "opacity-0")}
+            className="inline-flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground dark:text-foreground/70 opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover/message-group:opacity-100 group-focus-within/message-group:opacity-100 pointer-coarse:opacity-100"
           >
             <span className="sr-only">Replied with </span>
             <span aria-hidden="true" className="flex size-3 shrink-0 items-center justify-center">

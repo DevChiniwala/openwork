@@ -127,11 +127,12 @@ async function noVncRfbBanner(viewerUrl: string): Promise<string> {
 }
 
 async function waitForNoVnc(viewerUrl: string): Promise<void> {
-  const deadline = Date.now() + 45_000;
+  // Windows VMs answer noVNC through Daytona's proxy more slowly while the app's first launch is busy.
+  const deadline = Date.now() + 180_000;
   let last = "not attempted";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(viewerUrl, { signal: AbortSignal.timeout(5_000) });
+      const response = await fetch(viewerUrl, { signal: AbortSignal.timeout(20_000) });
       if (!response.ok) throw new Error(`viewer returned HTTP ${response.status}`);
       const banner = await noVncRfbBanner(viewerUrl);
       if (!banner.startsWith("RFB 003.")) throw new Error(`unexpected RFB banner ${JSON.stringify(banner)}`);
@@ -247,8 +248,13 @@ export async function bootDesktopPreview(stack: AsyncDisposableStack, place: Pla
       // Provisioning chatter belongs in the world log, not over the live step list.
       log: (line) => console.log(line),
     }));
-    await waitForNoVnc(windowsRelease.viewerUrl);
-    outputs.preview = secret(windowsRelease.viewerUrl, { group: "Preview", note: "Private Windows noVNC viewer; reveal only in your terminal" });
+    // windows-release.ts already proved the viewer page; the RFB WebSocket probe can lag on a busy
+    // first launch. Keep the VM (CDP is the automation path) and say so instead of deleting it.
+    const viewerNote = await waitForNoVnc(windowsRelease.viewerUrl).then(() => "", (error: unknown) => {
+      console.log(`==> Windows noVNC RFB probe failed; keeping the VM: ${error instanceof Error ? error.message : String(error)}`);
+      return " (RFB probe failed at launch; reload if blank)";
+    });
+    outputs.preview = secret(windowsRelease.viewerUrl, { group: "Preview", note: `Private Windows noVNC viewer; reveal only in your terminal${viewerNote}` });
     outputs.desktopSandbox = output(windowsRelease.sandbox, { group: "World" });
     if (windowsRelease.cdpUrl) outputs.cdp = secret(windowsRelease.cdpUrl, { group: "Services" });
     outputs.releaseVersion = output(windowsRelease.release.version, { group: "Release" });

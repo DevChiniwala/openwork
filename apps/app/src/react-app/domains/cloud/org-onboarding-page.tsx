@@ -40,12 +40,14 @@ import {
 import { denSettingsChangedEvent } from "@/app/lib/den-session-events";
 import { parseManualAuthInput } from "@/app/lib/manual-auth-input";
 import { clearOrgSelectionPending, readOrgSelectionPending } from "@/app/lib/den-sign-in-intent";
+import { completeSignInReturn } from "./sign-in-return";
 import { usePlatform } from "../../kernel/platform";
 import { useBootState } from "../../shell/boot-state";
 import { resolveModelDisplayName, resolveProviderDisplayName } from "@/app/utils";
 import { ProviderIcon } from "../../design-system/provider-icon";
 import { writeStoredDefaultModel } from "../../kernel/model-config";
 import { orgOnboardingVisibilityEvent } from "../../shell/reload-coordinator";
+import { setOrgOnboardingOnScreen } from "../../shell/org-onboarding-visibility";
 import {
   Page,
   PageBackground,
@@ -403,8 +405,10 @@ export function OrgOnboardingPage() {
     : undefined;
 
   useEffect(() => {
+    setOrgOnboardingOnScreen(true);
     window.dispatchEvent(new CustomEvent(orgOnboardingVisibilityEvent, { detail: { visible: true } }));
     return () => {
+      setOrgOnboardingOnScreen(false);
       window.dispatchEvent(new CustomEvent(orgOnboardingVisibilityEvent, { detail: { visible: false } }));
     };
   }, []);
@@ -436,6 +440,9 @@ export function OrgOnboardingPage() {
     queryKey: ["den-org-onboarding", settings.baseUrl, "orgs"],
     enabled: Boolean(authToken),
     refetchOnMount: "always",
+    // A request that timed out while the app was busy starting recovers by
+    // itself; Retry stays on screen meanwhile.
+    refetchInterval: (query) => (query.state.status === "error" ? 10_000 : false),
     queryFn: () => denClient.listOrgs(),
   });
   const orgs = data?.orgs ?? [];
@@ -652,7 +659,8 @@ export function ResourceSelectionPage({ autoContinue = false }: { autoContinue?:
         window.localStorage.setItem(RELOAD_AFTER_ONBOARDING_KEY, "1");
       } catch {}
     }
-    navigate("/session", { replace: true });
+    // A sign-in started from a conversation returns there (`desktopSignInReturn`).
+    if (!completeSignInReturn(navigate)) navigate("/session", { replace: true });
   }, [gatewayProviders, navigate, providers, selectedDefault]);
 
   const handleContinue = useCallback(async (optionsArg?: { requestReload?: boolean }) => {

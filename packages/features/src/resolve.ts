@@ -5,8 +5,9 @@
  *   1. not part of this deployment      → off    ("unavailable")
  *   2. kill switch                      → off    ("killed")      the revert, no deploy
  *   3. operator lock (DEN_FEATURE_*)    → as set ("lock")
- *   4. organization override (/admin)   → as set ("override")
- *   5. on or off for everyone (/admin)  → as set ("everyone")
+ *   4. member override (/admin)         → as set ("member")
+ *   5. organization override (/admin)   → as set ("override")
+ *   6. on or off for everyone (/admin)  → as set ("everyone")
  *
  * Pure functions with no I/O, safe in browsers.
  */
@@ -47,6 +48,25 @@ export const RETIRED_FEATURE_KEYS = [
   "teamMembershipCache", "teamPageTabs", "teamRoles", "workbot", "workbotLunaDefault",
   // Folded into managedDeployments (2026-10), which stays off: Google Cloud and agent tools follow it.
   "managedDeploymentsGcp", "managedDeploymentsMcp",
+  // Replaced by Settings › Diagnostics (2026-10): always on, the checks are advisory and never block work.
+  "serviceReadiness",
+  // Generally available (2026-10, fourth pass): always on, on cloud and self-hosted.
+  "cloudAgentGateway", "secureSecretFields", "slackAssistant", "workbotFirstRun", "workbotInlineConnect",
+  "headlessSessionIndex",
+  // Generally available (2026-10): durable step turns and per-chat cells are always on.
+  "headlessDurableTurns", "headlessSessionCells",
+  // Folded (2026-10): workbotGuidedNavigation → workbotWorkspaceAssistant,
+  // headlessStepTurns → headlessDurableTurns.
+  "workbotGuidedNavigation", "headlessStepTurns",
+  // Generally available (2026-10): automatic OpenCode v2 migration is not optional.
+  "engineV2Upgrade", "engineV2ForceUpgrade",
+  // Removed (2026-10): Workbot team settings links, remote session events, and the deprecated
+  // Models and Task analytics screens.
+  "workbotTeamLinks", "remoteSessionEvents", "modelsAnalyticsUi", "taskAnalyticsUi",
+  // Compact App errors are standard on v2; the separate offline indicator was removed.
+  "offlineRecovery",
+  // Folded into connectStandardTools (2026-10): one rollout for schemas and all supported clients.
+  "connectToolShapes", "desktopConnectStandardTools",
 ] as const
 
 export function isFeatureKey(value: string): value is FeatureKey {
@@ -107,9 +127,11 @@ export type FeatureContext = FeatureEnvironment & {
   rollouts: FeatureRollouts
   /** Stored overrides for the organization being resolved; empty when there is none (signed out). */
   overrides: FeatureOverrides
+  /** Overrides for the authenticated member, scoped to this organization. */
+  memberOverrides?: FeatureOverrides
 }
 
-export type FeatureSource = "unavailable" | "killed" | "lock" | "override" | "everyone"
+export type FeatureSource = "unavailable" | "killed" | "lock" | "override" | "member" | "everyone"
 
 export type ResolvedFeature = {
   key: FeatureKey
@@ -134,6 +156,8 @@ export function resolveFeature(key: FeatureKey, context: FeatureContext): Resolv
   }
   if (killed) return { ...base, enabled: false, source: "killed", overrideApplies: false }
   if (lock !== null) return { ...base, enabled: lock, source: "lock", overrideApplies: false }
+  const memberOverride = context.memberOverrides?.[key]
+  if (memberOverride !== undefined) return { ...base, enabled: memberOverride, source: "member", overrideApplies: true }
   if (override !== null) return { ...base, enabled: override, source: "override", overrideApplies: true }
   return { ...base, enabled: everyone, source: "everyone", overrideApplies: true }
 }

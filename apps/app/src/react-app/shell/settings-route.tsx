@@ -1845,7 +1845,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const restartExtensionLocalServer = useCallback(async () => {
     if (!isDesktopRuntime()) return false;
     try {
-      await openworkServerRestart();
+      await openworkServerRestart({ diagnosticsCause: "settings" });
       await openworkServerStore.reconnectOpenworkServer();
       await refreshRouteState();
       return true;

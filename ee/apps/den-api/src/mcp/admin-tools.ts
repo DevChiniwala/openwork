@@ -14,6 +14,7 @@ import { FEATURE_KEYS, featureAvailableOn, featureDefinition, featureKeySchema, 
 import { updateOrganizationMetadata } from "../organization-metadata.js"
 import { runPlatformAdminPlatformAction, runPlatformAdminServiceAction, type PlatformAdminAuditActor } from "../audit/mcp-service-audit.js"
 import { readWorkbotAdoptionReport, workbotAdoptionInputSchema } from "../workbot/adoption-report.js"
+import { isDatabaseTimeLimitError, withDatabaseTimeLimit } from "./admin-query-limit.js"
 
 /**
  * den-admin MCP toolset: read-only Den analytics for allowlisted platform
@@ -27,11 +28,15 @@ import { readWorkbotAdoptionReport, workbotAdoptionInputSchema } from "../workbo
  * Hardening: every statement goes through the shared read-only guard, raw
  * `den_query` results are row-capped, and all queries race a wall-clock
  * timeout so one expensive SELECT cannot pin an API worker indefinitely.
+ * Raw `den_query` SELECTs also carry the limit to the database, which stops
+ * the statement itself (admin-query-limit.ts).
  */
 
 export const DEN_ADMIN_MCP_VERSION = "0.8.0"
 
 const QUERY_TIMEOUT_MS = 15_000
+// Slightly under Den's own timer, so the database stops the statement first.
+const DATABASE_TIME_LIMIT_MS = QUERY_TIMEOUT_MS - 1_000
 const DEFAULT_ROW_LIMIT = 200
 const MAX_ROW_LIMIT = 1000
 
@@ -869,7 +874,10 @@ export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAud
     async ({ sql: sqlText, limit }) =>
       run(async () => {
         const safe = applyDefaultRowLimit(assertReadOnlySql(sqlText), limit)
-        const result = await rows(sql.raw(safe.sql))
+        const result = await rows(sql.raw(withDatabaseTimeLimit(safe.sql, DATABASE_TIME_LIMIT_MS))).catch((error: unknown) => {
+          if (!isDatabaseTimeLimitError(error)) throw error
+          throw new Error(`The database stopped this query at its ${DATABASE_TIME_LIMIT_MS}ms time limit. Narrow it with indexed filters such as org_id or a created_at range.`)
+        })
         const capped = result.slice(0, MAX_ROW_LIMIT)
         return {
           rowCount: capped.length,

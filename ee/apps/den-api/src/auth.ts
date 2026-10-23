@@ -2,7 +2,17 @@ import * as crypto from "node:crypto";
 import { recordFreeAutoSignIn } from "@openwork-ee/den-db";
 import { readOrganizationMetadata } from "@openwork/types/den/managed-models-policy";
 import { invalidateTeamInferenceOAuth, revokeMemberGatewayCredentials } from "./llm/inference-provider-lifecycle.js";
-import { ensureMemberGatewayKey } from "./gateway-keys.js";
+import { runPostOrganizationMemberChangeHooks } from "./organization-member-hooks.js";
+import {
+  finishScimProvisionedMember,
+  organizationAllowsProvisioning,
+  provisionSsoMembership,
+  provisionVerifiedDomainMembership,
+  SCIM_ENTERPRISE_REQUIRED_MESSAGE,
+  scimRequestOrganizationId,
+  SSO_INVITATION_REQUIRED_MESSAGE,
+} from "./identity-provisioning.js";
+import { syncOrganizationBillingQuantities } from "./stripe-billing.js";
 import { getInitialActiveOrganizationIdForUser } from "./active-organization.js";
 import { db } from "./db.js";
 import { resolveOrganizationMemberAuthority } from "./organization-team-roles.js";
@@ -45,6 +55,7 @@ import { isCimdClientIdUrlAllowed } from "./mcp/cimd-policy.js";
 import { withLoopbackRedirectRelaxation } from "./mcp/cimd-loopback-redirects.js";
 import { syncDenSignupContact } from "./loops.js";
 import { sendEmail } from "./utils/email/send-email.js";
+import { organizationInviteEmailProps } from "./invitation-email.js";
 import {
   DEN_API_KEY_DEFAULT_PREFIX,
   DEN_API_KEY_EXPIRES_IN_DAYS,
@@ -69,10 +80,6 @@ import {
   organizationRoleValueIncludes,
   splitOrganizationRoles,
 } from "./organization-role-hierarchy.js";
-import {
-  getOrganizationSsoJitRole,
-  ORGANIZATION_SSO_JIT_ROLE,
-} from "./sso-jit.js";
 import { isScimDeprovisionedEmailForSsoProvider, isScimDeprovisionedIdentity, SCIM_DEPROVISIONED_SIGN_IN_MESSAGE } from "./scim-deprovisioning.js";
 import {
   ORGANIZATION_SAML_ALLOW_IDP_INITIATED,
@@ -120,6 +127,8 @@ import {
   takeDeviceSessionOrganization,
 } from "./device-authorization.js";
 import { WORKBOT_OAUTH_CLIENT_ID } from "./workbot/config.js";
+import { DEN_LIMITED_BETTER_AUTH_PATHS } from "./auth-rate-limits.js";
+import { CLIENT_IP_IPV6_SUBNET, RESOLVED_CLIENT_IP_HEADER } from "./client-ip.js";
 import { ensureWorkbotOAuthClient } from "./workbot/oauth-client.js";
 
 const logger = appLogger.child({ component: "auth" });
@@ -855,10 +864,17 @@ export const auth = betterAuth({
     },
     member: {
       create: {
+        // Members Better Auth creates through its internal adapter (e.g. the
+        // organization plugin) join like any other member: billing follows the
+        // new user count and the member gets a gateway key. After-hooks run
+        // once the creating transaction has committed. SCIM and SSO write
+        // through the raw adapter instead; see identity-provisioning.ts.
         after: async (member: AuthMemberHookRow) => {
-          if (member.userId && !member.removedAt) await ensureMemberGatewayKey({
+          if (member.removedAt) return;
+          await runPostOrganizationMemberChangeHooks({
             organizationId: normalizeDenTypeId("organization", member.organizationId),
             memberId: normalizeDenTypeId("member", member.id),
+            change: "added",
           });
         },
       },
@@ -888,10 +904,14 @@ export const auth = betterAuth({
           });
         },
         after: async (member: AuthMemberHookRow) => {
+          const organizationId = normalizeDenTypeId("organization", member.organizationId);
           await revokeMemberGatewayCredentials({
-            organizationId: normalizeDenTypeId("organization", member.organizationId),
+            organizationId,
             memberId: normalizeDenTypeId("member", member.id),
           });
+          // One fewer user: billing follows the lower count.
+          await cache.org.deleteMembers(organizationId);
+          await syncOrganizationBillingQuantities({ organizationId });
         },
       },
     },
@@ -963,6 +983,14 @@ export const auth = betterAuth({
       }
 
       await assertLiveMcpSessionForRefreshGrant(ctx);
+
+      // SCIM adds people without an invitation: Enterprise only.
+      if (ctx.path === "/scim/v2/Users" && ctx.request?.method === "POST") {
+        const organizationId = await scimRequestOrganizationId(ctx.headers?.get("authorization"));
+        if (organizationId && !await organizationAllowsProvisioning(organizationId, "scim")) {
+          throw new APIError("FORBIDDEN", { message: SCIM_ENTERPRISE_REQUIRED_MESSAGE });
+        }
+      }
 
       if (ctx.path === "/oauth2/authorize") {
         const clientId = maybeString(ctx.query?.client_id);
@@ -1196,6 +1224,17 @@ export const auth = betterAuth({
         return;
       }
 
+      // A SCIM-created member joins like any other: billing follows the new
+      // user count and the member gets a gateway key.
+      if (ctx.path === "/scim/v2/Users" && ctx.request?.method === "POST") {
+        const createdUserId = readStringProperty(ctx.context.returned, "id");
+        const organizationId = await scimRequestOrganizationId(ctx.headers?.get("authorization"));
+        if (createdUserId && organizationId) {
+          await finishScimProvisionedMember({ organizationId, userId: normalizeDenTypeId("user", createdUserId) });
+        }
+        return;
+      }
+
       if (ctx.path === "/organization/leave") {
         const member = removedMemberIdentity(ctx.context.returned);
         if (member) {
@@ -1243,6 +1282,15 @@ export const auth = betterAuth({
 
       const requirement = await findEnterpriseAuthRequirementForUserId(newSession.user.id);
       if (!requirement) {
+        // Signing in (e.g. with Google) with a verified email on an
+        // organization's verified SSO domain joins it on the Team plan and up;
+        // Free organizations use invitations. Only after the enterprise sign-in
+        // requirement passed, so a refused sign-in never grants membership.
+        await provisionVerifiedDomainMembership({
+          userId: normalizeDenTypeId("user", newSession.user.id),
+          email: newSession.user.email,
+          emailVerified: newSession.user.emailVerified === true,
+        });
         return;
       }
 
@@ -1267,10 +1315,11 @@ export const auth = betterAuth({
         },
       }
       : {}),
+    // Den resolves the client address once (request-client-ip.ts) and hands
+    // it over in this header, so Better Auth and Den's own limits agree.
     ipAddress: {
-      ipAddressHeaders: ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"],
-      trustedProxies: env.trustedProxies,
-      ipv6Subnet: 64,
+      ipAddressHeaders: [RESOLVED_CLIENT_IP_HEADER],
+      ipv6Subnet: CLIENT_IP_IPV6_SUBNET,
     },
     database: {
       generateId: (options) => {
@@ -1347,26 +1396,15 @@ export const auth = betterAuth({
     window: 60,
     max: 20,
     customRules: {
-      "/sign-in/email": {
-        window: 300,
-        max: 5,
-      },
-      "/sign-up/email": {
-        window: 3600,
-        max: env.devMode ? 100 : 5,
-      },
-      "/email-otp/send-verification-otp": {
-        window: 3600,
-        max: 5,
-      },
-      "/email-otp/verify-email": {
-        window: 300,
-        max: 10,
-      },
+      // Limited per email, per invitation and per address in
+      // auth-rate-limits.ts; an address-only limit here would make everyone
+      // behind one office router share a handful of sign-ups.
+      ...Object.fromEntries(DEN_LIMITED_BETTER_AUTH_PATHS.map((path) => [path, false] as const)),
       "/oauth2/token": false,
-      "/request-password-reset": {
-        window: 3600,
-        max: 5,
+      // Read on every page load and session check; one office shares an address.
+      "/get-session": {
+        window: 60,
+        max: 120,
       },
     },
   },
@@ -1428,13 +1466,14 @@ export const auth = betterAuth({
         await sendEmail({
           to: data.email,
           template: "organizationInvite",
-          props: {
+          props: organizationInviteEmailProps({
             inviteLink: buildInvitationLink(data.id),
-            invitedByName: data.inviter.user.name ?? data.inviter.user.email,
-            invitedByEmail: data.inviter.user.email,
+            inviterName: data.inviter.user.name,
+            inviterEmail: data.inviter.user.email,
+            inviteeEmail: data.email,
             organizationName: data.organization.name,
             role: data.role,
-          },
+          }),
         });
       },
       organizationHooks: {
@@ -1749,10 +1788,11 @@ export const auth = betterAuth({
         enabled: true,
         tokenPrefix: SSO_DOMAIN_VERIFICATION_TOKEN_PREFIX,
       },
+      // Den provisions SSO members itself (provisionUser below and the
+      // /callback/:id hook): Better Auth writes member rows through the raw
+      // adapter, skipping billing, and would add people to any plan.
       organizationProvisioning: {
-        disabled: false,
-        defaultRole: ORGANIZATION_SSO_JIT_ROLE,
-        getRole: getOrganizationSsoJitRole,
+        disabled: true,
       },
       saml: {
         enableInResponseToValidation: true,
@@ -1809,6 +1849,12 @@ export const auth = betterAuth({
               lastSsoLoginAt: payload.lastSsoLoginAt,
             },
           });
+
+        // Invited people join on any plan; automatic sign-up needs the Team plan.
+        const membership = await provisionSsoMembership({ organizationId, userId, email });
+        if (membership === "invitation_required") {
+          throw new APIError("FORBIDDEN", { message: SSO_INVITATION_REQUIRED_MESSAGE });
+        }
       },
     }),
     // RFC 8628 device authorization for `openwork-bootstrap login` and the

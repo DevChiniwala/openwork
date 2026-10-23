@@ -188,7 +188,7 @@ export const orgAuditCoverage: Readonly<Record<string, AuditCoverageDeclaration>
   "mcp-connections.ts": routes("MCP connection administration and OAuth."),
   "members.ts": bridged(["organization.member.role_updated", "organization.member.ownership_transferred", "organization.member.removed"], ["member", "api_key"], ["api_key.revoked"]),
   "microsoft-365.ts": routes("Microsoft 365 connections and external operations."),
-  "models-analytics.ts": routes("Model analytics reads and exports."),
+  "models-analytics.ts": routes("Task analytics event ingestion from the desktop app."),
   "oauth-providers.ts": routes("OAuth provider configuration and authorization lifecycle."),
   "permissions.ts": bridged(["organization.permission_set.created", "organization.permission_set.permissions_changed", "organization.permission_set.archived", "organization.permission_set.renamed", "organization.permission_set.teams_changed"], ["permission_set", "team"]),
   "plugin-system/": routes("Plugin/marketplace configuration, permissions, versions and imports, including nested modules."),

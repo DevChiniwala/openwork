@@ -1,6 +1,6 @@
 import { freeInferenceDigest } from "@openwork-ee/utils/free-inference-digest"
 import { and, eq, isNotNull, isNull } from "@openwork-ee/den-db/drizzle"
-import { InferenceKeyTable, MemberTable, OrganizationTable, readDesktopPolicyForOrgMember } from "@openwork-ee/den-db"
+import { InferenceKeyTable, MemberTable, OrganizationTable, readDesktopPolicyForOrgMember, readOrganizationBenefits } from "@openwork-ee/den-db"
 import { assertManagedModelsAllowed } from "@openwork/types/den/managed-models-policy"
 import { freeInferenceDefaultPinned, freeInferenceOrganizationAllowed } from "@openwork/types/den/inference"
 import { db, freeAutoDatabase } from "../../db.js"
@@ -47,7 +47,8 @@ function freeOrganization(metadata: Record<string, unknown> | null) {
 
 async function freePolicyAllowed(identity: Pick<MemberPrincipal, "memberId" | "organizationId">, database: Database) {
   const policy = await readDesktopPolicyForOrgMember(database, { organizationId: identity.organizationId, orgMemberId: identity.memberId })
-  return policy.allowZenModel !== false
+  if (policy.allowZenModel === false) return false
+  return (await readOrganizationBenefits(database, identity.organizationId)).settings.freeAuto !== "disabled"
 }
 
 export async function findMemberFreePrincipal(key: Pick<InferenceKeyRow, "id" | "org_membership_id" | "organization_id">, database: Database = freeAutoDatabase()): Promise<MemberPrincipal | null> {

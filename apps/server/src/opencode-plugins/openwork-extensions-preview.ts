@@ -45,6 +45,18 @@ import {
   type ConnectSkillDescriptor,
   type EngineMcpDescriptor,
 } from "./openwork-provider-adapters.js";
+import {
+  createSessionGroup,
+  listSessionGroups,
+  moveSessionToGroup,
+  removeSessionGroup,
+  SESSION_GROUP_AFFORDANCE_IDS,
+  sessionGroupCreateArgsSchema,
+  sessionGroupListArgsSchema,
+  sessionGroupMoveArgsSchema,
+  sessionGroupRemoveArgsSchema,
+  type SessionGroupHost,
+} from "./openwork-session-groups.js";
 
 type ExtensionActionPayload = {
   extensionId: string;
@@ -397,8 +409,10 @@ async function readOpenworkAgentContext(
       contributions,
     };
   }
+  // The server runs session groups itself, so the renderer's copies of those
+  // ids (only present while a window is open) are not advertised twice.
   const uiAffordances = Array.isArray(uiContext.availableAffordances)
-    ? uiContext.availableAffordances
+    ? uiContext.availableAffordances.filter((item: unknown) => !(isRecord(item) && SESSION_GROUP_AFFORDANCE_IDS.includes(String(item.id))))
     : [];
   return {
     ok: true,
@@ -423,6 +437,13 @@ async function queryOpenworkAffordance(rawArgs: unknown): Promise<unknown> {
     return affordanceResult(
       request.id,
       await readOpenWorkSession(request.args ?? {}),
+      affordanceReadEffects,
+    );
+  }
+  if (request.id === "session.group.list") {
+    return affordanceResult(
+      request.id,
+      await runSessionGroupAffordance(request.id, request.args ?? {}, {}),
       affordanceReadEffects,
     );
   }
@@ -465,6 +486,13 @@ async function executeOpenworkAffordance(
       request.id,
       sent,
       sent.ok && sent.revealed === true ? affordanceWriteNavigateEffects : affordanceWriteEffects,
+    );
+  }
+  if ((SESSION_GROUP_AFFORDANCE_IDS as readonly string[]).includes(request.id)) {
+    return affordanceResult(
+      request.id,
+      await runSessionGroupAffordance(request.id, request.args ?? {}, context),
+      request.id === "session.group.list" ? affordanceReadEffects : affordanceWriteEffects,
     );
   }
   if (request.id === "automation.propose") {
@@ -1027,6 +1055,90 @@ async function locateOpenWorkSession(
     }
   }
   return { error: `Session ${sessionId} was not found in matching OpenWork workspaces` };
+}
+
+async function serverSend(method: "POST" | "PATCH" | "DELETE", path: string, body?: Record<string, unknown>): Promise<unknown> {
+  const transport = openworkReadTransport.getStore();
+  if (transport) {
+    if (!transport.send) throw new Error("OpenWork changes are not available here");
+    return transport.send(method, path, body);
+  }
+  const { url, token } = requireOpenWorkServer();
+  const response = await fetch(url + path, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const payload = await parseResponse(response);
+  if (!response.ok) throw new Error(errorMessage(payload, "OpenWork server request failed"));
+  return payload;
+}
+
+/** Root sessions on every engine; null unless each list was read in full. */
+async function liveWorkspaceSessions(workspace: OpenWorkWorkspace): Promise<Map<string, string> | null> {
+  try {
+    const lists = await Promise.all(engineReaders().map((reader) => listWorkspaceSessions(reader, workspace, SESSION_SEARCH_TITLE_LIST_LIMIT)));
+    if (lists.some((list) => list.length >= SESSION_SEARCH_TITLE_LIST_LIMIT)) return null;
+    return new Map(lists.flat().map((session) => [session.id, sessionTitle(session)]));
+  } catch {
+    return null;
+  }
+}
+
+function sessionGroupHost(workspace: OpenWorkWorkspace): SessionGroupHost {
+  return { get: serverGet, send: serverSend, liveSessions: () => liveWorkspaceSessions(workspace) };
+}
+
+/** Explicit workspace, else the workspace owning the named or calling session, else the only one. */
+async function resolveSessionGroupWorkspace(
+  workspaceId: string | undefined,
+  sessionId: string | undefined,
+  context: OpenCodeContext,
+): Promise<OpenWorkWorkspace | { error: string }> {
+  if (workspaceId) {
+    const match = filterWorkspaces(await listOpenWorkWorkspaces(), workspaceId).at(0);
+    return match ?? { error: `No workspace matched ${workspaceId}` };
+  }
+  const owner = sessionId ?? context.sessionID;
+  if (owner) {
+    const located = await locateOpenWorkSession(owner, undefined);
+    if (!("error" in located)) return located.workspace;
+    if (sessionId) return located;
+  }
+  try {
+    return await resolveContextWorkspace(undefined, context);
+  } catch (error) {
+    return { error: unknownErrorMessage(error) };
+  }
+}
+
+async function runSessionGroupAffordance(id: string, rawArgs: unknown, context: OpenCodeContext): Promise<object> {
+  if (id === "session.group.list") {
+    const parsed = sessionGroupListArgsSchema.safeParse(rawArgs);
+    if (!parsed.success) return sessionArgumentError(parsed.error, rawArgs);
+    const workspace = await resolveSessionGroupWorkspace(parsed.data.workspaceId, undefined, context);
+    if ("error" in workspace) return { ok: false, error: workspace.error };
+    return { ...(await listSessionGroups(sessionGroupHost(workspace), workspace.id)), workspace: workspaceLabel(workspace) };
+  }
+  if (id === "session.group.create") {
+    const parsed = sessionGroupCreateArgsSchema.safeParse(rawArgs);
+    if (!parsed.success) return sessionArgumentError(parsed.error, rawArgs);
+    const workspace = await resolveSessionGroupWorkspace(parsed.data.workspaceId, undefined, context);
+    if ("error" in workspace) return { ok: false, error: workspace.error };
+    return createSessionGroup(sessionGroupHost(workspace), workspace.id, parsed.data.label);
+  }
+  if (id === "session.group.move") {
+    const parsed = sessionGroupMoveArgsSchema.safeParse(rawArgs);
+    if (!parsed.success) return sessionArgumentError(parsed.error, rawArgs);
+    const workspace = await resolveSessionGroupWorkspace(parsed.data.workspaceId, parsed.data.sessionId, context);
+    if ("error" in workspace) return { ok: false, error: workspace.error };
+    return moveSessionToGroup(sessionGroupHost(workspace), workspace.id, parsed.data.sessionId, parsed.data.groupId);
+  }
+  const parsed = sessionGroupRemoveArgsSchema.safeParse(rawArgs);
+  if (!parsed.success) return sessionArgumentError(parsed.error, rawArgs);
+  const workspace = await resolveSessionGroupWorkspace(parsed.data.workspaceId, undefined, context);
+  if ("error" in workspace) return { ok: false, error: workspace.error };
+  return removeSessionGroup(sessionGroupHost(workspace), workspace.id, parsed.data.groupId, parsed.data.destinationGroupId);
 }
 
 let lastSendMessageStamp = 0;

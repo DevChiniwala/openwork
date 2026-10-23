@@ -25,7 +25,7 @@ test("without stored state, every feature follows its registry default", () => {
 })
 
 test("precedence: unavailable, kill switch, lock, override, everyone", () => {
-  const key = "secureSecretFields"
+  const key = "liveProviderSync"
   assert.equal(resolveFeature(key, { ...base, rollouts: { [key]: { enabled: true, killed: false } } }).enabled, true)
   const overridden = resolveFeature(key, { ...base, overrides: { [key]: true } })
   assert.equal(overridden.enabled, true)
@@ -38,7 +38,7 @@ test("precedence: unavailable, kill switch, lock, override, everyone", () => {
 })
 
 test("an organization override can turn a feature off while it is on for everyone", () => {
-  const key = "remoteSessionEvents"
+  const key = "liveProviderSync"
   const resolved = resolveFeature(key, { ...base, rollouts: { [key]: { enabled: true, killed: false } }, overrides: { [key]: false } })
   assert.equal(resolved.everyone, true)
   assert.equal(resolved.enabled, false)
@@ -91,11 +91,33 @@ test("retired GA locks cannot disable models, skills, permissions or team member
   assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
 })
 
+test("automatic v2 migration has no feature key and ignores legacy opt-out locks", () => {
+  for (const key of ["engineV2Upgrade", "engineV2ForceUpgrade"]) {
+    assert.equal(featureKeySchema.safeParse(key).success, false)
+    assert.equal(Object.hasOwn(resolveFeatures(base), key), false)
+  }
+  const parsed = parseFeatureEnvironment({
+    DEN_FEATURE_ENGINE_V2_UPGRADE: "false",
+    DEN_FEATURE_ENGINE_V2_FORCE_UPGRADE: "false",
+  })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, 2)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+})
+
+test("service readiness is retired: no key, and an old operator lock is ignored with a warning", () => {
+  assert.equal(featureKeySchema.safeParse("serviceReadiness").success, false)
+  const parsed = parseFeatureEnvironment({ DEN_FEATURE_SERVICE_READINESS: "false" })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, 1)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+})
+
 test("every key maps to a unique DEN_FEATURE_ name", () => {
   const names = FEATURE_KEYS.map(featureLockEnvName)
   for (const name of names) assert.match(name, /^DEN_FEATURE_[A-Z0-9]+(?:_[A-Z0-9]+)*$/)
   assert.equal(new Set(names).size, names.length)
-  assert.equal(featureLockEnvName("remoteSessionEvents"), "DEN_FEATURE_REMOTE_SESSION_EVENTS")
+  assert.equal(featureLockEnvName("liveProviderSync"), "DEN_FEATURE_LIVE_PROVIDER_SYNC")
 })
 
 test("environment: self_hosted by default, strict values, unknown keys warn", () => {
@@ -106,17 +128,91 @@ test("environment: self_hosted by default, strict values, unknown keys warn", ()
 
   const parsed = parseFeatureEnvironment({
     DEN_DEPLOYMENT: "cloud",
-    DEN_FEATURE_REMOTE_SESSION_EVENTS: "true",
-    DEN_FEATURE_SECURE_SECRET_FIELDS: "false",
+    DEN_FEATURE_WORKBOT_DOCUMENTS: "true",
+    DEN_FEATURE_LIVE_PROVIDER_SYNC: "false",
     DEN_FEATURE_WORKBOT: "false",
     DEN_FEATURE_PERMISSIONS: "false",
     DEN_FEATURE_ORG_MANAGED_DASHBOARDS: "",
     DEN_FEATURE_NOT_A_THING: "true",
   })
   assert.equal(parsed.deployment, "cloud")
-  assert.deepEqual(parsed.locks, { remoteSessionEvents: true, secureSecretFields: false })
+  assert.deepEqual(parsed.locks, { workbotDocuments: true, liveProviderSync: false })
   assert.deepEqual(parsed.problems.map((problem) => [problem.variable, problem.fatal]), [["DEN_FEATURE_WORKBOT", false], ["DEN_FEATURE_PERMISSIONS", false], ["DEN_FEATURE_NOT_A_THING", false]])
 
-  const fatal = parseFeatureEnvironment({ DEN_DEPLOYMENT: "prod", DEN_FEATURE_REMOTE_SESSION_EVENTS: "yes" })
-  assert.deepEqual(fatal.problems.map((problem) => [problem.variable, problem.fatal]), [["DEN_DEPLOYMENT", true], ["DEN_FEATURE_REMOTE_SESSION_EVENTS", true]])
+  const fatal = parseFeatureEnvironment({ DEN_DEPLOYMENT: "prod", DEN_FEATURE_LIVE_PROVIDER_SYNC: "yes" })
+  assert.deepEqual(fatal.problems.map((problem) => [problem.variable, problem.fatal]), [["DEN_DEPLOYMENT", true], ["DEN_FEATURE_LIVE_PROVIDER_SYNC", true]])
+})
+
+test("connection presentation is retired and old operator locks are ignored", () => {
+  assert.equal(featureKeySchema.safeParse("offlineRecovery").success, false)
+  for (const value of ["true", "false"]) {
+    const parsed = parseFeatureEnvironment({ DEN_FEATURE_OFFLINE_RECOVERY: value })
+    assert.deepEqual(parsed.locks, {})
+    assert.equal(parsed.problems.length, 1)
+    assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+  }
+})
+
+test("fourth pass: graduated, folded and removed keys are retired and their old locks are ignored", () => {
+  for (const key of ["cloudAgentGateway", "secureSecretFields", "slackAssistant", "workbotFirstRun", "workbotInlineConnect", "headlessSessionIndex", "workbotGuidedNavigation", "engineV2Upgrade", "headlessStepTurns", "workbotTeamLinks", "remoteSessionEvents", "modelsAnalyticsUi", "taskAnalyticsUi"]) {
+    assert.equal(featureKeySchema.safeParse(key).success, false, `${key} is retired`)
+  }
+  const parsed = parseFeatureEnvironment({ DEN_FEATURE_SLACK_ASSISTANT: "false", DEN_FEATURE_HEADLESS_STEP_TURNS: "true", DEN_FEATURE_REMOTE_SESSION_EVENTS: "true" })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, 3)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+})
+
+
+test("retired headless GA locks cannot disable durable turns or session cells", () => {
+  const parsed = parseFeatureEnvironment({
+    DEN_FEATURE_HEADLESS_DURABLE_TURNS: "false",
+    DEN_FEATURE_HEADLESS_SESSION_CELLS: "false",
+  })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, 2)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+  for (const key of ["headlessDurableTurns", "headlessSessionCells"]) {
+    assert.equal(featureKeySchema.safeParse(key).success, false)
+    assert.equal(Object.hasOwn(resolveFeatures(base), key), false)
+  }
+})
+
+
+test("Connect has one opt-in rollout; retired switches cannot override it", () => {
+  assert.equal(FEATURES.connectStandardTools.default, false)
+  assert.equal(resolveFeature("connectStandardTools", base).enabled, false)
+  for (const key of ["connectToolShapes", "desktopConnectStandardTools"]) {
+    assert.equal(featureKeySchema.safeParse(key).success, false)
+    assert.equal(Object.hasOwn(resolveFeatures(base), key), false)
+  }
+  const parsed = parseFeatureEnvironment({
+    DEN_FEATURE_CONNECT_TOOL_SHAPES: "true",
+    DEN_FEATURE_DESKTOP_CONNECT_STANDARD_TOOLS: "true",
+    DEN_FEATURE_CONNECT_STANDARD_TOOLS: "false",
+  })
+  assert.deepEqual(parsed.locks, { connectStandardTools: false })
+  assert.equal(parsed.problems.length, 2)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+})
+
+test("member overrides inherit by default and take priority over organization and everyone", () => {
+  const key = "liveProviderSync"
+  const context: FeatureContext = { ...base, overrides: { [key]: false }, memberOverrides: { [key]: true } }
+  assert.equal(resolveFeature(key, context).enabled, true)
+  assert.equal(resolveFeature(key, context).source, "member")
+  assert.equal(resolveFeature(key, { ...context, memberOverrides: {} }).enabled, false)
+  assert.equal(resolveFeature(key, { ...base, overrides: { [key]: true }, memberOverrides: { [key]: false } }).enabled, false)
+  // Other features and organization-only reads are unaffected.
+  assert.equal(resolveFeature(key, { ...base, overrides: context.overrides }).enabled, false)
+  assert.equal(resolveFeature("managedDeployments", context).enabled, false)
+})
+
+test("member overrides cannot bypass deployment restrictions, operator locks or the kill switch", () => {
+  const key = "liveProviderSync"
+  const context: FeatureContext = { ...base, memberOverrides: { [key]: true } }
+  assert.equal(resolveFeature(key, { ...context, locks: { [key]: false } }).source, "lock")
+  assert.equal(resolveFeature(key, { ...context, locks: { [key]: false } }).enabled, false)
+  assert.equal(resolveFeature(key, { ...context, rollouts: { [key]: { enabled: true, killed: true } } }).enabled, false)
+  assert.equal(resolveFeature("managedDeployments", { ...base, deployment: "self_hosted", memberOverrides: { managedDeployments: true } }).enabled, false)
 })

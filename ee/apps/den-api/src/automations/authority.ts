@@ -12,6 +12,7 @@ import { INFERENCE_MODEL_ALIASES } from "@openwork/types/den/inference"
 import { db } from "../db.js"
 import { organizationAllowsManagedModels } from "../inference.js"
 import { calculateDesktopPolicyForOrgMember } from "../desktop-policies.js"
+import { organizationFeatureEnabled } from "../features.js"
 
 type ProviderId = typeof LlmProviderTable.$inferSelect.id
 type MemberId = typeof MemberTable.$inferSelect.id
@@ -124,6 +125,9 @@ const databaseAuthorityStore: AutomationModelAuthorityStore = {
   },
 
   async allowsZenModel(input) {
+    // The removeOpencodeZen rollout retires Zen for Automations too; affected
+    // ones ask their owner to choose another model (model_access_lost).
+    if (await organizationFeatureEnabled(input.organizationId, "removeOpencodeZen")) return false
     const policy = await calculateDesktopPolicyForOrgMember({
       organizationId: normalizeDenTypeId("organization", input.organizationId),
       orgMemberId: normalizeDenTypeId("member", input.ownerMemberId),

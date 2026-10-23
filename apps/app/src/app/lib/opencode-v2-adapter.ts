@@ -257,6 +257,8 @@ export type V2MappedMessage = {
     modelID?: string;
     providerID?: string;
     resolvedModel?: { id: string; providerID?: string; name?: string };
+    tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } };
+    cost?: number;
   };
   parts: Part[];
 };
@@ -840,6 +842,23 @@ function mapV2ReplyModel(value: Record<string, unknown>) {
   };
 }
 
+function mapV2ReplyUsage(value: Record<string, unknown>) {
+  const tokens = readRecord(value, "tokens");
+  const cache = readRecord(tokens, "cache");
+  const number = (record: unknown, key: string) => {
+    const result = readNumber(record, key);
+    return result !== undefined && Number.isFinite(result) && result >= 0 ? result : undefined;
+  };
+  const cost = number(value, "cost");
+  // Preserve missing counters as unknown. A missing measurement is not zero.
+  return {
+    ...(tokens ? { tokens: { input: number(tokens, "input"), output: number(tokens, "output"),
+      reasoning: number(tokens, "reasoning"), ...(cache ? { cache: { read: number(cache, "read"), write: number(cache, "write") } } : {}),
+    } } : {}),
+    ...(cost === undefined ? {} : { cost }),
+  };
+}
+
 /**
  * A native user turn stores the whole prompt string. Return the parts v1 keeps
  * for the same send: the words, pasted text marked as pasted, and hidden
@@ -928,6 +947,7 @@ function mapV2Message(
         ...(completed === undefined ? {} : { completed }),
       },
       ...(role === "assistant" ? mapV2ReplyModel(value) : {}),
+      ...(role === "assistant" ? mapV2ReplyUsage(value) : {}),
       ...(role === "assistant" && error
         ? { error: mapV2SessionError(error) }
         : {}),
@@ -2117,6 +2137,50 @@ export function mapV2McpStatuses(payload: unknown): McpStatusMap | null {
   return statuses;
 }
 
+type SessionCommandParameters = SessionParameters & {
+  command: string;
+  arguments: string;
+  messageID?: string;
+  agent?: string;
+  model?: string;
+  variant?: string;
+};
+
+/** v1 passes a command's model as `provider/model`; model IDs may contain `/`. */
+function parseCommandModel(value: string | undefined): { providerID: string; modelID: string } | null {
+  const separator = value?.indexOf("/") ?? -1;
+  if (!value || separator <= 0 || separator === value.length - 1) return null;
+  return { providerID: value.slice(0, separator), modelID: value.slice(separator + 1) };
+}
+
+export type V2CommandListItem = {
+  name: string;
+  description?: string;
+  source: "command" | "skill";
+};
+
+/**
+ * Native commands first, then workspace skills under their folder name (the
+ * ID promptAsync resolves). A command wins a name clash, as it does in v1.
+ * Cloud skills stay out: the composer lists those from Connect.
+ */
+export function mergeV2CommandCatalog(commands: readonly unknown[], skills: readonly unknown[]): V2CommandListItem[] {
+  const items: V2CommandListItem[] = [];
+  const names = new Set<string>();
+  const add = (name: string | undefined, description: string | undefined, source: V2CommandListItem["source"]) => {
+    if (!name || names.has(name)) return;
+    names.add(name);
+    items.push({ name, ...(description ? { description } : {}), source });
+  };
+  for (const command of commands) add(readString(command, "name"), readString(command, "description"), "command");
+  for (const skill of skills) {
+    const id = readString(skill, "id");
+    if (id?.startsWith("openwork-cloud-")) continue;
+    add(id, readString(skill, "description"), "skill");
+  }
+  return items;
+}
+
 function localResult<T>(baseUrl: string, path: string, data: T): FieldsResult<T> {
   return {
     data,
@@ -2726,7 +2790,62 @@ export function createClientV2(
     },
     summarize: async (): Promise<FieldsResult<boolean>> => unsupportedResult(baseUrl, "session.summarize"),
     shell: async (): Promise<FieldsResult<Record<string, never>>> => unsupportedResult(baseUrl, "session.shell"),
-    command: async (): Promise<FieldsResult<Record<string, never>>> => unsupportedResult(baseUrl, "session.command"),
+    command: async (
+      parameters: SessionCommandParameters,
+      options?: RequestOptions,
+    ): Promise<FieldsResult<Record<string, never>>> => {
+      const model = parseCommandModel(parameters.model);
+      const [modelResult, agentResolution] = await Promise.all([
+        model
+          ? request("POST", `/api/session/${encodeURIComponent(parameters.sessionID)}/model`, { model: {
+            providerID: model.providerID,
+            id: model.modelID,
+            ...(parameters.variant === undefined ? {} : { variant: parameters.variant }),
+          } }, options?.signal)
+          : null,
+        parameters.agent ? resolvePromptAgent(parameters.sessionID, parameters.agent, options?.signal) : null,
+      ]);
+      if (modelResult && !modelResult.response.ok) return failedResult(modelResult);
+      if (agentResolution && "failed" in agentResolution) return failedResult(agentResolution.failed);
+      if (agentResolution?.agent) {
+        const agentResult = await request("POST", `/api/session/${encodeURIComponent(parameters.sessionID)}/agent`,
+          { agent: agentResolution.agent }, options?.signal);
+        if (!agentResult.response.ok) return failedResult(agentResult);
+      }
+      // The engine expands the command's template with `text` as $ARGUMENTS
+      // and starts the turn; it answers 404 for a name it does not register.
+      const result = await request(
+        "POST",
+        `/api/session/${encodeURIComponent(parameters.sessionID)}/command`,
+        { name: parameters.command, text: parameters.arguments },
+        options?.signal,
+      );
+      return result.response.ok ? successfulResult(result, {}) : failedResult(result);
+    },
+  };
+
+  /**
+   * The composer's slash menu. v1 listed workspace skills as commands; v2
+   * keeps them in a separate registry, so merge them back in as `skill`
+   * entries. Picking one inserts a skill pill, which promptAsync attaches
+   * natively. Connect skills are listed by the composer itself.
+   */
+  const listCommands = async (options?: RequestOptions): Promise<FieldsResult<V2CommandListItem[]>> => {
+    // The engine loads a location's registries lazily: the first read of a
+    // folder it has not opened yet answers an empty list, even though the
+    // built-in commands always exist. Look again briefly before trusting it.
+    let commands = await request("GET", "/api/command", undefined, options?.signal);
+    for (const delay of [250, 750, 1_500]) {
+      if (!commands.response.ok || responseItems(commands.payload).length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      commands = await request("GET", "/api/command", undefined, options?.signal);
+    }
+    if (!commands.response.ok) return failedResult(commands);
+    const skills = await request("GET", "/api/skill", undefined, options?.signal);
+    return successfulResult(commands, mergeV2CommandCatalog(
+      responseItems(commands.payload),
+      skills.response.ok ? responseItems(skills.payload) : [],
+    ));
   };
 
   const listProviders = async (
@@ -2815,7 +2934,7 @@ export function createClientV2(
       },
     },
     command: {
-      list: async (): Promise<FieldsResult<never[]>> => localResult(baseUrl, "/api/command", []),
+      list: (_parameters?: DirectoryParameters, options?: RequestOptions) => listCommands(options),
     },
     permission: {
       list: listPermissions,

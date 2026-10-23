@@ -18,6 +18,7 @@ export const idTypesMapNameToPrefix = {
   rateLimit: "rli",
   org: "org",
   organization: "org",
+  organizationGrant: "ogr",
   orgMembership: "om",
   member: "om",
   invitation: "inv",
@@ -129,6 +130,10 @@ export const idTypesMapNameToPrefix = {
   agentPermissionSetting: "aps",
   orgDefaultModel: "odm",
   headlessResumeGrant: "hrsg",
+  desktopStartupReport: "dsr",
+  accountFollowUpAction: "afa",
+  orgPrompt: "osp",
+  orgPromptAccess: "ospa",
 } as const
 
 export const denTypeIdPrefixes = idTypesMapNameToPrefix

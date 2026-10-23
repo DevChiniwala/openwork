@@ -55,14 +55,17 @@ async function render(messages: UIMessage[], streaming = false, modelOptions?: r
   return container
 }
 
-test("latest completed reply has one accessible footer label and a fixed brand slot", async () => {
+test("completed reply model stays in the footer and reveals on hover", async () => {
   const container = await render([answer("reply")])
   const labels = container.querySelectorAll('[data-testid="reply-model"]')
   expect(labels.length).toBe(1)
   const label = labels[0]
   expect(label.textContent).toBe("Replied with Claude Sonnet")
   expect(label.closest('[data-testid="completed-work-rail"]')).toBeNull()
-  expect(label.className).toContain("opacity-100")
+  expect(label.className).toContain("opacity-0")
+  expect(label.className).toContain("group-hover/message-group:opacity-100")
+  expect(label.className).toContain("group-focus-within/message-group:opacity-100")
+  expect(label.className).not.toContain("max-lg:opacity-100")
   expect(label.querySelector('[aria-hidden="true"]')?.className).toContain("size-3")
   expect(label.querySelector("svg")).not.toBeNull()
   expect(container.querySelector('[data-testid="completed-work-rail"]')?.textContent).toBe("Worked for 7s")
@@ -92,7 +95,9 @@ test("older turns keep their footer hover-only", async () => {
   const labels = container.querySelectorAll('[data-testid="reply-model"]')
   expect(labels.length).toBe(2)
   expect(labels[0].className.split(" ")).toContain("opacity-0")
-  expect(labels[1].className.split(" ")).toContain("opacity-100")
+  expect(labels[1].className.split(" ")).toContain("opacity-0")
+  expect(labels[0].className).toContain("group-hover/message-group:opacity-100")
+  expect(labels[1].className).toContain("group-hover/message-group:opacity-100")
 })
 
 test("an Auto reply renders the OpenWork mark beside the routed name", async () => {

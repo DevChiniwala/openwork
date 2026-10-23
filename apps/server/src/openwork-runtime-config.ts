@@ -29,6 +29,7 @@ import {
   openworkOfficeAttachmentsPluginPath,
   openworkSpreadsheetsPluginPath,
   openworkChromeDevtoolsPluginPath,
+  openworkComputerUsePluginPath,
   openworkPdfAttachmentsPluginPath,
 } from "./openwork-extensions-plugin-path.js";
 import type { ServerConfig } from "./types.js";
@@ -44,7 +45,7 @@ import {
   type RuntimeOpencodeConfig,
 } from "./runtime-opencode-config-store.js";
 import { CONNECT_MCP_SERVER_NAME_PREFIX } from "./connect-mcp-server-catalog.js";
-import { OPENWORK_AGENT_PROMPT } from "./openwork-agent-prompt.js";
+import { appendOrganizationPrompts, OPENWORK_AGENT_PROMPT } from "./openwork-agent-prompt.js";
 
 export async function buildOpenworkRuntimeConfigObject(
   config?: ServerConfig,
@@ -69,7 +70,7 @@ export function buildOpenworkRuntimeConfigObjectFromSnapshot(
   }
   const disabledProviders = runtimeDisabledProviderList(runtimeConfig);
   const permissions = legacyExecutionPermissions(runtimeConfig.managedPolicy?.execution);
-  const { managedPolicy: _managedPolicy, ...engineConfig } = runtimeConfig;
+  const { managedPolicy: _managedPolicy, managedPrompt, ...engineConfig } = runtimeConfig;
   const provider = materializeLegacyFastProviders(runtimeProviderMap(runtimeConfig));
   return {
     ...engineConfig,
@@ -84,7 +85,7 @@ export function buildOpenworkRuntimeConfigObjectFromSnapshot(
         description: "OpenWork default agent",
         mode: "primary",
         temperature: 0.2,
-        prompt: OPENWORK_AGENT_PROMPT,
+        prompt: appendOrganizationPrompts(OPENWORK_AGENT_PROMPT, managedPrompt),
         permission: {
           ...permissions,
           skill: {
@@ -101,6 +102,7 @@ export function buildOpenworkRuntimeConfigObjectFromSnapshot(
     },
     plugin: [
       openworkChromeDevtoolsPluginPath(),
+      openworkComputerUsePluginPath(),
       // Registration order is prompt order: the knowledge plugin appends the
       // operating rules first, then the extensions plugin adds app-control
       // mechanics, live Connect steering, and the remote skill and Automation

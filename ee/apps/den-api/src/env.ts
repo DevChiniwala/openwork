@@ -9,6 +9,7 @@ import { resolveDenServiceVersion } from "./service-version.js"
 import { denApiAppVersion } from "./version.js"
 import { z } from "zod"
 import { readFreeInferenceConfig } from "@openwork/types/den/inference"
+import { DEFAULT_ENTERPRISE_PLAN_UNIT_AMOUNT } from "@openwork/types/den/billing-plans"
 import { parseFeatureEnvironment } from "@openwork/features"
 
 export const DEFAULT_DEN_DIAGNOSTICS_ORIGIN = "https://diagnostic.openworklabs.com"
@@ -53,6 +54,7 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
+  EMAIL_SUPPORT_ADDRESS: z.string().optional(),
   DEN_ORG_MODE: z.string().optional(),
   DEN_SINGLE_ORG_NAME: z.string().optional(),
   DEN_SINGLE_ORG_SLUG: z.string().optional(),
@@ -176,12 +178,14 @@ const EnvSchema = z.object({
   DAYTONA_API_KEY: z.string().optional(),
   DAYTONA_TARGET: z.string().optional(),
   DAYTONA_SNAPSHOT: z.string().optional(),
+  DAYTONA_SANDBOX_CLASS: z.enum(["container", "linux-vm"]).default("container"),
   DAYTONA_SANDBOX_IMAGE: z.string().optional(),
   DAYTONA_SANDBOX_CPU: z.string().optional(),
   DAYTONA_SANDBOX_MEMORY: z.string().optional(),
   DAYTONA_SANDBOX_DISK: z.string().optional(),
   DAYTONA_SANDBOX_PUBLIC: z.string().optional(),
   DAYTONA_SANDBOX_AUTO_STOP_INTERVAL: z.string().optional(),
+  DAYTONA_SANDBOX_AUTO_PAUSE_INTERVAL: z.coerce.number().int().min(1).max(1440).default(5),
   DAYTONA_SANDBOX_AUTO_ARCHIVE_INTERVAL: z.string().optional(),
   DAYTONA_SANDBOX_AUTO_DELETE_INTERVAL: z.string().optional(),
   DAYTONA_SIGNED_PREVIEW_EXPIRES_SECONDS: z.string().optional(),
@@ -208,7 +212,10 @@ const EnvSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_INFERENCE_PRICE_ID: z.string().optional(),
   STRIPE_SEAT_PRICE_ID: z.string().optional(),
+  STRIPE_ENTERPRISE_PRICE_ID: z.string().optional(),
+  DEN_ENTERPRISE_UNIT_AMOUNT: z.string().optional(),
   STRIPE_OPENWORK_WEB_PRICE_ID: z.string().optional(),
+  STRIPE_ENTERPRISE_PRODUCT_ID: z.string().optional(),
   STRIPE_BILLING_SUCCESS_URL: z.string().optional(),
   STRIPE_BILLING_CANCEL_URL: z.string().optional(),
 }).superRefine((value, ctx) => {
@@ -243,6 +250,7 @@ const EnvSchema = z.object({
   }
 
   if ((value.CLOUD_RUNTIME_PROVIDER ?? value.PROVISIONER_MODE) === "daytona") {
+    if (value.DAYTONA_SANDBOX_CLASS === "linux-vm" && !value.DAYTONA_SNAPSHOT) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Daytona microVMs require a prepared Linux VM DAYTONA_SNAPSHOT", path: ["DAYTONA_SNAPSHOT"] })
     for (const key of ["DAYTONA_API_KEY"] as const) {
       if (!value[key]) {
         ctx.addIssue({
@@ -283,6 +291,13 @@ function automationTuning(value: string | undefined, fallback: number) {
 function optionalString(value: string | undefined) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : undefined
+}
+
+// A malformed or non-positive amount keeps the planned price rather than
+// quoting $0 or NaN to a buyer.
+function parseEnterpriseUnitAmount(value: string | undefined) {
+  const amount = Number(value)
+  return value !== undefined && Number.isSafeInteger(amount) && amount > 0 ? amount : DEFAULT_ENTERPRISE_PLAN_UNIT_AMOUNT
 }
 
 function readOptionalSecretFile(envName: string, pathValue: string | undefined) {
@@ -748,6 +763,9 @@ export const env = {
   },
   email: {
     from: optionalString(parsed.EMAIL_FROM),
+    // Where invitation replies and abuse reports go. OpenWork Cloud falls back
+    // to the OpenWork team; self-hosted installs fall back to the inviter.
+    supportAddress: optionalString(parsed.EMAIL_SUPPORT_ADDRESS),
   },
   resend: {
     apiKey: optionalString(parsed.RESEND_API_KEY),
@@ -885,7 +903,14 @@ export const env = {
     webhookSecret: optionalString(parsed.STRIPE_WEBHOOK_SECRET),
     inferencePriceId: optionalString(parsed.STRIPE_INFERENCE_PRICE_ID),
     seatPriceId: optionalString(parsed.STRIPE_SEAT_PRICE_ID),
+    // Self-serve Enterprise (per person). Without it Enterprise is not sold by card.
+    enterprisePriceId: optionalString(parsed.STRIPE_ENTERPRISE_PRICE_ID),
+    // Planned per-person Enterprise price in cents, for quotes and display only;
+    // Stripe charges the configured price.
+    enterpriseUnitAmount: parseEnterpriseUnitAmount(optionalString(parsed.DEN_ENTERPRISE_UNIT_AMOUNT)),
     openworkWebPriceId: optionalString(parsed.STRIPE_OPENWORK_WEB_PRICE_ID),
+    // Enterprise prices are custom per customer, so subscriptions are matched by product.
+    enterpriseProductId: optionalString(parsed.STRIPE_ENTERPRISE_PRODUCT_ID),
     billingSuccessUrl: optionalString(parsed.STRIPE_BILLING_SUCCESS_URL),
     billingCancelUrl: optionalString(parsed.STRIPE_BILLING_CANCEL_URL),
   },
@@ -926,7 +951,8 @@ export const env = {
     apiKey: optionalString(parsed.DAYTONA_API_KEY),
     target: optionalString(parsed.DAYTONA_TARGET),
     snapshot: optionalString(parsed.DAYTONA_SNAPSHOT),
-    image: optionalString(parsed.DAYTONA_SANDBOX_IMAGE) ?? "node:20-bookworm",
+    sandboxClass: parsed.DAYTONA_SANDBOX_CLASS,
+    image: optionalString(parsed.DAYTONA_SANDBOX_IMAGE) ?? "node:24.22.1-bookworm",
     resources: {
       cpu: Number(parsed.DAYTONA_SANDBOX_CPU ?? "2"),
       memory: Number(parsed.DAYTONA_SANDBOX_MEMORY ?? "4"),
@@ -934,6 +960,7 @@ export const env = {
     },
     public: daytonaSandboxPublic,
     autoStopInterval: Number(parsed.DAYTONA_SANDBOX_AUTO_STOP_INTERVAL ?? "0"),
+    autoPauseInterval: parsed.DAYTONA_SANDBOX_AUTO_PAUSE_INTERVAL,
     autoArchiveInterval: Number(
       parsed.DAYTONA_SANDBOX_AUTO_ARCHIVE_INTERVAL ?? "10080",
     ),
