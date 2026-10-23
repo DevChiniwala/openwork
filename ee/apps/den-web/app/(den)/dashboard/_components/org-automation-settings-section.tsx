@@ -62,7 +62,7 @@ export function OrgAutomationSettingsSection({ canManage }: { canManage: boolean
   return (
     <DenCard size="spacious" className="grid gap-6" data-testid="org-automation-settings">
       <div className="grid gap-2">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-gray-400">Automations</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-gray-500">Automations</p>
         <h2 className="text-[24px] font-semibold tracking-[-0.04em] text-gray-900">Where Automations can run</h2>
         <p className="text-[14px] text-gray-500">
           Both are on unless you turn them off. Turning one off stops new Automations of that kind and skips their scheduled runs. Existing Automations and their history are kept.
@@ -89,7 +89,7 @@ export function OrgAutomationSettingsSection({ canManage }: { canManage: boolean
                     Needs OpenWork&apos;s headless runner on this installation. Ask your OpenWork operator to set it up.
                   </p>
                 ) : null}
-                {!canManage ? <p className="text-[12px] text-gray-400">{permissionLockReason("organization.update")}</p> : null}
+                {!canManage ? <p className="text-[12px] text-gray-500">{permissionLockReason("organization.update")}</p> : null}
               </div>
               <SettingsToggle
                 label={kind.title}

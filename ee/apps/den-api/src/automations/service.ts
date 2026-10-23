@@ -827,6 +827,11 @@ export class AutomationService {
     const leaseOwner = `${schedulerOwner}:cloud:${runId}`
     const target = await automationRepository.cloudRunTarget(runId)
     if (!target) return
+    // Every queued, recovered or manual cloud run passes here: once the organization turns Cloud off, none starts.
+    if (!await automationTargetAllowed(target.organizationId, "cloud")) {
+      await this.skipRun({ runId, code: "execution_runtime_unavailable", message: "Cloud Automations are turned off for this organization.", now: Date.now() })
+      return
+    }
     const runtime = await this.cloudRuntime(target.organizationId)
     // A run keeps the engine it started on, so recovery never switches runtimes mid-run.
     const engineKind = target.engineKind
