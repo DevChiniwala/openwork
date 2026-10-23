@@ -85,6 +85,8 @@ export type Microsoft365TeamsMessage = {
   webUrl: string
 }
 
+type MutationStatus = 200 | 201 | 202 | 204
+
 type MicrosoftGraphClientOptions = {
   accessToken: string
   baseUrl?: string
@@ -317,7 +319,8 @@ function readChatMessageSender(message: Record<string, unknown>): Microsoft365Em
   const from = readRecord(message, "from")
   const user = from ? readRecord(from, "user") : null
   if (!user) return null
-  const address = readString(user, "userIdentityType") || readString(user, "id")
+  // Teams identifies senders by Entra user id; userIdentityType is the same "aadUser" for everyone.
+  const address = readString(user, "id")
   if (!address) return null
   return { name: readString(user, "displayName"), address }
 }
@@ -346,7 +349,8 @@ function escapeGraphSearch(value: string): string {
 }
 
 export function escapeOneDriveSearchPath(value: string): string {
-  return value.replace(/'/g, "''")
+  // OData doubles single quotes; percent-encoding keeps ?, # and % inside the path segment.
+  return encodeURIComponent(value.replace(/'/g, "''"))
 }
 
 export function encodeOneDrivePath(value: string): string {
@@ -437,24 +441,26 @@ export class MicrosoftGraphClient {
   private async requestMutation(
     operation: string,
     path: string,
-    method: "POST" | "PATCH" | "DELETE",
-    expectedStatus: 200 | 201 | 202 | 204,
+    method: "POST" | "PUT" | "PATCH" | "DELETE",
+    expectedStatus: MutationStatus | readonly MutationStatus[],
     body?: unknown,
   ): Promise<unknown> {
     // A lost response may follow a successful write. Never replay a mutation,
     // including redirects, and require Graph's operation-specific receipt.
+    // A string body is file content sent as UTF-8 text; anything else is JSON.
+    const expectedStatuses: readonly number[] = typeof expectedStatus === "number" ? [expectedStatus] : expectedStatus
     try {
       const response = await this.request(operation, this.url(path), {
         method,
         redirect: "error",
-        headers: body === undefined ? undefined : { "content-type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        headers: body === undefined ? undefined : { "content-type": typeof body === "string" ? "text/plain; charset=utf-8" : "application/json" },
+        body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
       })
-      if (response.status !== expectedStatus) {
+      if (!expectedStatuses.includes(response.status)) {
         await response.body?.cancel()
         throw new MicrosoftGraphMutationOutcomeUnknownError(operation)
       }
-      if (expectedStatus === 202 || expectedStatus === 204) {
+      if (response.status === 202 || response.status === 204) {
         await response.body?.cancel()
         return null
       }
@@ -499,17 +505,12 @@ export class MicrosoftGraphClient {
     body: string
   }): Promise<Microsoft365MailMessage> {
     const recipient = (address: string) => ({ emailAddress: { address } })
-    const url = this.url("me/messages")
-    return extractMicrosoftMailMessage(await this.requestJson("Microsoft 365 mail draft create", url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        subject: input.subject,
-        body: { contentType: "Text", content: input.body },
-        toRecipients: input.to.map(recipient),
-        ccRecipients: (input.cc ?? []).map(recipient),
-        bccRecipients: (input.bcc ?? []).map(recipient),
-      }),
+    return extractMicrosoftMailMessage(await this.requestMutation("Microsoft 365 mail draft create", "me/messages", "POST", 201, {
+      subject: input.subject,
+      body: { contentType: "Text", content: input.body },
+      toRecipients: input.to.map(recipient),
+      ccRecipients: (input.cc ?? []).map(recipient),
+      bccRecipients: (input.bcc ?? []).map(recipient),
     }))
   }
 
@@ -586,21 +587,16 @@ export class MicrosoftGraphClient {
     location?: string
     attendees?: string[]
   }): Promise<Microsoft365CalendarEvent> {
-    const url = this.url("me/events")
-    return extractMicrosoftCalendarEvent(await this.requestJson("Microsoft 365 calendar event create", url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        subject: input.subject,
-        body: { contentType: "Text", content: input.body ?? "" },
-        start: { dateTime: input.start, timeZone: input.timeZone },
-        end: { dateTime: input.end, timeZone: input.timeZone },
-        location: { displayName: input.location ?? "" },
-        attendees: (input.attendees ?? []).map((address) => ({
-          emailAddress: { address },
-          type: "required",
-        })),
-      }),
+    return extractMicrosoftCalendarEvent(await this.requestMutation("Microsoft 365 calendar event create", "me/events", "POST", 201, {
+      subject: input.subject,
+      body: { contentType: "Text", content: input.body ?? "" },
+      start: { dateTime: input.start, timeZone: input.timeZone },
+      end: { dateTime: input.end, timeZone: input.timeZone },
+      location: { displayName: input.location ?? "" },
+      attendees: (input.attendees ?? []).map((address) => ({
+        emailAddress: { address },
+        type: "required",
+      })),
     }))
   }
 
@@ -670,12 +666,10 @@ export class MicrosoftGraphClient {
 
   async putDriveTextFile(input: { path: string; content: string }): Promise<Microsoft365DriveItem> {
     const encodedPath = encodeOneDrivePath(input.path)
-    const url = this.url(`me/drive/root:/${encodedPath}:/content`)
-    return extractMicrosoftDriveItem(await this.requestJson("Microsoft 365 OneDrive file write", url, {
-      method: "PUT",
-      headers: { "content-type": "text/plain; charset=utf-8" },
-      body: input.content,
-    }))
+    // Graph answers 201 for a new file and 200 when it replaces an existing one.
+    return extractMicrosoftDriveItem(await this.requestMutation(
+      "Microsoft 365 OneDrive file write", `me/drive/root:/${encodedPath}:/content`, "PUT", [200, 201], input.content,
+    ))
   }
 
   async updateDriveItem(itemId: string, input: { name?: string; parentId?: string }): Promise<Microsoft365DriveItem> {
@@ -708,11 +702,8 @@ export class MicrosoftGraphClient {
   }
 
   async sendTeamsMessage(chatId: string, content: string): Promise<Microsoft365TeamsMessage> {
-    const url = this.url(`chats/${encodeURIComponent(chatId)}/messages`)
-    return extractMicrosoftTeamsMessage(await this.requestJson("Microsoft 365 Teams message send", url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body: { contentType: "text", content } }),
-    }))
+    return extractMicrosoftTeamsMessage(await this.requestMutation(
+      "Microsoft 365 Teams message send", `chats/${encodeURIComponent(chatId)}/messages`, "POST", 201, { body: { contentType: "text", content } },
+    ))
   }
 }

@@ -21849,6 +21849,11 @@
               "format": "email",
               "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
             }
+          },
+          "confirmNotifications": {
+            "description": "Required when attendees are listed. Set true only when the user explicitly asked to invite them; Microsoft emails each attendee an invitation.",
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -21997,10 +22002,16 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20000
+          },
+          "confirmSend": {
+            "type": "boolean",
+            "const": true,
+            "description": "Must be true only after the user explicitly asked to send this message to this chat. Finding the chat or drafting the text is not send authorization."
           }
         },
         "required": [
-          "content"
+          "content",
+          "confirmSend"
         ]
       },
       "ExternalMcpRequirementsDiscovery": {
@@ -101171,7 +101182,7 @@
           "Capability Sources"
         ],
         "summary": "Create an Outlook calendar event as the calling member",
-        "description": "Creates an event in the calling member's default calendar. Adding attendees can send Microsoft calendar invitations.",
+        "description": "Creates an event in the calling member's default calendar. Adding attendees sends Microsoft calendar invitations, so it requires confirmNotifications: true.",
         "responses": {
           "200": {
             "description": "Outlook calendar event created.",
@@ -101615,7 +101626,7 @@
           "Capability Sources"
         ],
         "summary": "Send a message to an existing Microsoft Teams chat as the calling member",
-        "description": "Sends one message to an existing Teams chat. The operation cannot create a new chat.",
+        "description": "Sends one message to an existing Teams chat after explicit user confirmation (confirmSend: true). The operation cannot create a new chat.",
         "responses": {
           "200": {
             "description": "Teams chat message sent.",

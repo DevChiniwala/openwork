@@ -12327,7 +12327,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Create an Outlook calendar event as the calling member
    *
-   * Creates an event in the calling member's default calendar. Adding attendees can send Microsoft calendar invitations.
+   * Creates an event in the calling member's default calendar. Adding attendees sends Microsoft calendar invitations, so it requires confirmNotifications: true.
    */
   public postV1CapabilitiesMicrosoft365CalendarEvents<ThrowOnError extends boolean = false>(
     parameters: {
@@ -12505,7 +12505,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Send a message to an existing Microsoft Teams chat as the calling member
    *
-   * Sends one message to an existing Teams chat. The operation cannot create a new chat.
+   * Sends one message to an existing Teams chat after explicit user confirmation (confirmSend: true). The operation cannot create a new chat.
    */
   public postV1CapabilitiesMicrosoft365TeamsChatsByChatIdMessages<ThrowOnError extends boolean = false>(
     parameters: {

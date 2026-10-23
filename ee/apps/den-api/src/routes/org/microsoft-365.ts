@@ -145,9 +145,13 @@ const calendarEventBodySchema = z.object({
   timeZone: z.string().trim().min(1).max(100).default("UTC"),
   location: z.string().trim().max(255).optional(),
   attendees: z.array(z.string().email()).max(100).optional(),
+  confirmNotifications: z.literal(true).optional().describe("Required when attendees are listed. Set true only when the user explicitly asked to invite them; Microsoft emails each attendee an invitation."),
 }).refine((value) => Date.parse(value.end) > Date.parse(value.start), {
   message: "end must be after start",
   path: ["end"],
+}).refine((value) => !value.attendees?.length || value.confirmNotifications === true, {
+  message: "Inviting attendees requires confirmNotifications: true.",
+  path: ["confirmNotifications"],
 }).meta({ ref: "Microsoft365CalendarEventBody" })
 
 const calendarEventResponseSchema = z.object({
@@ -259,6 +263,7 @@ const teamsMessagesQuerySchema = z.object({
 
 const teamsMessageBodySchema = z.object({
   content: z.string().trim().min(1).max(20_000),
+  confirmSend: z.literal(true).describe("Must be true only after the user explicitly asked to send this message to this chat. Finding the chat or drafting the text is not send authorization."),
 }).meta({ ref: "Microsoft365TeamsMessageBody" })
 
 const teamsChatSchema = z.object({
@@ -812,7 +817,7 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
     describeRoute({
       tags: ["Capability Sources"],
       summary: "Create an Outlook calendar event as the calling member",
-      description: "Creates an event in the calling member's default calendar. Adding attendees can send Microsoft calendar invitations.",
+      description: "Creates an event in the calling member's default calendar. Adding attendees sends Microsoft calendar invitations, so it requires confirmNotifications: true.",
       responses: {
         200: jsonResponse("Outlook calendar event created.", calendarEventResponseSchema),
         401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
@@ -960,7 +965,7 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
     describeRoute({
       tags: ["Capability Sources"],
       summary: "Send a message to an existing Microsoft Teams chat as the calling member",
-      description: "Sends one message to an existing Teams chat. The operation cannot create a new chat.",
+      description: "Sends one message to an existing Teams chat after explicit user confirmation (confirmSend: true). The operation cannot create a new chat.",
       responses: {
         200: jsonResponse("Teams chat message sent.", teamsMessageResponseSchema),
         401: jsonResponse("The caller must be signed in.", unauthorizedSchema),

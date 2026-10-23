@@ -5042,6 +5042,10 @@ export type Microsoft365CalendarEventBody = {
   timeZone?: string;
   location?: string;
   attendees?: Array<string>;
+  /**
+   * Required when attendees are listed. Set true only when the user explicitly asked to invite them; Microsoft emails each attendee an invitation.
+   */
+  confirmNotifications?: true;
 };
 
 export type Microsoft365DriveFileWriteBody = {
@@ -5082,6 +5086,10 @@ export type Microsoft365TeamsMessageResponse = {
 
 export type Microsoft365TeamsMessageBody = {
   content: string;
+  /**
+   * Must be true only after the user explicitly asked to send this message to this chat. Finding the chat or drafting the text is not send authorization.
+   */
+  confirmSend: true;
 };
 
 export type ExternalMcpRequirementsDiscovery = {
