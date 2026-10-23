@@ -41,10 +41,11 @@ function toStoredPrompts(rows: PromptRow[], access: AccessRow[]): StoredPrompt[]
 }
 
 async function readOrganizationPrompts(database: Database, organizationId: OrganizationId): Promise<StoredPrompt[]> {
-  const [rows, access] = await Promise.all([
-    database.select().from(OrgPromptTable).where(eq(OrgPromptTable.organizationId, organizationId)),
-    database.select().from(OrgPromptAccessTable).where(eq(OrgPromptAccessTable.organizationId, organizationId)),
-  ])
+  // Sequential on purpose: saves and removals call this inside a transaction,
+  // and a PlanetScale transaction runs one query at a time; overlapping queries
+  // fail with "transaction ... in use" (a 500).
+  const rows = await database.select().from(OrgPromptTable).where(eq(OrgPromptTable.organizationId, organizationId))
+  const access = await database.select().from(OrgPromptAccessTable).where(eq(OrgPromptAccessTable.organizationId, organizationId))
   return toStoredPrompts(rows, access)
 }
 
