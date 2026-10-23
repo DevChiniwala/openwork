@@ -100,8 +100,22 @@ test("a platform admin creates a sandbox organization from /admin and people who
     await avery.screenshot();
   });
 
-  await step("Riley joins the same link and starts with nothing connected", async () => {
+  await step("Riley opens the link signed out, enters an email that already has an account and is asked for the password, not a code", async () => {
     await riley.navigate(joinLink);
+    await riley.type({ role: "textbox" }, world.rileyLogin.email);
+    await riley.click({ role: "button", label: "Next" });
+    await riley.see({ role: "textbox", label: /^password$/i }, { timeoutMs: 30_000 });
+    const text = await probe.on(world.webRiley).text();
+    const ok = !/verification code|check your inbox/i.test(text);
+    evidence.recordAssertionEvidence("An existing account signs in instead of waiting for an email that never comes", ok ? "password step shown" : "code screen shown", ok);
+    expect(ok).toBe(true);
+    await riley.screenshot();
+  });
+
+  await step("Riley signs in, joins and starts with nothing connected", async () => {
+    await riley.type({ role: "textbox", label: /^password$/i }, world.rileyLogin.password, { sensitive: true });
+    await riley.press("Enter");
+    await riley.see({ testId: "join-sandbox-submit" }, { timeoutMs: 30_000 });
     await riley.click({ testId: "join-sandbox-submit" });
     await riley.see({ testId: "join-org-success" }, { timeoutMs: 30_000 });
     const outlook = (await world.connections("riley", organizationId)).find(connection => connection.id === outlookId);

@@ -121,10 +121,13 @@ export function JoinSandboxScreen({ token }: { token: string }) {
                 </div>
               ) : (
                 <div data-testid="join-sandbox-auth">
+                  {/* Email first, like the main sign-in page: an existing account is asked for its password instead of
+                      being sent to a code screen. Signing up with an email that already has an account sends no code. */}
                   <AuthPanel
                     bare
                     hideIntro
-                    initialMode="sign-up"
+                    emailFirstFlow
+                    emailStepContent={{ title: "Enter your email to join.", submitLabel: "Next" }}
                     signUpContent={{ submitLabel: "Create account" }}
                     signInContent={{ title: "Sign in to continue.", copy: "Sign in, then join the sandbox.", submitLabel: "Sign in" }}
                     verificationContent={{ title: "Check your inbox.", copy: "Enter the six-digit code we sent you.", submitLabel: "Verify" }}

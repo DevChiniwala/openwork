@@ -50,7 +50,8 @@ export async function sandboxOrganizationsWorld(seed: Seed) {
     const viewport = { width: 1280, height: 900 };
     const admin = await seed.web({ den, signedInAs: den.admin, startPath: "/admin/sandbox-orgs", headless: true, viewport });
     const webAvery = await seed.web({ den, signedInAs: avery, startPath: "/dashboard", headless: true, viewport });
-    const webRiley = await seed.web({ den, signedInAs: riley, startPath: "/dashboard", headless: true, viewport });
+    // Riley already has an OpenWork account but opens the link signed out, as most invitees do.
+    const webRiley = await seed.web({ den, startPath: "/", headless: true, viewport });
     const webCasey = await seed.web({ den, signedInAs: casey, startPath: "/dashboard", headless: true, viewport });
     const anonymous = await seed.web({ den, startPath: "/join-sandbox?token=unknown", headless: true, viewport });
     const people = { avery, riley, casey };
@@ -58,6 +59,7 @@ export async function sandboxOrganizationsWorld(seed: Seed) {
 
     return {
       den, origin, admin, webAvery, webRiley, webCasey, anonymous,
+      rileyLogin: { email: riley.email, password: riley.password },
       async sandboxes() {
         const result = await seed.api(den.admin, "/v1/admin/sandbox-orgs");
         if (!result.response.ok) throw new Error(`Sandbox list failed (${result.response.status}).`);
