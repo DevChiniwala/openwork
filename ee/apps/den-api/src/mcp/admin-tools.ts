@@ -14,7 +14,8 @@ import { FEATURE_KEYS, featureAvailableOn, featureDefinition, featureKeySchema, 
 import { updateOrganizationMetadata } from "../organization-metadata.js"
 import { runPlatformAdminPlatformAction, runPlatformAdminServiceAction, type PlatformAdminAuditActor } from "../audit/mcp-service-audit.js"
 import { readWorkbotAdoptionReport, workbotAdoptionInputSchema } from "../workbot/adoption-report.js"
-import { isDatabaseTimeLimitError, withDatabaseTimeLimit } from "./admin-query-limit.js"
+import { assertReadOnlySql, isDatabaseTimeLimitError, withDatabaseTimeLimit } from "./admin-query-limit.js"
+import { DEN_MCP_WRITE_SCOPE } from "./scopes.js"
 
 /**
  * den-admin MCP toolset: read-only Den analytics for allowlisted platform
@@ -25,14 +26,15 @@ import { isDatabaseTimeLimitError, withDatabaseTimeLimit } from "./admin-query-l
  * payloads are kept compatible; bump DEN_ADMIN_MCP_VERSION when they change
  * so `den_admin_version` can be used to spot stale deploys.
  *
- * Hardening: every statement goes through the shared read-only guard, raw
- * `den_query` results are row-capped, and all queries race a wall-clock
- * timeout so one expensive SELECT cannot pin an API worker indefinitely.
- * Raw `den_query` SELECTs also carry the limit to the database, which stops
- * the statement itself (admin-query-limit.ts).
+ * Hardening: every statement goes through the shared read-only guard, which
+ * also refuses credential tables, raw `den_query` results are row-capped, and
+ * all queries race a wall-clock timeout so one expensive SELECT cannot pin an
+ * API worker indefinitely. Raw `den_query` SELECTs also carry the limit to the
+ * database, which stops the statement itself (admin-query-limit.ts). Admin
+ * write tools need the caller's mcp:write scope, like connection writes.
  */
 
-export const DEN_ADMIN_MCP_VERSION = "0.8.0"
+export const DEN_ADMIN_MCP_VERSION = "0.9.0"
 
 const QUERY_TIMEOUT_MS = 15_000
 // Slightly under Den's own timer, so the database stops the statement first.
@@ -344,23 +346,6 @@ async function describeUsers(userRows: Row[]) {
   }))
 }
 
-// --- read-only guard for den_query ---
-
-const FORBIDDEN_SQL =
-  /\b(insert|update|delete|drop|alter|create|truncate|rename|replace|grant|revoke|call|load|handler|lock|unlock|set|use|outfile|dumpfile|for\s+update)\b/i
-
-export function assertReadOnlySql(input: string): string {
-  const sqlText = input.trim().replace(/;+\s*$/, "")
-  if (sqlText.includes(";")) throw new Error("Only a single SQL statement is allowed")
-  if (!/^(select|with|show|describe|explain)\b/i.test(sqlText)) {
-    throw new Error("Only SELECT/WITH/SHOW/DESCRIBE/EXPLAIN statements are allowed")
-  }
-  if (FORBIDDEN_SQL.test(sqlText)) {
-    throw new Error("Statement contains a forbidden keyword (read-only access)")
-  }
-  return sqlText
-}
-
 /** Append a LIMIT to bare SELECT/WITH statements and clamp the cap. */
 export function applyDefaultRowLimit(sqlText: string, limit?: number): { sql: string; cap: number } {
   const cap = Math.max(1, Math.min(limit ?? DEFAULT_ROW_LIMIT, MAX_ROW_LIMIT))
@@ -384,15 +369,24 @@ export async function buildAdminMcpVersionInfo() {
 
 // --- tool registration ---
 
+/** The verified platform admin calling the tools, with the scopes of the token they called with. */
+export type AdminToolCaller = PlatformAdminAuditActor & Readonly<{ scopes: ReadonlySet<string> }>
+
 /**
  * `admin` is the verified platform admin calling the tools; org-mutating tools
- * are audited for it (src/audit/service-actions.ts) and refuse without it.
- * Pass null only for catalog listing.
+ * are audited for it (src/audit/service-actions.ts) and refuse without it or
+ * without its mcp:write scope. Pass null only for catalog listing.
  */
-export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAuditActor | null) {
+export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller | null) {
   const requireAdmin = () => {
     if (!admin) throw new Error("Admin write tools require an authenticated platform admin.")
     return admin
+  }
+  // The same refusal connection writes give a token without the write scope.
+  const writeScopeMissing = (toolName: string): ToolResult | null => {
+    if (!admin || admin.scopes.has(DEN_MCP_WRITE_SCOPE)) return null
+    const refusal = { error: "insufficient_mcp_scope", requiredScope: DEN_MCP_WRITE_SCOPE, message: `${toolName} requires the ${DEN_MCP_WRITE_SCOPE} scope.` }
+    return { content: [{ type: "text", text: JSON.stringify(refusal) }], isError: true }
   }
 
   server.registerTool(
@@ -461,7 +455,7 @@ export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAud
       }),
     },
     async ({ organizationId, tier, seatLimit }) =>
-      run(async () => {
+      writeScopeMissing("den_update_org_plan") ?? run(async () => {
         if (!isOrganizationId(organizationId)) {
           throw new Error("Invalid organization id")
         }
@@ -516,7 +510,7 @@ export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAud
       }),
     },
     async ({ organizationId, capability, enabled }) =>
-      run(async () => {
+      writeScopeMissing("den_set_org_capability") ?? run(async () => {
         if (!isOrganizationId(organizationId)) {
           throw new Error("Invalid organization id")
         }
@@ -589,7 +583,7 @@ export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAud
       }),
     },
     async ({ feature, enabled, killed }) =>
-      run(async () => {
+      writeScopeMissing("den_set_feature_rollout") ?? run(async () => {
         if (enabled === undefined && killed === undefined) throw new Error("Set enabled, killed, or both.")
         if (!featureAvailableOn(feature, env.features.deployment)) throw new Error(`${feature} is not part of this deployment.`)
         // Deployment-wide: no organization's data changes, so platform evidence only.
@@ -865,7 +859,7 @@ export function registerAdminMcpTools(server: McpServer, admin: PlatformAdminAud
     "den_query",
     {
       description:
-        "Escape hatch: run a single read-only SQL statement (SELECT/WITH/SHOW/DESCRIBE/EXPLAIN) against the Den database. Useful tables: user, session, organization, member, invitation, team, org_subscriptions, telemetry_event, worker, audit_event. Avoid encrypted columns (scim_provider.scim_token, sso_provider.*_config, llm_provider.api_key, config_object_version payloads, inference upstream keys).",
+        "Escape hatch: run a single read-only SQL statement (SELECT/WITH/SHOW/DESCRIBE/EXPLAIN) against the Den database. Useful tables: user, organization, member, team, org_subscriptions, telemetry_event, worker, audit_event. Statements that name a credential table (session, account, verification, apikey, OAuth tokens, invitation, stored keys and secrets) or server internals are refused; use den_overview/den_retention for sign-in activity and single quotes for text. Avoid encrypted columns (sso_provider.*_config, llm_provider.api_key, config_object_version payloads).",
       inputSchema: z.object({
         sql: z.string().min(1).describe("A single read-only SQL statement"),
         limit: z.number().int().min(1).max(MAX_ROW_LIMIT).optional().describe("Row limit appended when the query has none"),

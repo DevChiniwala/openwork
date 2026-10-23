@@ -91,6 +91,15 @@ import { capabilityCallInput, capabilityToolMatch, type CapabilityToolMatch } fr
 export const CAPABILITY_SOURCE_KINDS = ["catalog", "native", "externalMcp", "marketplace", "builtinSkill", "remoteSession", "admin"] as const
 export type CapabilitySourceKind = (typeof CAPABILITY_SOURCE_KINDS)[number]
 
+/**
+ * Sources whose capabilities Code Mode scripts (ad-hoc tests, saved Workflows,
+ * Apps, Automations) can call. Platform-admin tools are left out: one script
+ * could otherwise hand what an admin tool reads straight to a connection tool
+ * with no call in between for the client to show. Admins call them one at a
+ * time through execute_capability, their full-view tools or /mcp/admin.
+ */
+const SCRIPT_SOURCE_KINDS: readonly CapabilitySourceKind[] = CAPABILITY_SOURCE_KINDS.filter((kind) => kind !== "admin")
+
 export type ParsedCapability =
   | { kind: "catalog"; name: string }
   | { kind: "native"; name: string; connectionId: string; toolName: string }
@@ -779,9 +788,10 @@ const adminSource: CapabilitySource = {
   },
   search: async (ctx, query, limit) => {
     if (!ctx.sourceFilter.admin) return []
-    const matches = await searchAvailableAdminCapabilities(await ctx.resolvePlatformAdmin(), query, limit)
-    return matches.map((match) => ({ ...match, scriptPath: codemodeScriptPath("admin", parseAdminCapabilityName(match.name) ?? match.name) }))
+    // No scriptPath: Code Mode scripts cannot call admin tools (SCRIPT_SOURCE_KINDS).
+    return searchAvailableAdminCapabilities(await ctx.resolvePlatformAdmin(), query, limit)
   },
+  // Full-view tools list these; Code Mode trees leave them out.
   enumerate: async (ctx) => {
     const matches = await listAvailableAdminCapabilities(await ctx.resolvePlatformAdmin())
     return matches.flatMap((match) => {
@@ -808,7 +818,7 @@ const adminSource: CapabilitySource = {
     if (!parsedForKind(parsed, "admin") || !(await ctx.resolvePlatformAdmin())) {
       return unknownCapabilityResult(input.name)
     }
-    const admin = { userId: ctx.principal.userId, credentialId: mcpPrincipalCredentialId(ctx.principal) }
+    const admin = { userId: ctx.principal.userId, credentialId: mcpPrincipalCredentialId(ctx.principal), scopes: ctx.principal.scopes }
     return (await executeAdminCapability(parsed.name, input.body, admin)) ?? unknownCapabilityResult(input.name)
   },
 }
@@ -867,7 +877,7 @@ export function createCapabilityRegistry(sources: Record<CapabilitySourceKind, C
       return unknownCapabilityResult(input.name)
     },
     buildToolTree: async (ctx: CapabilityRegistryContext): Promise<BuiltCodemodeTools> => {
-      const enumerated = await Promise.all(CAPABILITY_SOURCE_KINDS.map(async (kind) => {
+      const enumerated = await Promise.all(SCRIPT_SOURCE_KINDS.map(async (kind) => {
         const result = await sources[kind].enumerate(ctx)
         return "excluded" in result ? [] : result
       }))
