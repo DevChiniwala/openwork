@@ -707,9 +707,9 @@ static class OpenWorkComputerUse {
   }
 
   static void TypeText(InputContext context, string text) {
-    int sent = 0;
     for (int i = 0; i < text.Length;) {
-      if (sent > 0 && sent % 16 == 0) Check(context);
+      // Before every character, so a window that takes focus mid-text receives none of it.
+      if (i > 0) Check(context);
       char c = text[i];
       if (c == '\r' || c == '\n') {
         Key(context, 0x0D);
@@ -724,7 +724,6 @@ static class OpenWorkComputerUse {
         Send(context, Unicode(c, 0), Unicode(c, 0x0002));
         i++;
       }
-      sent++;
       Pause(context, 2);
     }
   }

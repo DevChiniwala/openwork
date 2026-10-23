@@ -247,9 +247,11 @@ export function createWindowsDriver({ binary, spawnChild = spawn, hostPid = proc
         const region = { x: window.region.x, y: window.region.y, width: window.region.width, height: window.region.height };
         identities.set(id, { hwnd: window.hwnd, pid: window.pid, started: window.started });
         regions.set(id, region);
+        // A window the agent can't use keeps its caption (a document, account or command) private.
+        const restricted = typeof window.restricted === "string";
         listed.push({ id, app: window.app.slice(0, 120), name: typeof window.name === "string" && window.name ? window.name.slice(0, 120) : window.app.slice(0, 120),
-          title: window.title.slice(0, 500) || "Untitled window", region, focused: window.focused === true,
-          ...(typeof window.restricted === "string" ? { restricted: typeof window.message === "string" ? window.message.slice(0, 300) : "This window can't be used." } : {}) });
+          title: restricted ? "Unavailable window" : window.title.slice(0, 500) || "Untitled window", region, focused: window.focused === true,
+          ...(restricted ? { restricted: typeof window.message === "string" ? window.message.slice(0, 300) : "This window can't be used." } : {}) });
       }
       // Forget windows that are gone; their ids are never reused.
       for (const [key, id] of ids) if (!seen.has(key)) { ids.delete(key); identities.delete(id); regions.delete(id); }

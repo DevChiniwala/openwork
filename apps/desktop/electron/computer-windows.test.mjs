@@ -109,6 +109,9 @@ test("discovery lists app windows only and names why an admin window can't be us
   assert.equal(editor.name, "Notepad");
   assert.equal(editor.targets[0].unavailable, undefined);
   assert.match(tool.targets[0].unavailable, /as administrator/);
+  // Its caption stays private: only the reason reaches the agent.
+  assert.equal(tool.targets[0].title, "Unavailable window");
+  assert.ok(!JSON.stringify(found).includes(admin.title));
 
   assert.equal((await pc.call("computer_open_session", { app_id: "regsvc", mode: "control", purpose: "Change a setting" })).code, "target_unsupported");
   assert.equal((await pc.call("computer_open_session", { app_id: "desktop", mode: "control", purpose: "Anything" })).code, "app_not_found");
