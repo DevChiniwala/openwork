@@ -66,7 +66,7 @@ overrides:
   builder-util-runtime@<9.7.0: 9.7.0
   defu@<6.1.5: 6.1.5
   diff@>=8.0.0 <8.0.3: 8.0.3
-  dompurify@<3.4.16: 3.4.16
+  dompurify@<3.4.17: 3.4.17
   engine.io@>=6.0.0 <6.6.11: 6.6.11
   browserslist@<=4.28.6: 4.28.7
   fast-uri@>=3.0.0 <3.1.8: 3.1.8
@@ -77,7 +77,9 @@ overrides:
   better-call: 1.3.7
   hono@<4.13.11: 4.13.11
   http-cache-semantics@<=4.2.0: 4.3.0
-  ip-address@>=10.0.0 <10.7.2: 10.7.2
+  ip-address@>=10.0.0 <10.7.4: 10.7.4
+  toml@<5.0.1: 5.0.1
+  zod@<4.6.6: 4.6.6
   js-yaml@>=4.0.0 <4.3.2: 4.3.2
   katex@>=0.11.0 <0.18.2: 0.18.2
   nanoid@<3.3.18: 3.3.18
@@ -159,10 +161,10 @@ importers:
         version: 0.35.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(yjs@13.6.30)
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.5
-        version: 1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.3.6)
+        version: 1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
-        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)
+        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       '@opencode-ai/sdk':
         specifier: ^1.18.15
         version: 1.18.18
@@ -213,7 +215,7 @@ importers:
         version: 6.0.0
       ai:
         specifier: ^6.0.146
-        version: 6.0.146(zod@4.3.6)
+        version: 6.0.146(zod@4.6.6)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -221,8 +223,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       dompurify:
-        specifier: ^3.4.16
-        version: 3.4.16
+        specifier: ^3.4.17
+        version: 3.4.17
       fuzzysort:
         specifier: ^3.1.0
         version: 3.1.0
@@ -284,8 +286,8 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
       zustand:
         specifier: ^5.0.12
         version: 5.0.12(@types/react@19.2.14)(immer@11.1.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
@@ -331,7 +333,7 @@ importers:
         version: 2.3.1(patch_hash=276c86ab47f7056638d00fa9f29759a9d3a60ac21635ceebe41f513414797476)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
-        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)
+        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       '@opencode-ai/sdk':
         specifier: ^1.18.15
         version: 1.18.18
@@ -405,8 +407,8 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@electron/asar':
         specifier: ^3.4.1
@@ -468,7 +470,7 @@ importers:
         version: 2.3.1(patch_hash=276c86ab47f7056638d00fa9f29759a9d3a60ac21635ceebe41f513414797476)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
-        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)
+        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       '@opencode-ai/sdk':
         specifier: ^1.18.15
         version: 1.18.18
@@ -512,8 +514,8 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@hyzyla/pdfium':
         specifier: 2.1.13
@@ -550,22 +552,22 @@ importers:
     dependencies:
       '@better-auth/api-key':
         specifier: 1.7.0-beta.10
-        version: 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))
+        version: 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))
       '@better-auth/cimd':
         specifier: 1.7.0-beta.10
-        version: 1.7.0-beta.10(patch_hash=fb8d2c78931debefcb903601f6054f4cbf8cdcab25aec43f2de406966ddd97be)(fed2f72c23165b3f74ad10cd294800ba)
+        version: 1.7.0-beta.10(patch_hash=fb8d2c78931debefcb903601f6054f4cbf8cdcab25aec43f2de406966ddd97be)(5516186305f95068f5371ce20fe30840)
       '@better-auth/oauth-provider':
         specifier: 1.7.0-beta.10
-        version: 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))
+        version: 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))
       '@better-auth/scim':
         specifier: 1.7.0-beta.10
-        version: 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))
+        version: 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))
       '@better-auth/sso':
         specifier: 1.7.0-beta.10
-        version: 1.7.0-beta.10(patch_hash=eb4378a8959f462bbf23acb54e46dd781d29b1ef295f507e6d23a8a42ad7e56b)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))
+        version: 1.7.0-beta.10(patch_hash=eb4378a8959f462bbf23acb54e46dd781d29b1ef295f507e6d23a8a42ad7e56b)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))
       '@hono/mcp':
         specifier: ^0.2.5
-        version: 0.2.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.3.6)
+        version: 0.2.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.6.6)
       '@hono/node-server':
         specifier: 2.0.12
         version: 2.0.12(hono@4.13.11)
@@ -580,10 +582,10 @@ importers:
         version: 0.6.1(hono@4.13.11)
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.5
-        version: 1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.3.6)
+        version: 1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
-        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)
+        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       '@modelcontextprotocol/server':
         specifier: ^2.3.1
         version: 2.3.1
@@ -685,10 +687,10 @@ importers:
         version: 10.64.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))
       '@standard-community/standard-json':
         specifier: ^0.3.5
-        version: 0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)
+        version: 0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6)
       '@standard-community/standard-openapi':
         specifier: ^0.2.9
-        version: 0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.3.6)
+        version: 0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.6.6)
       '@standard-schema/spec':
         specifier: ^1.1.0
         version: 1.1.0
@@ -706,7 +708,7 @@ importers:
         version: 1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       better-call:
         specifier: 1.3.7
-        version: 1.3.7(zod@4.3.6)
+        version: 1.3.7(zod@4.6.6)
       botid:
         specifier: ^1.5.11
         version: 1.5.11(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
@@ -727,7 +729,7 @@ importers:
         version: 4.13.11
       hono-openapi:
         specifier: ^1.3.0
-        version: 1.3.0(@hono/standard-validator@0.2.2(@standard-schema/spec@1.1.0)(hono@4.13.11))(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.3.6))(@types/json-schema@7.0.15)(hono@4.13.11)(openapi-types@12.1.3)
+        version: 1.3.0(@hono/standard-validator@0.2.2(@standard-schema/spec@1.1.0)(hono@4.13.11))(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.6.6))(@types/json-schema@7.0.15)(hono@4.13.11)(openapi-types@12.1.3)
       htmlparser2:
         specifier: 8.0.2
         version: 8.0.2
@@ -765,8 +767,8 @@ importers:
         specifier: 7.30.1
         version: 7.30.1
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@sentry/cli':
         specifier: 3.6.0
@@ -805,8 +807,8 @@ importers:
         specifier: 7.30.1
         version: 7.30.1
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^20.11.30
@@ -875,8 +877,8 @@ importers:
         specifier: 0.0.72
         version: 0.0.72(@types/react@19.2.14)(react@19.2.8)
       '@sentry/nextjs':
-        specifier: 10.64.0
-        version: 10.64.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(next@16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(webpack@5.108.4(postcss@8.5.23))
+        specifier: 10.75.2
+        version: 10.75.2(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(next@16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(webpack@5.108.4(postcss@8.5.23))
       '@tanstack/react-query':
         specifier: ^5.96.2
         version: 5.96.2(react@19.2.8)
@@ -902,8 +904,8 @@ importers:
         specifier: 3.10.1
         version: 3.10.1(@types/react@19.2.14)(react-dom@19.2.8(react@19.2.8))(react-is@19.3.0)(react@19.2.8)(redux@5.0.1)
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.3.3
@@ -976,8 +978,8 @@ importers:
         specifier: 4.13.11
         version: 4.13.11
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^20.11.30
@@ -1022,12 +1024,12 @@ importers:
         specifier: 4.13.11
         version: 4.13.11
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@ai-sdk/mistral':
         specifier: 3.0.51
-        version: 3.0.51(zod@4.3.6)
+        version: 3.0.51(zod@4.6.6)
       '@types/node':
         specifier: ^20.11.30
         version: 20.12.12
@@ -1068,8 +1070,8 @@ importers:
         specifier: 4.13.11
         version: 4.13.11
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -1155,7 +1157,7 @@ importers:
         version: 2.0.12(hono@4.13.11)
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
-        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)
+        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       '@openwork-ee/headless-protocol':
         specifier: workspace:*
         version: link:../../packages/headless-protocol
@@ -1184,8 +1186,8 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.3
@@ -1238,13 +1240,13 @@ importers:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
-        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@3.25.76)
+        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       mysql2:
         specifier: ^3.23.1
         version: 3.24.2(@types/node@24.13.3)
       zod:
-        specifier: ^3.25.76
-        version: 3.25.76
+        specifier: ^4.6.6
+        version: 4.6.6
 
   ee/packages/den-db:
     dependencies:
@@ -1307,8 +1309,8 @@ importers:
         specifier: 8.21.0
         version: 8.21.0
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@daytonaio/sdk':
         specifier: ^0.201.0
@@ -1335,8 +1337,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/types
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       tsup:
         specifier: ^8.5.0
@@ -1373,8 +1375,8 @@ importers:
   ee/packages/telemetry-contracts:
     dependencies:
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       typescript:
         specifier: ^5.5.4
@@ -1392,8 +1394,8 @@ importers:
         specifier: ^11.1.1
         version: 11.1.1
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/luxon':
         specifier: ^3.6.2
@@ -1417,8 +1419,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/types
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -1460,8 +1462,8 @@ importers:
         specifier: ^17.0.1
         version: 17.0.1
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@tanstack/react-query':
         specifier: ^5.96.2
@@ -1482,8 +1484,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       bun-types:
         specifier: ^1.3.6
@@ -1510,8 +1512,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@tanstack/react-query':
         specifier: ^5.90.3
@@ -1561,8 +1563,8 @@ importers:
         specifier: ^8.5.0
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
 
   packages/connect-link:
     dependencies:
@@ -1570,8 +1572,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
@@ -1614,8 +1616,8 @@ importers:
         specifier: ^0.577.0
         version: 0.577.0(react@19.2.8)
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@tanstack/react-query':
         specifier: ^5.96.2
@@ -1688,8 +1690,8 @@ importers:
         specifier: ^2.3.1
         version: 2.3.1
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^20.11.30
@@ -1704,8 +1706,8 @@ importers:
   packages/enterprise-mcp-mock-server:
     dependencies:
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^20.11.30
@@ -1729,8 +1731,8 @@ importers:
   packages/features:
     dependencies:
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: ^20.11.30
@@ -1776,8 +1778,8 @@ importers:
         specifier: ^1.18.15
         version: 1.18.18
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       bun-types:
         specifier: ^1.3.6
@@ -1792,8 +1794,8 @@ importers:
   packages/install-config:
     dependencies:
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       tsup:
         specifier: ^8.5.0
@@ -1811,14 +1813,14 @@ importers:
         specifier: 6.2.8
         version: 6.2.8
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
 
   packages/mcp-apps:
     dependencies:
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.5
-        version: 1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.3.6)
+        version: 1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)
       '@openwork/types':
         specifier: workspace:*
         version: link:../types
@@ -1829,8 +1831,8 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/react':
         specifier: 19.2.14
@@ -1869,10 +1871,10 @@ importers:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
-        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@3.25.76)
+        version: 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       zod:
-        specifier: ^3.25.76
-        version: 3.25.76
+        specifier: ^4.6.6
+        version: 4.6.6
 
   packages/paths:
     devDependencies:
@@ -1907,8 +1909,8 @@ importers:
         specifier: ^2.3.0
         version: 2.8.0
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.6.6
+        version: 4.6.6
 
   packages/sandbox:
     devDependencies:
@@ -1987,8 +1989,8 @@ importers:
         specifier: workspace:*
         version: link:../managed-deployments
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.6
+        version: 4.6.6
     devDependencies:
       tsup:
         specifier: ^8.5.0
@@ -2048,25 +2050,25 @@ packages:
     resolution: {integrity: sha512-AFoj7xdWAtCQcy0jJ235ENSakYM8D28qBX+rB+/rX4r8qe/LXgl0e5UivOqxAlIM5E9jnQdYxIPuj3XFtGk/yg==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.6.6
 
   '@ai-sdk/mistral@3.0.51':
     resolution: {integrity: sha512-83eXY6p0lUFhSuMvNDmTKDuMciK5XDAWDlNh5c0L80tKjmtCFRItA1MZHp4IKe1r7eK8Rb5nN7qtxqMLUFRIRw==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.6.6
 
   '@ai-sdk/provider-utils@4.0.33':
     resolution: {integrity: sha512-nJ0bAfegMAIJtrzMJtbzer1cS3nb7c7DsyU1S4nrPm7ZU0Mn6SBBZv5IGZZGTbpWTJwqKTSPeZJTXalbAxt1BA==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.6.6
 
   '@ai-sdk/provider-utils@4.0.40':
     resolution: {integrity: sha512-OL5IrpUm9Y8Dwy+w/vvFwPotS6m52O9W0op2oXgXdCROMJIBalBI0oro6OIBYkPxvm5Xg02GSkoQN25RlR0bnw==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.6.6
 
   '@ai-sdk/provider@3.0.12':
     resolution: {integrity: sha512-sj9DWTJ2Ze0WR9qsiOPqoqzNx3OxL6iMxHImbhvoe9qOspekbzxNDMiJ4TIGfYHYh9w4OmBjz3prvqhzTi96+Q==}
@@ -3047,7 +3049,7 @@ packages:
       '@modelcontextprotocol/sdk': 1.32.1
       hono: 4.13.11
       hono-rate-limiter: ^0.4.2
-      zod: ^3.25.0 || ^4.0.0
+      zod: 4.6.6
 
   '@hono/node-server@2.0.12':
     resolution: {integrity: sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==}
@@ -3538,7 +3540,7 @@ packages:
       '@modelcontextprotocol/sdk': 1.32.1
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
-      zod: ^3.25.0 || ^4.0.0
+      zod: 4.6.6
     peerDependenciesMeta:
       react:
         optional: true
@@ -3550,7 +3552,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
+      zod: 4.6.6
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -4790,20 +4792,20 @@ packages:
     resolution: {integrity: sha512-p4q8gn8wcFqZGP/s2MnJCAAd8fTikaU6A0mM97RDHQgStcrYiaS0Sc5zUNfb1V+UOLPuvdEdL6MwyxfzjYJQTA==}
     engines: {node: '>= 18'}
 
-  '@sentry/browser-utils@10.64.0':
-    resolution: {integrity: sha512-qXvUpsZdE0+6SovhDZvjN4JkqQEpzeYsrOF5g63wMsqJWWv2vW/pQZIlJs0F6C0t4q5AHZL4fl5rNkvpVqFdKA==}
-    engines: {node: '>=18'}
-
   '@sentry/browser-utils@10.67.0':
     resolution: {integrity: sha512-HUzaf0xAnPAB+OHBkD7N1Py+CTbD5InHulQ/pdhX4JctWtxuwD8odMD1LzdPnW8J6gVHlDVvcVBR8mXMZYSLSw==}
     engines: {node: '>=18'}
 
-  '@sentry/browser@10.64.0':
-    resolution: {integrity: sha512-CHZ7+79evh8knBtVHjW/XqV3mRaWs2TdjX7i55zpFe9vcNngQHV++0ss8ird/xfMY1mfCDtbyAN+Z6XY2o5aJA==}
+  '@sentry/browser-utils@10.75.2':
+    resolution: {integrity: sha512-U9RIJE0vZHWEnfEpJAa/SQ60MsNSUaxww4MVymNLwJ26BrLFz9jLhVIW9bXcx0i1iwK+KQbIv6ebPDOnCfYUPQ==}
     engines: {node: '>=18'}
 
   '@sentry/browser@10.67.0':
     resolution: {integrity: sha512-/ZhsAvte4rYhg0A0RtSFFgAgXhyMOfQIeOAfMfptN+X6IVSYOfkA9jtrP+Ej4+6vlaUFWRir1HweF56y63dEEA==}
+    engines: {node: '>=18'}
+
+  '@sentry/browser@10.75.2':
+    resolution: {integrity: sha512-2Q8Bd6aTIHmqWL/rGDZdr1JTGW2fYPXf+lMyhHp4CX6OE7gMaaI5ZUwQWgVelqUOvKkOZHHk0wo6K8+ExdwawQ==}
     engines: {node: '>=18'}
 
   '@sentry/bundler-plugin-core@5.3.0':
@@ -4946,6 +4948,10 @@ packages:
     resolution: {integrity: sha512-b6U3pJ8AUvN9aouq0vl+VZI8KT8RslBsfGMFuNwRr313zOmdmFJBZqTiUw9VGgJ2jGKxLO9alm9rlxBfX4hf+w==}
     engines: {node: '>=18'}
 
+  '@sentry/core@10.75.2':
+    resolution: {integrity: sha512-KXzNf2c430cJIOMv84+MKpkXgave1DBNMNNwn073olVD773NME5IhDv/9VQyiFM2wIU+6bm4FEBVEVSuzqgjJw==}
+    engines: {node: '>=18'}
+
   '@sentry/electron@7.16.0':
     resolution: {integrity: sha512-GgnsAGynr1IKfakRuW5AGlxQsIZi0cFUyzcn9ekrYy1cIyb85piVLN5u7W9pXzSzKopaGrxXBWubPBSRagyXjA==}
     peerDependencies:
@@ -4954,12 +4960,12 @@ packages:
       '@sentry/node-native':
         optional: true
 
-  '@sentry/feedback@10.64.0':
-    resolution: {integrity: sha512-YrmKwRoAto+nwo26DoAhnpNmhkrVkuQFIAXqlTD8ipERjhcSNUYJAkAB+nH4w1KIgm9QQZE1sTq3iNQdPl1XMQ==}
-    engines: {node: '>=18'}
-
   '@sentry/feedback@10.67.0':
     resolution: {integrity: sha512-I4ML2/SF3enwikb6ZSoRiqolQrx0zSzTSnUgwCmugICF/jpHW0th1pCray9R+t1Zzibw/Dpj4t/DNXaSDRa2MA==}
+    engines: {node: '>=18'}
+
+  '@sentry/feedback@10.75.2':
+    resolution: {integrity: sha512-/nrtMVSxOqBAigMWxIQS+Y8OqQ27ty+isMh6+X96kfAp/SaGrNZ425SZxKwq0mwHS0WnVkF+rE5dJnbbi56XSA==}
     engines: {node: '>=18'}
 
   '@sentry/hono@10.64.0':
@@ -5012,8 +5018,8 @@ packages:
       '@sentry/node':
         optional: true
 
-  '@sentry/nextjs@10.64.0':
-    resolution: {integrity: sha512-6knstbh23NvPv5+4wyAveTipjOmar91NSe1PqqrYhDVnAvOiHbWwpv+etCJEMhCCl6KRbgRGspYEyLNcL/t2GA==}
+  '@sentry/nextjs@10.75.2':
+    resolution: {integrity: sha512-ilzb3E7Kaskx/RQ355kCkxLxrHBtYS67pe6KO+F/O6s53f5t4sVwz4gE2Mz4ScghDXeKM+ccyB5GMq9dlkQ35A==}
     engines: {node: '>=18'}
     peerDependencies:
       next: ^13.2.0 || ^14.0 || ^15.0.0-rc.0 || ^16.0.0-0
@@ -5081,6 +5087,27 @@ packages:
       '@opentelemetry/sdk-trace-base':
         optional: true
 
+  '@sentry/node-core@10.75.2':
+    resolution: {integrity: sha512-6sFhrvWVLAPRTOYkwrOOLwgsWINe6Y75oX9xKj11zZcKd2e1K2Y3bcx3uzDU06+cxfVbUQUBulsCr/TD7yx/vw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+      '@opentelemetry/core': ^1.30.1 || ^2.1.0
+      '@opentelemetry/exporter-trace-otlp-http': '>=0.57.0 <1'
+      '@opentelemetry/instrumentation': '>=0.57.1 <1'
+      '@opentelemetry/sdk-trace-base': ^1.30.1 || ^2.1.0
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
+      '@opentelemetry/core':
+        optional: true
+      '@opentelemetry/exporter-trace-otlp-http':
+        optional: true
+      '@opentelemetry/instrumentation':
+        optional: true
+      '@opentelemetry/sdk-trace-base':
+        optional: true
+
   '@sentry/node@10.64.0':
     resolution: {integrity: sha512-rhNZ3CTqwdTQHo9Zd+NsoLyW69VIzbMcGMRX9y8W1A6runT4YH/MDhmT0U9oWfNZKN8ngqR/gfVMTnlYVQliCA==}
     engines: {node: '>=18'}
@@ -5091,6 +5118,10 @@ packages:
 
   '@sentry/node@10.67.0':
     resolution: {integrity: sha512-SFKpZGqOCEFSmP93NdDP6ikZp4NS7A/JR8+2ofK3jF6Y9Vyox7pX0pxdOnPLpFcPtMybMahfWqSAWJvsFs4RmA==}
+    engines: {node: '>=18'}
+
+  '@sentry/node@10.75.2':
+    resolution: {integrity: sha512-ffdx1i3Fx9Q3Ofdaone2I+HWOj9+Wcu268xgV+Bn8WJYABm8BZIBNvS+PORKBPesWILhQCThWOs+E/8vcV1HuQ==}
     engines: {node: '>=18'}
 
   '@sentry/opentelemetry@10.64.0':
@@ -5117,26 +5148,34 @@ packages:
       '@opentelemetry/core': ^1.30.1 || ^2.1.0
       '@opentelemetry/sdk-trace-base': ^1.30.1 || ^2.1.0
 
-  '@sentry/react@10.64.0':
-    resolution: {integrity: sha512-oShEKcosBKdm0kgan8suFb6Jj8poccEyDz2qiflonq/5/hUDyzdVeKfFzf0b1MmdjWSn9k3hfrLNFfPNCuEt7Q==}
+  '@sentry/opentelemetry@10.75.2':
+    resolution: {integrity: sha512-qoJIdrXiFPPYs7AmdkktB5O4vhHYKzk6EulpQlvROe+ZZeG4/S0yeJApAbg3ThDob/2zEAxYEPEvaHv2epipgA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+      '@opentelemetry/core': ^1.30.1 || ^2.1.0
+      '@opentelemetry/sdk-trace-base': ^1.30.1 || ^2.1.0
+
+  '@sentry/react@10.75.2':
+    resolution: {integrity: sha512-4MtB1tSmMHzwTwY7m30UzRbbUx9cP84UK7WIDL9g7RvoGd/aZwxbp6IkUJ46VBNItVoSF+1GM9wtqzkLma252g==}
     engines: {node: '>=18'}
     peerDependencies:
       react: ^16.14.0 || 17.x || 18.x || 19.x
-
-  '@sentry/replay-canvas@10.64.0':
-    resolution: {integrity: sha512-EioBwcnnhtPiXzTZJTbZKaMEg3qNM5YZlX1VanoXomPATqfJD62cb/M27zhgiWXXJ7e8/NGVHvwNDYGrqsN39g==}
-    engines: {node: '>=18'}
 
   '@sentry/replay-canvas@10.67.0':
     resolution: {integrity: sha512-neNA4T6MFtZzMdKYetiR+LZd9BNSd0q2szMn0wk+A15PqHE/IN7a34V6JZc9rCtmzB0wldh0eWGOBb49MSNKjA==}
     engines: {node: '>=18'}
 
-  '@sentry/replay@10.64.0':
-    resolution: {integrity: sha512-q8nke2GDSwEiu1zYoctDDvnSNTjHWoVAKo2JXTleD0nwOO6IlAgUYmsm3qEQiSW7BVla9W1TRbW6ChFAUXYZbw==}
+  '@sentry/replay-canvas@10.75.2':
+    resolution: {integrity: sha512-4GVhCkn+/0QEpXdY8UfXahg8qjF2QTH1+qej/CLketHGfRqxLhdanzHU9ILesplWX5GeuTkPn5ZTmd5CJf+KXg==}
     engines: {node: '>=18'}
 
   '@sentry/replay@10.67.0':
     resolution: {integrity: sha512-nkEUgPCR82EcyJkCf3XCE9H0R5KisCqyCAaSGxe7NpAoQbvASHx4MUNgXVAn+D0M494gvPZh6lFH7JgzqTcSqQ==}
+    engines: {node: '>=18'}
+
+  '@sentry/replay@10.75.2':
+    resolution: {integrity: sha512-cCfdPt892S+rrAFOuUvbwR318/ZPFfBFvVkMlL3goktAnbECAGy6comAxLQEalyp22Ee67bEqYQN7RdNuRHIJw==}
     engines: {node: '>=18'}
 
   '@sentry/server-utils@10.64.0':
@@ -5151,8 +5190,12 @@ packages:
     resolution: {integrity: sha512-GQ9t+RSTx5s3b/aZrLFuL4nrwPLMah5NiZk5cjxJmgmOSgm3nMdO8gdqCedDch5B13F3YsxtaQYjSJnzLz8M5A==}
     engines: {node: '>=18'}
 
-  '@sentry/vercel-edge@10.64.0':
-    resolution: {integrity: sha512-0M8XiOX2ptHMGS9rp+6+utzjHHMcr7PZ2TA1yVnfYD5ESCgWu3NJ9rqvILPOEXCymW+s+bWlN2ZyKfFaIUmafw==}
+  '@sentry/server-utils@10.75.2':
+    resolution: {integrity: sha512-ep8Ntj/vsLHbql1jUMFiRYrleuQ3dENb8oD4Nkjv7hou2j0UKLct1eLbx+TckeVOhYdWmFeO7WJWjRio/a4TOg==}
+    engines: {node: '>=18'}
+
+  '@sentry/vercel-edge@10.75.2':
+    resolution: {integrity: sha512-Ol2kQfob60s4qAeitUt2XXG9of/jUCqhQ3loMx5nASJn9Y1C86XZOqzbVuzBDIoMQVBPV2JGCD8HgWHiN5HPbw==}
     engines: {node: '>=18'}
 
   '@sentry/webpack-plugin@5.4.0':
@@ -5445,7 +5488,7 @@ packages:
       sury: ^10.0.0
       typebox: ^1.0.17
       valibot: ^1.1.0
-      zod: ^3.25.0 || ^4.0.0
+      zod: 4.6.6
       zod-to-json-schema: ^3.24.5
     peerDependenciesMeta:
       '@valibot/to-json-schema':
@@ -5476,7 +5519,7 @@ packages:
       sury: ^10.0.0
       typebox: ^1.0.0
       valibot: ^1.1.0
-      zod: ^3.25.0 || ^4.0.0
+      zod: 4.6.6
       zod-openapi: ^4
     peerDependenciesMeta:
       arktype:
@@ -6352,7 +6395,7 @@ packages:
     resolution: {integrity: sha512-70DE8k1rR0N3mXxyyfjYAx/FxRln/kQ5ym18lt1ys1eUklcPuoIXGbUBwdfCbmkt6YF3jCDZ5+OgkWieP/NGDw==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.6.6
 
   ajv-draft-04@1.0.0:
     resolution: {integrity: sha512-mv00Te6nmYbRp5DCwclxtt7yV/joXJPGS7nM+97GdxvuttCOfgI3K4U25zboyeX0O+myI8ERluxQe5wljMmVIw==}
@@ -6638,7 +6681,7 @@ packages:
   better-call@1.3.7:
     resolution: {integrity: sha512-Al51/hjp2SSp6CRTa3F2ptcx4yQVS1xWKoY6jcVXqNYOap6mHFP2jUBn5EwIL4iIed1/Sq4hlQ+Umm6EflZG+w==}
     peerDependencies:
-      zod: ^4.0.0
+      zod: 4.6.6
     peerDependenciesMeta:
       zod:
         optional: true
@@ -7387,8 +7430,8 @@ packages:
     resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
     engines: {node: '>= 4'}
 
-  dompurify@3.4.16:
-    resolution: {integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==}
+  dompurify@3.4.17:
+    resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
 
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
@@ -8464,8 +8507,8 @@ packages:
     resolution: {integrity: sha512-f+Dtubxfpf6KYFq7WVXJoOLn0bk4TJrMrN9SzeE+jrWrCWj7XX3fA6vkryafhADX+GMymRxgDJDOI33COkJc0w==}
     engines: {node: '>=20.0.0'}
 
-  ip-address@10.7.2:
-    resolution: {integrity: sha512-7H/2gFSIitxc0hG3nOI1glS8QLo/EHBFFLk8vEUjXY/xu0AdL8jZ9U1IzO2PUm0d2D/ofQcAifb0g6OBkt8U7w==}
+  ip-address@10.7.4:
+    resolution: {integrity: sha512-DWBMKyeM25D70nrIiTkgQth59/G+naKOTep6huF9j+GmeK3DMD60Zvxg5d5qQnz+38AHgou6ean2LECX+lrKDg==}
     engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
@@ -10717,8 +10760,8 @@ packages:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
     engines: {node: '>=0.6'}
 
-  toml@4.3.0:
-    resolution: {integrity: sha512-lVb8X9BsPVuH0M4BKeS91tXAmJvCjQ5UIyAbQFaxkKGyUFK2RPkhwaFSQH8vbpl1d23eu/IBH+dwVMHWaq9A5A==}
+  toml@5.0.1:
+    resolution: {integrity: sha512-EqYNA/YvUNndrA2B3O2ojzLQoTQrBxeZ9UIjQwk8t10oe6n7dwclBwd9IdZQTOKwe6vWX+AXtl6IntXRbepdxQ==}
     engines: {node: '>=20'}
 
   tough-cookie@6.0.1:
@@ -11278,22 +11321,16 @@ packages:
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
     peerDependencies:
-      zod: ^3.25.28 || ^4
+      zod: 4.6.6
 
   zod-validation-error@4.0.2:
     resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
+      zod: 4.6.6
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
-  zod@4.1.11:
-    resolution: {integrity: sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg==}
-
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
   zustand@5.0.12:
     resolution: {integrity: sha512-i77ae3aZq4dhMlRhJVCYgMLKuSiZAaUPAct2AksxQ+gOtimhGMdXljRT21P5BNpeT4kXlLIckvkPM029OljD7g==}
@@ -11318,32 +11355,32 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/gateway@3.0.88(zod@4.3.6)':
+  '@ai-sdk/gateway@3.0.88(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.33(zod@4.3.6)
+      '@ai-sdk/provider-utils': 4.0.33(zod@4.6.6)
       '@vercel/oidc': 3.1.0
-      zod: 4.3.6
+      zod: 4.6.6
 
-  '@ai-sdk/mistral@3.0.51(zod@4.3.6)':
+  '@ai-sdk/mistral@3.0.51(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.14
-      '@ai-sdk/provider-utils': 4.0.40(zod@4.3.6)
-      zod: 4.3.6
+      '@ai-sdk/provider-utils': 4.0.40(zod@4.6.6)
+      zod: 4.6.6
 
-  '@ai-sdk/provider-utils@4.0.33(zod@4.3.6)':
+  '@ai-sdk/provider-utils@4.0.33(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.12
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.1
-      zod: 4.3.6
+      zod: 4.6.6
 
-  '@ai-sdk/provider-utils@4.0.40(zod@4.3.6)':
+  '@ai-sdk/provider-utils@4.0.40(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.14
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.1
-      zod: 4.3.6
+      zod: 4.6.6
 
   '@ai-sdk/provider@3.0.12':
     dependencies:
@@ -12119,98 +12156,98 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.14
 
-  '@better-auth/api-key@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))':
+  '@better-auth/api-key@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
       better-auth: 1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      better-call: 1.3.7(zod@4.3.6)
-      zod: 4.3.6
+      better-call: 1.3.7(zod@4.6.6)
+      zod: 4.6.6
 
-  '@better-auth/cimd@1.7.0-beta.10(patch_hash=fb8d2c78931debefcb903601f6054f4cbf8cdcab25aec43f2de406966ddd97be)(fed2f72c23165b3f74ad10cd294800ba)':
+  '@better-auth/cimd@1.7.0-beta.10(patch_hash=fb8d2c78931debefcb903601f6054f4cbf8cdcab25aec43f2de406966ddd97be)(5516186305f95068f5371ce20fe30840)':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
-      '@better-auth/oauth-provider': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/oauth-provider': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))
       better-auth: 1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      better-call: 1.3.7(zod@4.3.6)
+      better-call: 1.3.7(zod@4.6.6)
 
-  '@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)':
+  '@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)':
     dependencies:
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
       '@opentelemetry/semantic-conventions': 1.42.0
       '@standard-schema/spec': 1.1.0
-      better-call: 1.3.7(zod@4.3.6)
+      better-call: 1.3.7(zod@4.6.6)
       jose: 6.2.8
       kysely: 0.28.17
       nanostores: 1.4.2
-      zod: 4.3.6
+      zod: 4.6.6
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@better-auth/drizzle-adapter@1.7.0-beta.10(patch_hash=cd64da0c48130585986f4c25fac25093e761675db1885d837df7dc31c358f7f8)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))':
+  '@better-auth/drizzle-adapter@1.7.0-beta.10(patch_hash=cd64da0c48130585986f4c25fac25093e761675db1885d837df7dc31c358f7f8)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
     optionalDependencies:
       drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12))
 
-  '@better-auth/kysely-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(kysely@0.28.17)':
+  '@better-auth/kysely-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(kysely@0.28.17)':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
     optionalDependencies:
       kysely: 0.28.17
 
-  '@better-auth/memory-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
+  '@better-auth/memory-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/mongo-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
+  '@better-auth/mongo-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/oauth-provider@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))':
+  '@better-auth/oauth-provider@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
       better-auth: 1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      better-call: 1.3.7(zod@4.3.6)
+      better-call: 1.3.7(zod@4.6.6)
       jose: 6.2.8
-      zod: 4.3.6
+      zod: 4.6.6
 
-  '@better-auth/prisma-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
+  '@better-auth/prisma-adapter@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
 
-  '@better-auth/scim@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))':
+  '@better-auth/scim@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
       better-auth: 1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      better-call: 1.3.7(zod@4.3.6)
-      zod: 4.3.6
+      better-call: 1.3.7(zod@4.6.6)
+      zod: 4.6.6
 
-  '@better-auth/sso@1.7.0-beta.10(patch_hash=eb4378a8959f462bbf23acb54e46dd781d29b1ef295f507e6d23a8a42ad7e56b)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.3.6))':
+  '@better-auth/sso@1.7.0-beta.10(patch_hash=eb4378a8959f462bbf23acb54e46dd781d29b1ef295f507e6d23a8a42ad7e56b)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(better-call@1.3.7(zod@4.6.6))':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
       better-auth: 1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      better-call: 1.3.7(zod@4.3.6)
+      better-call: 1.3.7(zod@4.6.6)
       fast-xml-parser: 5.8.0
       jose: 6.2.8
       samlify: 2.13.1
       tldts: 7.4.10
-      zod: 4.3.6
+      zod: 4.6.6
 
-  '@better-auth/telemetry@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)':
+  '@better-auth/telemetry@1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)':
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
 
@@ -12791,13 +12828,13 @@ snapshots:
 
   '@hey-api/types@0.1.4': {}
 
-  '@hono/mcp@0.2.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.3.6)':
+  '@hono/mcp@0.2.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.6.6)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)
+      '@modelcontextprotocol/sdk': 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       hono: 4.13.11
       hono-rate-limiter: 0.4.2(hono@4.13.11)
       pkce-challenge: 5.0.1
-      zod: 4.3.6
+      zod: 4.6.6
 
   '@hono/node-server@2.0.12(hono@4.13.11)':
     dependencies:
@@ -13291,22 +13328,22 @@ snapshots:
       eventsource-parser: 3.1.1
       jose: 6.2.8
       pkce-challenge: 5.0.1
-      zod: 4.3.6
+      zod: 4.6.6
 
   '@modelcontextprotocol/core@2.3.1':
     dependencies:
-      zod: 4.3.6
+      zod: 4.6.6
 
-  '@modelcontextprotocol/ext-apps@1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.3.6)':
+  '@modelcontextprotocol/ext-apps@1.7.5(@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)
+      '@modelcontextprotocol/sdk': 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       '@standard-schema/spec': 1.1.0
-      zod: 4.3.6
+      zod: 4.6.6
     optionalDependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  '@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@3.25.76)':
+  '@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)':
     dependencies:
       '@hono/node-server': 2.0.12(hono@4.13.11)
       ajv: 8.20.0
@@ -13323,37 +13360,15 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
-    transitivePeerDependencies:
-      - supports-color
-
-  '@modelcontextprotocol/sdk@1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.3.6)':
-    dependencies:
-      '@hono/node-server': 2.0.12(hono@4.13.11)
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.1.1
-      express: 5.2.1
-      express-rate-limit: 8.4.1(express@5.2.1)
-      hono: 4.13.11
-      jose: 6.2.8
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.2
-      zod: 4.3.6
-      zod-to-json-schema: 3.25.2(zod@4.3.6)
+      zod: 4.6.6
+      zod-to-json-schema: 3.25.2(zod@4.6.6)
     transitivePeerDependencies:
       - supports-color
 
   '@modelcontextprotocol/server@2.3.1':
     dependencies:
       '@modelcontextprotocol/core': 2.3.1
-      zod: 4.3.6
+      zod: 4.6.6
 
   '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
     optional: true
@@ -14378,22 +14393,15 @@ snapshots:
 
   '@sentry/babel-plugin-component-annotate@5.3.0': {}
 
-  '@sentry/browser-utils@10.64.0':
-    dependencies:
-      '@sentry/core': 10.64.0
-
   '@sentry/browser-utils@10.67.0':
     dependencies:
       '@sentry/conventions': 0.16.0
       '@sentry/core': 10.67.0
 
-  '@sentry/browser@10.64.0':
+  '@sentry/browser-utils@10.75.2':
     dependencies:
-      '@sentry/browser-utils': 10.64.0
-      '@sentry/core': 10.64.0
-      '@sentry/feedback': 10.64.0
-      '@sentry/replay': 10.64.0
-      '@sentry/replay-canvas': 10.64.0
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
 
   '@sentry/browser@10.67.0':
     dependencies:
@@ -14403,6 +14411,15 @@ snapshots:
       '@sentry/feedback': 10.67.0
       '@sentry/replay': 10.67.0
       '@sentry/replay-canvas': 10.67.0
+
+  '@sentry/browser@10.75.2':
+    dependencies:
+      '@sentry/browser-utils': 10.75.2
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
+      '@sentry/feedback': 10.75.2
+      '@sentry/replay': 10.75.2
+      '@sentry/replay-canvas': 10.75.2
 
   '@sentry/bundler-plugin-core@5.3.0':
     dependencies:
@@ -14533,6 +14550,10 @@ snapshots:
     dependencies:
       '@sentry/conventions': 0.16.0
 
+  '@sentry/core@10.75.2':
+    dependencies:
+      '@sentry/conventions': 0.16.0
+
   '@sentry/electron@7.16.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@sentry/browser': 10.67.0
@@ -14543,13 +14564,13 @@ snapshots:
       - '@opentelemetry/exporter-trace-otlp-http'
       - supports-color
 
-  '@sentry/feedback@10.64.0':
-    dependencies:
-      '@sentry/core': 10.64.0
-
   '@sentry/feedback@10.67.0':
     dependencies:
       '@sentry/core': 10.67.0
+
+  '@sentry/feedback@10.75.2':
+    dependencies:
+      '@sentry/core': 10.75.2
 
   '@sentry/hono@10.64.0(@hono/node-server@2.0.12(hono@4.13.11))(@sentry/node@10.64.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1)))(hono@4.13.11)':
     dependencies:
@@ -14569,18 +14590,19 @@ snapshots:
       '@hono/node-server': 2.0.12(hono@4.13.11)
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))
 
-  '@sentry/nextjs@10.64.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(next@16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(webpack@5.108.4(postcss@8.5.23))':
+  '@sentry/nextjs@10.75.2(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))(next@16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)(webpack@5.108.4(postcss@8.5.23))':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@rollup/plugin-commonjs': 28.0.1(rollup@4.62.2)
-      '@sentry/browser-utils': 10.64.0
+      '@sentry/browser-utils': 10.75.2
       '@sentry/bundler-plugin-core': 5.3.0
-      '@sentry/conventions': 0.15.1
-      '@sentry/core': 10.64.0
-      '@sentry/node': 10.64.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))
-      '@sentry/opentelemetry': 10.64.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))
-      '@sentry/react': 10.64.0(react@19.2.8)
-      '@sentry/vercel-edge': 10.64.0
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
+      '@sentry/node': 10.75.2(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))
+      '@sentry/opentelemetry': 10.75.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))
+      '@sentry/react': 10.75.2(react@19.2.8)
+      '@sentry/server-utils': 10.75.2
+      '@sentry/vercel-edge': 10.75.2
       '@sentry/webpack-plugin': 5.4.0(rollup@4.62.2)(webpack@5.108.4(postcss@8.5.23))
       next: 16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       rollup: 4.62.2
@@ -14625,6 +14647,19 @@ snapshots:
       '@sentry/conventions': 0.16.0
       '@sentry/core': 10.67.0
       '@sentry/opentelemetry': 10.67.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))
+      import-in-the-middle: 3.3.1
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-trace-otlp-http': 0.220.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/instrumentation': 0.220.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.1)
+
+  '@sentry/node-core@10.75.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))':
+    dependencies:
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
+      '@sentry/opentelemetry': 10.75.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))
       import-in-the-middle: 3.3.1
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
@@ -14681,6 +14716,22 @@ snapshots:
       - '@opentelemetry/exporter-trace-otlp-http'
       - supports-color
 
+  '@sentry/node@10.75.2(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/instrumentation': 0.220.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.1)
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
+      '@sentry/node-core': 10.75.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.220.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))
+      '@sentry/opentelemetry': 10.75.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))
+      '@sentry/server-utils': 10.75.2
+      import-in-the-middle: 3.3.1
+    transitivePeerDependencies:
+      - '@opentelemetry/core'
+      - '@opentelemetry/exporter-trace-otlp-http'
+      - supports-color
+
   '@sentry/opentelemetry@10.64.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -14705,31 +14756,40 @@ snapshots:
       '@sentry/conventions': 0.16.0
       '@sentry/core': 10.67.0
 
-  '@sentry/react@10.64.0(react@19.2.8)':
+  '@sentry/opentelemetry@10.75.2(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.9.0(@opentelemetry/api@1.9.1))':
     dependencies:
-      '@sentry/browser': 10.64.0
-      '@sentry/core': 10.64.0
-      react: 19.2.8
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.9.0(@opentelemetry/api@1.9.1)
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
 
-  '@sentry/replay-canvas@10.64.0':
+  '@sentry/react@10.75.2(react@19.2.8)':
     dependencies:
-      '@sentry/core': 10.64.0
-      '@sentry/replay': 10.64.0
+      '@sentry/browser': 10.75.2
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
+      react: 19.2.8
 
   '@sentry/replay-canvas@10.67.0':
     dependencies:
       '@sentry/core': 10.67.0
       '@sentry/replay': 10.67.0
 
-  '@sentry/replay@10.64.0':
+  '@sentry/replay-canvas@10.75.2':
     dependencies:
-      '@sentry/browser-utils': 10.64.0
-      '@sentry/core': 10.64.0
+      '@sentry/core': 10.75.2
+      '@sentry/replay': 10.75.2
 
   '@sentry/replay@10.67.0':
     dependencies:
       '@sentry/browser-utils': 10.67.0
       '@sentry/core': 10.67.0
+
+  '@sentry/replay@10.75.2':
+    dependencies:
+      '@sentry/browser-utils': 10.75.2
+      '@sentry/core': 10.75.2
 
   '@sentry/server-utils@10.64.0':
     dependencies:
@@ -14762,10 +14822,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@sentry/vercel-edge@10.64.0':
+  '@sentry/server-utils@10.75.2':
+    dependencies:
+      '@sentry/conventions': 0.16.0
+      '@sentry/core': 10.75.2
+
+  '@sentry/vercel-edge@10.75.2':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@sentry/core': 10.64.0
+      '@sentry/core': 10.75.2
 
   '@sentry/webpack-plugin@5.4.0(rollup@4.62.2)(webpack@5.108.4(postcss@8.5.23))':
     dependencies:
@@ -15172,24 +15237,24 @@ snapshots:
 
   '@stablelib/base64@1.0.1': {}
 
-  '@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)':
+  '@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6)':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/json-schema': 7.0.15
       quansync: 0.2.11
     optionalDependencies:
       effect: 4.0.0-beta.83
-      zod: 4.3.6
-      zod-to-json-schema: 3.25.2(zod@4.3.6)
+      zod: 4.6.6
+      zod-to-json-schema: 3.25.2(zod@4.6.6)
 
-  '@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.3.6)':
+  '@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.6.6)':
     dependencies:
-      '@standard-community/standard-json': 0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)
+      '@standard-community/standard-json': 0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6)
       '@standard-schema/spec': 1.1.0
       openapi-types: 12.1.3
     optionalDependencies:
       effect: 4.0.0-beta.83
-      zod: 4.3.6
+      zod: 4.6.6
 
   '@standard-schema/spec@1.1.0': {}
 
@@ -16104,7 +16169,7 @@ snapshots:
   '@vercel/cli-config@0.2.4':
     dependencies:
       xdg-app-paths: 5.5.1
-      zod: 4.1.11
+      zod: 4.6.6
 
   '@vercel/cli-exec@1.0.1':
     dependencies:
@@ -16274,13 +16339,13 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ai@6.0.146(zod@4.3.6):
+  ai@6.0.146(zod@4.6.6):
     dependencies:
-      '@ai-sdk/gateway': 3.0.88(zod@4.3.6)
+      '@ai-sdk/gateway': 3.0.88(zod@4.6.6)
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.33(zod@4.3.6)
+      '@ai-sdk/provider-utils': 4.0.33(zod@4.6.6)
       '@opentelemetry/api': 1.9.0
-      zod: 4.3.6
+      zod: 4.6.6
 
   ajv-draft-04@1.0.0(ajv@8.20.0):
     optionalDependencies:
@@ -16554,43 +16619,43 @@ snapshots:
 
   better-auth@1.7.0-beta.10(@opentelemetry/api@1.9.1)(better-sqlite3@13.0.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))(mysql2@3.24.2(@types/node@20.12.12))(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
-      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
-      '@better-auth/drizzle-adapter': 1.7.0-beta.10(patch_hash=cd64da0c48130585986f4c25fac25093e761675db1885d837df7dc31c358f7f8)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))
-      '@better-auth/kysely-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(kysely@0.28.17)
-      '@better-auth/memory-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
-      '@better-auth/mongo-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
-      '@better-auth/prisma-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
-      '@better-auth/telemetry': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.3.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
+      '@better-auth/core': 1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2)
+      '@better-auth/drizzle-adapter': 1.7.0-beta.10(patch_hash=cd64da0c48130585986f4c25fac25093e761675db1885d837df7dc31c358f7f8)(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12)))
+      '@better-auth/kysely-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(kysely@0.28.17)
+      '@better-auth/memory-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/mongo-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/prisma-adapter': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)
+      '@better-auth/telemetry': 1.7.0-beta.10(@better-auth/core@1.7.0-beta.10(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.6))(jose@6.2.8)(kysely@0.28.17)(nanostores@1.4.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
       '@noble/ciphers': 2.2.0
       '@noble/hashes': 2.2.0
-      better-call: 1.3.7(zod@4.3.6)
+      better-call: 1.3.7(zod@4.6.6)
       defu: 6.1.5
       jose: 6.2.8
       kysely: 0.28.17
       nanostores: 1.4.2
-      zod: 4.3.6
+      zod: 4.6.6
     optionalDependencies:
       better-sqlite3: 13.0.2
       drizzle-kit: 0.31.9
       drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)(@planetscale/database@1.19.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@13.0.2)(bun-types@1.3.14)(kysely@0.28.17)(mysql2@3.24.2(@types/node@20.12.12))
       mysql2: 3.24.2(@types/node@20.12.12)
-      next: 16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      next: 16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
 
-  better-call@1.3.7(zod@4.3.6):
+  better-call@1.3.7(zod@4.6.6):
     dependencies:
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
       rou3: 0.7.12
       set-cookie-parser: 3.1.0
     optionalDependencies:
-      zod: 4.3.6
+      zod: 4.6.6
 
   better-sqlite3@13.0.2:
     dependencies:
@@ -16626,7 +16691,7 @@ snapshots:
 
   botid@1.5.11(next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8):
     optionalDependencies:
-      next: 16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      next: 16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
 
   bowser@2.14.1: {}
@@ -17331,7 +17396,7 @@ snapshots:
     dependencies:
       domelementtype: 2.3.0
 
-  dompurify@3.4.16:
+  dompurify@3.4.17:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -17420,7 +17485,7 @@ snapshots:
       kubernetes-types: 1.30.0
       msgpackr: 2.0.5
       multipasta: 0.2.8
-      toml: 4.3.0
+      toml: 5.0.1
       uuid: 14.0.1
       yaml: 2.9.0
 
@@ -17861,8 +17926,8 @@ snapshots:
       '@babel/parser': 7.29.7
       eslint: 10.11.0(jiti@2.7.0)
       hermes-parser: 0.25.1
-      zod: 4.3.6
-      zod-validation-error: 4.0.2(zod@4.3.6)
+      zod: 4.6.6
+      zod-validation-error: 4.0.2(zod@4.6.6)
     transitivePeerDependencies:
       - supports-color
 
@@ -18071,7 +18136,7 @@ snapshots:
   express-rate-limit@8.4.1(express@5.2.1):
     dependencies:
       express: 5.2.1
-      ip-address: 10.7.2
+      ip-address: 10.7.4
 
   express@5.2.1:
     dependencies:
@@ -18592,10 +18657,10 @@ snapshots:
     dependencies:
       parse-passwd: 1.0.0
 
-  hono-openapi@1.3.0(@hono/standard-validator@0.2.2(@standard-schema/spec@1.1.0)(hono@4.13.11))(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.3.6))(@types/json-schema@7.0.15)(hono@4.13.11)(openapi-types@12.1.3):
+  hono-openapi@1.3.0(@hono/standard-validator@0.2.2(@standard-schema/spec@1.1.0)(hono@4.13.11))(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.6.6))(@types/json-schema@7.0.15)(hono@4.13.11)(openapi-types@12.1.3):
     dependencies:
-      '@standard-community/standard-json': 0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6)
-      '@standard-community/standard-openapi': 0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.3.6))(zod@4.3.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.3.6)
+      '@standard-community/standard-json': 0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6)
+      '@standard-community/standard-openapi': 0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(effect@4.0.0-beta.83)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@4.6.6))(zod@4.6.6))(@standard-schema/spec@1.1.0)(effect@4.0.0-beta.83)(openapi-types@12.1.3)(zod@4.6.6)
       '@types/json-schema': 7.0.15
       openapi-types: 12.1.3
     optionalDependencies:
@@ -18742,7 +18807,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  ip-address@10.7.2: {}
+  ip-address@10.7.4: {}
 
   ipaddr.js@1.9.1: {}
 
@@ -19271,7 +19336,7 @@ snapshots:
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
       dayjs: 1.11.23
-      dompurify: 3.4.16
+      dompurify: 3.4.17
       es-toolkit: 1.51.0
       fastdom: 1.0.12
       katex: 0.18.2
@@ -19563,6 +19628,34 @@ snapshots:
       - '@babel/core'
       - '@types/node'
       - babel-plugin-macros
+
+  next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@20.12.12)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    dependencies:
+      '@next/env': 16.4.1
+      '@swc/helpers': 0.5.23
+      baseline-browser-mapping: 2.11.5
+      caniuse-lite: 1.0.30001806
+      postcss: 8.5.23
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+      styled-jsx: 5.1.6(@babel/core@7.29.7)(react@19.2.8)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 16.4.1
+      '@next/swc-darwin-x64': 16.4.1
+      '@next/swc-linux-arm64-gnu': 16.4.1
+      '@next/swc-linux-arm64-musl': 16.4.1
+      '@next/swc-linux-x64-gnu': 16.4.1
+      '@next/swc-linux-x64-musl': 16.4.1
+      '@next/swc-win32-arm64-msvc': 16.4.1
+      '@next/swc-win32-x64-msvc': 16.4.1
+      '@opentelemetry/api': 1.9.1
+      babel-plugin-react-compiler: 1.0.0
+      sharp: 0.35.5(@types/node@20.12.12)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@types/node'
+      - babel-plugin-macros
+    optional: true
 
   next@16.4.1(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
@@ -19976,7 +20069,7 @@ snapshots:
       '@posthog/core': 1.53.2
       '@posthog/types': 1.411.1
       core-js: 3.50.0
-      dompurify: 3.4.16
+      dompurify: 3.4.17
       fflate: 0.4.9
       preact: 10.29.8(preact-render-to-string@6.6.5(preact@11.0.0-beta.0))
       query-selector-shadow-dom: 1.0.1
@@ -20645,7 +20738,7 @@ snapshots:
       '@babel/plugin-transform-typescript': 7.29.7(@babel/core@7.29.7)
       '@babel/preset-typescript': 7.29.7(@babel/core@7.29.7)
       '@dotenvx/dotenvx': 1.64.0
-      '@modelcontextprotocol/sdk': 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@3.25.76)
+      '@modelcontextprotocol/sdk': 1.32.1(patch_hash=e0ffdb90bd45b4500bc8cdc478ec29e7eeb0f9fc75debc1bf91f36b4a516e578)(zod@4.6.6)
       '@types/validate-npm-package-name': 4.0.2
       browserslist: 4.28.7
       commander: 14.0.3
@@ -20672,8 +20765,8 @@ snapshots:
       ts-morph: 26.0.0
       tsconfig-paths: 4.2.0
       validate-npm-package-name: 7.0.2
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
+      zod: 4.6.6
+      zod-to-json-schema: 3.25.2(zod@4.6.6)
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - '@types/node'
@@ -21183,7 +21276,7 @@ snapshots:
 
   toidentifier@1.0.1: {}
 
-  toml@4.3.0: {}
+  toml@5.0.1: {}
 
   tough-cookie@6.0.1:
     dependencies:
@@ -21796,23 +21889,15 @@ snapshots:
       cookie: 1.1.1
       youch-core: 0.3.3
 
-  zod-to-json-schema@3.25.2(zod@3.25.76):
+  zod-to-json-schema@3.25.2(zod@4.6.6):
     dependencies:
-      zod: 3.25.76
+      zod: 4.6.6
 
-  zod-to-json-schema@3.25.2(zod@4.3.6):
+  zod-validation-error@4.0.2(zod@4.6.6):
     dependencies:
-      zod: 4.3.6
+      zod: 4.6.6
 
-  zod-validation-error@4.0.2(zod@4.3.6):
-    dependencies:
-      zod: 4.3.6
-
-  zod@3.25.76: {}
-
-  zod@4.1.11: {}
-
-  zod@4.3.6: {}
+  zod@4.6.6: {}
 
   zustand@5.0.12(@types/react@19.2.14)(immer@11.1.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)):
     optionalDependencies:

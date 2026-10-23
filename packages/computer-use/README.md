@@ -121,6 +121,55 @@ Pointer input relies on an availability-checked lookup of the private
 `CGEventSetWindowLocation` symbol; without it, pointer actions fail explicitly
 while accessible controls keep working.
 
+## Windows (This PC)
+
+On Windows the desktop offers **This PC** instead of This Mac. Its helper is
+`windows/ComputerUse.cs`, compiled with the .NET Framework compiler that ships
+with Windows into `openwork-computer-use.exe` and signed with the rest of the
+Windows build. It has no model, API key, network listener or clipboard access.
+`computer-windows-driver.mjs` starts it and speaks its line protocol (one JSON
+object per line on stdin/stdout). The shared runtime in `computer-remote.mjs`
+supplies sessions, receipts, Take over, Continue, Stop and watch frames, as for
+Linux VMs. This PC is a local computer: it does not need `remoteComputers`, and
+a Windows chat starts on it.
+
+| Command | Purpose |
+| --- | --- |
+| `openwork-computer-use --check` | Prints `{protocol: "openwork.computer-use.windows/1", ok, reason, supported, session, integrity}` and exits. |
+| `openwork-computer-use serve --host-pid N` | Prints `{"type":"ready",...}`, then answers `windows`, `focus`, `capture`, `input` and `status` in order; `cancel` is answered at once and stops running input. It exits when stdin closes. |
+
+- Targets are app windows only; there is no whole-screen session. A window is
+  identified by its handle, process id and process start time, so a restarted
+  app never matches an old observation.
+- OpenWork's own windows are hidden. Terminals, code editors, password managers,
+  security settings, apps in another Windows session, apps running with higher
+  privileges than OpenWork (as administrator) and capture-protected windows are
+  listed with the reason they can't be used and are never opened. The helper
+  never elevates itself.
+- Screenshots contain only the selected window. If another app's window
+  overlaps it, the window draws itself (`PrintWindow`) instead.
+- Input is `SendInput`. Before each step and between short chunks of text the
+  helper checks that the window is still in front, has not moved or resized,
+  and that Windows is not locked or showing a secure prompt; otherwise it stops
+  and releases held keys and buttons. A click must land on the selected window
+  or its own popup, never on a window covering it.
+- `command` is sent as Ctrl and `option` as Alt. Clipboard, close/quit and
+  app-switch chords (Ctrl+C/X/V, Alt+F4, Ctrl+W, Alt+Tab and similar) are refused
+  before anything is sent.
+- Coordinates are physical pixels (per-monitor DPI aware v2).
+
+Not yet on Windows: accessible controls through UI Automation (so no `assist`
+mode, `press` or `set_value`; the agent acts on screenshot coordinates), the
+on-desktop presence overlay, and app scripting (`computer_script` is not
+offered). Windows may refuse to bring a window to the front while the person
+is using another app; the call then fails with nothing sent and asks the
+person to bring it forward.
+
+Build it on Windows with
+`node apps/desktop/scripts/prepare-computer-use-helper.mjs --force`; desktop dev
+and packaged builds run it automatically. A missing compiler is a warning, and
+This PC then reports the helper missing.
+
 ## Experimental access model
 
 The desktop rollout enables application tools on personal Macs, configured

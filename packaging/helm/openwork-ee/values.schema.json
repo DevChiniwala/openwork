@@ -101,6 +101,16 @@
               ],
               "description": "Sandbox organizations: Platform admins create try-it-out organizations from /admin with fictional workplace connectors, included models and a shareable join link that expires. Renders DEN_FEATURE_SANDBOX_ORGS."
             },
+            "organizationAutomationSettings": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Automations: organization settings: Organization admins turn Desktop Automations and Cloud Automations on or off for their organization. Cloud Automations need the deployment's headless runner. Renders DEN_FEATURE_ORGANIZATION_AUTOMATION_SETTINGS."
+            },
             "connectionMcpServers": {
               "enum": [
                 "",

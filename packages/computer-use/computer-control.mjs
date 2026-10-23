@@ -100,10 +100,11 @@ function deadline(ms) {
 
 /**
  * Adapters are trusted main-process dependencies, never renderer or model
- * input: "This Mac" (the native helper) and any remote computer such as a
- * Linux VM (see computer-remote.mjs). Every adapter speaks the same seven-tool
- * contract; each chat picks one. connect() owns a dedicated session scope;
- * close() MUST confirm session revocation, not merely disconnect. One
+ * input: "This Mac" (the native helper) or "This PC" (the Windows helper), and
+ * any remote computer such as a Linux VM (see computer-remote.mjs). Every
+ * adapter speaks the same seven-tool contract; each chat picks one, starting on
+ * this computer on a Mac or a Windows PC. connect() owns a dedicated session
+ * scope; close() MUST confirm session revocation, not merely disconnect. One
  * controller across all chats and computers, deliberately conservative.
  * @param {{
  *   adapters: ComputerAdapter[],
@@ -117,10 +118,10 @@ function deadline(ms) {
  *   requestMs?: number,
  *   runScript?: (request: { app: string, code: string, timeoutMs: number }, signal: AbortSignal) => Promise<ScriptResult>,
  *   onTiming?: (sessionId: string, step: { name: string, computerMs: number, modelMs?: number }) => void,
- *   cleanupMs?: number, operationMs?: number, pollMs?: number, idleMs?: number, now?: () => number,
+ *   cleanupMs?: number, operationMs?: number, pollMs?: number, idleMs?: number, now?: () => number, platform?: string,
  * }} options
  */
-export function createComputerControl({ adapters, runProgram, runScript, onTiming = () => {}, browserTask, readRemoteFeatureEnabled = async () => false, standing = { read: async () => ({ targets: {} }), write: async (_state) => {} }, presence = null,
+export function createComputerControl({ adapters, runProgram, runScript, onTiming = () => {}, browserTask, readRemoteFeatureEnabled = async () => false, standing = { read: async () => ({ targets: {} }), write: async (_state) => {} }, presence = null, platform = process.platform,
   permissionEntry = async () => ({ name: "OpenWork", ours: false }), onRequest = () => {},
   cleanupMs = 3000, operationMs = 120_000, pollMs = 750, idleMs = 90_000, requestMs = 600_000, now = Date.now }) {
   const targets = new Map();
@@ -268,7 +269,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       grant = grants.get(sessionId);
       if (!grant) {
         // Each chat remembers the computer it last used; one that went away falls back to the first.
-        const preferred = process.platform === "darwin" ? defaultTarget : [...targets.values()].find((target) => target.placement === "remote") ?? defaultTarget;
+        const preferred = ["darwin", "win32"].includes(platform) ? defaultTarget : [...targets.values()].find((target) => target.placement === "remote") ?? defaultTarget;
         const adapter = targets.get(state.targets.get(sessionId) ?? "") ?? preferred;
         grant = { sessionId, revision: 0, controller: new AbortController(), enabled: true, handoff: null, lastOpen: null, adapter };
         grants.set(sessionId, grant);
@@ -563,7 +564,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       if (lease && (lease.grant !== grant || lease.closing)) {
         return failure("computer_busy", lease.closing
           ? "The previous computer session is still stopping. Try again in a moment. Nothing was dispatched."
-          : "Another chat is using this Mac. It must finish or be stopped first. Nothing was dispatched.");
+          : "Another chat is using this computer. It must finish or be stopped first. Nothing was dispatched.");
       }
       lease ??= { grant, adapter: targetFor(grant), controller: new AbortController(), nativeId: null, session: null, busy: false, handoffGeneration: 0 };
       const current = lease;

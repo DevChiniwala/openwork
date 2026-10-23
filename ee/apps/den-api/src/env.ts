@@ -541,10 +541,10 @@ const generatedArtifactViewsEnabled =
 // behavior: no App servers, writable Workflow-bound views.
 const appMcpServersEnabled = parseBooleanFlag(optionalString(parsed.DEN_APP_MCP_SERVERS_ENABLED) ?? "true")
 
-// Desktop availability stays fail-closed, while an entirely unconfigured
-// server preserves the published-client runtime. An explicit availability
-// value also supplies the runtime default, so DEN_AUTOMATIONS_ENABLED=false is
-// a complete shutdown unless a mixed-version deployment explicitly keeps the
+// Automations are on by default. Organizations turn Desktop or Cloud
+// Automations off in their settings (organizationAutomationSettings). An
+// explicit DEN_AUTOMATIONS_ENABLED=false remains the operator's complete
+// shutdown unless a mixed-version deployment explicitly keeps the
 // compatibility runtime on. A disabled runtime always forces availability off.
 const automationsRuntimeEnabled = parseBooleanFlag(
   parsed.DEN_AUTOMATIONS_RUNTIME_ENABLED
@@ -552,7 +552,7 @@ const automationsRuntimeEnabled = parseBooleanFlag(
     ?? "true",
 )
 const automationsEnabled = automationsRuntimeEnabled
-  && parseBooleanFlag(parsed.DEN_AUTOMATIONS_ENABLED ?? "false")
+  && parseBooleanFlag(parsed.DEN_AUTOMATIONS_ENABLED ?? "true")
 const dashboardsEnabled = parseBooleanFlag(parsed.DEN_DASHBOARDS_ENABLED ?? "false")
 
 // Which product this install is (DEN_DEPLOYMENT, default self_hosted so a

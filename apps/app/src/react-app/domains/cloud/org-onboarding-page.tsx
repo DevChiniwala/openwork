@@ -383,6 +383,8 @@ function markProvidersSeen(providers: ReadonlyArray<{ id: string }>) {
 export function OrgOnboardingPage() {
   const navigate = useNavigate();
   const { authToken, denClient, orgId, settings } = useDenClient();
+  // The organization this visit started in; finishing in another one is a switch.
+  const [startingOrgId] = useState(orgId);
   const { markRouteReady } = useBootState();
   const prepared = usePreparedBootstrap();
   const initialSelectionState = initialOrgOnboardingSelectionState();
@@ -580,11 +582,15 @@ export function OrgOnboardingPage() {
   return (
     <ResourceSelectionPage
       autoContinue={postListStep.autoContinue}
+      previousOrgId={startingOrgId}
     />
   );
 }
 
-export function ResourceSelectionPage({ autoContinue = false }: { autoContinue?: boolean }) {
+export function ResourceSelectionPage({ autoContinue = false, previousOrgId = "" }: {
+  autoContinue?: boolean;
+  previousOrgId?: string;
+}) {
   const navigate = useNavigate();
   const platform = usePlatform();
   const { markRouteReady } = useBootState();
@@ -661,7 +667,10 @@ export function ResourceSelectionPage({ autoContinue = false }: { autoContinue?:
     }
     // A sign-in started from a conversation returns there (`desktopSignInReturn`).
     if (!completeSignInReturn(navigate)) navigate("/session", { replace: true });
-  }, [gatewayProviders, navigate, providers, selectedDefault]);
+    // Stores and caches across the app still hold the previous organization's
+    // providers, skills and connections. Start over at the route above.
+    if (previousOrgId && previousOrgId !== orgId) window.location.reload();
+  }, [gatewayProviders, navigate, orgId, previousOrgId, providers, selectedDefault]);
 
   const handleContinue = useCallback(async (optionsArg?: { requestReload?: boolean }) => {
     if (!window.__OPENWORK_ELECTRON__?.shell?.relaunch) {

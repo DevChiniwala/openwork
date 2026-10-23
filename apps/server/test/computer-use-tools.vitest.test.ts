@@ -17,3 +17,13 @@ test("app scripts are offered on this Mac and approved in OpenWork, not by an en
   expect(plugin.tool.computer_script.description).toContain("full script");
   expect(Object.keys(plugin.tool.computer_script.args)).toEqual(["app", "code", "timeoutMs"]);
 });
+
+test("a Windows PC is not offered app scripting", async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", { value: "win32" });
+  try {
+    const plugin = await server();
+    expect("computer_script" in plugin.tool).toBe(false);
+    expect(plugin.tool.computer_open.description).toContain("Windows PC");
+  } finally { Object.defineProperty(process, "platform", platform); }
+});
