@@ -10,6 +10,7 @@
 // which git ignores.
 
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
@@ -84,6 +85,8 @@ const mermaidSource = await readFile(resolvePackageFile("mermaid", "dist/mermaid
 const markdown = await readFile(input, "utf8")
 
 let diagramCount = 0
+/** Only plain web, mail and in-document links survive; anything else (javascript:, data:, file:) renders as text. */
+const SAFE_HREF = /^(https?:|mailto:|#)/i
 const marked = new Marked({
   gfm: true,
   renderer: {
@@ -95,6 +98,18 @@ const marked = new Marked({
     heading({ tokens, depth, text }) {
       return `<h${depth} id="${slug(text)}">${this.parser.parseInline(tokens)}</h${depth}>\n`
     },
+    // The doc is rendered in a browser: raw HTML is shown as text, never executed.
+    html({ text }) {
+      return escapeHtml(text)
+    },
+    link({ href, title, tokens }) {
+      const label = this.parser.parseInline(tokens)
+      if (!SAFE_HREF.test(href.trim())) return label
+      return `<a href="${escapeHtml(href)}"${title ? ` title="${escapeHtml(title)}"` : ""}>${label}</a>`
+    },
+    image({ text }) {
+      return escapeHtml(text)
+    },
   },
 })
 
@@ -102,69 +117,98 @@ const body = marked.parse(markdown)
 const title = markdown.match(/^#\s+(.+)$/m)?.[1] ?? basename(input)
 const stamp = gitStamp(input)
 const built = new Date().toISOString().slice(0, 10)
+const cssString = (text) => `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ")}"`
+
+const mermaidScript = mermaidSource.replace(/<\/script/gi, "<\\/script")
+const layoutScript = `
+  mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default", flowchart: { useMaxWidth: true }, sequence: { useMaxWidth: true } })
+  const isHeading = (node) => /^H[1-3]$/.test(node.tagName)
+  mermaid.run({ querySelector: "pre.mermaid" })
+    .then(() => {
+      for (const diagram of document.querySelectorAll(".diagram")) {
+        // The heading and lead-in text that introduce this diagram.
+        const lead = []
+        let node = diagram.previousElementSibling
+        while (node && !node.classList.contains("diagram")) {
+          lead.unshift(node)
+          if (isHeading(node)) break
+          node = node.previousElementSibling
+        }
+        const heading = lead.length && isHeading(lead[0]) ? lead[0] : null
+        const box = diagram.querySelector("svg")?.viewBox?.baseVal
+        if (box && box.width >= box.height * 1.8) {
+          // Very wide diagrams print on their own landscape page, with their heading.
+          diagram.classList.add("landscape")
+          if (heading) diagram.prepend(...lead)
+        } else if (heading && heading.tagName === "H2") {
+          // Every other diagram section starts on a fresh page.
+          heading.classList.add("page-start")
+        }
+      }
+      document.body.dataset.rendered = String(document.querySelectorAll(".diagram svg").length)
+    })
+    .catch((error) => { document.body.dataset.renderError = String(error && error.message || error) })
+`
+const scriptHash = (source) => `'sha256-${createHash("sha256").update(source).digest("base64")}'`
+const csp = `default-src 'none'; script-src ${scriptHash(mermaidScript)} ${scriptHash(layoutScript)}; style-src 'unsafe-inline'; img-src data:; font-src data:`
+const footer = `font: 7.5pt -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #94a3b8;`
 
 const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
 <title>${escapeHtml(title)}</title>
 <style>
-  @page { size: A4; margin: 16mm 14mm 18mm; }
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm;
+    @bottom-left { content: ${cssString(title)}; ${footer} }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); ${footer} }
+  }
+  @page landscape {
+    size: A4 landscape;
+    margin: 14mm 16mm 16mm;
+    @bottom-left { content: ${cssString(title)}; ${footer} }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); ${footer} }
+  }
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
-  body { font: 10.5pt/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; }
-  .stamp { font-size: 8pt; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 18px; }
-  h1 { font-size: 22pt; margin: 0 0 8px; letter-spacing: -0.01em; }
-  h2 { font-size: 15pt; margin: 28px 0 10px; padding-top: 6px; border-top: 2px solid #e2e8f0; break-after: avoid; }
-  h3 { font-size: 12pt; margin: 20px 0 8px; break-after: avoid; }
+  body { font: 10pt/1.55 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; }
+  .stamp { font-size: 7.5pt; color: #94a3b8; letter-spacing: 0.01em; margin-bottom: 26px; }
+  h1 { font-size: 24pt; line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.02em; }
+  h2 { font-size: 15pt; line-height: 1.25; margin: 30px 0 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; break-after: avoid; }
+  h2.page-start, .diagram.landscape > h2 { break-before: page; margin-top: 0; padding-top: 0; border-top: none; }
+  h3 { font-size: 11.5pt; margin: 22px 0 8px; break-after: avoid; }
   p, li { orphans: 3; widows: 3; }
-  a { color: #4c1d95; text-decoration: none; }
-  code { font: 9pt ui-monospace, SFMono-Regular, Menlo, monospace; background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
-  pre:not(.mermaid) { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; overflow: hidden; white-space: pre-wrap; }
+  p { margin: 0 0 10px; }
+  a { color: #5b21b6; text-decoration: none; }
+  strong { font-weight: 600; }
+  code { font: 8.5pt ui-monospace, SFMono-Regular, Menlo, monospace; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+  pre:not(.mermaid) { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; white-space: pre-wrap; break-inside: avoid; }
   pre:not(.mermaid) code { background: none; padding: 0; }
-  blockquote { margin: 14px 0; padding: 8px 14px; background: #f5f3ff; border-left: 4px solid #7c3aed; border-radius: 4px; }
-  blockquote p { margin: 4px 0; }
-  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 9pt; break-inside: auto; }
+  blockquote { margin: 16px 0; padding: 10px 14px; background: #f8f7ff; border-left: 3px solid #7c3aed; border-radius: 0 6px 6px 0; break-inside: avoid; }
+  blockquote p { margin: 0; }
+  ol, ul { padding-left: 22px; margin: 0 0 12px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 8.5pt; line-height: 1.45; }
+  thead { display: table-header-group; }
   tr { break-inside: avoid; }
-  th, td { border: 1px solid #e2e8f0; padding: 5px 8px; text-align: left; vertical-align: top; }
-  th { background: #f8fafc; font-weight: 600; }
-  .diagram { margin: 12px 0 18px; break-inside: avoid; text-align: center; }
-  .diagram svg { max-width: 100% !important; width: 100%; height: auto; max-height: 235mm; }
-  /* Wide diagrams get their own landscape page so they print at a readable size. */
-  @page landscape { size: A4 landscape; margin: 12mm 12mm 14mm; }
-  .diagram.landscape { page: landscape; margin: 0; }
-  .diagram.landscape svg { max-height: 172mm; }
-  .diagram.landscape > :not(pre) { text-align: left; }
-  .diagram.landscape > h2 { margin-top: 0; }
-  pre.mermaid { margin: 0; background: none; border: none; }
+  th, td { border-bottom: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; font-weight: 600; color: #334155; border-top: 1px solid #e2e8f0; }
+  td:first-child { font-weight: 500; }
+  .diagram { margin: 14px 0 18px; break-inside: avoid; text-align: center; }
+  .diagram svg { max-width: 100% !important; width: 100%; height: auto; max-height: 190mm; }
+  .diagram.landscape { page: landscape; margin: 0; text-align: left; }
+  .diagram.landscape svg { display: block; margin: 0 auto; max-height: 150mm; }
+  pre.mermaid { margin: 0; background: none; border: none; padding: 0; }
 </style>
 </head>
 <body>
 <div class="stamp">${escapeHtml(stamp.path)} · commit ${escapeHtml(stamp.sha)}${stamp.dirty ? " + uncommitted changes" : ""} · built ${built}</div>
 ${body}
-<script>${mermaidSource.replace(/<\/script/gi, "<\\/script")}</script>
-<script>
-  mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default", flowchart: { useMaxWidth: true }, sequence: { useMaxWidth: true } })
-  mermaid.run({ querySelector: "pre.mermaid" })
-    .then(() => {
-      for (const diagram of document.querySelectorAll(".diagram")) {
-        const box = diagram.querySelector("svg")?.viewBox?.baseVal
-        if (!box || box.width < box.height * 1.25) continue
-        diagram.classList.add("landscape")
-        // Carry the section heading (and any lead-in text) onto the landscape page.
-        const lead = []
-        let node = diagram.previousElementSibling
-        while (node && !node.classList.contains("diagram")) {
-          lead.unshift(node)
-          if (/^H[1-3]$/.test(node.tagName)) break
-          node = node.previousElementSibling
-        }
-        if (lead.length && /^H[1-3]$/.test(lead[0].tagName)) diagram.prepend(...lead)
-      }
-      document.body.dataset.rendered = String(document.querySelectorAll(".diagram svg").length)
-    })
-    .catch((error) => { document.body.dataset.renderError = String(error && error.message || error) })
-</script>
+<script>${mermaidScript}</script>
+<script>${layoutScript}</script>
 </body>
 </html>`
 
