@@ -40,10 +40,16 @@ export function useCloudEnvironment(client: OpenworkServerClient | null, runtime
     queryFn: async (): Promise<OpenworkCloudEnvironmentStatus | null> => {
       if (!client) return null;
       try {
-        return await client.getCloudEnvironment();
+        // Opening settings asks Den now rather than waiting for the next
+        // background sync, so a change an admin just made shows right away.
+        return await client.syncCloudEnvironment();
       } catch {
-        // An older server has no organization variables.
-        return null;
+        try {
+          return await client.getCloudEnvironment();
+        } catch {
+          // An older server has no organization variables.
+          return null;
+        }
       }
     },
     enabled: client !== null,
