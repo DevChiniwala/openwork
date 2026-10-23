@@ -4859,6 +4859,7 @@
               "nativeDictation",
               "organizationGrants",
               "sandboxOrgs",
+              "organizationAutomationSettings",
               "connectionMcpServers",
               "liveProviderSync",
               "agentConnectionRemoval",
@@ -5071,6 +5072,9 @@
                     "sandboxOrgs": {
                       "type": "boolean"
                     },
+                    "organizationAutomationSettings": {
+                      "type": "boolean"
+                    },
                     "connectionMcpServers": {
                       "type": "boolean"
                     },
@@ -5161,6 +5165,7 @@
                     "nativeDictation",
                     "organizationGrants",
                     "sandboxOrgs",
+                    "organizationAutomationSettings",
                     "connectionMcpServers",
                     "liveProviderSync",
                     "agentConnectionRemoval",
@@ -5421,6 +5426,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "organizationAutomationSettings": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "connectionMcpServers": {
                       "type": "object",
                       "properties": {
@@ -6909,6 +6971,7 @@
                     "nativeDictation",
                     "organizationGrants",
                     "sandboxOrgs",
+                    "organizationAutomationSettings",
                     "connectionMcpServers",
                     "liveProviderSync",
                     "agentConnectionRemoval",
@@ -7316,6 +7379,9 @@
                     "sandboxOrgs": {
                       "type": "boolean"
                     },
+                    "organizationAutomationSettings": {
+                      "type": "boolean"
+                    },
                     "connectionMcpServers": {
                       "type": "boolean"
                     },
@@ -7406,6 +7472,7 @@
                     "nativeDictation",
                     "organizationGrants",
                     "sandboxOrgs",
+                    "organizationAutomationSettings",
                     "connectionMcpServers",
                     "liveProviderSync",
                     "agentConnectionRemoval",
@@ -7666,6 +7733,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "organizationAutomationSettings": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "connectionMcpServers": {
                       "type": "object",
                       "properties": {
@@ -9154,6 +9278,7 @@
                     "nativeDictation",
                     "organizationGrants",
                     "sandboxOrgs",
+                    "organizationAutomationSettings",
                     "connectionMcpServers",
                     "liveProviderSync",
                     "agentConnectionRemoval",
@@ -10141,6 +10266,12 @@
             ]
           },
           "automationsEnabled": {
+            "type": "boolean"
+          },
+          "desktopAutomationsEnabled": {
+            "type": "boolean"
+          },
+          "cloudAutomationsEnabled": {
             "type": "boolean"
           },
           "dashboardEnabled": {
@@ -33883,6 +34014,65 @@
         ],
         "additionalProperties": false
       },
+      "OrganizationAutomationSettings": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "type": "object",
+            "properties": {
+              "desktop": {
+                "type": "boolean"
+              },
+              "cloud": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "desktop",
+              "cloud"
+            ]
+          },
+          "available": {
+            "type": "object",
+            "properties": {
+              "desktop": {
+                "type": "boolean"
+              },
+              "cloud": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "desktop",
+              "cloud"
+            ]
+          },
+          "deploymentEnabled": {
+            "type": "boolean"
+          },
+          "headlessRunnerConfigured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "settings",
+          "available",
+          "deploymentEnabled",
+          "headlessRunnerConfigured"
+        ]
+      },
+      "OrganizationAutomationSettingsInput": {
+        "type": "object",
+        "properties": {
+          "desktop": {
+            "type": "boolean"
+          },
+          "cloud": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "WorkbotReadiness": {
         "type": "object",
         "properties": {
@@ -35625,6 +35815,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "organizationAutomationSettings": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectionMcpServers": {
                           "type": "object",
                           "properties": {
@@ -37113,6 +37360,7 @@
                         "nativeDictation",
                         "organizationGrants",
                         "sandboxOrgs",
+                        "organizationAutomationSettings",
                         "connectionMcpServers",
                         "liveProviderSync",
                         "agentConnectionRemoval",
@@ -37463,6 +37711,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "organizationAutomationSettings": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectionMcpServers": {
                           "type": "object",
                           "properties": {
@@ -38951,6 +39256,7 @@
                         "nativeDictation",
                         "organizationGrants",
                         "sandboxOrgs",
+                        "organizationAutomationSettings",
                         "connectionMcpServers",
                         "liveProviderSync",
                         "agentConnectionRemoval",
@@ -39069,6 +39375,16 @@
                         ]
                       },
                       "sandboxOrgs": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "organizationAutomationSettings": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -43890,6 +44206,9 @@
                         "sandboxOrgs": {
                           "type": "boolean"
                         },
+                        "organizationAutomationSettings": {
+                          "type": "boolean"
+                        },
                         "connectionMcpServers": {
                           "type": "boolean"
                         },
@@ -43980,6 +44299,7 @@
                         "nativeDictation",
                         "organizationGrants",
                         "sandboxOrgs",
+                        "organizationAutomationSettings",
                         "connectionMcpServers",
                         "liveProviderSync",
                         "agentConnectionRemoval",
@@ -44240,6 +44560,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "organizationAutomationSettings": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectionMcpServers": {
                           "type": "object",
                           "properties": {
@@ -45728,6 +46105,7 @@
                         "nativeDictation",
                         "organizationGrants",
                         "sandboxOrgs",
+                        "organizationAutomationSettings",
                         "connectionMcpServers",
                         "liveProviderSync",
                         "agentConnectionRemoval",
@@ -45884,6 +46262,9 @@
                         "sandboxOrgs": {
                           "type": "boolean"
                         },
+                        "organizationAutomationSettings": {
+                          "type": "boolean"
+                        },
                         "connectionMcpServers": {
                           "type": "boolean"
                         },
@@ -45974,6 +46355,7 @@
                         "nativeDictation",
                         "organizationGrants",
                         "sandboxOrgs",
+                        "organizationAutomationSettings",
                         "connectionMcpServers",
                         "liveProviderSync",
                         "agentConnectionRemoval",
@@ -46234,6 +46616,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "organizationAutomationSettings": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "connectionMcpServers": {
                           "type": "object",
                           "properties": {
@@ -47722,6 +48161,7 @@
                         "nativeDictation",
                         "organizationGrants",
                         "sandboxOrgs",
+                        "organizationAutomationSettings",
                         "connectionMcpServers",
                         "liveProviderSync",
                         "agentConnectionRemoval",
@@ -119796,6 +120236,180 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/WorkbotSettingsInput"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/org/automation-settings": {
+      "get": {
+        "operationId": "getV1OrgAutomationSettings",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get Automation settings",
+        "description": "Returns whether the organization allows Desktop Automations (run on a member's signed-in desktop) and Cloud Automations (run headlessly in OpenWork Cloud), and what members can run now. Cloud Automations also need the deployment's headless runner. Any member can read it.",
+        "responses": {
+          "200": {
+            "description": "Automation settings returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationAutomationSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Automation settings are not turned on for this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "putV1OrgAutomationSettings",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Set Automation settings",
+        "description": "Turns Desktop Automations and Cloud Automations on or off for the organization. Turning a kind off stops new ones from being created and skips its scheduled runs; existing Automations and their history are kept and resume when it is turned back on. Cloud Automations cannot be turned on until the deployment has a headless runner. Requires Edit organization settings.",
+        "responses": {
+          "200": {
+            "description": "Automation settings saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationAutomationSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller cannot edit organization settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Automation settings are not turned on for this organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cloud Automations need the deployment's headless runner.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationAutomationSettingsInput"
               }
             }
           }

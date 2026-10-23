@@ -517,6 +517,8 @@ import type {
   GetV1OauthProvidersByProviderIdStatusResponses,
   GetV1OrgActivityErrors,
   GetV1OrgActivityResponses,
+  GetV1OrgAutomationSettingsErrors,
+  GetV1OrgAutomationSettingsResponses,
   GetV1OrgDefaultModelErrors,
   GetV1OrgDefaultModelOptionsErrors,
   GetV1OrgDefaultModelOptionsResponses,
@@ -661,6 +663,7 @@ import type {
   OpenGoogleDriveDocumentEditorResponses,
   OpenGoogleDriveOfficeEditorErrors,
   OpenGoogleDriveOfficeEditorResponses,
+  OrganizationAutomationSettingsInput,
   OrganizationWebOriginApproveBody,
   OrgPromptWrite,
   PatchApiAuthScimV2GroupsByGroupIdErrors,
@@ -1090,6 +1093,8 @@ import type {
   PutV1McpConnectionsByConnectionIdToolPolicyResponses,
   PutV1McpConnectionsByKeyByExternalKeyErrors,
   PutV1McpConnectionsByKeyByExternalKeyResponses,
+  PutV1OrgAutomationSettingsErrors,
+  PutV1OrgAutomationSettingsResponses,
   PutV1OrgDefaultModelEveryoneErrors,
   PutV1OrgDefaultModelEveryoneResponses,
   PutV1OrgDefaultModelTeamsByTeamIdErrors,
@@ -1358,6 +1363,7 @@ export class DenClient extends HeyApiClient {
         nativeDictation?: boolean | null;
         organizationGrants?: boolean | null;
         sandboxOrgs?: boolean | null;
+        organizationAutomationSettings?: boolean | null;
         connectionMcpServers?: boolean | null;
         liveProviderSync?: boolean | null;
         agentConnectionRemoval?: boolean | null;
@@ -17535,6 +17541,50 @@ export class DenClient extends HeyApiClient {
       ThrowOnError
     >({
       url: "/v1/org/workbot-settings",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Get Automation settings
+   *
+   * Returns whether the organization allows Desktop Automations (run on a member's signed-in desktop) and Cloud Automations (run headlessly in OpenWork Cloud), and what members can run now. Cloud Automations also need the deployment's headless runner. Any member can read it.
+   */
+  public getV1OrgAutomationSettings<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetV1OrgAutomationSettingsResponses,
+      GetV1OrgAutomationSettingsErrors,
+      ThrowOnError
+    >({ url: "/v1/org/automation-settings", ...options });
+  }
+
+  /**
+   * Set Automation settings
+   *
+   * Turns Desktop Automations and Cloud Automations on or off for the organization. Turning a kind off stops new ones from being created and skips its scheduled runs; existing Automations and their history are kept and resume when it is turned back on. Cloud Automations cannot be turned on until the deployment has a headless runner. Requires Edit organization settings.
+   */
+  public putV1OrgAutomationSettings<ThrowOnError extends boolean = false>(
+    parameters: {
+      organizationAutomationSettingsInput: OrganizationAutomationSettingsInput;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [{ args: [{ key: "organizationAutomationSettingsInput", map: "body" }] }],
+    );
+    return (options?.client ?? this.client).put<
+      PutV1OrgAutomationSettingsResponses,
+      PutV1OrgAutomationSettingsErrors,
+      ThrowOnError
+    >({
+      url: "/v1/org/automation-settings",
       ...options,
       ...params,
       headers: {

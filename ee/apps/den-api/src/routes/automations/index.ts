@@ -124,6 +124,12 @@ function failure(error: unknown): { status: 400 | 403 | 404 | 409; body: { error
   if (error.message === "automation_owner_inactive") {
     return { status: 409, body: { error: error.message, message: "The Automation owner is no longer an active organization member." } }
   }
+  if (error.message === "automation_desktop_disabled") {
+    return { status: 403, body: { error: error.message, message: "Desktop Automations are turned off for this organization. An admin can turn them on in Settings." } }
+  }
+  if (error.message === "automation_cloud_disabled") {
+    return { status: 403, body: { error: error.message, message: "Cloud Automations are not available for this organization. An admin can turn them on in Settings once OpenWork's headless runner is set up." } }
+  }
   if (error.message === "automation_cloud_worker_required") {
     return { status: 409, body: { error: error.message, message: "Set up OpenWork Cloud before creating a Cloud Automation." } }
   }

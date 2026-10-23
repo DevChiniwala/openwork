@@ -45,6 +45,7 @@ import { registerOrgTeamRoutes } from "./teams.js"
 import { registerOrgWebOriginRoutes } from "./web-origins.js"
 import { registerOrgWorkbotReadinessRoutes } from "./workbot-readiness.js"
 import { registerOrgWorkbotSettingsRoutes } from "./workbot-settings.js"
+import { registerOrgAutomationSettingsRoutes } from "./automation-settings.js"
 
 const LEGACY_ORG_PATH_PREFIX = "/v1/orgs/"
 
@@ -112,6 +113,7 @@ export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & Req
   registerOrgTeamRoutes(app)
   registerOrgWebOriginRoutes(app)
   registerOrgWorkbotSettingsRoutes(app)
+  registerOrgAutomationSettingsRoutes(app)
   registerOrgWorkbotReadinessRoutes(app)
   registerOrgDefaultModelRoutes(app)
   registerOrgPromptRoutes(app)

@@ -411,25 +411,28 @@ The `config.features` block and values schema are generated: run
 
 ### Automations rollout
 
-The Helm chart advertises Automations as unavailable by default for self-hosted
-and customer-managed deployments. Availability and server shutdown are
-separate so a Den upgrade cannot remove routes beneath an older published
-Desktop:
+Automations are on by default. Organization admins choose in **Settings ›
+Automations** whether members can use Desktop Automations (run on a member's
+signed-in desktop) and Cloud Automations (run headlessly in OpenWork Cloud;
+these also need the headless runner, `DEN_HEADLESS_RUNNER_URL`). That setting
+is behind the `organizationAutomationSettings` rollout.
+
+Availability and server shutdown remain separate so a Den upgrade cannot remove
+routes beneath an older published Desktop:
 
 | `automationsEnabled` | `automationsRuntimeEnabled` | Behavior |
 | --- | --- | --- |
+| `"true"` (default) | `"true"` (default) | Automations are available and execute normally. |
 | `"false"` | `"true"` | New Desktops hide Automations; legacy routes and scheduling remain available during the upgrade window. |
 | `"false"` | `"false"` | Automations are hard-disabled: routes, MCP resources, and scheduler startup are omitted. |
-| `"true"` | `"true"` | Automations are available and execute normally. |
 | `"true"` | `"false"` | The runtime shutdown wins and Desktop receives `automationsEnabled: false`. |
 
-Set both values explicitly when the deployment is ready to run Automations:
+To turn Automations off for the whole install:
 
 ```yaml
 config:
   public:
-    automationsEnabled: "true"
-    automationsRuntimeEnabled: "true"
+    automationsEnabled: "false"
 ```
 
 These render `DEN_AUTOMATIONS_ENABLED=true` and

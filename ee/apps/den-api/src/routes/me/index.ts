@@ -11,6 +11,7 @@ import { recordSessionOrganizationEntered } from "../../audit/domain/sessions.js
 import { cache } from "../../cache.js"
 import { db } from "../../db.js"
 import { env } from "../../env.js"
+import { automationAvailabilityFor, headlessAutomationsConfigured } from "../../automations/organization-availability.js"
 import { authenticatedRoute, jsonValidator, orgMemberRoute, userSessionRoute, type OrganizationContextVariables, type UserOrganizationsContext } from "../../middleware/index.js"
 import { denTypeIdSchema, forbiddenSchema, invalidRequestSchema, jsonResponse, notFoundSchema, unauthorizedSchema } from "../../openapi.js"
 import { normalizeOrganizationMetadata } from "../../organization-limits.js"
@@ -464,10 +465,18 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
       const agentPermissions = { rules: await readAgentPermissionRulesForMember({ organizationId: organization.id, orgMemberId: currentMember.id }) }
       // The model new chats start with; only v2 desktops apply it. A failure leaves desktops on their own default.
       const defaultModel = await desktopConfigDefaultModel({ organizationId: organization.id, memberId: currentMember.id })
+      const automations = automationAvailabilityFor({
+        metadata: organization.metadata,
+        settingsEnabled: features.organizationAutomationSettings,
+        headlessRunnerConfigured: headlessAutomationsConfigured(),
+      })
 
       return c.json({
         ...desktopPolicy,
-        automationsEnabled: env.automations.enabled,
+        // The Automations page shows when either kind is allowed; only Desktop Automations make this desktop a runner.
+        automationsEnabled: env.automations.enabled && (automations.desktop || automations.cloud),
+        desktopAutomationsEnabled: automations.desktop,
+        cloudAutomationsEnabled: automations.cloud,
         dashboardEnabled: env.dashboardsEnabled,
         // Compatibility field for published desktops: Connect is always on.
         connectEnabled: true,

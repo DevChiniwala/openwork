@@ -26,36 +26,37 @@ config:
   #   "false" off for everyone; /admin shows "Set by deployment config"
   # The /admin kill switch still turns a feature off, even when locked on.
   features:
-    administratorRecovery: ""     # default off · Run a one-time, operator-selected Admin-team permission repair at deployment; disabling stops future repairs, not existing grants.
-    nativeDictation: ""           # default off · Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.
-    organizationGrants: ""        # default off · Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.
-    sandboxOrgs: ""               # default off (cloud only) · Platform admins create try-it-out organizations from /admin with fictional workplace connectors, included models and a shareable join link that expires.
-    connectionMcpServers: ""      # default off · Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.
-    liveProviderSync: ""          # default off · Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.
-    agentConnectionRemoval: ""    # default off · People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.
-    managedDeployments: ""        # default off (cloud only) · Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments.
-    enterprisePlan: ""            # default off (cloud only) · Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page.
-    workbotDocuments: ""          # default off · Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive.
-    workbotDocumentEditing: ""    # default off · Members choose Edit from a document preview. Full Office editing starts their Cloud workspace only when requested. Requires Workbot Documents.
-    workbotWorkspaceAssistant: "" # default off · Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document.
-    workbotIncludedModels: ""     # default off · Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.
-    workbotUsageRecovery: ""      # default off · Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.
-    usageLimitUpgrade: ""         # default off · When free Auto, OpenWork Models or an AI Gateway budget runs out in the desktop app, one card says what ran out, when it resets and that the message is saved, with the upgrade or request that fits the person’s role and a way to keep working with another model.
-    automationCalendar: ""        # default off · Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.
-    removeOpencodeZen: ""         # default off · Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.
-    computerUse: ""               # default off · Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.
-    browserDemonstrations: ""     # default off · Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.
-    browserLiveView: ""           # default off · Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.
-    browserFloatingView: ""       # default off · The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.
-    remoteComputers: ""           # default off · Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Configured and conversation-owned desktops open directly when enabled, including follow-ups and internal session renewal. Take over and Stop stay available.
-    remoteSessionSubagents: ""    # default off · A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.
-    desktopSignInReturn: ""       # default off · Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.
-    activationChecklist: ""       # default off · After their first answer, people see a Get set up checklist in Desktop and Workbot: invite a teammate, use a skill, add a model provider, share one on AI Gateway and connect an app, each checked off once it works.
-    connectStandardTools: ""      # default off · Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.
-    teamPlan: ""                  # default off (cloud only) · Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.
-    selfServeEnterprise: ""       # default off (cloud only) · Owners can buy Enterprise by card at the planned per-person price.
-    orgPrompts: ""                # default off · Admins write a system prompt for everyone and for each team on the team's Prompts tab. Desktops add the prompts that apply to a member to every agent's instructions: Everyone's first, then each team's by team name. Turning this off stops desktops adding them at their next sync; saved prompts are kept.
-    sessionTokenHashing: ""       # default off · Den keeps only a one-way hash of each sign-in session token, so a copy of the database cannot sign anyone in. New sessions are stored hashed and older ones convert the next time they are used; turn on only once every Den replica runs a release that reads both forms.
+    administratorRecovery: ""          # default off · Run a one-time, operator-selected Admin-team permission repair at deployment; disabling stops future repairs, not existing grants.
+    nativeDictation: ""                # default off · Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.
+    organizationGrants: ""             # default off · Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.
+    sandboxOrgs: ""                    # default off (cloud only) · Platform admins create try-it-out organizations from /admin with fictional workplace connectors, included models and a shareable join link that expires.
+    organizationAutomationSettings: "" # default off · Organization admins turn Desktop Automations and Cloud Automations on or off for their organization. Cloud Automations need the deployment's headless runner.
+    connectionMcpServers: ""           # default off · Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.
+    liveProviderSync: ""               # default off · Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.
+    agentConnectionRemoval: ""         # default off · People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.
+    managedDeployments: ""             # default off (cloud only) · Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments.
+    enterprisePlan: ""                 # default off (cloud only) · Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page.
+    workbotDocuments: ""               # default off · Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive.
+    workbotDocumentEditing: ""         # default off · Members choose Edit from a document preview. Full Office editing starts their Cloud workspace only when requested. Requires Workbot Documents.
+    workbotWorkspaceAssistant: ""      # default off · Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document.
+    workbotIncludedModels: ""          # default off · Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.
+    workbotUsageRecovery: ""           # default off · Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.
+    usageLimitUpgrade: ""              # default off · When free Auto, OpenWork Models or an AI Gateway budget runs out in the desktop app, one card says what ran out, when it resets and that the message is saved, with the upgrade or request that fits the person’s role and a way to keep working with another model.
+    automationCalendar: ""             # default off · Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.
+    removeOpencodeZen: ""              # default off · Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.
+    computerUse: ""                    # default off · Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.
+    browserDemonstrations: ""          # default off · Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.
+    browserLiveView: ""                # default off · Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.
+    browserFloatingView: ""            # default off · The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.
+    remoteComputers: ""                # default off · Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Configured and conversation-owned desktops open directly when enabled, including follow-ups and internal session renewal. Take over and Stop stay available.
+    remoteSessionSubagents: ""         # default off · A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.
+    desktopSignInReturn: ""            # default off · Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.
+    activationChecklist: ""            # default off · After their first answer, people see a Get set up checklist in Desktop and Workbot: invite a teammate, use a skill, add a model provider, share one on AI Gateway and connect an app, each checked off once it works.
+    connectStandardTools: ""           # default off · Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.
+    teamPlan: ""                       # default off (cloud only) · Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.
+    selfServeEnterprise: ""            # default off (cloud only) · Owners can buy Enterprise by card at the planned per-person price.
+    orgPrompts: ""                     # default off · Admins write a system prompt for everyone and for each team on the team's Prompts tab. Desktops add the prompts that apply to a member to every agent's instructions: Everyone's first, then each team's by team name. Turning this off stops desktops adding them at their next sync; saved prompts are kept.
+    sessionTokenHashing: ""            # default off · Den keeps only a one-way hash of each sign-in session token, so a copy of the database cannot sign anyone in. New sessions are stored hashed and older ones convert the next time they are used; turn on only once every Den replica runs a release that reads both forms.
   # END GENERATED features
   administratorRecovery:
     # Processed only with config.features.administratorRecovery on. Flag off is a
@@ -122,8 +123,9 @@ config:
     betterAuthTrustedOrigins: ""
     webAppHosts: ""
     bootstrapAdminEmails: ""
-    # Self-hosted Automations are opt-in. Hosted OpenWork Cloud enables them.
-    automationsEnabled: "false"
+    # Automations are on. Organization admins turn Desktop or Cloud Automations
+    # off in Settings; set "false" to turn them off for the whole install.
+    automationsEnabled: "true"
     # Self-hosted Dashboards are opt-in. Hosted environments use the same Den flag.
     dashboardsEnabled: "false"
     # OpenWork Web is hosted-only by default. OpenWork Cloud enables it explicitly.

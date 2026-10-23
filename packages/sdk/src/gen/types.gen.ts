@@ -1173,6 +1173,7 @@ export type AdminFeature = {
     | "nativeDictation"
     | "organizationGrants"
     | "sandboxOrgs"
+    | "organizationAutomationSettings"
     | "connectionMcpServers"
     | "liveProviderSync"
     | "agentConnectionRemoval"
@@ -1241,6 +1242,7 @@ export type AdminOrganizationsPageResponse = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       sandboxOrgs: boolean;
+      organizationAutomationSettings: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -1306,6 +1308,15 @@ export type AdminOrganizationsPageResponse = {
         overrideApplies: boolean;
       };
       sandboxOrgs: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationAutomationSettings: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -1615,6 +1626,7 @@ export type AdminOverviewResponse = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       sandboxOrgs: boolean;
+      organizationAutomationSettings: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -1680,6 +1692,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       sandboxOrgs: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationAutomationSettings: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -2173,6 +2194,8 @@ export type CurrentUserDesktopConfigResponse = {
     | "violet"
     | "yellow";
   automationsEnabled?: boolean;
+  desktopAutomationsEnabled?: boolean;
+  cloudAutomationsEnabled?: boolean;
   dashboardEnabled?: boolean;
   connectEnabled?: boolean;
   liveProviderSync?: boolean;
@@ -7871,6 +7894,24 @@ export type WorkbotSettingsInput = {
   model: string | null;
 };
 
+export type OrganizationAutomationSettings = {
+  settings: {
+    desktop: boolean;
+    cloud: boolean;
+  };
+  available: {
+    desktop: boolean;
+    cloud: boolean;
+  };
+  deploymentEnabled: boolean;
+  headlessRunnerConfigured: boolean;
+};
+
+export type OrganizationAutomationSettingsInput = {
+  desktop?: boolean;
+  cloud?: boolean;
+};
+
 export type WorkbotReadiness = {
   gatewayRequired: boolean;
   hasGatewayProvider: boolean;
@@ -8357,6 +8398,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      organizationAutomationSettings: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       connectionMcpServers: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8605,6 +8655,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       nativeDictation?: boolean | null;
       organizationGrants?: boolean | null;
       sandboxOrgs?: boolean | null;
+      organizationAutomationSettings?: boolean | null;
       connectionMcpServers?: boolean | null;
       liveProviderSync?: boolean | null;
       agentConnectionRemoval?: boolean | null;
@@ -8697,6 +8748,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       sandboxOrgs: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationAutomationSettings: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10686,6 +10746,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       sandboxOrgs: boolean;
+      organizationAutomationSettings: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -10751,6 +10812,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       sandboxOrgs: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationAutomationSettings: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -11048,6 +11118,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       nativeDictation: boolean;
       organizationGrants: boolean;
       sandboxOrgs: boolean;
+      organizationAutomationSettings: boolean;
       connectionMcpServers: boolean;
       liveProviderSync: boolean;
       agentConnectionRemoval: boolean;
@@ -11113,6 +11184,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       sandboxOrgs: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      organizationAutomationSettings: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -37982,6 +38062,87 @@ export type PutV1OrgWorkbotSettingsResponses = {
 };
 
 export type PutV1OrgWorkbotSettingsResponse = PutV1OrgWorkbotSettingsResponses[keyof PutV1OrgWorkbotSettingsResponses];
+
+export type GetV1OrgAutomationSettingsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/org/automation-settings";
+};
+
+export type GetV1OrgAutomationSettingsErrors = {
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Automation settings are not turned on for this organization.
+   */
+  404: {
+    error: string;
+    message: string;
+  };
+};
+
+export type GetV1OrgAutomationSettingsError = GetV1OrgAutomationSettingsErrors[keyof GetV1OrgAutomationSettingsErrors];
+
+export type GetV1OrgAutomationSettingsResponses = {
+  /**
+   * Automation settings returned.
+   */
+  200: OrganizationAutomationSettings;
+};
+
+export type GetV1OrgAutomationSettingsResponse =
+  GetV1OrgAutomationSettingsResponses[keyof GetV1OrgAutomationSettingsResponses];
+
+export type PutV1OrgAutomationSettingsData = {
+  body: OrganizationAutomationSettingsInput;
+  path?: never;
+  query?: never;
+  url: "/v1/org/automation-settings";
+};
+
+export type PutV1OrgAutomationSettingsErrors = {
+  /**
+   * The request was invalid.
+   */
+  400: InvalidRequestError;
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * The caller cannot edit organization settings.
+   */
+  403: ForbiddenError;
+  /**
+   * Automation settings are not turned on for this organization.
+   */
+  404: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Cloud Automations need the deployment's headless runner.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+};
+
+export type PutV1OrgAutomationSettingsError = PutV1OrgAutomationSettingsErrors[keyof PutV1OrgAutomationSettingsErrors];
+
+export type PutV1OrgAutomationSettingsResponses = {
+  /**
+   * Automation settings saved.
+   */
+  200: OrganizationAutomationSettings;
+};
+
+export type PutV1OrgAutomationSettingsResponse =
+  PutV1OrgAutomationSettingsResponses[keyof PutV1OrgAutomationSettingsResponses];
 
 export type GetV1OrgWorkbotReadinessData = {
   body?: never;

@@ -427,6 +427,14 @@
       "development": "./src/den/sandbox-organizations.ts",
       "default": "./src/den/sandbox-organizations.ts"
     },
+    "./den/automation-settings": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/automation-settings.d.ts",
+        "default": "./src/den/automation-settings.ts"
+      },
+      "development": "./src/den/automation-settings.ts",
+      "default": "./src/den/automation-settings.ts"
+    },
     "./den/admin-organization": {
       "types": {
         "openwork-build": "./dist/types/src/den/admin-organization.d.ts",

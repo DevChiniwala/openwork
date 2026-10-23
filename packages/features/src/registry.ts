@@ -81,6 +81,13 @@ export const FEATURES = defineFeatures({
     deployments: ["cloud"],
     default: false,
   },
+  organizationAutomationSettings: {
+    label: "Automations: organization settings",
+    description: "Organization admins turn Desktop Automations and Cloud Automations on or off for their organization. Cloud Automations need the deployment's headless runner.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   connectionMcpServers: {
     label: "Connect: an MCP server for each connection",
     description: "Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.",
