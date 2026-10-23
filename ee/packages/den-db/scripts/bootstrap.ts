@@ -12,6 +12,7 @@ import { createExecutor, type Executor } from "./db-executor.ts"
 import { migrateWith0097Compatibility } from "./migration-0097-compat.ts"
 import { reconcilePermissionsFromEnv } from "./permission-reconciliation.ts"
 import { rejectMatrix } from "./migration-0097-schema.ts"
+import { recoverAdministratorsFromEnv } from "./administrator-recovery.ts"
 
 export { migrateWith0097Compatibility }
 
@@ -168,6 +169,9 @@ export async function bootstrapDenDb() {
   } finally {
     await repairExecutor.close()
   }
+
+  // Deploy bootstrap only; never called by ordinary API pod startup.
+  await recoverAdministratorsFromEnv()
 
   // Not schema: a failure here must not stop den-api from starting. den-api
   // also reconciles an organization's default sets when it first resolves

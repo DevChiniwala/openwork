@@ -1167,6 +1167,7 @@ export type AdminEnterpriseBillingState = {
 
 export type AdminFeature = {
   key:
+    | "administratorRecovery"
     | "nativeDictation"
     | "organizationGrants"
     | "connectionMcpServers"
@@ -1231,6 +1232,7 @@ export type AdminUsersPageResponse = {
 export type AdminOrganizationsPageResponse = {
   organizations: Array<{
     capabilities?: {
+      administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
       connectionMcpServers: boolean;
@@ -1268,6 +1270,15 @@ export type AdminOrganizationsPageResponse = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates?: {
+      administratorRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       nativeDictation: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1565,6 +1576,7 @@ export type AdminOverviewResponse = {
   }>;
   organizations: Array<{
     capabilities: {
+      administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
       connectionMcpServers: boolean;
@@ -1602,6 +1614,15 @@ export type AdminOverviewResponse = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates: {
+      administratorRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       nativeDictation: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -7974,6 +7995,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
    */
   200: {
     featureStates: {
+      administratorRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       nativeDictation: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8218,6 +8248,7 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
 export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesData = {
   body: {
     capabilities: {
+      administratorRecovery?: boolean | null;
       nativeDictation?: boolean | null;
       organizationGrants?: boolean | null;
       connectionMcpServers?: boolean | null;
@@ -8282,6 +8313,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
    */
   200: {
     featureStates: {
+      administratorRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       nativeDictation: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -9941,6 +9981,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
    */
   200: {
     capabilities: {
+      administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
       connectionMcpServers: boolean;
@@ -9978,6 +10019,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates: {
+      administratorRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       nativeDictation: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -10263,6 +10313,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       id: string;
     };
     capabilities: {
+      administratorRecovery: boolean;
       nativeDictation: boolean;
       organizationGrants: boolean;
       connectionMcpServers: boolean;
@@ -10300,6 +10351,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
      * Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect.
      */
     featureStates: {
+      administratorRecovery: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       nativeDictation: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";

@@ -53,6 +53,13 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  administratorRecovery: {
+    label: "Deploy-time administrator recovery",
+    description: "Run a one-time, operator-selected Admin-team permission repair at deployment; disabling stops future repairs, not existing grants.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   nativeDictation: {
     label: "Native dictation",
     description: "Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.",
