@@ -1,8 +1,79 @@
+import { glob, readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { workspaceOpencodeConfigCandidates } from "@openwork/paths";
+import constants from "../../../constants.json" with { type: "json" };
+import { readJsoncFile } from "./jsonc.js";
 import { appendOrganizationPrompts, OPENWORK_AGENT_PROMPT, OPENWORK_CONNECT_ROUTING_INSTRUCTION } from "./openwork-agent-prompt.js";
 
 const CONNECT_DISCOVERY_INSTRUCTION = "Org-connected services, remote skills, Workflows, and Automations reach you through OpenWork Connect. Use the Code Mode catalog and search() to discover available tools, then call exact returned paths. When Connect exposes individual service tools, call them directly. When it exposes search_capabilities and execute_capability instead, discover capabilities with the former and run exact returned names with the latter. Read remote skills with the available get_skill tool. Discover on demand; only name services and skills returned by discovery or the remote skill catalog.";
 
 export const OPENWORK_V2_INSTRUCTION_KEY = "openwork.context";
+export const OPENWORK_V2_CONFIGURED_INSTRUCTION_KEY = "openwork.configured-instructions";
+
+/**
+ * The pinned OpenCode 2.0.26 accepts the config `instructions` array but never
+ * loads it; 2.0.30 does (anomalyco/opencode#55539). After that pin bump the
+ * server only deletes this entry, clearing it from sessions that carried it.
+ */
+export const ENGINE_IGNORES_CONFIGURED_INSTRUCTIONS = constants.opencodeV2Version === "2.0.26";
+
+// Leaves room for JSON escaping under the engine's 256 KiB entry limit.
+const CONFIGURED_INSTRUCTIONS_MAX_BYTES = 192 * 1024;
+
+// Bun's node:fs glob never matches dot paths such as `.opencode/AGENTS.md`.
+async function matchFiles(pattern: string, cwd: string) {
+  const matches: string[] = [];
+  const found = typeof process.versions.bun === "string"
+    ? new Bun.Glob(pattern).scan({ cwd, dot: true })
+    : glob(pattern, { cwd });
+  for await (const match of found) matches.push(match);
+  return matches.sort();
+}
+
+function insideRoot(root: string, path: string) {
+  const rel = relative(root, path);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+/**
+ * The workspace config's `instructions` files rendered the way OpenCode does,
+ * or null when none load. Only files inside the workspace are read; URLs and
+ * paths outside it wait for the engine to load them itself.
+ */
+export async function readConfiguredInstructions(workspaceRoot: string): Promise<string | null> {
+  const sources = new Set<string>();
+  for (const path of workspaceOpencodeConfigCandidates(workspaceRoot)) {
+    const { data } = await readJsoncFile<{ instructions?: unknown }>(path, {}, { allowInvalid: true });
+    if (!Array.isArray(data?.instructions)) continue;
+    for (const source of data.instructions) if (typeof source === "string") sources.add(source);
+  }
+  const root = await realpath(workspaceRoot);
+  const seen = new Set<string>();
+  const blocks: string[] = [];
+  let bytes = 0;
+  for (const source of sources) {
+    if (/^https?:\/\//i.test(source)) continue;
+    const expanded = source.startsWith("~/") ? join(homedir(), source.slice(2)) : source;
+    // Bun's glob ignores absolute patterns, so every match starts from the workspace.
+    const pattern = (isAbsolute(expanded) ? relative(workspaceRoot, expanded) : expanded).split(sep).join("/");
+    if (pattern === ".." || pattern.startsWith("../")) continue;
+    for (const match of await matchFiles(pattern, workspaceRoot)) {
+      const path = resolve(workspaceRoot, match);
+      const real = await realpath(path).catch(() => null);
+      if (!real || seen.has(real) || !insideRoot(root, real)) continue;
+      seen.add(real);
+      const content = await readFile(real, "utf8").catch(() => null);
+      if (content === null) continue;
+      const block = `Instructions from: ${path}\n${content}`;
+      const size = Buffer.byteLength(block);
+      if (bytes + size > CONFIGURED_INSTRUCTIONS_MAX_BYTES) continue;
+      bytes += size;
+      blocks.push(block);
+    }
+  }
+  return blocks.length > 0 ? blocks.join("\n\n") : null;
+}
 
 /**
  * Discover remote skills on demand through Connect; native skills are workspace
