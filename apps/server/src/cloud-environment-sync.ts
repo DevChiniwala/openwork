@@ -135,15 +135,19 @@ export class CloudEnvironmentSync {
     const changedIdentity = this.session !== null;
     this.generation += 1;
     this.session = session;
+    this.startInterval();
     if (changedIdentity) {
       // Another person's or organization's values must never be shown or stay
-      // in the next engine; the new session's values arrive with the run below.
+      // in a running engine. Retire it first, so a failed fetch for the new
+      // session can't leave the previous values in place.
       this.variables = [];
       this.available = false;
       this.lastRun = null;
       this.publish();
+      return this.enqueue(() => this.applyToEngine("den_session_changed"))
+        .then(() => this.run("den_session_updated"))
+        .then(() => undefined);
     }
-    this.startInterval();
     return this.run("den_session_updated").then(() => undefined);
   }
 

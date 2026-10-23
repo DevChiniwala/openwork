@@ -168,10 +168,11 @@ describe("CloudEnvironmentSync", () => {
 
   test("another account's values are cleared as soon as the session changes", async () => {
     const { fetchImpl } = den([
-      { status: 200, body: { environmentVariables: [variable({ valueMode: "per_member", source: "own", editable: true, assignments: [], selectedAccessId: null, value: "first-person" })] } },
+      { status: 200, body: { environmentVariables: [variable({ key: "OW_PERSONAL", valueMode: "per_member", source: "own", editable: true, assignments: [], selectedAccessId: null, value: "first-person" })] } },
       { status: 503 },
     ]);
-    const sync = new CloudEnvironmentSync({ fetchImpl, reloadEngine: recorder().reloadEngine });
+    const engine = recorder();
+    const sync = new CloudEnvironmentSync({ fetchImpl, reloadEngine: engine.reloadEngine });
     await sync.setSession(session);
     // Same organization, another person: their fetch fails, but nothing of the first person's remains.
     await sync.setSession({ ...session, token: "another-person" });
@@ -179,6 +180,8 @@ describe("CloudEnvironmentSync", () => {
 
     expect(sync.status().variables).toEqual([]);
     expect(cloudEnvironmentOverlay()).toEqual({});
+    // The engine with the first person's value was replaced before the failed fetch.
+    expect(engine.reloads).toEqual([{ OW_PERSONAL: "first-person" }, {}]);
   });
 
   test("retries an engine change the pool could not apply yet", async () => {

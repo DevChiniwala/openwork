@@ -47,8 +47,13 @@ const CODE_EXECUTION_KEYS = new Set([
   "PHPRC", "PHP_INI_SCAN_DIR", "TCLLIBPATH", "LUA_INIT", "LUA_PATH", "LUA_CPATH",
   "NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG", "NPM_CONFIG_SCRIPT_SHELL", "NPM_CONFIG_NODE_OPTIONS",
   "GCONV_PATH", "HOSTALIASES", "RESOLV_HOST_CONF", "LOCPATH", "NLSPATH", "MALLOC_CHECK_",
+  // Option variables tools read as command-line flags (tar --checkpoint-action=exec, make SHELL=…).
+  "TAR_OPTIONS", "MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "RSYNC_RSH", "RSYNC_CONNECT_PROG", "CVS_RSH", "SVN_SSH",
+  "LESS", "LESSKEYIN", "LESSKEY", "MANOPT", "MANROFFOPT", "GROFF_COMMAND_PREFIX", "FPATH", "PS0", "PS1", "PS2", "PS3",
+  // More editors, pagers and terminals tools launch.
+  "FCEDIT", "SELECTED_EDITOR", "SYSTEMD_PAGER", "SYSTEMD_EDITOR", "PSQL_PAGER", "PSQL_EDITOR", "SVN_EDITOR", "HGEDITOR", "TERMINAL",
 ])
-const CODE_EXECUTION_PREFIXES = ["LD_", "DYLD_", "GIT_", "BASH_FUNC_", "NPM_CONFIG_", "YARN_", "PNPM_", "PIP_", "UV_", "CARGO_", "RUSTC_"]
+const CODE_EXECUTION_PREFIXES = ["LD_", "DYLD_", "GIT_", "BASH_FUNC_", "NPM_CONFIG_", "YARN_", "PNPM_", "PIP_", "UV_", "CARGO_", "RUSTC_", "HG", "RSYNC_"]
 
 /** Why a key cannot be deployed, or null when it can. */
 export function environmentVariableKeyProblem(key: string): string | null {
