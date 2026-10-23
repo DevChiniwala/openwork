@@ -702,11 +702,6 @@ export type AdminDashboard = {
   from: string;
   to: string;
   generatedAt: string;
-  activeUsers: {
-    today: number;
-    days7: number;
-    days30: number;
-  };
   activeOrganizations: number;
   totals: {
     requests: number;
@@ -732,6 +727,13 @@ export type AdminDashboard = {
     id: string;
     name: string;
   }>;
+};
+
+export type AdminActiveUsers = {
+  today: number;
+  days7: number;
+  days30: number;
+  generatedAt: string;
 };
 
 export type AdminOpportunityOverview = {
@@ -9275,6 +9277,37 @@ export type GetV1AdminDashboardResponses = {
 };
 
 export type GetV1AdminDashboardResponse = GetV1AdminDashboardResponses[keyof GetV1AdminDashboardResponses];
+
+export type GetV1AdminDashboardActiveUsersData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/admin/dashboard/active-users";
+};
+
+export type GetV1AdminDashboardActiveUsersErrors = {
+  /**
+   * Authentication required.
+   */
+  401: UnauthorizedError;
+  /**
+   * Platform admin access required.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminDashboardActiveUsersError =
+  GetV1AdminDashboardActiveUsersErrors[keyof GetV1AdminDashboardActiveUsersErrors];
+
+export type GetV1AdminDashboardActiveUsersResponses = {
+  /**
+   * Platform active users returned.
+   */
+  200: AdminActiveUsers;
+};
+
+export type GetV1AdminDashboardActiveUsersResponse =
+  GetV1AdminDashboardActiveUsersResponses[keyof GetV1AdminDashboardActiveUsersResponses];
 
 export type GetV1AdminOpportunitiesOverviewData = {
   body?: never;
