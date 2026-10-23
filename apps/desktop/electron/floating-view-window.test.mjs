@@ -5,15 +5,17 @@ import { FLOATING_VIEW_PREFIX, attachFloatingViewWindow, floatingViewWindowOptio
 
 describe("floating view windows", () => {
   it("opens only empty pages under the reserved name as borderless windows", () => {
-    const options = floatingViewWindowOptions({ url: "about:blank", frameName: `${FLOATING_VIEW_PREFIX}computer` });
+    const options = floatingViewWindowOptions({ url: "about:blank", frameName: `${FLOATING_VIEW_PREFIX}browser` });
     assert.equal(options?.frame, false);
     assert.equal(options?.transparent, true);
     assert.equal(options?.show, false);
     assert.equal(options?.webPreferences.preload, undefined);
     assert.equal(options?.webPreferences.sandbox, true);
-    assert.equal(floatingViewWindowOptions({ url: "https://example.com", frameName: `${FLOATING_VIEW_PREFIX}computer` }), null);
+    assert.equal(floatingViewWindowOptions({ url: "https://example.com", frameName: `${FLOATING_VIEW_PREFIX}browser` }), null);
     assert.equal(floatingViewWindowOptions({ url: "about:blank", frameName: "" }), null);
     assert.equal(floatingViewWindowOptions({ url: "about:blank", frameName: "anything-else" }), null);
+    // The computer view's pop-out has its own handler.
+    assert.equal(floatingViewWindowOptions({ url: "about:blank", frameName: "openwork-computer-view-1" }), null);
   });
 
   it("shows the window above other apps without taking focus, and never navigates it", () => {

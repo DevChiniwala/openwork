@@ -124,10 +124,10 @@ export function useFloatingWindow(name: string, open: boolean, { title, width, h
 }
 
 /**
- * Sizes a floating window to its content's height (and an optional width), so
- * the window has no empty margin around the surface. Full screen leaves it be.
+ * Sizes a floating window to its content's height, so the window has no empty
+ * margin around the surface. Full screen leaves it be.
  */
-export function useFitFloatingWindow(container: HTMLElement | null, width?: number) {
+export function useFitFloatingWindow(container: HTMLElement | null) {
   React.useLayoutEffect(() => {
     const view = container?.ownerDocument.defaultView;
     const content = container?.firstElementChild;
@@ -135,14 +135,13 @@ export function useFitFloatingWindow(container: HTMLElement | null, width?: numb
     const fit = () => {
       if (container.ownerDocument.fullscreenElement) return;
       const height = Math.ceil(content.getBoundingClientRect().height);
-      const nextWidth = width ?? view.outerWidth;
-      if (height > 0 && (height !== view.innerHeight || nextWidth !== view.outerWidth)) view.resizeTo(nextWidth, height);
+      if (height > 0 && height !== view.innerHeight) view.resizeTo(view.outerWidth, height);
     };
     const resize = new ResizeObserver(fit);
     resize.observe(content);
     fit();
     return () => resize.disconnect();
-  }, [container, width]);
+  }, [container]);
 }
 
 /**

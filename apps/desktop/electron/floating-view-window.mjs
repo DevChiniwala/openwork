@@ -1,7 +1,8 @@
-// Floating views (the computer watch view, the floating browser card) live in
-// their own borderless window so they float over every app, not just inside
-// OpenWork. The renderer opens an empty same-origin window by name and draws
-// into it; this module decides which window.open requests get that treatment.
+// The floating browser card lives in its own borderless window so it floats
+// over every app, not just inside OpenWork. The renderer opens an empty
+// same-origin window by name and draws into it; this module decides which
+// window.open requests get that treatment. (The computer view's pop-out window
+// has its own name and handler in main.mjs.)
 
 export const FLOATING_VIEW_PREFIX = "openwork-floating-";
 
