@@ -309,7 +309,18 @@
       },
       "development": "./src/den/environment-variables.ts",
       "bun": "./src/den/environment-variables.ts",
+      "browser": "./src/den/environment-variables.ts",
       "default": "./dist/den/environment-variables.js"
+    },
+    "./den/prompts": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/prompts.d.ts",
+        "default": "./src/den/prompts.ts"
+      },
+      "development": "./src/den/prompts.ts",
+      "bun": "./src/den/prompts.ts",
+      "browser": "./src/den/prompts.ts",
+      "default": "./dist/den/prompts.js"
     },
     "./den/credential-prompt": {
       "types": {

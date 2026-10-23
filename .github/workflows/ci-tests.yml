@@ -132,7 +132,7 @@ jobs:
         run: |
           pnpm --filter @openwork/computer-use build
           node --test ee/packages/headless-computer/src/viewer-tickets.test.mjs
-          node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/browser-task-viewport.test.mjs packages/browser-tabs/index.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs
+          node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/browser-task-viewport.test.mjs packages/browser-tabs/index.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs apps/desktop/electron/floating-view-window.test.mjs
           python3 ee/packages/headless-computer/scripts/desktop-bridge.test.py
           python3 ee/packages/headless-computer/scripts/app-scripting.test.py
           python3 ee/packages/headless-computer/scripts/configure-desktop-files.test.py
@@ -140,8 +140,8 @@ jobs:
           python3 ee/packages/headless-computer/scripts/vnc-stdio.test.py
           python3 packages/computer-use/computer-x11-worker.test.py
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr ../apps/server/test/computer-use-tools.vitest.test.ts ../apps/server/test/cloud-computer-lifecycle.vitest.test.ts
-      - name: Test default-setup CodeQL coverage accounting
-        run: node --test scripts/ci/check-codeql-results.test.mjs
+      - name: Test CodeQL scope and coverage accounting
+        run: node --test scripts/ci/codeql-config.test.mjs scripts/ci/check-codeql-results.test.mjs
       - name: Test packaged smoke engine diagnosis and kept logs
         run: |
           bun test apps/server/test/opencode-plugin-deps.test.ts
@@ -167,7 +167,7 @@ jobs:
           pnpm --filter @openwork-ee/utils test
           pnpm --filter @openwork/automations test
           pnpm --filter @openwork-ee/den-api test
-          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts" "../den-web/app/(den)/dashboard/_components/connector-readiness.test.ts" "../den-web/app/(den)/dashboard/_lib/workbot-entry.test.ts" "../den-web/app/(den)/_lib/billing-checkout.test.ts"
+          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts" "../den-web/app/(den)/dashboard/_components/connector-readiness.test.ts" "../den-web/app/(den)/dashboard/_components/mcp-account-authorization-state.test.ts" "../den-web/app/(den)/dashboard/_lib/workbot-entry.test.ts" "../den-web/app/(den)/_lib/billing-checkout.test.ts"
           pnpm --filter @openwork-ee/workbot test:model
       # Security rules (roles, tenants, keys, OAuth, audit) against the real
       # den-api app and a throwaway database on MySQL (root:password).

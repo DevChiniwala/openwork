@@ -123,6 +123,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotIncludedModels: {
+    label: "Workbot: included OpenWork models by default",
+    description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   workbotUsageRecovery: {
     label: "Workbot: usage limits and upgrades",
     description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",
@@ -235,6 +242,13 @@ export const FEATURES = defineFeatures({
   environmentVariables: {
     label: "Environment variables",
     description: "Admins deploy environment variables to people's desktop agents: a value for everyone, a team or one person, or a value each person sets for themselves.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
+  orgPrompts: {
+    label: "Prompts",
+    description: "Admins write a system prompt for everyone and for each team on the team's Prompts tab. Desktops add the prompts that apply to a member to every agent's instructions: Everyone's first, then each team's by team name. Turning this off stops desktops adding them at their next sync; saved prompts are kept.",
     since: "2026-10",
     deployments: everywhere,
     default: false,

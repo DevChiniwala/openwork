@@ -94,6 +94,7 @@ import {
   runDetachedTask,
 } from "./process-resilience.mjs";
 import { createQuitSequencer } from "./quit-sequence.mjs";
+import { attachFloatingViewWindow, floatingViewWindowOptions } from "./floating-view-window.mjs";
 import { createStartupLog, startupPhase, withStartupPhase } from "./startup-log.mjs";
 
 // Startup milestones (epoch ms) for the renderer's one-per-launch startup
@@ -2752,6 +2753,9 @@ async function createMainWindowInner() {
         },
       };
     }
+    const floatingView = floatingViewWindowOptions({ url, frameName });
+    if (floatingView) return { action: "allow", overrideBrowserWindowOptions: floatingView };
+
     if (url.startsWith("file://")) {
       try {
         runDetachedTask("open local file", () => shell.openPath(fileURLToPath(url)));
@@ -2771,6 +2775,14 @@ async function createMainWindowInner() {
       runDetachedTask("open external URL", () => openExternalUrl(url));
     }
     return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("did-create-window", (child, { frameName }) => {
+    if (!floatingViewWindowOptions({ url: "about:blank", frameName })) return;
+    attachFloatingViewWindow(child);
+    const closeWithMain = () => { if (!child.isDestroyed()) child.close(); };
+    mainWindow?.once("closed", closeWithMain);
+    child.once("closed", () => mainWindow?.off("closed", closeWithMain));
   });
 
   mainWindow.webContents.on("did-create-window", (child, { frameName }) => {

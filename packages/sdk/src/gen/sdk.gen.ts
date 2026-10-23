@@ -110,6 +110,10 @@ import type {
   DeleteV1MembersByMemberIdResponses,
   DeleteV1MemoryByIdErrors,
   DeleteV1OrgErrors,
+  DeleteV1OrgPromptsEveryoneErrors,
+  DeleteV1OrgPromptsEveryoneResponses,
+  DeleteV1OrgPromptsTeamsByTeamIdErrors,
+  DeleteV1OrgPromptsTeamsByTeamIdResponses,
   DeleteV1OrgResponses,
   DeleteV1OrgWebOriginsByWebOriginIdErrors,
   DeleteV1OrgWebOriginsByWebOriginIdResponses,
@@ -498,6 +502,8 @@ import type {
   GetV1MeOrgsResponses,
   GetV1MePluginAccessErrors,
   GetV1MePluginAccessResponses,
+  GetV1MePromptsErrors,
+  GetV1MePromptsResponses,
   GetV1MeResponses,
   GetV1OauthProvidersByProviderIdApiCheckErrors,
   GetV1OauthProvidersByProviderIdApiCheckResponses,
@@ -520,6 +526,8 @@ import type {
   GetV1OrgErrors,
   GetV1OrgInventoryRevisionErrors,
   GetV1OrgInventoryRevisionResponses,
+  GetV1OrgPromptsErrors,
+  GetV1OrgPromptsResponses,
   GetV1OrgResponses,
   GetV1OrgServiceReadinessErrors,
   GetV1OrgServiceReadinessResponses,
@@ -648,6 +656,7 @@ import type {
   OpenGoogleDriveOfficeEditorErrors,
   OpenGoogleDriveOfficeEditorResponses,
   OrganizationWebOriginApproveBody,
+  OrgPromptWrite,
   PatchApiAuthScimV2GroupsByGroupIdErrors,
   PatchApiAuthScimV2GroupsByGroupIdResponses,
   PatchApiAuthScimV2UsersByUserIdErrors,
@@ -1077,6 +1086,10 @@ import type {
   PutV1OrgDefaultModelEveryoneResponses,
   PutV1OrgDefaultModelTeamsByTeamIdErrors,
   PutV1OrgDefaultModelTeamsByTeamIdResponses,
+  PutV1OrgPromptsEveryoneErrors,
+  PutV1OrgPromptsEveryoneResponses,
+  PutV1OrgPromptsTeamsByTeamIdErrors,
+  PutV1OrgPromptsTeamsByTeamIdResponses,
   PutV1OrgWorkbotSettingsErrors,
   PutV1OrgWorkbotSettingsResponses,
   PutV1PermissionsSetsByPermissionSetIdPermissionsErrors,
@@ -1337,6 +1350,7 @@ export class DenClient extends HeyApiClient {
         workbotDocuments?: boolean | null;
         workbotDocumentEditing?: boolean | null;
         workbotWorkspaceAssistant?: boolean | null;
+        workbotIncludedModels?: boolean | null;
         workbotUsageRecovery?: boolean | null;
         usageLimitUpgrade?: boolean | null;
         automationCalendar?: boolean | null;
@@ -1353,6 +1367,7 @@ export class DenClient extends HeyApiClient {
         teamPlan?: boolean | null;
         selfServeEnterprise?: boolean | null;
         environmentVariables?: boolean | null;
+        orgPrompts?: boolean | null;
       };
     },
     options?: Options<never, ThrowOnError>,
@@ -3294,6 +3309,18 @@ export class DenClient extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    });
+  }
+
+  /**
+   * Get current user's prompts
+   *
+   * Returns the system prompts that apply to the caller in their active organization, in the order desktops append them to OpenWork's instructions: prompts for everyone, then each of the caller's teams' prompts by team name, then prompts assigned to the caller. Desktops read it with their provider sync. Requires the Prompts feature; answers 404 while it is off, and desktops then add no prompts.
+   */
+  public getV1MePrompts<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GetV1MePromptsResponses, GetV1MePromptsErrors, ThrowOnError>({
+      url: "/v1/me/prompts",
+      ...options,
     });
   }
 
@@ -17101,7 +17128,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get Workbot settings
    *
-   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.
+   * Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotIncludedModels or workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.
    */
   public getV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -17114,7 +17141,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Set Workbot's default model
    *
-   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.
+   * Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotIncludedModels or workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.
    */
   public putV1OrgWorkbotSettings<ThrowOnError extends boolean = false>(
     parameters: {
@@ -17142,7 +17169,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Check whether Workbot has an AI provider
    *
-   * Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. The managed Luna default with workbotUsageRecovery uses the member's Models access and needs no custom Gateway provider. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.
+   * Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. With workbotIncludedModels or workbotUsageRecovery, the managed default uses the member's included OpenWork models and needs no custom Gateway provider while the member is entitled to them. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.
    */
   public getV1OrgWorkbotReadiness<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -17235,6 +17262,121 @@ export class DenClient extends HeyApiClient {
       ThrowOnError
     >({
       url: "/v1/org/default-model/teams/{teamId}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Get prompts
+   *
+   * Returns the organization's system prompts: the prompt for everyone (null for none) and each team's own prompt (null for none), teams by name. Desktops append the prompts that apply to a member to every agent's instructions, Everyone's first, then each team's by team name. Requires the View prompts permission and the Prompts feature.
+   */
+  public getV1OrgPrompts<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GetV1OrgPromptsResponses, GetV1OrgPromptsErrors, ThrowOnError>({
+      url: "/v1/org/prompts",
+      ...options,
+    });
+  }
+
+  /**
+   * Remove the prompt for everyone
+   *
+   * Removes the system prompt for everyone; teams' prompts are kept. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public deleteV1OrgPromptsEveryone<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).delete<
+      DeleteV1OrgPromptsEveryoneResponses,
+      DeleteV1OrgPromptsEveryoneErrors,
+      ThrowOnError
+    >({ url: "/v1/org/prompts/everyone", ...options });
+  }
+
+  /**
+   * Set the prompt for everyone
+   *
+   * Sets the system prompt every member's agents follow. The first save creates the prompt and assigns it to everyone. Desktops pick it up at their next provider sync. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public putV1OrgPromptsEveryone<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgPromptWrite: OrgPromptWrite;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgPromptWrite", map: "body" }] }]);
+    return (options?.client ?? this.client).put<
+      PutV1OrgPromptsEveryoneResponses,
+      PutV1OrgPromptsEveryoneErrors,
+      ThrowOnError
+    >({
+      url: "/v1/org/prompts/everyone",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Remove a team's prompt
+   *
+   * Removes one team's system prompt; the prompt for everyone still applies. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public deleteV1OrgPromptsTeamsByTeamId<ThrowOnError extends boolean = false>(
+    parameters: {
+      teamId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "teamId" }] }]);
+    return (options?.client ?? this.client).delete<
+      DeleteV1OrgPromptsTeamsByTeamIdResponses,
+      DeleteV1OrgPromptsTeamsByTeamIdErrors,
+      ThrowOnError
+    >({
+      url: "/v1/org/prompts/teams/{teamId}",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Set a team's prompt
+   *
+   * Sets the system prompt one team's members' agents follow, after the prompt for everyone. The first save creates the prompt and assigns it to the team. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public putV1OrgPromptsTeamsByTeamId<ThrowOnError extends boolean = false>(
+    parameters: {
+      teamId: string;
+      orgPromptWrite: OrgPromptWrite;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "teamId" },
+            { key: "orgPromptWrite", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).put<
+      PutV1OrgPromptsTeamsByTeamIdResponses,
+      PutV1OrgPromptsTeamsByTeamIdErrors,
+      ThrowOnError
+    >({
+      url: "/v1/org/prompts/teams/{teamId}",
       ...options,
       ...params,
       headers: {
@@ -17428,7 +17570,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get my Workbot model recovery options
    *
-   * Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.
+   * Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotIncludedModels or workbotUsageRecovery. Purchase and in-conversation upgrade hints need workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.
    */
   public getWorkbotModelRecovery<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<

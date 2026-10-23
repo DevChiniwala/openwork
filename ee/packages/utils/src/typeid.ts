@@ -135,6 +135,8 @@ export const idTypesMapNameToPrefix = {
   environmentVariable: "evr",
   environmentVariableAccess: "eva",
   environmentVariableMemberSetting: "evm",
+  orgPrompt: "osp",
+  orgPromptAccess: "ospa",
 } as const
 
 export const denTypeIdPrefixes = idTypesMapNameToPrefix

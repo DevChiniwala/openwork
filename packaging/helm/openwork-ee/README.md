@@ -996,6 +996,17 @@ If `secret.create=false`, add those keys to the existing Secret referenced by
 `SMTP_HOST`; leave `smtpHost` blank only when SMTP-backed transactional email
 should be disabled.
 
+Invitation emails tell people to reply for help and include a "Report abuse"
+link. Set `config.email.supportAddress` (rendered as `EMAIL_SUPPORT_ADDRESS`)
+to send both to your help desk; when it is blank, replies go to the person who
+sent the invitation and the email omits the report link:
+
+```yaml
+config:
+  email:
+    supportAddress: "it-help@example.com"
+```
+
 ## Tenancy Mode
 
 The chart defaults to a private single-org deployment:

@@ -12,15 +12,17 @@ import { cache } from "../../cache.js"
 import { db } from "../../db.js"
 import { env } from "../../env.js"
 import { authenticatedRoute, jsonValidator, orgMemberRoute, userSessionRoute, type OrganizationContextVariables, type UserOrganizationsContext } from "../../middleware/index.js"
-import { denTypeIdSchema, forbiddenSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
+import { denTypeIdSchema, forbiddenSchema, invalidRequestSchema, jsonResponse, notFoundSchema, unauthorizedSchema } from "../../openapi.js"
 import { normalizeOrganizationMetadata } from "../../organization-limits.js"
 import { resolveUserOrganizations, setSessionActiveOrganization, type UserOrgSummary } from "../../orgs.js"
 import type { AuthContextVariables } from "../../session.js"
 import { calculateDesktopPolicyForOrgMember } from "../../desktop-policies.js"
 import { readAgentPermissionRulesForMember } from "../../agent-permissions.js"
 import { desktopConfigDefaultModel } from "../../default-model.js"
+import { readPromptsForMember } from "../../prompts.js"
+import { memberPromptsSchema } from "@openwork/types/den/prompts"
+import { getOrganizationFeatures, requireFeature } from "../../features.js"
 import { DenEmailSendError, sendEmail } from "../../utils/email/send-email.js"
-import { getOrganizationFeatures } from "../../features.js"
 import { registerMeActivationRoutes } from "./activation.js"
 
 const DOWNLOAD_LINK_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
@@ -414,6 +416,27 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
       }
 
       return c.json({ activeOrgId: activeOrg.id, activeOrgSlug: activeOrg.slug })
+    },
+  )
+
+  app.get(
+    "/v1/me/prompts",
+    describeRoute({
+      tags: ["Users"],
+      summary: "Get current user's prompts",
+      description: "Returns the system prompts that apply to the caller in their active organization, in the order desktops append them to OpenWork's instructions: prompts for everyone, then each of the caller's teams' prompts by team name, then prompts assigned to the caller. Desktops read it with their provider sync. Requires the Prompts feature; answers 404 while it is off, and desktops then add no prompts.",
+      responses: {
+        200: jsonResponse("Current user prompts returned successfully.", memberPromptsSchema),
+        401: jsonResponse("The caller must be signed in to read their prompts.", unauthorizedSchema),
+        404: jsonResponse("Prompts is off for the organization.", notFoundSchema),
+      },
+    }),
+    orgMemberRoute(),
+    requireFeature("orgPrompts"),
+    async (c) => {
+      const { organization, currentMember } = c.get("organizationContext")
+      c.header("Cache-Control", "no-store")
+      return c.json({ prompts: await readPromptsForMember({ organizationId: organization.id, memberId: currentMember.id }) })
     },
   )
 

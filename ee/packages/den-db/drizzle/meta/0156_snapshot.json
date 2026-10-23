@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "ad054d58-0caf-4554-8af7-26c6cc51ebc7",
+  "id": "f6af79a6-92e3-45bd-b549-47ae812a8da5",
   "prevId": "7b8a3a84-4725-4aa3-ba0f-db2b1b3ae87c",
   "tables": {
     "agent_permission_policy": {
@@ -270,6 +270,195 @@
       "compositePrimaryKeys": {
         "org_default_model_id": {
           "name": "org_default_model_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "org_prompt_access": {
+      "name": "org_prompt_access",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prompt_id": {
+          "name": "prompt_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "org_wide": {
+          "name": "org_wide",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "org_membership_id": {
+          "name": "org_membership_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {
+        "org_prompt_access_organization_id": {
+          "name": "org_prompt_access_organization_id",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        },
+        "org_prompt_access_org_membership_id": {
+          "name": "org_prompt_access_org_membership_id",
+          "columns": [
+            "org_membership_id"
+          ],
+          "isUnique": false
+        },
+        "org_prompt_access_team_id": {
+          "name": "org_prompt_access_team_id",
+          "columns": [
+            "team_id"
+          ],
+          "isUnique": false
+        },
+        "org_prompt_access_prompt_member": {
+          "name": "org_prompt_access_prompt_member",
+          "columns": [
+            "prompt_id",
+            "org_membership_id"
+          ],
+          "isUnique": true
+        },
+        "org_prompt_access_prompt_team": {
+          "name": "org_prompt_access_prompt_team",
+          "columns": [
+            "prompt_id",
+            "team_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "org_prompt_access_id": {
+          "name": "org_prompt_access_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "org_prompt": {
+      "name": "org_prompt",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "mediumtext",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by_org_member_id": {
+          "name": "created_by_org_member_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_by_org_member_id": {
+          "name": "updated_by_org_member_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)"
+        }
+      },
+      "indexes": {
+        "org_prompt_organization_id": {
+          "name": "org_prompt_organization_id",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "org_prompt_id": {
+          "name": "org_prompt_id",
           "columns": [
             "id"
           ]
@@ -14339,309 +14528,6 @@
       "compositePrimaryKeys": {
         "plugin_mcp_requirement_binding_id": {
           "name": "plugin_mcp_requirement_binding_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "environment_variable_access": {
-      "name": "environment_variable_access",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "environment_variable_id": {
-          "name": "environment_variable_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "org_membership_id": {
-          "name": "org_membership_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "team_id": {
-          "name": "team_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "updated_by_org_membership_id": {
-          "name": "updated_by_org_membership_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)"
-        }
-      },
-      "indexes": {
-        "environment_variable_access_org_membership_id": {
-          "name": "environment_variable_access_org_membership_id",
-          "columns": [
-            "org_membership_id"
-          ],
-          "isUnique": false
-        },
-        "environment_variable_access_team_id": {
-          "name": "environment_variable_access_team_id",
-          "columns": [
-            "team_id"
-          ],
-          "isUnique": false
-        },
-        "environment_variable_access_variable_member": {
-          "name": "environment_variable_access_variable_member",
-          "columns": [
-            "environment_variable_id",
-            "org_membership_id"
-          ],
-          "isUnique": true
-        },
-        "environment_variable_access_variable_team": {
-          "name": "environment_variable_access_variable_team",
-          "columns": [
-            "environment_variable_id",
-            "team_id"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "environment_variable_access_id": {
-          "name": "environment_variable_access_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "environment_variable_member_setting": {
-      "name": "environment_variable_member_setting",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "environment_variable_id": {
-          "name": "environment_variable_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "org_membership_id": {
-          "name": "org_membership_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "selected_access_id": {
-          "name": "selected_access_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)"
-        }
-      },
-      "indexes": {
-        "environment_variable_member_setting_organization_id": {
-          "name": "environment_variable_member_setting_organization_id",
-          "columns": [
-            "organization_id"
-          ],
-          "isUnique": false
-        },
-        "environment_variable_member_setting_org_membership_id": {
-          "name": "environment_variable_member_setting_org_membership_id",
-          "columns": [
-            "org_membership_id"
-          ],
-          "isUnique": false
-        },
-        "environment_variable_member_setting_variable_member": {
-          "name": "environment_variable_member_setting_variable_member",
-          "columns": [
-            "environment_variable_id",
-            "org_membership_id"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "environment_variable_member_setting_id": {
-          "name": "environment_variable_member_setting_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "environment_variable": {
-      "name": "environment_variable",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_by_org_membership_id": {
-          "name": "created_by_org_membership_id",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "env_key": {
-          "name": "env_key",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "value_mode": {
-          "name": "value_mode",
-          "type": "enum('admin','per_member')",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'admin'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp(3)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)"
-        }
-      },
-      "indexes": {
-        "environment_variable_org_key": {
-          "name": "environment_variable_org_key",
-          "columns": [
-            "organization_id",
-            "env_key"
-          ],
-          "isUnique": true
-        },
-        "environment_variable_created_by": {
-          "name": "environment_variable_created_by",
-          "columns": [
-            "created_by_org_membership_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "environment_variable_id": {
-          "name": "environment_variable_id",
           "columns": [
             "id"
           ]

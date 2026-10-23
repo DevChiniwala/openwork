@@ -55,6 +55,7 @@ import { isCimdClientIdUrlAllowed } from "./mcp/cimd-policy.js";
 import { withLoopbackRedirectRelaxation } from "./mcp/cimd-loopback-redirects.js";
 import { syncDenSignupContact } from "./loops.js";
 import { sendEmail } from "./utils/email/send-email.js";
+import { organizationInviteEmailProps } from "./invitation-email.js";
 import {
   DEN_API_KEY_DEFAULT_PREFIX,
   DEN_API_KEY_EXPIRES_IN_DAYS,
@@ -1465,13 +1466,14 @@ export const auth = betterAuth({
         await sendEmail({
           to: data.email,
           template: "organizationInvite",
-          props: {
+          props: organizationInviteEmailProps({
             inviteLink: buildInvitationLink(data.id),
-            invitedByName: data.inviter.user.name ?? data.inviter.user.email,
-            invitedByEmail: data.inviter.user.email,
+            inviterName: data.inviter.user.name,
+            inviterEmail: data.inviter.user.email,
+            inviteeEmail: data.email,
             organizationName: data.organization.name,
             role: data.role,
-          },
+          }),
         });
       },
       organizationHooks: {

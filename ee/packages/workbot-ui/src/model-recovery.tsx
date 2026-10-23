@@ -81,7 +81,7 @@ export function AccessRecovery({ reason, onRetry }: { reason: WorkbotAccessReaso
   if (host.documentAuthorization !== undefined) return null;
   const copy: Record<WorkbotAccessReason, string> = {
     gateway_not_configured: "Model access hasn’t been set up for Workbot. Ask a workspace admin to finish setup.",
-    gateway_provider_missing: "Your workspace has no available model provider for Workbot. Ask a workspace admin to add one.",
+    gateway_provider_missing: "Workbot doesn’t have a model it can use in this workspace yet. A workspace admin can turn on OpenWork Models or add a model provider.",
     gateway_member_access_missing: "You haven’t been granted access to Workbot’s selected model. Ask a workspace admin for access.",
     gateway_model_unavailable: "Workbot’s saved model is no longer available. Ask a workspace admin to choose an available model.",
     gateway_authentication_required: "Workbot’s model needs an account connection. Ask a workspace admin to check the model’s connection requirements.",
@@ -92,15 +92,22 @@ export function AccessRecovery({ reason, onRetry }: { reason: WorkbotAccessReaso
     rate_limited: "Model access is temporarily limited. Wait a minute, then try again.",
   };
   const managed = recovery.data?.managedLuna === true;
-  const settings = recovery.data?.canManageModels ? managementUrl(managed ? "ai-gateway?tab=openwork-models" : "workbot-settings") : null;
+  const canManageModels = recovery.data?.canManageModels === true;
   const signIn = host.signInHref ? new URL(host.signInHref, window.location.href) : null;
   if (signIn) signIn.searchParams.set("workspace", "choose");
-  const action = reason === "oauth_scope_missing" && signIn ? { href: signIn.toString(), label: "Review sign-in access" }
-    : reason !== "rate_limited" && settings ? { href: settings, label: managed ? "Review Models access" : "Review Workbot’s model" } : null;
-  return <div role="status" data-testid="workbot-access-recovery" className="mt-3 text-[13px] text-[var(--wb-muted)]">
+  const link = (path: string, label: string) => {
+    const href = managementUrl(path);
+    return href ? { href, label } : null;
+  };
+  // No model at all: both ways to give Workbot one, each opening Den's page that rechecks permissions and billing.
+  const actions = reason === "oauth_scope_missing" ? (signIn ? [{ href: signIn.toString(), label: "Review sign-in access" }] : [])
+    : reason === "rate_limited" || !canManageModels ? []
+      : reason === "gateway_provider_missing" ? [link("ai-gateway?tab=openwork-models", "Set up OpenWork Models"), link("ai-gateway?tab=ai-providers", "Add a model provider")]
+        : [link(managed ? "ai-gateway?tab=openwork-models" : "workbot-settings", managed ? "Review Models access" : "Review Workbot’s model")];
+  return <div role="status" data-testid="workbot-access-recovery" data-reason={reason} className="mt-3 text-[13px] text-[var(--wb-muted)]">
     <p>{copy[reason]}</p>
     <div className="-ml-2 mt-1 flex flex-wrap items-center gap-1">
-      {action && <a className={linkClass} href={action.href} target="_blank" rel="noopener noreferrer">{action.label}<ExternalLink size={12} aria-label="Opens in a new tab" /></a>}
+      {actions.map(action => action && <a key={action.href} className={linkClass} href={action.href} target="_blank" rel="noopener noreferrer">{action.label}<ExternalLink size={12} aria-label="Opens in a new tab" /></a>)}
       {onRetry && <button type="button" className={linkClass} onClick={onRetry}>{reason === "rate_limited" ? "Try again" : "Check access and retry"}</button>}
     </div>
   </div>;

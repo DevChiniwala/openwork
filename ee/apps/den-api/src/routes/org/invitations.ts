@@ -24,6 +24,7 @@ import { resolvePermissionsForMember } from "../../permissions/resolve.js"
 import { getOrganizationSeatAddEligibility, getSeatPlanQuote } from "../../stripe-billing.js"
 import { seatPlanQuoteSchema } from "@openwork/types/den/billing-plans"
 import { DenEmailSendError, sendEmail } from "../../utils/email/send-email.js"
+import { organizationInviteEmailProps } from "../../invitation-email.js"
 import type { OrgRouteVariables } from "./shared.js"
 import {
   buildInvitationLink,
@@ -533,13 +534,14 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
       await sendEmail({
         to: email,
         template: "organizationInvite",
-        props: {
+        props: organizationInviteEmailProps({
           inviteLink: buildInvitationLink(inviteToken),
-          invitedByName: user.name ?? user.email ?? "OpenWork",
-          invitedByEmail: user.email ?? "",
+          inviterName: user.name,
+          inviterEmail: user.email,
+          inviteeEmail: email,
           organizationName: payload.organization.name,
           role: assignedRole,
-        },
+        }),
       })
     } catch (error) {
       if (error instanceof DenEmailSendError) {

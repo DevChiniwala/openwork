@@ -20,7 +20,7 @@ const card: Target = { testId: "browser-floating-card" };
 const fullscreen: Target = { testId: "browser-fullscreen-dialog" };
 const WITHIN = 15_000;
 
-test("a person moves the page the agent opened between the side, a floating card and full screen without losing it", async ({ world, user, agent, probe, step, evidence }) => {
+test("a person moves the page the agent opened between the side, its own floating window and full screen without losing it", async ({ world, user, agent, probe, step, evidence }) => {
   const sessionId = world.session.sessionId;
   await agent.run("session.open", { sessionId });
   let tabId = "";
@@ -41,12 +41,18 @@ test("a person moves the page the agent opened between the side, a floating card
     });
     return state.nativeViews.find((view) => view.tabId === tabId) ?? null;
   };
-  const cardSnap = async (snap: string) => {
-    const dom = await probe.eventually(() => probe.dom(`[data-testid="browser-floating-card"][data-snap="${snap}"]`), {
-      within: WITHIN, until: (value) => value.elements.length === 1, label: `the floating card sits at the ${snap} right`,
-    });
-    return dom.elements[0].rect;
+  // The card's own window, outside the app window. A fresh attach each time
+  // it opens: hiding or leaving it closes that window.
+  let popup: Awaited<ReturnType<typeof world.floatingWindow>> | null = null;
+  const floatingCard = async () => {
+    await popup?.client.close();
+    popup = await world.floatingWindow();
+    await user.on(popup).see(card);
+    return { user: user.on(popup), probe: probe.on(popup) };
   };
+  const floatingClosed = () => probe.eventually(() => world.floatingWindowOpen(), {
+    within: WITHIN, until: (open) => !open, label: "the floating browser window closes",
+  });
 
   await step("before: a page the agent opens comes up beside the chat, as it does today", async () => {
     if (await probe.has("Not now")) await user.click({ role: "button", label: "Not now" });
@@ -69,45 +75,32 @@ test("a person moves the page the agent opened between the side, a floating card
     await user.screenshot();
   });
 
-  await step("after: floating the browser leaves a small card over the chat and takes the page off the screen", async () => {
+  await step("after: floating the browser moves it into its own borderless window and takes the page off the chat", async () => {
     await user.click({ testId: "browser-mode-float" });
-    await user.see(card);
+    const floating = await floatingCard();
     await headerMode("floating");
     expect(await pageView(false)).toMatchObject({ tabId });
     await user.notSee({ testId: "browser-mode-float" });
-    const rect = await cardSnap("middle");
+    await user.notSee(card);
+    const frame = await world.windowFrame(popup ?? undefined);
+    const app = { width: (await world.windowFrame()).outer[0] };
+    // Witness: the card is a separate window with no frame, not a layer in the app window.
+    expect(frame.inner).toEqual(frame.outer);
+    expect(frame.outer[0]).toBeLessThan(app.width);
     evidence.recordAssertionEvidence(
-      "Float shows the card and hides the native page",
-      `The floating card is ${Math.round(rect.width)}px wide at the middle right; the same tab is kept but no native page is painted over the chat.`,
-      rect.width > 0,
+      "Float opens the card in its own window",
+      `The card is a separate ${frame.outer[0]}×${frame.outer[1]}px window with no frame, while the chat shows no card and no native page.`,
+      frame.inner[0] === frame.outer[0] && frame.inner[1] === frame.outer[1],
     );
-    await user.screenshot();
+    await floating.user.screenshot();
   });
 
-  await step("after: the card snaps to the top right from its position menu", async () => {
-    const middle = await cardSnap("middle");
-    await user.click({ testId: "browser-floating-position" });
-    await user.click({ testId: "browser-snap-top" });
-    const top = await probe.eventually(() => cardSnap("top"), { within: WITHIN, until: (rect) => rect.top < middle.top, label: "the card finishes moving above its middle position" });
-    expect(top.top).toBeLessThan(middle.top);
-    // Radio items keep the menu open; Escape closes it as a person would.
-    await user.press("Escape");
-    await probe.eventually(() => probe.dom('[data-testid="browser-snap-top"]'), { within: WITHIN, until: (dom) => dom.elements.length === 0, label: "the position menu finishes closing" });
-    await user.notSee({ testId: "browser-snap-top" });
-    await headerMode("floating");
-    evidence.recordAssertionEvidence(
-      "The card moves to the top snap",
-      `The card's top edge moved from ${Math.round(middle.top)}px to ${Math.round(top.top)}px and it reports the top snap.`,
-      top.top < middle.top,
-    );
-    await user.screenshot();
-  });
-
-  await step("after: full screen shows the same page over the whole window", async () => {
-    await user.click({ testId: "browser-mode-fullscreen" });
+  await step("after: full screen shows the same page across the whole screen", async () => {
+    await (await floatingCard()).user.click({ testId: "browser-mode-fullscreen" });
     await user.see(fullscreen);
     await user.see({ testId: "browser-fullscreen-exit" });
     await headerMode("fullscreen");
+    await floatingClosed();
     // Rest the pointer on Exit (no tooltip), so a toolbar tooltip under the
     // old pointer position cannot legitimately cover the page.
     await user.hover({ testId: "browser-fullscreen-exit" });
@@ -115,77 +108,81 @@ test("a person moves the page the agent opened between the side, a floating card
     const width = view?.bounds.width ?? 0;
     // Witness: a full-screen page wider than the side panel proves the native view really moved.
     expect(width).toBeGreaterThan(sideWidth);
-    await user.notSee(card);
+    const screenFull = await probe.eventually(() => world.appFullscreen(), {
+      within: WITHIN, until: Boolean, label: "the app window enters full screen",
+    });
     evidence.recordAssertionEvidence(
-      "Full screen paints the same page across the window",
-      `The same tab is painted ${width}px wide in full screen, against ${sideWidth}px beside the chat; the floating card is gone.`,
-      width > sideWidth,
+      "Full screen paints the same page across the screen",
+      `The app window is in full screen and the same tab is painted ${width}px wide, against ${sideWidth}px beside the chat; the floating window is gone.`,
+      width > sideWidth && screenFull,
     );
     await user.screenshot();
   });
 
-  await step("after: Escape leaves full screen for the floating card the person came from", async () => {
+  await step("after: Escape leaves full screen for the floating window the person came from", async () => {
     await user.press("Escape");
     await probe.eventually(() => probe.dom('[data-testid="browser-fullscreen-dialog"]'), { within: WITHIN, until: (dom) => dom.elements.length === 0, label: "full screen finishes closing" });
     await user.notSee(fullscreen);
     await headerMode("floating");
-    await cardSnap("top");
+    const floating = await floatingCard();
     expect(await pageView(false)).toMatchObject({ tabId });
+    const windowed = !(await probe.eventually(() => world.appFullscreen(), { within: WITHIN, until: (full) => !full, label: "the app window leaves full screen" }));
     evidence.recordAssertionEvidence(
       "Escape returns to the last mode",
-      "Escape closed full screen; the card is back at the top right and the native page is off the screen again.",
-      (await probe.dom('[data-testid="browser-floating-card"][data-snap="top"]')).elements.length === 1,
+      "Escape closed full screen and left it on the screen too; the card is back in its own window and the native page is off the chat again.",
+      windowed,
     );
-    await user.screenshot();
+    await floating.user.screenshot();
   });
 
   await step("after: the header Browser button hides the browser and brings it back where it was", async () => {
     await user.click(toggle);
     await headerMode("hidden");
-    await user.notSee(card);
+    await floatingClosed();
     expect(await pageView(false)).toMatchObject({ tabId });
     await user.click(toggle);
     await headerMode("floating");
-    await user.see(card);
-    await cardSnap("top");
+    await floatingCard();
     const tabs = (await probe.browserState()).tabs.filter((tab) => tab.ownerSessionId === sessionId);
     expect(tabs.map((tab) => tab.id)).toEqual([tabId]);
     evidence.recordAssertionEvidence(
-      "Hide and show keep the page and its place",
-      `Hidden, neither the card nor the page is shown; shown again, the card returns at the top right with the same single tab (${tabs.length} owned by this chat).`,
+      "Hide and show keep the page and its window",
+      `Hidden, neither the card window nor the page is shown; shown again, the card window returns with the same single tab (${tabs.length} owned by this chat).`,
       tabs.length === 1 && tabs[0]?.id === tabId,
     );
     await user.screenshot();
   });
   await step("after: a page under the person's control has no floating screenshot", async () => {
-    await user.click({ testId: "browser-floating-preview" });
+    await (await floatingCard()).user.click({ testId: "browser-floating-preview" });
     await headerMode("side");
     await user.click({ role: "button", label: "Take over" });
     await user.see({ role: "button", label: "Resume browser" });
     await user.click({ testId: "browser-mode-float" });
-    await user.see(card);
-    await user.notSee({ testId: "browser-floating-thumbnail" });
-    evidence.recordAssertionEvidence("Takeover withholds the page preview", "The card remains available while the person controls the page, and it contains no screenshot.", (await probe.dom('[data-testid="browser-floating-thumbnail"]')).elements.length === 0);
-    await user.screenshot();
+    const floating = await floatingCard();
+    await floating.user.notSee({ testId: "browser-floating-thumbnail" });
+    evidence.recordAssertionEvidence("Takeover withholds the page preview", "The card window remains available while the person controls the page, and it contains no screenshot.", (await floating.probe.dom('[data-testid="browser-floating-thumbnail"]')).elements.length === 0);
+    await floating.user.screenshot();
   });
 
   await step("after: resuming and navigating keeps the same tab and captures only its current page", async () => {
-    await user.click({ testId: "browser-floating-preview" });
+    await (await floatingCard()).user.click({ testId: "browser-floating-preview" });
     await user.click({ role: "button", label: "Resume browser" });
     await user.type({ placeholder: "Enter URL..." }, `${world.origin}/?floating-browser=updated`, { replace: true });
     await user.press("Enter");
     await user.click({ testId: "browser-mode-float" });
-    await user.see({ testId: "browser-floating-thumbnail" }, { timeoutMs: 30_000 });
+    const floating = await floatingCard();
+    await floating.user.see({ testId: "browser-floating-thumbnail" }, { timeoutMs: 30_000 });
     const current = await probe.eventually(() => world.thumbnail(tabId), { within: WITHIN, until: (value) => Boolean(value?.url.includes("floating-browser=updated")), label: "the preview names the current page" });
     expect(current?.url).toBe(`${world.origin}/?floating-browser=updated`);
-    evidence.recordAssertionEvidence("The floating preview follows navigation", "After resuming and navigating, the same tab returns to the floating card with a screenshot of its current URL.", current?.url === `${world.origin}/?floating-browser=updated`);
-    await user.screenshot();
+    evidence.recordAssertionEvidence("The floating preview follows navigation", "After resuming and navigating, the same tab returns to the card window with a screenshot of its current URL.", current?.url === `${world.origin}/?floating-browser=updated`);
+    await floating.user.screenshot();
   });
 
   await step("turning the rollout off returns the same page to the standard side panel", async () => {
     await world.setCapabilities({ browserFloatingView: false });
     await probe.eventually(() => probe.dom('[data-testid="session-browser-toggle"]'), { within: 60_000, until: (dom) => dom.elements.length === 0, label: "the admin rollout refresh removes the Browser button" });
     await user.notSee(toggle);
+    await floatingClosed();
     await user.notSee(card);
     const view = await pageView(true);
     expect(view?.tabId).toBe(tabId);

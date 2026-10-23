@@ -7,7 +7,7 @@ import { connectorAccountReady } from "./connector-detail";
 import { type ConnectorSignInMethod, connectorSignInMethod, oauthClientSecretRequired, oauthRequestFields } from "./connector-sign-in-method";
 import { libraryQueryKeys } from "./library-data";
 import { credentialModeForAuth, personalApiKeyStatus, usesMemberApiKey } from "./member-api-key";
-import { resolveMcpAuthorizationPollOutcome } from "./mcp-account-authorization-state";
+import { pollMcpAuthorization } from "./mcp-account-authorization-state";
 import { openMcpAuthorizationTab, safeMcpAuthorizationUrl, showMcpAuthorizationFailure } from "./mcp-authorization-url";
 import {
   apiKeyAuthSchemeInput,
@@ -272,15 +272,16 @@ export function useConnectorSetup({ target, initialConnectionId, onConnectionCre
       pollTimer.current = setInterval(async () => {
         if (fetching) return;
         fetching = true;
-        const refreshed = await usable.refetch();
-        fetching = false;
-        const current = refreshed.data?.find((entry) => entry.id === pollId);
-        const outcome = resolveMcpAuthorizationPollOutcome({
-          connected: Boolean(current && connectorAccountReady(current)),
-          authorizationWindowClosed: openedTab.closed,
-          elapsedMs: Date.now() - startedAt,
+        const outcome = await pollMcpAuthorization({
+          authorizationWindow: openedTab,
+          readConnected: async () => {
+            const current = (await usable.refetch()).data?.find((entry) => entry.id === pollId);
+            return Boolean(current && connectorAccountReady(current));
+          },
+          startedAt,
           timeoutMs: POLL_TIMEOUT_MS,
         });
+        fetching = false;
         if (outcome === "pending") return;
         stopPolling();
         if (outcome === "connected") {

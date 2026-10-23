@@ -14,14 +14,14 @@ import { DEN_MCP_HEADLESS_RUN_TOKEN_MAX_TTL_MS } from "../mcp/headless-run-token
 import { mintHeadlessTurnCredentials } from "../headless-runner/resume-grants.js"
 import { DEN_MCP_READ_SCOPE, DEN_MCP_WRITE_SCOPE } from "../mcp/scopes.js"
 import { jsonResponse, unauthorizedSchema } from "../openapi.js"
-import { getOrganizationFeatures, organizationFeatureEnabled } from "../features.js"
+import { getOrganizationFeatures } from "../features.js"
 import { jsonValidator, tokenRoute } from "../middleware/index.js"
 import { checkRateLimit } from "../utils/rate-limit.js"
 import { openworkYourConnectionsUrl } from "../mcp/connection-navigation.js"
 import { createInternalMcpPrincipalHeader } from "../session.js"
 import { getOrganizationContextForUser, listTeamsForMember } from "../orgs.js"
 import { listMemberUsableConnectionFacts } from "../routes/org/mcp-connections.js"
-import { readWorkbotModel, WORKBOT_DEFAULT_MODEL_ID, WORKBOT_FREE_LUNA_ID, WORKBOT_PAID_LUNA_ID, isWorkbotManagedLuna, workbotModelRecoverySchema, workbotAccessFailureSchema } from "@openwork/types/den/workbot-settings"
+import { readWorkbotModel, WORKBOT_DEFAULT_MODEL_ID, isWorkbotManagedLuna, workbotModelRecoverySchema, workbotAccessFailureSchema } from "@openwork/types/den/workbot-settings"
 import { getMemberInferenceAccess, organizationAllowsManagedModels } from "../inference.js"
 import { organizationHasOngoingInferenceSubscription } from "../stripe-billing.js"
 import { cloudAgentModelCatalog } from "./model.js"
@@ -29,7 +29,7 @@ import { headlessModelAccessSchema, createHeadlessRunnerClient } from "@openwork
 import { workbotOwner } from "@openwork-ee/headless-protocol/workbot-routing"
 import { defaultHeadlessRunnerDeps } from "../headless-runner/client.js"
 import { CloudAgentGatewayAccessError } from "./gateway-model.js"
-import { workbotManagedLunaState } from "./managed-luna.js"
+import { workbotIncludedDefaultModel, workbotIncludedModelsEnabled, workbotIncludedModelsEnabledFor, workbotManagedLunaState, workbotUsesManagedDefault } from "./managed-luna.js"
 import { recordWorkbotTelemetry, workbotTelemetrySchema, workbotTelemetryServiceAuthorized } from "./telemetry.js"
 import { resolvePermissionsForMember } from "../permissions/resolve.js"
 import { workbotOrigin } from "./config.js"
@@ -275,12 +275,12 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
   app.get("/v1/workbot/model-recovery", describeWorkbotRoute({
     tags: ["Workbot"], operationId: "getWorkbotModelRecovery", "x-mcp": false,
     summary: "Get my Workbot model recovery options",
-    description: "Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.",
+    description: "Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotIncludedModels or workbotUsageRecovery. Purchase and in-conversation upgrade hints need workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.",
     responses: {
       200: jsonResponse("The member's recovery options.", workbotModelRecoverySchema),
       401: jsonResponse("The token or membership is invalid.", unauthorizedSchema),
       403: jsonResponse("Read scope is required.", z.object({ error: z.literal("insufficient_scope") })),
-      404: jsonResponse("Usage recovery is off.", z.object({ error: z.literal("feature_disabled") })),
+      404: jsonResponse("Included models and usage recovery are off.", z.object({ error: z.literal("feature_disabled") })),
     },
   }), tokenRoute, async (c) => {
     c.header("Cache-Control", "no-store")
@@ -290,7 +290,10 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
     if (auditBlocked) return auditBlocked
     if (!resolved.scopes.has(DEN_MCP_READ_SCOPE)) return c.json({ error: "insufficient_scope" }, 403)
     const { organization, memberId, user } = resolved
-    if (!await organizationFeatureEnabled(organization.id, "workbotUsageRecovery", { userId: user.id })) return c.json({ error: "feature_disabled" }, 404)
+    const features = await getOrganizationFeatures(organization.id, { userId: user.id })
+    if (!workbotIncludedModelsEnabled(features)) return c.json({ error: "feature_disabled" }, 404)
+    // Included models alone link to Den pages; offering a purchase that continues this conversation stays with the upgrade rollout.
+    const upgrades = features.workbotUsageRecovery
     const [permissions, access, allowed, subscribed] = await Promise.all([
       resolvePermissionsForMember({ organizationId: organization.id, memberId: normalizeDenTypeId("member", memberId) }),
       getMemberInferenceAccess({ organizationId: organization.id, memberId: normalizeDenTypeId("member", memberId), userId: normalizeDenTypeId("user", user.id) }),
@@ -298,9 +301,9 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       organizationHasOngoingInferenceSubscription(organization.id),
     ])
     const chosen = readWorkbotModel(organization.metadata)
-    const managedLuna = chosen === null || isWorkbotManagedLuna(chosen)
+    const managedLuna = workbotUsesManagedDefault(chosen)
     const managed = managedLuna ? await workbotManagedLunaState({ organizationId: organization.id, userId: user.id }).catch(() => null) : null
-    const purchaseEligible = allowed && !subscribed && !managed?.paid && Boolean(env.stripe.secretKey && env.stripe.inferencePriceId && env.openRouterManagementApiKey) && permissions.has("billing.manage") && permissions.has("inference.view")
+    const purchaseEligible = upgrades && allowed && !subscribed && !managed?.paid && Boolean(env.stripe.secretKey && env.stripe.inferencePriceId && env.openRouterManagementApiKey) && permissions.has("billing.manage") && permissions.has("inference.view")
     const afterUpgrade = managedLuna && managed?.allowed === true && ["free", "exhausted"].includes(managed.free.kind) && purchaseEligible
     const paidContinuation = managed?.paidReady ? "authorized" : afterUpgrade ? "after_upgrade" : "unavailable"
     return c.json({
@@ -373,11 +376,11 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       const canSchedule = (await cloudAutomationRuntime(organization.id).catch(() => "web")) === "headless"
       const features = await getOrganizationFeatures(organization.id, { userId: user.id })
       const chosen = readWorkbotModel(organization.metadata)
-      const managedLuna = features.workbotUsageRecovery && (chosen === null || isWorkbotManagedLuna(chosen))
-      const managed = managedLuna ? await workbotManagedLunaState({ organizationId: organization.id, userId: user.id }).catch(() => null) : null
+      const includedModels = workbotIncludedModelsEnabled(features)
+      const managed = includedModels && workbotUsesManagedDefault(chosen) ? await workbotIncludedDefaultModel({ organizationId: organization.id, userId: user.id }, chosen) : null
       // Keep history readable during access failures. Starting a turn reauthorizes the exact model in Den.
-      const model = managedLuna ? chosen === WORKBOT_PAID_LUNA_ID ? chosen : managed?.model ?? WORKBOT_FREE_LUNA_ID
-        : chosen ?? (await cloudAgentModelCatalog({ organizationId: organization.id, userId: user.id }).catch(() => null))?.defaultModel ?? WORKBOT_DEFAULT_MODEL_ID
+      const model = managed
+        ?? chosen ?? (await cloudAgentModelCatalog({ organizationId: organization.id, userId: user.id }).catch(() => null))?.defaultModel ?? WORKBOT_DEFAULT_MODEL_ID
       return c.json({
         user,
         organization: { id: organization.id, name: organization.name, brandAppName: readBrandAppName(organization.metadata) },
@@ -393,7 +396,8 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         nativeDictation: features.nativeDictation,
         workspaceAssistant: features.workbotWorkspaceAssistant,
         guidedNavigation: features.workbotWorkspaceAssistant,
-        usageRecovery: features.workbotUsageRecovery,
+        // The limit card and model recovery links: included models need them as much as upgrades do.
+        usageRecovery: includedModels,
         activationChecklist: features.activationChecklist,
         sideChats: true,
         model,
@@ -676,11 +680,12 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
       let model = requestedModel
       try {
         const chosen = readWorkbotModel(organization.metadata)
-        if (!model && await organizationFeatureEnabled(organization.id, "workbotUsageRecovery", { userId: principal.userId }) && (chosen === null || isWorkbotManagedLuna(chosen))) {
-          model = chosen === WORKBOT_PAID_LUNA_ID ? chosen : (await workbotManagedLunaState(principal)).model
+        const includedModels = await workbotIncludedModelsEnabledFor(organization.id, principal.userId)
+        if (!model && includedModels && workbotUsesManagedDefault(chosen)) {
+          model = await workbotIncludedDefaultModel(principal, chosen) ?? undefined
         }
         const managed = isWorkbotManagedLuna(model)
-        const enabled = !managed || await organizationFeatureEnabled(organization.id, "workbotUsageRecovery", { userId: principal.userId })
+        const enabled = !managed || includedModels
         if (managed && !enabled && !modelAccessRequired) return c.json({ error: "workbot_turn_access_denied", reason: "model_access_unavailable" }, 403)
         if (modelAccessRequired && !enabled) {
           // OAuth callers cannot label new work as recovery to bypass a disabled rollout. Verify the actual

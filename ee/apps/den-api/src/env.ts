@@ -54,6 +54,7 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
+  EMAIL_SUPPORT_ADDRESS: z.string().optional(),
   DEN_ORG_MODE: z.string().optional(),
   DEN_SINGLE_ORG_NAME: z.string().optional(),
   DEN_SINGLE_ORG_SLUG: z.string().optional(),
@@ -762,6 +763,9 @@ export const env = {
   },
   email: {
     from: optionalString(parsed.EMAIL_FROM),
+    // Where invitation replies and abuse reports go. OpenWork Cloud falls back
+    // to the OpenWork team; self-hosted installs fall back to the inviter.
+    supportAddress: optionalString(parsed.EMAIL_SUPPORT_ADDRESS),
   },
   resend: {
     apiKey: optionalString(parsed.RESEND_API_KEY),

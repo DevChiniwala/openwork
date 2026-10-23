@@ -41,8 +41,19 @@ test("paid Luna that is ready replaces the purchase with continuation", () => {
 
 test("billing that cannot be bought here shows no checkout, even to an admin", () => {
   const view = modelRecoveryView("free_limit", options({ canManageBilling: true, canManageModels: true }));
-  assert.equal(view.primary, null);
+  assert.notEqual(view.primary?.label, "Get OpenWork Models");
+  assert.deepEqual(view.primary, { kind: "link", label: "Review OpenWork Models", path: MODELS_PAGE });
   assert.equal(view.changeModel?.label, "Change model");
+});
+
+test("a model admin out of included use without in-conversation upgrades can review Models or change the model", () => {
+  const view = modelRecoveryView("free_limit", options({ canManageModels: true }));
+  assert.equal(view.title, "You've used the free model allowance for now");
+  assert.equal(view.resetsAt, resetsAt);
+  assert.deepEqual(view.primary, { kind: "link", label: "Review OpenWork Models", path: MODELS_PAGE });
+  assert.deepEqual(view.changeModel, { kind: "link", label: "Change model", path: WORKBOT_MODEL_PAGE });
+  // A billing-only person without model rights is not sent to a page they cannot change.
+  assert.equal(modelRecoveryView("free_limit", options({ canManageBilling: true })).primary, null);
 });
 
 test("an unconfirmed free limit and unreadable options never offer an upgrade", () => {

@@ -4860,6 +4860,7 @@
               "workbotDocuments",
               "workbotDocumentEditing",
               "workbotWorkspaceAssistant",
+              "workbotIncludedModels",
               "workbotUsageRecovery",
               "usageLimitUpgrade",
               "automationCalendar",
@@ -4875,7 +4876,8 @@
               "connectStandardTools",
               "teamPlan",
               "selfServeEnterprise",
-              "environmentVariables"
+              "environmentVariables",
+              "orgPrompts"
             ]
           },
           "label": {
@@ -5080,6 +5082,9 @@
                     "workbotWorkspaceAssistant": {
                       "type": "boolean"
                     },
+                    "workbotIncludedModels": {
+                      "type": "boolean"
+                    },
                     "workbotUsageRecovery": {
                       "type": "boolean"
                     },
@@ -5128,6 +5133,9 @@
                     "environmentVariables": {
                       "type": "boolean"
                     },
+                    "orgPrompts": {
+                      "type": "boolean"
+                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -5146,6 +5154,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotIncludedModels",
                     "workbotUsageRecovery",
                     "usageLimitUpgrade",
                     "automationCalendar",
@@ -5162,6 +5171,7 @@
                     "teamPlan",
                     "selfServeEnterprise",
                     "environmentVariables",
+                    "orgPrompts",
                     "gatewayDashboard"
                   ]
                 },
@@ -5738,6 +5748,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "workbotIncludedModels": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "workbotUsageRecovery": {
                       "type": "object",
                       "properties": {
@@ -6649,6 +6716,63 @@
                         "override",
                         "overrideApplies"
                       ]
+                    },
+                    "orgPrompts": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
                     }
                   },
                   "required": [
@@ -6662,6 +6786,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotIncludedModels",
                     "workbotUsageRecovery",
                     "usageLimitUpgrade",
                     "automationCalendar",
@@ -6677,7 +6802,8 @@
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise",
-                    "environmentVariables"
+                    "environmentVariables",
+                    "orgPrompts"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -7077,6 +7203,9 @@
                     "workbotWorkspaceAssistant": {
                       "type": "boolean"
                     },
+                    "workbotIncludedModels": {
+                      "type": "boolean"
+                    },
                     "workbotUsageRecovery": {
                       "type": "boolean"
                     },
@@ -7125,6 +7254,9 @@
                     "environmentVariables": {
                       "type": "boolean"
                     },
+                    "orgPrompts": {
+                      "type": "boolean"
+                    },
                     "gatewayDashboard": {
                       "type": "boolean",
                       "const": true,
@@ -7143,6 +7275,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotIncludedModels",
                     "workbotUsageRecovery",
                     "usageLimitUpgrade",
                     "automationCalendar",
@@ -7159,6 +7292,7 @@
                     "teamPlan",
                     "selfServeEnterprise",
                     "environmentVariables",
+                    "orgPrompts",
                     "gatewayDashboard"
                   ]
                 },
@@ -7735,6 +7869,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "workbotIncludedModels": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "workbotUsageRecovery": {
                       "type": "object",
                       "properties": {
@@ -8646,6 +8837,63 @@
                         "override",
                         "overrideApplies"
                       ]
+                    },
+                    "orgPrompts": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
                     }
                   },
                   "required": [
@@ -8659,6 +8907,7 @@
                     "workbotDocuments",
                     "workbotDocumentEditing",
                     "workbotWorkspaceAssistant",
+                    "workbotIncludedModels",
                     "workbotUsageRecovery",
                     "usageLimitUpgrade",
                     "automationCalendar",
@@ -8674,7 +8923,8 @@
                     "connectStandardTools",
                     "teamPlan",
                     "selfServeEnterprise",
-                    "environmentVariables"
+                    "environmentVariables",
+                    "orgPrompts"
                   ],
                   "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                 }
@@ -9402,6 +9652,47 @@
         },
         "required": [
           "user"
+        ]
+      },
+      "MemberPrompt": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "team",
+              "member"
+            ]
+          },
+          "teamName": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "content"
+        ]
+      },
+      "MemberPrompts": {
+        "type": "object",
+        "properties": {
+          "prompts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberPrompt"
+            }
+          }
+        },
+        "required": [
+          "prompts"
         ]
       },
       "DenDesktopAgentPermissions": {
@@ -11751,6 +12042,8 @@
                     "egress_diagnostics.manage",
                     "desktop_policies.view",
                     "desktop_policies.manage",
+                    "prompts.view",
+                    "prompts.manage",
                     "deployments.view",
                     "deployments.manage",
                     "billing.view",
@@ -33785,6 +34078,128 @@
         ],
         "additionalProperties": false
       },
+      "OrgPromptAssignment": {
+        "type": "object",
+        "properties": {
+          "everyone": {
+            "type": "boolean"
+          },
+          "teamIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "memberIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "everyone",
+          "teamIds",
+          "memberIds"
+        ]
+      },
+      "OrgPrompt": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/OrgPromptAssignment"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "content",
+          "assignment",
+          "updatedAt"
+        ]
+      },
+      "OrgPromptTeam": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrgPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "teamId",
+          "name",
+          "prompt"
+        ]
+      },
+      "OrgPromptSettings": {
+        "type": "object",
+        "properties": {
+          "everyone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrgPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "teams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgPromptTeam"
+            }
+          },
+          "canEdit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "everyone",
+          "teams",
+          "canEdit"
+        ]
+      },
+      "OrgPromptWrite": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 20000
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "additionalProperties": false
+      },
       "WorkbotSession": {
         "type": "object",
         "properties": {
@@ -35532,6 +35947,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotIncludedModels": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotUsageRecovery": {
                           "type": "object",
                           "properties": {
@@ -36443,6 +36915,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "orgPrompts": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -36456,6 +36985,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotIncludedModels",
                         "workbotUsageRecovery",
                         "usageLimitUpgrade",
                         "automationCalendar",
@@ -36471,7 +37001,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "environmentVariables"
+                        "environmentVariables",
+                        "orgPrompts"
                       ]
                     }
                   },
@@ -37138,6 +37669,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotIncludedModels": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotUsageRecovery": {
                           "type": "object",
                           "properties": {
@@ -38049,6 +38637,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "orgPrompts": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -38062,6 +38707,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotIncludedModels",
                         "workbotUsageRecovery",
                         "usageLimitUpgrade",
                         "automationCalendar",
@@ -38077,7 +38723,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "environmentVariables"
+                        "environmentVariables",
+                        "orgPrompts"
                       ]
                     }
                   },
@@ -38239,6 +38886,16 @@
                           }
                         ]
                       },
+                      "workbotIncludedModels": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "workbotUsageRecovery": {
                         "anyOf": [
                           {
@@ -38390,6 +39047,16 @@
                         ]
                       },
                       "environmentVariables": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "orgPrompts": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -41949,6 +42616,9 @@
                         "workbotWorkspaceAssistant": {
                           "type": "boolean"
                         },
+                        "workbotIncludedModels": {
+                          "type": "boolean"
+                        },
                         "workbotUsageRecovery": {
                           "type": "boolean"
                         },
@@ -41997,6 +42667,9 @@
                         "environmentVariables": {
                           "type": "boolean"
                         },
+                        "orgPrompts": {
+                          "type": "boolean"
+                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -42015,6 +42688,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotIncludedModels",
                         "workbotUsageRecovery",
                         "usageLimitUpgrade",
                         "automationCalendar",
@@ -42031,6 +42705,7 @@
                         "teamPlan",
                         "selfServeEnterprise",
                         "environmentVariables",
+                        "orgPrompts",
                         "gatewayDashboard"
                       ]
                     },
@@ -42607,6 +43282,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotIncludedModels": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotUsageRecovery": {
                           "type": "object",
                           "properties": {
@@ -43518,6 +44250,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "orgPrompts": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -43531,6 +44320,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotIncludedModels",
                         "workbotUsageRecovery",
                         "usageLimitUpgrade",
                         "automationCalendar",
@@ -43546,7 +44336,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "environmentVariables"
+                        "environmentVariables",
+                        "orgPrompts"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }
@@ -43695,6 +44486,9 @@
                         "workbotWorkspaceAssistant": {
                           "type": "boolean"
                         },
+                        "workbotIncludedModels": {
+                          "type": "boolean"
+                        },
                         "workbotUsageRecovery": {
                           "type": "boolean"
                         },
@@ -43743,6 +44537,9 @@
                         "environmentVariables": {
                           "type": "boolean"
                         },
+                        "orgPrompts": {
+                          "type": "boolean"
+                        },
                         "gatewayDashboard": {
                           "type": "boolean",
                           "const": true,
@@ -43761,6 +44558,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotIncludedModels",
                         "workbotUsageRecovery",
                         "usageLimitUpgrade",
                         "automationCalendar",
@@ -43777,6 +44575,7 @@
                         "teamPlan",
                         "selfServeEnterprise",
                         "environmentVariables",
+                        "orgPrompts",
                         "gatewayDashboard"
                       ]
                     },
@@ -44353,6 +45152,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "workbotIncludedModels": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "workbotUsageRecovery": {
                           "type": "object",
                           "properties": {
@@ -45264,6 +46120,63 @@
                             "override",
                             "overrideApplies"
                           ]
+                        },
+                        "orgPrompts": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
                         }
                       },
                       "required": [
@@ -45277,6 +46190,7 @@
                         "workbotDocuments",
                         "workbotDocumentEditing",
                         "workbotWorkspaceAssistant",
+                        "workbotIncludedModels",
                         "workbotUsageRecovery",
                         "usageLimitUpgrade",
                         "automationCalendar",
@@ -45292,7 +46206,8 @@
                         "connectStandardTools",
                         "teamPlan",
                         "selfServeEnterprise",
-                        "environmentVariables"
+                        "environmentVariables",
+                        "orgPrompts"
                       ],
                       "description": "Per feature for this organization: whether it is on and why (not part of this deployment, kill switch, operator lock, organization override, or the deployment-wide on/off state), and whether an organization override would take effect."
                     }
@@ -48589,6 +49504,56 @@
                   "firstName",
                   "lastName"
                 ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/me/prompts": {
+      "get": {
+        "operationId": "getV1MePrompts",
+        "tags": [
+          "Users"
+        ],
+        "summary": "Get current user's prompts",
+        "description": "Returns the system prompts that apply to the caller in their active organization, in the order desktops append them to OpenWork's instructions: prompts for everyone, then each of the caller's teams' prompts by team name, then prompts assigned to the caller. Desktops read it with their provider sync. Requires the Prompts feature; answers 404 while it is off, and desktops then add no prompts.",
+        "responses": {
+          "200": {
+            "description": "Current user prompts returned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPrompts"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The caller must be signed in to read their prompts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Prompts is off for the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
               }
             }
           }
@@ -115475,7 +116440,7 @@
           "Organizations"
         ],
         "summary": "Get Workbot settings",
-        "description": "Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.",
+        "description": "Returns the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default (null means the caller's AI Gateway default), and the caller's credential-ready, supported Gateway assignments. defaultModel identifies that default and defaultReadiness reports whether it is available; an organization default never grants inference access. With workbotIncludedModels or workbotUsageRecovery, Workbot’s default is free Auto or paid Models Luna using this member’s entitlement; no custom provider is needed. Requires View OpenWork Models settings or Manage OpenWork Models.",
         "responses": {
           "200": {
             "description": "Workbot settings returned.",
@@ -115546,7 +116511,7 @@
           "Organizations"
         ],
         "summary": "Set Workbot's default model",
-        "description": "Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.",
+        "description": "Sets the organization's default model for Workbot, the Slack assistant and cloud Automations set to the cloud default, from their next message or run; null uses the AI Gateway default. Automations with their own model keep it. Only the caller's supported, credential-ready Gateway aliases are accepted. Each executing member still needs their own assignment and credentials. With workbotIncludedModels or workbotUsageRecovery, selecting the managed Luna starter keeps the shared saved choice null; other cloud agents retain their existing default policy. Requires the Manage OpenWork Models permission and a recent sign-in.",
         "responses": {
           "200": {
             "description": "Workbot settings saved.",
@@ -115656,7 +116621,7 @@
           "Organizations"
         ],
         "summary": "Check whether Workbot has an AI provider",
-        "description": "Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. The managed Luna default with workbotUsageRecovery uses the member's Models access and needs no custom Gateway provider. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.",
+        "description": "Returns whether Workbot turns need the organization's AI Gateway and, only then, whether an active provider exists. With workbotIncludedModels or workbotUsageRecovery, the managed default uses the member's included OpenWork models and needs no custom Gateway provider while the member is entitled to them. Content-free: no provider names, counts, ids, models or grants. Each turn rechecks the member's access. Available to any organization member. Never exposed to MCP.",
         "x-mcp": false,
         "responses": {
           "200": {
@@ -116018,6 +116983,370 @@
             }
           }
         },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/org/prompts": {
+      "get": {
+        "operationId": "getV1OrgPrompts",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get prompts",
+        "description": "Returns the organization's system prompts: the prompt for everyone (null for none) and each team's own prompt (null for none), teams by name. Desktops append the prompts that apply to a member to every agent's instructions, Everyone's first, then each team's by team name. Requires the View prompts permission and the Prompts feature.",
+        "responses": {
+          "200": {
+            "description": "Prompts returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPromptSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the View prompts permission.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization or team was not found, or Prompts is off for the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/org/prompts/everyone": {
+      "put": {
+        "operationId": "putV1OrgPromptsEveryone",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Set the prompt for everyone",
+        "description": "Sets the system prompt every member's agents follow. The first save creates the prompt and assigns it to everyone. Desktops pick it up at their next provider sync. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.",
+        "responses": {
+          "200": {
+            "description": "Prompts saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPromptSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The prompt was empty, too long, or the request was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the Manage prompts permission or needs to sign in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization or team was not found, or Prompts is off for the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgPromptWrite"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteV1OrgPromptsEveryone",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Remove the prompt for everyone",
+        "description": "Removes the system prompt for everyone; teams' prompts are kept. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.",
+        "responses": {
+          "200": {
+            "description": "Prompt removed; the remaining prompts are returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPromptSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the Manage prompts permission or needs to sign in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization or team was not found, or Prompts is off for the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/org/prompts/teams/{teamId}": {
+      "put": {
+        "operationId": "putV1OrgPromptsTeamsByTeamId",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Set a team's prompt",
+        "description": "Sets the system prompt one team's members' agents follow, after the prompt for everyone. The first save creates the prompt and assigns it to the team. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.",
+        "responses": {
+          "200": {
+            "description": "Prompts saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPromptSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The prompt was empty, too long, or the request was invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the Manage prompts permission or needs to sign in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization or team was not found, or Prompts is off for the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teamId",
+            "schema": {
+              "format": "typeid",
+              "type": "string",
+              "minLength": 30,
+              "maxLength": 30
+            },
+            "required": true,
+            "description": "Den TypeID with 'tem_' prefix and a 26-character base32 suffix."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgPromptWrite"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteV1OrgPromptsTeamsByTeamId",
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Remove a team's prompt",
+        "description": "Removes one team's system prompt; the prompt for everyone still applies. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.",
+        "responses": {
+          "200": {
+            "description": "Prompt removed; the remaining prompts are returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPromptSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the Manage prompts permission or needs to sign in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The organization or team was not found, or Prompts is off for the organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "teamId",
+            "schema": {
+              "format": "typeid",
+              "type": "string",
+              "minLength": 30,
+              "maxLength": 30
+            },
+            "required": true,
+            "description": "Den TypeID with 'tem_' prefix and a 26-character base32 suffix."
+          }
+        ],
         "security": [
           {
             "denApiKey": []
@@ -117124,7 +118453,7 @@
         ],
         "x-mcp": false,
         "summary": "Get my Workbot model recovery options",
-        "description": "Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.",
+        "description": "Read-only navigation hints and the authenticated member's own free allowance reset. Requires a live Workbot member token with read scope and workbotIncludedModels or workbotUsageRecovery. Purchase and in-conversation upgrade hints need workbotUsageRecovery. Never returns credentials or starts checkout. Destination pages recheck permissions and select the token's organization.",
         "responses": {
           "200": {
             "description": "The member's recovery options.",
@@ -117232,7 +118561,7 @@
             }
           },
           "404": {
-            "description": "Usage recovery is off.",
+            "description": "Included models and usage recovery are off.",
             "content": {
               "application/json": {
                 "schema": {
