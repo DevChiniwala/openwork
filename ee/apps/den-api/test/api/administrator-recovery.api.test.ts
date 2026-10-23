@@ -55,6 +55,9 @@ async function permissionInventory() {
   }
 }
 function configure(teams: Record<string, string>) {
+  process.env.DEN_ADMINISTRATOR_RECOVERY_MODE = "apply"
+  process.env.DEN_ADMINISTRATOR_RECOVERY_TEAM = ""
+  process.env.DEN_ADMINISTRATOR_RECOVERY_ORGANIZATION = ""
   process.env.DEN_ADMINISTRATOR_RECOVERY_TEAMS = JSON.stringify(teams)
 }
 async function refused(team: string, message: RegExp) {
@@ -89,7 +92,7 @@ test("enabled recovery requires an explicit target; kill and operator-off overri
   assert.equal((await den.setFeature(org.orgId, "administratorRecovery", true)).status, 200)
   configure({})
   const before = await permissionInventory()
-  await assert.rejects(recoverAdministratorsFromEnv(), /requires an explicit recovery team ID/)
+  await assert.rejects(recoverAdministratorsFromEnv(), /requires an explicit team ID or name/)
   assert.deepEqual(await permissionInventory(), before)
   process.env.DEN_FEATURE_ADMINISTRATOR_RECOVERY = "false"
   assert.equal(await recoverAdministratorsFromEnv(), 0)
@@ -103,8 +106,8 @@ test("enabled recovery requires an explicit target; kill and operator-off overri
 })
 
 test("ordinary, other-organization and SCIM-mapped teams are refused without a partial permission repair", async () => {
-  await refused(ordinaryId, /must be an existing non-SCIM Admin team/)
-  await refused(otherTeam, /must be an existing non-SCIM Admin team/)
+  await refused(ordinaryId, /must be a designated Admin team/)
+  await refused(otherTeam, /No recovery team/)
   const group = createDenTypeId("scimGroup")
   await pool.execute("INSERT INTO scim_group(id,organization_id,provider_id,scim_group_id,display_name,team_id) VALUES(?,?,?,?,?,?)", [group, org.orgId, "recovery-test-provider", "recovery-test-group", "Recovery group", teamId])
   try { await refused(teamId, /SCIM-managed recovery team is not supported/) }

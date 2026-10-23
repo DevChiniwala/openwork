@@ -1269,6 +1269,116 @@ the Job environment when `secret.create=true`, because pre-install hooks run
 before normal chart resources. Avoid sharing `kubectl describe job` output
 without redacting secrets.
 
+## Admin-team permission recovery: check, review, apply
+
+This opt-in repair gives an existing **designated, non-SCIM Admin team** the
+14 former super-admin permissions. It does not reconstruct recipients from
+history or change direct member roles. The feature is off by default.
+
+First complete the normal application/database upgrade with recovery disabled
+and `administratorRecovery.mode: apply` (the default). An explicit `check` runs
+before the bootstrap's write steps: it does **not** migrate, repair the schema,
+reconcile defaults, create grants or change the migration ledger. It refuses an
+unbootstrapped database or pending migrations; finish the normal disabled upgrade
+before checking. Do not use check as a substitute for a schema upgrade.
+
+### 1. Check the intended team
+
+Edit your existing installation values file, preserving its other settings:
+
+```yaml
+config:
+  features:
+    administratorRecovery: "false"  # Preview can run while application is disabled.
+  administratorRecovery:
+    mode: check
+    organization: ""              # Omit only when the database has exactly one org.
+    team: "admins"                # Exact team name OR team ID.
+    teams: {}                     # Leave empty when using organization/team.
+```
+
+With multiple organizations, set `organization` to the intended organization's
+ID or exact slug. A team is resolved **within that organization**. Zero matches,
+ambiguous names, ordinary teams, other-org IDs and SCIM mappings/projections
+refuse; a name alone does not make a team an Admin team.
+
+```sh
+helm upgrade <release> <chart> --namespace <namespace> -f values.yaml
+kubectl --namespace <namespace> logs job/<fullname>-migrate
+```
+
+`<fullname>` is the chart's resolved release name, including any fullname
+override. Check-mode hook Jobs are retained until the next upgrade so their
+logs can be read. Each JSON check header prints the resolved organization and
+team IDs/names, existing active custom-role IDs/names, feature state, action and
+roster count. Recipient lines print
+**every active member of that team**, with membership ID, name/email, role and
+connection/setup-agent status. Owners are marked unchanged. Existing Admin-role
+user decisions remain in force; the preview is not a complete effective-access
+difference against every other role.
+
+### 2. Read and retain the check log
+
+Independently approve the **complete roster and the 14-key policy**, not merely
+the team name. If the action is `enable_feature_before_apply`, the feature must
+be enabled for apply. `already_consumed_no_recreation` means this organization
+already has a recovery fence; apply will not recreate an archived/deleted role.
+
+Logs contain membership information, not credentials; restrict log access and
+retain the reviewed output privately before the next upgrade replaces the Job:
+
+```sh
+umask 077
+kubectl --namespace <namespace> logs job/<fullname>-migrate > recovery-check.log
+```
+
+### 3. Apply using the resolved IDs
+
+Copy the organization and team IDs printed by check into the values file, then
+set `mode: apply` and enable the feature:
+
+```yaml
+config:
+  features:
+    administratorRecovery: "true"
+  administratorRecovery:
+    mode: apply
+    organization: "<resolved-organization-id>"
+    team: "<resolved-team-id>"
+    teams: {}
+```
+
+Run the same `helm upgrade` command. The normal bootstrap runs, then the repair
+creates its visible permission role once. API-pod restart is not a repair trigger.
+Owner key revocations, removal from the team and role deletion are not undone by
+replaying the repair. Disabling the feature stops future repairs; it does not
+revoke existing grants. Review existing custom roles separately: this version
+does not merge or replace an attached role.
+
+**Roster binding/fingerprint remains a follow-up.** Ordinary admins can rename
+teams. Pinning the checked team ID for apply prevents a name from being redirected
+to a different designated team, but an authorized roster change between check
+and apply is still included. Later authorized additions inherit the team's role.
+The check log is review information, not a signed approval token.
+
+The existing batch form is also supported, with org IDs **or slugs** as keys and
+team IDs **or exact names** as values:
+
+```yaml
+config:
+  administratorRecovery:
+    mode: check
+    organization: ""
+    team: ""
+    teams:
+      "<organization-id-or-slug>": "<team-id-or-name>"
+```
+
+Use the map **or** the single `organization`/`team` fields, never both. In apply
+mode each explicitly selected organization's feature must be enabled; other
+organizations are not implicitly repaired. Prefer IDs from check for the apply
+map as well.
+
 ## Install links
 
 The migration Job creates the `install_link` and `desktop_connect_grant` tables

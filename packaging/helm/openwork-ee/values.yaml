@@ -55,7 +55,17 @@ config:
     selfServeEnterprise: ""       # default off (cloud only) · Owners can buy Enterprise by card at the planned per-person price.
   # END GENERATED features
   administratorRecovery:
-    # Required for every enabled organization: organization ID -> existing designated Admin team ID.
+    # First run check and read the migrate Job log; check makes no database writes.
+    # Normal schema upgrades must have completed with recovery disabled first.
+    # Set apply only after reviewing the resolved organization, team and full roster.
+    mode: apply
+    # Organization ID or exact slug. May be empty only when exactly one org exists.
+    organization: ""
+    # Existing designated non-SCIM Admin team ID or exact name. Check prints its ID;
+    # pin that ID for apply, because names can be renamed. No roster fingerprint yet.
+    team: ""
+    # Alternative batch/legacy form: organization ID or slug -> team ID or exact name.
+    # Use this map OR organization/team above, never both. Apply needs the feature on.
     teams: {}
   tenancy:
     mode: single_org

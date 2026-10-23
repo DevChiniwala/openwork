@@ -12,7 +12,7 @@ import { createExecutor, type Executor } from "./db-executor.ts"
 import { migrateWith0097Compatibility } from "./migration-0097-compat.ts"
 import { reconcilePermissionsFromEnv } from "./permission-reconciliation.ts"
 import { rejectMatrix } from "./migration-0097-schema.ts"
-import { recoverAdministratorsFromEnv } from "./administrator-recovery.ts"
+import { administratorRecoveryModeFromEnv, recoverAdministratorsFromEnv } from "./administrator-recovery.ts"
 
 export { migrateWith0097Compatibility }
 
@@ -152,6 +152,23 @@ export async function initializeDenDb(executor: Executor) {
 }
 
 export async function bootstrapDenDb() {
+  // An explicit recovery check must not run migrations, schema repairs or
+  // permission reconciliation. Refuse an unready schema rather than letting
+  // Helm deploy a new API over a database that still needs its normal upgrade.
+  if (administratorRecoveryModeFromEnv() === "check") {
+    const check = await createExecutor()
+    try {
+      if (!(await listTables(check)).includes(MIGRATIONS_TABLE)) {
+        throw new Error("Recovery check requires a bootstrapped database; upgrade once with recovery disabled before checking")
+      }
+      const latest = latestMigrationMillis(await check.query(`SELECT MAX(created_at) AS latest FROM \`${MIGRATIONS_TABLE}\``))
+      if (readMigrationFiles({ migrationsFolder }).some((migration) => migration.folderMillis > latest)) {
+        throw new Error("Recovery check refuses pending database migrations; upgrade once with recovery disabled, then check again")
+      }
+    } finally { await check.close() }
+    await recoverAdministratorsFromEnv()
+    return
+  }
   const executor = await createExecutor()
   try {
     await initializeDenDb(executor)

@@ -14,8 +14,13 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
+    {{- if eq .Values.config.administratorRecovery.mode "check" }}
+    {{/* Keep check logs available for roster review until the next upgrade. */}}
+    "helm.sh/hook-delete-policy": before-hook-creation
+    {{- else }}
     {{- with .Values.migrations.hookDeletePolicy }}
     "helm.sh/hook-delete-policy": {{ . | quote }}
+    {{- end }}
     {{- end }}
   {{- end }}
 spec:
@@ -60,6 +65,12 @@ spec:
               value: {{ toString $value | quote }}
             {{- end }}
             {{- end }}
+            - name: DEN_ADMINISTRATOR_RECOVERY_MODE
+              value: {{ .Values.config.administratorRecovery.mode | quote }}
+            - name: DEN_ADMINISTRATOR_RECOVERY_ORGANIZATION
+              value: {{ .Values.config.administratorRecovery.organization | quote }}
+            - name: DEN_ADMINISTRATOR_RECOVERY_TEAM
+              value: {{ .Values.config.administratorRecovery.team | quote }}
             - name: DEN_ADMINISTRATOR_RECOVERY_TEAMS
               value: {{ .Values.config.administratorRecovery.teams | toJson | quote }}
             {{- if .Values.migrations.writersStoppedFor0097 }}
