@@ -102,6 +102,7 @@ function FeatureRow({ feature, onChange }: { feature: AdminFeature; onChange: (n
       <div className="flex min-w-0 flex-wrap items-center gap-3 sm:shrink-0">
         <DenSegmented
           aria-label={`${feature.label} for everyone`}
+          optionTestId={(value) => `admin-feature-${feature.key}-${value}`}
           options={ON_OFF.map((option) => ({ ...option, disabled: controlsDisabled }))}
           value={feature.enabled ? "on" : "off"}
           onChange={(value) => {
