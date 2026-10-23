@@ -400,6 +400,10 @@ migrations:
   # lack the database name needed for the committed-migration phase).
   enabled: true
   hook: true
+  # Recovery retains the Job until the next upgrade only with an existing Secret
+  # (secret.create=false). With secret.create=true this normal policy applies:
+  # follow logs during the upgrade in a second terminal, optionally saving them:
+  # kubectl --namespace <ns> logs -f job/<name-ending-in-migrate> > recovery.log
   hookDeletePolicy: before-hook-creation,hook-succeeded
   writersStoppedFor0097: false
   backoffLimit: 2
