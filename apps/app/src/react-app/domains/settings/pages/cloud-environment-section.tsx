@@ -83,7 +83,8 @@ function AssignmentChoice(props: {
         <SelectTrigger size="sm" className="min-w-40" aria-label={t("settings.environment.cloud_choose_value").replace("{key}", props.variable.key)} data-testid="cloud-environment-assignment">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        {/* Fits the longest assignment name ("Everyone in …"), capped to the window (S7). */}
+        <SelectContent align="end" className="w-auto min-w-(--anchor-width) max-w-(--available-width)">
           <SelectGroup>
             {items.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
           </SelectGroup>
