@@ -6,7 +6,7 @@ import { useAdminSessionCookie } from "../admin-shell";
 
 /** Mirrors `AdminSecurityFinding` from `GET /v1/admin/security` and `/v1/admin/security/requests`. */
 export type SecuritySeverity = "high" | "medium" | "low" | "clear";
-export type SecurityCategory = "access" | "accounts" | "credentials" | "usage";
+export type SecurityCategory = "access" | "accounts" | "automation" | "credentials" | "usage";
 export type SecurityTarget = { type: "user"; userId: string } | { type: "organization"; organizationId: string } | null;
 
 export type SecurityEntity = {
@@ -51,7 +51,7 @@ export const SECURITY_RANGES = [7, 30] as const;
 export type SecurityRange = (typeof SECURITY_RANGES)[number];
 
 const SEVERITIES: readonly string[] = ["high", "medium", "low", "clear"];
-const CATEGORIES: readonly string[] = ["access", "accounts", "credentials", "usage"];
+const CATEGORIES: readonly string[] = ["access", "accounts", "automation", "credentials", "usage"];
 const SEVERITY_RANK: Record<SecuritySeverity, number> = { high: 3, medium: 2, low: 1, clear: 0 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -201,7 +201,7 @@ export type AdminFreeAutoConversions = {
 
 export type AdminSecurityFinding = {
   id: string;
-  category: "access" | "accounts" | "credentials" | "usage";
+  category: "access" | "accounts" | "automation" | "credentials" | "usage";
   severity: "high" | "medium" | "low" | "clear";
   title: string;
   /**

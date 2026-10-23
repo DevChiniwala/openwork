@@ -2,6 +2,10 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   adminGrantFinding,
+  automationClientFinding,
+  automationClientOf,
+  instantAllowanceFinding,
+  roundTheClockFinding,
   clientRegistrationFinding,
   deniedSpikeFinding,
   disposableSignupFinding,
@@ -144,4 +148,42 @@ test("findings sort from high to clear", () => {
     adminGrantFinding([{ id: "adm_1", email: "a@example.com", note: null, createdAt: at }], 2),
   ])
   assert.deepEqual(findings.map((item) => item.severity), ["high", "medium", "clear"])
+})
+
+test("recognizes automation clients but not browsers or mobile apps", () => {
+  assert.equal(automationClientOf("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/131.0.0.0 Safari/537.36"), "Headless Chrome")
+  assert.equal(automationClientOf("python-requests/2.32.3"), "Python script")
+  assert.equal(automationClientOf("curl/8.7.1"), "curl or Wget")
+  assert.equal(automationClientOf("Go-http-client/2.0"), "Go program")
+  assert.equal(automationClientOf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"), null)
+  assert.equal(automationClientOf("okhttp/4.12.0"), null)
+  assert.equal(automationClientOf(null), null)
+})
+
+test("automation sign-ins are medium on a new account and high when repeated", () => {
+  const result = automationClientFinding([
+    { userId: "usr_new", email: "new@example.com", client: "Playwright", signIns: 1, newAccount: true },
+    { userId: "usr_old", email: "old@example.com", client: "curl or Wget", signIns: 1, newAccount: false },
+    { userId: "usr_farm", email: "farm@example.com", client: "Python script", signIns: 15, newAccount: false },
+    { userId: "usr_farm", email: "farm@example.com", client: "Headless Chrome", signIns: 6, newAccount: false },
+  ])
+  assert.deepEqual(result.entities.map((entity) => [entity.id, entity.severity, entity.value]), [["usr_farm", "high", 21], ["usr_new", "medium", 1], ["usr_old", "low", 1]])
+  assert.equal(result.entities[0]?.detail, "Python script, Headless Chrome")
+})
+
+test("model use with no break for sleep is flagged, softened for automation owners", () => {
+  const result = roundTheClockFinding([
+    { userId: "usr_bot", email: "bot@example.com", organization: "Farm", days: [24, 23, 22, 21, 6], automations: 0 },
+    { userId: "usr_owner", email: "owner@example.com", organization: "Ops", days: [24, 24, 24], automations: 2 },
+    { userId: "usr_person", email: "person@example.com", organization: "Studio", days: [9, 12, 19], automations: 0 },
+  ])
+  assert.deepEqual(result.entities.map((entity) => [entity.id, entity.severity, entity.value]), [["usr_bot", "high", 4], ["usr_owner", "low", 3]])
+  assert.match(result.entities[1]?.detail ?? "", /Owns 2 active automations/)
+})
+
+test("lists new accounts that used the weekly free allowance in a day", () => {
+  const result = instantAllowanceFinding([{ userId: "usr_a", email: "a@example.com", createdAt: at, firstDayMicroUsd: 4_800_000 }], 5_000_000)
+  assert.equal(result.severity, "medium")
+  assert.equal(result.entities[0]?.detail, "$4.80 in the first day, signed up 2026-10-20")
+  assert.equal(instantAllowanceFinding([], 5_000_000).severity, "clear")
 })

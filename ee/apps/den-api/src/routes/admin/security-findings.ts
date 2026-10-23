@@ -5,7 +5,7 @@ import { isIP } from "node:net"
 // is a verdict, and none takes an action on an account.
 
 export type SecuritySeverity = "high" | "medium" | "low" | "clear"
-export type SecurityCategory = "access" | "accounts" | "credentials" | "usage"
+export type SecurityCategory = "access" | "accounts" | "automation" | "credentials" | "usage"
 export type SecurityUnit = "count" | "micro_usd"
 export type SecurityTarget = { type: "user"; userId: string } | { type: "organization"; organizationId: string } | null
 
@@ -252,6 +252,101 @@ export function organizationCreationFinding(rows: readonly OrganizationCreator[]
     why: "Every organization starts with its own free allowances, so repeated creation can multiply them.",
     review: "Open the person and check whether the organizations hold real work or only used free model credits.",
     value: entities.length, unit: "count", entities,
+  })
+}
+
+// ── Bot-like use ────────────────────────────────────────────────────────────
+
+/** Clients that announce automation in their user agent. Mobile app stacks (okhttp, CFNetwork) are left out. */
+export const AUTOMATION_CLIENTS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
+  { label: "Headless Chrome", pattern: /HeadlessChrome/i },
+  { label: "Playwright", pattern: /Playwright/i },
+  { label: "Puppeteer", pattern: /Puppeteer/i },
+  { label: "Selenium or WebDriver", pattern: /Selenium|WebDriver/i },
+  { label: "PhantomJS", pattern: /PhantomJS/i },
+  { label: "Python script", pattern: /python-requests|python-httpx|aiohttp|python-urllib/i },
+  { label: "curl or Wget", pattern: /^(?:curl|Wget)\//i },
+  { label: "Go program", pattern: /Go-http-client/i },
+  { label: "Scrapy", pattern: /Scrapy/i },
+  { label: "Java program", pattern: /Apache-HttpClient|Java-http-client/i },
+  { label: "Postman", pattern: /PostmanRuntime/i },
+]
+
+export function automationClientOf(userAgent: string | null | undefined): string | null {
+  const value = userAgent?.trim() ?? ""
+  return value ? AUTOMATION_CLIENTS.find((client) => client.pattern.test(value))?.label ?? null : null
+}
+
+export type AutomationSignIn = { userId: string; email: string; client: string; signIns: number; newAccount: boolean }
+export const AUTOMATION_SIGN_IN_TIERS = { high: 20, medium: 3 }
+
+export function automationClientFinding(rows: readonly AutomationSignIn[]): SecurityFinding {
+  const byUser = new Map<string, { email: string; clients: Set<string>; signIns: number; newAccount: boolean }>()
+  for (const row of rows) {
+    const entry = byUser.get(row.userId) ?? { email: row.email, clients: new Set<string>(), signIns: 0, newAccount: row.newAccount }
+    entry.clients.add(row.client)
+    entry.signIns += row.signIns
+    byUser.set(row.userId, entry)
+  }
+  const entities = [...byUser].map(([userId, entry]): SecurityEntity => {
+    const severity = tiered(entry.signIns, AUTOMATION_SIGN_IN_TIERS)
+    return {
+      id: userId, label: entry.email, value: entry.signIns, target: { type: "user", userId },
+      severity: severity === "clear" ? entry.newAccount ? "medium" : "low" : severity,
+      detail: `${[...entry.clients].join(", ")}${entry.newAccount ? ", on a new account" : ""}`,
+    }
+  })
+  return finding({
+    id: "automation-clients", category: "automation", title: "Sign-ins from automation tools",
+    summary: entities.length ? `${plural(entities.length, "account")} signed in with a headless browser or a script.` : "No sign-in came from a headless browser or a script.",
+    rule: `Matches sign-in user agents from ${AUTOMATION_CLIENTS.map((client) => client.label).join(", ")}. Low for an existing account, medium for a new one or ${AUTOMATION_SIGN_IN_TIERS.medium}+ sign-ins, high at ${AUTOMATION_SIGN_IN_TIERS.high}+.`,
+    why: "People sign in with a browser or the OpenWork app. A scripted or headless sign-in means a program is driving the account.",
+    review: "Check whether it is a developer testing on purpose. Otherwise look at what the account did after signing in.",
+    value: entities.length, unit: "count", entities,
+  })
+}
+
+export type HourlyActivity = { userId: string; email: string; organization: string; days: number[]; automations: number }
+/** Distinct active UTC hours in one day that leave no room for sleep. */
+export const ROUND_THE_CLOCK_HOURS = 20
+export const ROUND_THE_CLOCK_TIERS = { high: 4, medium: 2, low: 1 }
+
+/** `days` holds the distinct active UTC hours of each active day. */
+export function roundTheClockFinding(rows: readonly HourlyActivity[]): SecurityFinding {
+  const entities = rows.flatMap((row): SecurityEntity[] => {
+    const fullDays = row.days.filter((hours) => hours >= ROUND_THE_CLOCK_HOURS).length
+    let severity = tiered(fullDays, ROUND_THE_CLOCK_TIERS)
+    if (severity === "clear") return []
+    if (row.automations) severity = "low"
+    return [{
+      id: row.userId, label: row.email, value: fullDays, severity, target: { type: "user", userId: row.userId },
+      detail: `${plural(fullDays, "day")} with model use in ${ROUND_THE_CLOCK_HOURS}+ hours, busiest ${Math.max(...row.days)} of 24, in ${row.organization}${row.automations ? `. Owns ${plural(row.automations, "active automation")}` : ""}`,
+    }]
+  })
+  return finding({
+    id: "round-the-clock", category: "automation", title: "Model use around the clock",
+    summary: entities.length ? `${plural(entities.length, "person", "people")} used models in ${ROUND_THE_CLOCK_HOURS} or more hours of a day.` : "Nobody used models through a whole day without a break.",
+    rule: `Counts the UTC hours of each day with an OpenWork-billed model request, paid or free Auto. One day at ${ROUND_THE_CLOCK_HOURS}+ hours is low, ${ROUND_THE_CLOCK_TIERS.medium}+ days medium, ${ROUND_THE_CLOCK_TIERS.high}+ high. People who own active automations stay low.`,
+    why: "People sleep. An account that works every hour of the day is usually a program or computer use running on its own, and that can farm credits or run tasks nobody watches.",
+    review: "Check the account's automations and Workbot tasks first. Without them, look at the models used and whether the work looks scripted.",
+    value: entities.length, unit: "count", entities,
+  })
+}
+
+export type InstantAllowance = { userId: string; email: string; createdAt: Date; firstDayMicroUsd: number }
+
+export function instantAllowanceFinding(rows: readonly InstantAllowance[], weeklyLimitMicroUsd: number): SecurityFinding {
+  return finding({
+    id: "instant-allowance", category: "automation", title: "Free allowance used up on day one",
+    summary: rows.length ? `${plural(rows.length, "new account")} used a whole week of free Auto within a day of signing up.` : "No new account used its weekly free Auto within its first day.",
+    rule: `Lists accounts created in the range whose free Auto spend in their first 24 hours reached 90% of the ${usd(weeklyLimitMicroUsd)} weekly allowance.`,
+    why: "A person exploring a new product rarely spends a week of credits in a day. Scripts that sign up and drain the allowance do.",
+    review: "Compare with the sign-up network and throwaway inbox findings. Several such accounts from one place point to farming.",
+    value: rows.length, unit: "count",
+    entities: rows.map((row) => ({
+      id: row.userId, label: row.email, value: row.firstDayMicroUsd, severity: "medium", target: { type: "user", userId: row.userId },
+      detail: `${usd(row.firstDayMicroUsd)} in the first day, signed up ${row.createdAt.toISOString().slice(0, 10)}`,
+    })),
   })
 }
 

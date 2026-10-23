@@ -1322,7 +1322,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Get security signals across all organizations
    *
-   * Returns threshold-based findings for the last `days` days: sign-up bursts, unverified and disposable sign-ups, accounts used from many networks, organization, API key, app registration and invitation bursts, new platform admins and model spend spikes. Findings are prompts for review, not verdicts.
+   * Returns threshold-based findings for the last `days` days: sign-up bursts, unverified and disposable sign-ups, accounts used from many networks, organization, API key, app registration and invitation bursts, new platform admins, model spend spikes, and bot-like use (automation-tool sign-ins, model use around the clock, free allowance used up on day one). Findings are prompts for review, not verdicts.
    */
   public getV1AdminSecurity<ThrowOnError extends boolean = false>(
     parameters?: {

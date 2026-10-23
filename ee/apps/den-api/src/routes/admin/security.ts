@@ -2,6 +2,7 @@ import { and, count, eq, gte, inArray, isNotNull, lt, ne, sql } from "@openwork-
 import {
   AdminAllowlistTable,
   AuthApiKeyTable,
+  AutomationTable,
   AuthSessionTable,
   AuthUserTable,
   InferenceFreeUsageTable,
@@ -17,6 +18,7 @@ import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import { db } from "../../db.js"
+import { env } from "../../env.js"
 import { adminRoute, queryValidator } from "../../middleware/index.js"
 import { forbiddenSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
@@ -25,6 +27,8 @@ import {
   adminGrantFinding,
   apiKeyFinding,
   API_KEY_TIERS,
+  automationClientFinding,
+  automationClientOf,
   CLIENT_REGISTRATION_USER_TIERS,
   clientRegistrationFinding,
   deniedSpikeFinding,
@@ -32,6 +36,7 @@ import {
   disposableSignupFinding,
   emailDomain,
   failedSignInFinding,
+  instantAllowanceFinding,
   INVITATION_TIERS,
   invitationFinding,
   isSignInAction,
@@ -41,6 +46,8 @@ import {
   ORGANIZATION_CREATION_TIERS,
   organizationCreationFinding,
   rateLimitedFinding,
+  ROUND_THE_CLOCK_HOURS,
+  roundTheClockFinding,
   signupNetworkFinding,
   sortFindings,
   SPEND_SPIKE,
@@ -48,6 +55,7 @@ import {
   spikeOf,
   unverifiedDomainFinding,
   unverifiedSignupFinding,
+  type AutomationSignIn,
   type HourlySeries,
   type NewAccount,
 } from "./security-findings.js"
@@ -69,7 +77,7 @@ const severitySchema = z.enum(["high", "medium", "low", "clear"])
 
 const findingSchema = z.object({
   id: z.string(),
-  category: z.enum(["access", "accounts", "credentials", "usage"]),
+  category: z.enum(["access", "accounts", "automation", "credentials", "usage"]),
   severity: severitySchema,
   title: z.string(),
   summary: z.string().describe("What is true now, in one sentence."),
@@ -129,6 +137,8 @@ function microUsd(amount: number): number {
   return Math.round(amount * 1_000_000 / INFERENCE_USAGE_CONVERSION_FACTOR)
 }
 type UserId = typeof AuthUserTable.$inferSelect.id
+type MemberId = typeof MemberTable.$inferSelect.id
+type OrganizationId = typeof OrganizationTable.$inferSelect.id
 
 /**
  * Account, credential and usage signals for the last `days` days, each compared with a
@@ -141,7 +151,7 @@ export async function readSecurityReport(input: { days: number; now?: Date }): P
 
   const [
     accounts, firstSignIns, previousAccounts, sessions, owners, adminGrants, adminTotal,
-    keyOwners, keyPosture, clientTotals, clientUsers, inviters, paidSpend, freeSpend,
+    keyOwners, keyPosture, clientTotals, clientUsers, inviters, paidSpend, freeSpend, paidHours, freeHours, firstDayAllowance,
   ] = await Promise.all([
     db.select({ userId: AuthUserTable.id, email: AuthUserTable.email, emailVerified: AuthUserTable.emailVerified, createdAt: AuthUserTable.createdAt })
       .from(AuthUserTable).where(gte(AuthUserTable.createdAt, from)),
@@ -188,6 +198,22 @@ export async function readSecurityReport(input: { days: number; now?: Date }): P
       previous: sql<number>`coalesce(sum(case when ${InferenceFreeUsageTable.created_at} < ${from} then ${InferenceFreeUsageTable.amount} else 0 end), 0)`,
     }).from(InferenceFreeUsageTable).where(gte(InferenceFreeUsageTable.created_at, previousFrom))
       .groupBy(InferenceFreeUsageTable.organization_id),
+    // Hours with any OpenWork-billed model request, per member, for the round-the-clock check.
+    db.selectDistinct({ memberId: InferenceUsageLedgerEntryTable.org_membership_id, hour: sql<number>`floor(unix_timestamp(${InferenceUsageLedgerEntryTable.occurred_at}) / 3600)` })
+      .from(InferenceUsageLedgerEntryTable).where(gte(InferenceUsageLedgerEntryTable.occurred_at, from)),
+    db.selectDistinct({ memberId: InferenceFreeUsageTable.org_membership_id, hour: sql<number>`floor(unix_timestamp(${InferenceFreeUsageTable.created_at}) / 3600)` })
+      .from(InferenceFreeUsageTable).where(gte(InferenceFreeUsageTable.created_at, from)),
+    // New accounts whose free Auto spend in their first day reached 90% of the weekly allowance.
+    env.inferenceFree.weeklyLimitAmount > 0
+      ? db.select({ userId: AuthUserTable.id, email: AuthUserTable.email, createdAt: AuthUserTable.createdAt, amount: sql<number>`coalesce(sum(${InferenceFreeUsageTable.amount}), 0)` })
+        .from(InferenceFreeUsageTable)
+        .innerJoin(MemberTable, eq(MemberTable.id, InferenceFreeUsageTable.org_membership_id))
+        .innerJoin(AuthUserTable, eq(AuthUserTable.id, MemberTable.userId))
+        .where(and(gte(AuthUserTable.createdAt, from), gte(InferenceFreeUsageTable.created_at, from),
+          sql`${InferenceFreeUsageTable.created_at} < date_add(${AuthUserTable.createdAt}, interval 1 day)`))
+        .groupBy(AuthUserTable.id, AuthUserTable.email, AuthUserTable.createdAt)
+        .having(sql`coalesce(sum(${InferenceFreeUsageTable.amount}), 0) >= ${Math.floor(env.inferenceFree.weeklyLimitAmount * 0.9)}`)
+      : [],
   ])
 
   // The earliest sign-in still on record stands for where each new account came from.
@@ -220,6 +246,35 @@ export async function readSecurityReport(input: { days: number; now?: Date }): P
   }
   const spreadUsers = [...spread].filter(([, entry]) => entry.networks.size >= NETWORK_SPREAD_TIERS.low)
 
+  const newAccountIds = new Set(accounts.map((row) => row.userId as string))
+  const automationSignIns = sessions.flatMap((row) => {
+    const client = automationClientOf(row.userAgent)
+    return client ? [{ userId: row.userId as string, client, signIns: number(row.signIns), newAccount: newAccountIds.has(row.userId) }] : []
+  })
+
+  // Distinct active UTC hours of each UTC day, per member, across paid and free model use.
+  const hoursByMember = new Map<string, Set<number>>()
+  for (const row of [...paidHours, ...freeHours]) {
+    const hours = hoursByMember.get(row.memberId) ?? new Set<number>()
+    hours.add(number(row.hour))
+    hoursByMember.set(row.memberId, hours)
+  }
+  const roundTheClock = [...hoursByMember].flatMap(([memberId, hours]) => {
+    const perDay = new Map<number, number>()
+    for (const hour of hours) perDay.set(Math.floor(hour / 24), (perDay.get(Math.floor(hour / 24)) ?? 0) + 1)
+    const days = [...perDay.values()]
+    return days.some((value) => value >= ROUND_THE_CLOCK_HOURS) ? [{ memberId, days }] : []
+  })
+  const [activityMembers, activeAutomations] = roundTheClock.length ? await Promise.all([
+    db.select({ id: MemberTable.id, userId: MemberTable.userId, organizationId: MemberTable.organizationId }).from(MemberTable)
+      .where(inArray(MemberTable.id, roundTheClock.map((row) => row.memberId) as MemberId[])),
+    db.select({ memberId: AutomationTable.owner_member_id, automations: count() }).from(AutomationTable)
+      .where(and(inArray(AutomationTable.owner_member_id, roundTheClock.map((row) => row.memberId) as MemberId[]), eq(AutomationTable.state, "active"), sql`${AutomationTable.archived_at} is null`))
+      .groupBy(AutomationTable.owner_member_id),
+  ]) : [[], []]
+  const memberById = new Map(activityMembers.map((member) => [member.id as string, member]))
+  const automationsByMember = new Map(activeAutomations.map((row) => [row.memberId as string, number(row.automations)]))
+
   const spendByOrganization = new Map<string, { current: number; previous: number }>()
   for (const row of [...paidSpend, ...freeSpend]) {
     const entry = spendByOrganization.get(row.organizationId) ?? { current: 0, previous: 0 }
@@ -236,12 +291,15 @@ export async function readSecurityReport(input: { days: number; now?: Date }): P
     ...keyOwners.map((row) => row.ownerId),
     ...clientUsers.flatMap((row) => row.userId ? [row.userId] : []),
     ...inviters.map((row) => row.userId),
+    ...automationSignIns.map((row) => row.userId),
+    ...activityMembers.flatMap((member) => member.userId ? [member.userId] : []),
   ])]
+  const organizationIds = [...new Set([...spendCandidates.map(([id]) => id), ...activityMembers.map((member) => member.organizationId as string)])]
   const [users, organizations] = await Promise.all([
     userIds.length ? db.select({ id: AuthUserTable.id, email: AuthUserTable.email }).from(AuthUserTable).where(inArray(AuthUserTable.id, userIds as UserId[])) : [],
-    spendCandidates.length
+    organizationIds.length
       ? db.select({ id: OrganizationTable.id, name: OrganizationTable.name }).from(OrganizationTable)
-        .where(inArray(OrganizationTable.id, spendCandidates.map(([id]) => id) as (typeof OrganizationTable.$inferSelect.id)[]))
+        .where(inArray(OrganizationTable.id, organizationIds as OrganizationId[]))
       : [],
   ])
   const emailById = new Map(users.map((user) => [user.id as string, user.email]))
@@ -267,6 +325,14 @@ export async function readSecurityReport(input: { days: number; now?: Date }): P
     spendSpikeFinding(spendCandidates.map(([organizationId, entry]) => ({
       organizationId, name: nameById.get(organizationId) ?? organizationId, currentMicroUsd: entry.current, previousMicroUsd: entry.previous,
     }))),
+    automationClientFinding(automationSignIns.map((row): AutomationSignIn => ({ ...row, email: emailOf(row.userId) }))),
+    roundTheClockFinding(roundTheClock.flatMap((row) => {
+      const member = memberById.get(row.memberId)
+      if (!member?.userId) return []
+      return [{ userId: member.userId, email: emailOf(member.userId), organization: nameById.get(member.organizationId) ?? member.organizationId, days: row.days, automations: automationsByMember.get(row.memberId) ?? 0 }]
+    })),
+    instantAllowanceFinding(firstDayAllowance.map((row) => ({ userId: row.userId, email: row.email, createdAt: row.createdAt, firstDayMicroUsd: microUsd(number(row.amount)) })),
+      microUsd(env.inferenceFree.weeklyLimitAmount)),
   ]
 
   return {
@@ -365,7 +431,7 @@ export function registerAdminSecurityRoutes<T extends { Variables: AuthContextVa
     describeRoute({
       tags: ["Admin"],
       summary: "Get security signals across all organizations",
-      description: "Returns threshold-based findings for the last `days` days: sign-up bursts, unverified and disposable sign-ups, accounts used from many networks, organization, API key, app registration and invitation bursts, new platform admins and model spend spikes. Findings are prompts for review, not verdicts.",
+      description: "Returns threshold-based findings for the last `days` days: sign-up bursts, unverified and disposable sign-ups, accounts used from many networks, organization, API key, app registration and invitation bursts, new platform admins, model spend spikes, and bot-like use (automation-tool sign-ins, model use around the clock, free allowance used up on day one). Findings are prompts for review, not verdicts.",
       responses: {
         200: jsonResponse("Security signals returned.", securityReportResponseSchema),
         400: jsonResponse("The query parameters were invalid.", invalidRequestSchema),
