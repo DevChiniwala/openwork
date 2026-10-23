@@ -1,5 +1,6 @@
-import type { Place, Seed } from "@openwork/env";
-import { engineParity } from "./engine-parity.ts";
+import { randomUUID } from "node:crypto";
+import type { Seed } from "@openwork/env";
+import { denForAppWeb, signedInAppWeb } from "./signed-in-app-web.ts";
 import { isRecord, records } from "./library.ts";
 import { enableOrganizationCapabilities } from "./organization-capabilities.ts";
 
@@ -58,19 +59,21 @@ export async function orgPromptsTeamTab(seed: Seed) {
 export const REVISED_DESIGN_PROMPT = "Follow the brand guide in the Design folder and export images as SVG.";
 
 /**
- * Riley, in the Design team, chatting in the real app (in a browser) signed in
- * to a real Den with Prompts on and prompts saved for everyone and for Design.
- * The model is scripted; it records whether each request carried the
- * organization's prompts in OpenWork's instructions, without keeping them.
+ * Riley, in the Design team, signed in to a real Den with Prompts on and
+ * prompts saved for everyone and for Design, in the real app (in a browser)
+ * on the OpenCode v2 engine. Turns go through OpenWork's server to the engine
+ * as the app sends them; only the model is scripted. The model records
+ * whether each request carried a watched line, without keeping the text.
  */
-export async function orgPromptsDesktop(seed: Seed, context: { place: Place }) {
-  await using setup = new AsyncDisposableStack();
-  const den = await seed.den({
-    web: true,
+export async function orgPromptsDesktop(seed: Seed) {
+  const mock = seed.mock({});
+  const { den, webPort } = await denForAppWeb(seed, {
     org: { name: `Prompts desktop ${Date.now()}`, admin: { name: "Avery Owner" }, members: { riley: { name: "Riley Designer" } } },
+    mocks: { agent: mock },
   });
+  const model = den.mocks.agent;
   const riley = den.members.riley;
-  if (!riley) throw new Error("seed.den() did not provision Riley's session");
+  if (!model || !riley) throw new Error("seed.den() did not provision the model or Riley's session");
   const organizationId = await enableOrganizationCapabilities(seed, den.admin, { orgPrompts: true });
   const scope = { "x-openwork-org-id": organizationId };
   const org = await seed.api(riley, "/v1/org");
@@ -86,45 +89,83 @@ export async function orgPromptsDesktop(seed: Seed, context: { place: Place }) {
   await savePrompt("/v1/org/prompts/everyone", EVERYONE_PROMPT);
   await savePrompt(`/v1/org/prompts/teams/${encodeURIComponent(teamId)}`, DESIGN_PROMPT);
 
-  const base = setup.use(await engineParity(seed, context, { env: {
-    OPENWORK_DEV_HEADLESS_WEB_DEN_PROXY: "1", OPENWORK_DEV_DEN_PROXY_TARGET: den.ref.webUrl,
-    OPENWORK_DEV_HEADLESS_DEN_API_TARGET: den.ref.apiUrl,
-    VITE_DEN_BASE_URL: den.ref.webUrl, VITE_DEN_API_BASE_URL: "/api/den",
-  } }));
-  await seed.signIn(base.app, riley, "Riley Designer");
+  const token = randomUUID();
+  const hostToken = randomUUID();
+  const { app, workspace } = await signedInAppWeb(seed, {
+    name: "org-prompts", den, webPort, as: "riley", headless: true,
+    workspacePath: seed.tmpPath("org-prompts"), engine: "v2",
+    env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken, OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "600000" },
+  });
+  const mount = `/workspace/${workspace.workspaceId}`;
+  async function request(path: string, init: { method?: string; body?: unknown } = {}) {
+    const response = await fetch(`${app.openworkUrl}${path}`, {
+      method: init.method ?? "GET", signal: AbortSignal.timeout(120_000),
+      headers: { Authorization: `Bearer ${token}`, "x-openwork-host-token": hostToken, "Content-Type": "application/json" },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+    });
+    const text = await response.text();
+    let body: unknown = text;
+    try { body = text ? JSON.parse(text) : null; } catch { /* diagnostic text */ }
+    return { status: response.status, body };
+  }
+  async function modelAdmin(path: string, body: unknown) {
+    if (!model) throw new Error("Missing model");
+    const response = await fetch(`${model.url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(`Model witness ${path} failed: ${response.status}`);
+  }
+
+  const providerId = "prompts-witness";
+  const modelId = "prompts-model";
+  const configured = await request(`${mount}/config`, { method: "PATCH", body: { opencode: { provider: { [providerId]: {
+    npm: "@ai-sdk/openai-compatible", name: "Prompts witness",
+    options: { baseURL: `${model.url}/v1`, apiKey: "sk-prompts-fixture" },
+    models: { [modelId]: { name: "Prompts witness" } },
+  } } } } });
+  if (configured.status >= 300) throw new Error(`Configuring the witness model failed: ${configured.status}`);
+  const reloaded = await request(`${mount}/engine/reload`, { method: "POST" });
+  if (reloaded.status >= 300 && reloaded.status !== 503 && reloaded.status !== 504) throw new Error(`Reloading the engine failed: ${reloaded.status}`);
   // Same owned-runtime handoff as other app-in-a-browser worlds: renderer
   // sign-in alone does not establish the server's Den session the desktop
   // shell pushes (PUT /den-session), which provider sync runs on.
-  const linked = await base.hostRequest("/den-session", "PUT", { baseUrl: den.ref.apiUrl, token: riley.token, orgId: organizationId });
+  const linked = await request("/den-session", { method: "PUT", body: { baseUrl: den.ref.apiUrl, token: riley.token, orgId: organizationId } });
   if (linked.status >= 300) throw new Error(`Den session handoff failed: HTTP ${linked.status}`);
 
-  async function expectInRequests(text: string) {
-    const response = await fetch(`${base.mock.url}/admin/private-sentinels`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: [text] }),
-    });
-    if (!response.ok) throw new Error(`Model witness setup failed: ${response.status}`);
-  }
-
-  const owned = setup.move();
   return {
-    ...base,
-    den,
-    async [Symbol.asyncDispose]() { await owned.disposeAsync(); },
+    app, den, workspace,
     /** Runs one provider sync pass on Riley's OpenWork, as sign-in, focus and the interval do. */
     async sync() {
-      const result = await base.hostRequest("/cloud-provider-sync/run", "POST", { reason: "manual" });
+      const result = await request("/cloud-provider-sync/run", { method: "POST", body: { reason: "manual" } });
       return isRecord(result.body) ? result.body.status : result.status;
     },
     /**
-     * Watch later model requests for one line of text. Each engine escapes the
-     * instructions differently inside the request, so watched text is a
-     * single line with no characters that need escaping.
+     * Watch later model requests for one line of text. The engine escapes
+     * the instructions inside the request, so watched text is a single line
+     * with no characters that need escaping.
      */
-    watchFor: (text: string) => expectInRequests(text),
-    /** Whether a model request answering `promptMarker` carried the watched text. */
-    async modelSawWatched(promptMarker: string) {
-      const requests = await base.mock.agentRequests({ promptMarker, atLeast: 1, timeoutMs: 60_000 });
-      return requests.some((request) => request.privateSentinelSeen === true);
+    watchFor: (text: string) => modelAdmin("/admin/private-sentinels", { values: [text] }),
+    /**
+     * Riley sends one turn in a new conversation, through OpenWork's server
+     * to the engine as the app does, and the model replies. Returns whether
+     * the model's request carried the watched line.
+     */
+    async turnSawWatched(prompt: string) {
+      const reply = `Done: ${prompt}`;
+      await modelAdmin("/admin/agent-workloads", { workloads: [{ promptMarker: prompt, latestUserTurn: true, finalReply: reply, steps: [] }] });
+      const session = await seed.session(app, { title: prompt.slice(0, 40) });
+      const native = `${mount}/opencode2/api/session/${session.sessionId}`;
+      const selected = await request(`${native}/model`, { method: "POST", body: { model: { providerID: providerId, id: modelId } } });
+      if (selected.status >= 300) throw new Error(`Selecting the witness model failed: ${selected.status} ${JSON.stringify(selected.body)}`);
+      const sent = await request(`${native}/prompt`, { method: "POST", body: { text: prompt } });
+      if (sent.status >= 300) throw new Error(`Sending the turn failed: ${sent.status} ${JSON.stringify(sent.body)}`);
+      for (const deadline = Date.now() + 120_000; Date.now() < deadline;) {
+        const stored = await request(`${native}/message`);
+        const messages = isRecord(stored.body) && Array.isArray(stored.body.data) ? stored.body.data : [];
+        if (JSON.stringify(messages).includes(reply)) break;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      const requests = await model.agentRequests({ promptMarker: prompt, atLeast: 1, timeoutMs: 30_000 });
+      if (requests.length === 0) throw new Error(`The model never received the turn ${JSON.stringify(prompt)}`);
+      return requests.some((entry) => entry.privateSentinelSeen === true);
     },
     reviseDesignPrompt: () => savePrompt(`/v1/org/prompts/teams/${encodeURIComponent(teamId)}`, REVISED_DESIGN_PROMPT),
     async turnPromptsOff() {
