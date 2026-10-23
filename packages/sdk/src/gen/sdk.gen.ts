@@ -32,8 +32,12 @@ import type {
   CreateGoogleSpreadsheetErrors,
   CreateGoogleSpreadsheetResponses,
   CreateInstallLinkRequest,
+  CreateMicrosoft365DriveDownloadLinkErrors,
+  CreateMicrosoft365DriveDownloadLinkResponses,
   CreateMicrosoft365DriveFolderErrors,
   CreateMicrosoft365DriveFolderResponses,
+  CreateMicrosoft365DriveUploadSessionErrors,
+  CreateMicrosoft365DriveUploadSessionResponses,
   CreateMicrosoft365ReplyDraftErrors,
   CreateMicrosoft365ReplyDraftResponses,
   CreateOrganizationApiKeyRequest,
@@ -136,11 +140,17 @@ import type {
   DenDesktopPolicyDocumentWrite,
   DescribeHostGoogleDriveDownloadErrors,
   DescribeHostGoogleDriveDownloadResponses,
+  DescribeHostMicrosoftDriveDownloadErrors,
+  DescribeHostMicrosoftDriveDownloadResponses,
   DesktopStartupReport,
   DownloadGoogleDriveFileByLinkErrors,
   DownloadGoogleDriveFileByLinkResponses,
   DownloadHostGoogleDriveFileErrors,
   DownloadHostGoogleDriveFileResponses,
+  DownloadHostMicrosoftDriveFileErrors,
+  DownloadHostMicrosoftDriveFileResponses,
+  DownloadMicrosoftDriveFileByLinkErrors,
+  DownloadMicrosoftDriveFileByLinkResponses,
   ExternalMcpConnectionAccessInput,
   ExternalMcpConnectionByKeyUpsertInput,
   ExternalMcpConnectionRemovalRequestBody,
@@ -196,6 +206,8 @@ import type {
   GetGoogleSpreadsheetErrors,
   GetGoogleSpreadsheetResponses,
   GetHealthResponses,
+  GetHostMicrosoftDriveUploadStatusErrors,
+  GetHostMicrosoftDriveUploadStatusResponses,
   GetMcpAdminWellKnownOauthProtectedResourceResponses,
   GetMcpAgentWellKnownOauthProtectedResourceResponses,
   GetMcpWellKnownOauthProtectedResourceResponses,
@@ -616,6 +628,10 @@ import type {
   ListGmailDraftsResponses,
   ListGmailLabelsErrors,
   ListGmailLabelsResponses,
+  ListMicrosoft365DriveChildrenErrors,
+  ListMicrosoft365DriveChildrenResponses,
+  ListMicrosoft365SiteDrivesErrors,
+  ListMicrosoft365SiteDrivesResponses,
   ListWorkbotConnectionsErrors,
   ListWorkbotConnectionsResponses,
   LockOfficeFileErrors,
@@ -1012,6 +1028,8 @@ import type {
   PostV1WorkflowsTestResponses,
   PrepareHostGoogleDriveUploadSessionErrors,
   PrepareHostGoogleDriveUploadSessionResponses,
+  PrepareHostMicrosoftDriveUploadSessionErrors,
+  PrepareHostMicrosoftDriveUploadSessionResponses,
   PutApiAuthScimV2GroupsByGroupIdErrors,
   PutApiAuthScimV2GroupsByGroupIdResponses,
   PutApiAuthScimV2UsersByUserIdErrors,
@@ -1084,12 +1102,16 @@ import type {
   RecordWorkbotActivationEventResponses,
   RecordWorkbotTelemetryErrors,
   RecordWorkbotTelemetryResponses,
+  RelayHostMicrosoftDriveUploadErrors,
+  RelayHostMicrosoftDriveUploadResponses,
   RemoteSessionStatusRequest,
   RenamePermissionSetBody,
   ReplaceGoogleDocumentTextErrors,
   ReplaceGoogleDocumentTextResponses,
   RequestMcpConnectionRemovalErrors,
   RequestMcpConnectionRemovalResponses,
+  ResolveMicrosoft365DriveLinkErrors,
+  ResolveMicrosoft365DriveLinkResponses,
   RunAutomationNowErrors,
   RunAutomationNowResponses,
   SaveGoogleDriveDocumentEditsErrors,
@@ -1098,6 +1120,8 @@ import type {
   SaveGoogleDriveOfficeEditorResponses,
   SaveWorkflowErrors,
   SaveWorkflowResponses,
+  SearchMicrosoft365SitesErrors,
+  SearchMicrosoft365SitesResponses,
   SendGmailDraftErrors,
   SendGmailDraftResponses,
   SendMicrosoft365MailDraftErrors,
@@ -11870,6 +11894,429 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
+   * List a OneDrive or SharePoint folder
+   *
+   * Lists the items in a folder, or the top of a drive when folderId is omitted: the member's own OneDrive by default, or a SharePoint library or other drive with driveId. Read-only.
+   */
+  public listMicrosoft365DriveChildren<ThrowOnError extends boolean = false>(
+    parameters?: {
+      driveId?: string;
+      folderId?: string;
+      maxResults?: number;
+      pageToken?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "driveId" },
+            { in: "query", key: "folderId" },
+            { in: "query", key: "maxResults" },
+            { in: "query", key: "pageToken" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      ListMicrosoft365DriveChildrenResponses,
+      ListMicrosoft365DriveChildrenErrors,
+      ThrowOnError
+    >({
+      url: "/v1/capabilities/microsoft-365/drive-children",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Find the OneDrive, SharePoint or Teams file behind a link
+   *
+   * Turns a OneDrive, SharePoint or Teams file link the member can open into the item's driveId and id, for reading, pulling or saving it. Read-only; files outside the member's own OneDrive need the all-files permission.
+   */
+  public resolveMicrosoft365DriveLink<ThrowOnError extends boolean = false>(
+    parameters: {
+      url: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "url" }] }]);
+    return (options?.client ?? this.client).get<
+      ResolveMicrosoft365DriveLinkResponses,
+      ResolveMicrosoft365DriveLinkErrors,
+      ThrowOnError
+    >({
+      url: "/v1/capabilities/microsoft-365/drive-item-by-link",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Search SharePoint sites
+   *
+   * Finds SharePoint sites the member can open by name. List a site's document libraries next, then browse or search their files. Read-only; needs the SharePoint sites permission.
+   */
+  public searchMicrosoft365Sites<ThrowOnError extends boolean = false>(
+    parameters: {
+      query: string;
+      maxResults?: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "query" },
+            { in: "query", key: "maxResults" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      SearchMicrosoft365SitesResponses,
+      SearchMicrosoft365SitesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/capabilities/microsoft-365/sites",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * List a SharePoint site's document libraries
+   *
+   * Lists the document libraries (drives) of one SharePoint site. Pass a library's id as driveId to browse, read or save its files. Read-only; needs the SharePoint sites permission.
+   */
+  public listMicrosoft365SiteDrives<ThrowOnError extends boolean = false>(
+    parameters: {
+      siteId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "siteId" }] }]);
+    return (options?.client ?? this.client).get<
+      ListMicrosoft365SiteDrivesResponses,
+      ListMicrosoft365SiteDrivesErrors,
+      ThrowOnError
+    >({
+      url: "/v1/capabilities/microsoft-365/sites/{siteId}/drives",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Create a five-minute download link for one OneDrive or SharePoint file, for clients with a shell
+   *
+   * For clients without OpenWork host file transport but with a shell, such as a Workbot computer or a coding agent. Download with curl into a file instead of reading the file into context; format pdf converts Office files. To save edits back, prepare createMicrosoft365DriveUploadSession with itemId and this revision as baseRevision. Uses the selected connection.
+   */
+  public createMicrosoft365DriveDownloadLink<ThrowOnError extends boolean = false>(
+    parameters: {
+      driveId?: string;
+      itemId: string;
+      format?: "pdf";
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "driveId" },
+            { in: "body", key: "itemId" },
+            { in: "body", key: "format" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      CreateMicrosoft365DriveDownloadLinkResponses,
+      CreateMicrosoft365DriveDownloadLinkErrors,
+      ThrowOnError
+    >({
+      url: "/v1/capabilities/microsoft-365/drive-download-links",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Download one OneDrive or SharePoint file with a short-lived link
+   *
+   * The signed link names one member, connection, file and format and expires after five minutes. The member's current organization access and Microsoft 365 connection are checked again on every download.
+   */
+  public downloadMicrosoftDriveFileByLink<ThrowOnError extends boolean = false>(
+    parameters: {
+      token: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "token" }] }]);
+    return (options?.client ?? this.client).get<
+      DownloadMicrosoftDriveFileByLinkResponses,
+      DownloadMicrosoftDriveFileByLinkErrors,
+      ThrowOnError
+    >({
+      url: "/v1/direct-downloads/microsoft-365/drive-link",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Prepare an upload to OneDrive or SharePoint, or a replacement of an existing file's content, for a client with a shell
+   *
+   * Prepare a Microsoft upload session for an explicitly requested upload. This does not upload bytes or prove completion. With itemId and baseRevision the upload replaces that file's content as a new version; otherwise it creates name in folderId (or the top of the drive). Do not automatically create another session after an uncertain result. Uses the selected connection.
+   */
+  public createMicrosoft365DriveUploadSession<ThrowOnError extends boolean = false>(
+    parameters: {
+      driveId?: string;
+      itemId?: string;
+      baseRevision?: string;
+      folderId?: string;
+      name?: string;
+      conflictBehavior?: "fail" | "rename";
+      size: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "driveId" },
+            { in: "body", key: "itemId" },
+            { in: "body", key: "baseRevision" },
+            { in: "body", key: "folderId" },
+            { in: "body", key: "name" },
+            { in: "body", key: "conflictBehavior" },
+            { in: "body", key: "size" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      CreateMicrosoft365DriveUploadSessionResponses,
+      CreateMicrosoft365DriveUploadSessionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/capabilities/microsoft-365/drive-upload-sessions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Describe a OneDrive or SharePoint file pull for host file transport
+   *
+   * Returns the file's drive, eTag revision and the exact format and size a pull would save, without downloading content. Hosts then fetch the content route in ranged chunks. Optional connectionId selects a Microsoft 365 connection; unavailable selections never fall back to the default.
+   */
+  public describeHostMicrosoftDriveDownload<ThrowOnError extends boolean = false>(
+    parameters?: {
+      driveId?: string;
+      itemId?: string;
+      url?: string;
+      format?: "pdf";
+      connectionId?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "driveId" },
+            { in: "query", key: "itemId" },
+            { in: "query", key: "url" },
+            { in: "query", key: "format" },
+            { in: "query", key: "connectionId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      DescribeHostMicrosoftDriveDownloadResponses,
+      DescribeHostMicrosoftDriveDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/v1/direct-downloads/microsoft-365/drive-files",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Stream a OneDrive or SharePoint file's bytes to host file transport
+   *
+   * Streams stored files as-is (Range: bytes=START-END, up to 8 MiB per request) or converts Office files to PDF whole. Den does not keep or inspect the bytes. Responses stop at the pull size limit.
+   */
+  public downloadHostMicrosoftDriveFile<ThrowOnError extends boolean = false>(
+    parameters: {
+      driveId?: string;
+      itemId: string;
+      format?: "pdf";
+      connectionId?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "driveId" },
+            { in: "query", key: "itemId" },
+            { in: "query", key: "format" },
+            { in: "query", key: "connectionId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).get<
+      DownloadHostMicrosoftDriveFileResponses,
+      DownloadHostMicrosoftDriveFileErrors,
+      ThrowOnError
+    >({
+      url: "/v1/direct-downloads/microsoft-365/drive-files/content",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Prepare a OneDrive or SharePoint upload for host file transport
+   *
+   * Like createMicrosoft365DriveUploadSession, but Microsoft's session URL stays in OpenWork Cloud: the host sends the file in chunks to the relay route with the returned uploadToken. Saves through OpenWork Cloud are limited to the pull size limit.
+   */
+  public prepareHostMicrosoftDriveUploadSession<ThrowOnError extends boolean = false>(
+    parameters: {
+      driveId?: string;
+      itemId?: string;
+      baseRevision?: string;
+      folderId?: string;
+      name?: string;
+      conflictBehavior?: "fail" | "rename";
+      size: number;
+      connectionId?: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "driveId" },
+            { in: "body", key: "itemId" },
+            { in: "body", key: "baseRevision" },
+            { in: "body", key: "folderId" },
+            { in: "body", key: "name" },
+            { in: "body", key: "conflictBehavior" },
+            { in: "body", key: "size" },
+            { in: "body", key: "connectionId" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).post<
+      PrepareHostMicrosoftDriveUploadSessionResponses,
+      PrepareHostMicrosoftDriveUploadSessionErrors,
+      ThrowOnError
+    >({
+      url: "/v1/direct-uploads/microsoft-365/drive-upload-sessions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Check how much of a host upload Microsoft has received
+   *
+   * After an uncertain part, returns the offset to continue from. Never start another upload before checking.
+   */
+  public getHostMicrosoftDriveUploadStatus<ThrowOnError extends boolean = false>(
+    parameters: {
+      token: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "token" }] }]);
+    return (options?.client ?? this.client).get<
+      GetHostMicrosoftDriveUploadStatusResponses,
+      GetHostMicrosoftDriveUploadStatusErrors,
+      ThrowOnError
+    >({
+      url: "/v1/direct-uploads/microsoft-365/drive-upload-sessions/content",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Send one part of a host upload to OneDrive or SharePoint
+   *
+   * Send the file in order with Content-Range: bytes START-END/TOTAL, in parts of chunkSize bytes; non-final parts must be multiples of 320 KiB. Den forwards each part to Microsoft without keeping it.
+   */
+  public relayHostMicrosoftDriveUpload<ThrowOnError extends boolean = false>(
+    parameters: {
+      token: string;
+      body?: Blob | File;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "token" },
+            { key: "body", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).put<
+      RelayHostMicrosoftDriveUploadResponses,
+      RelayHostMicrosoftDriveUploadErrors,
+      ThrowOnError
+    >({
+      bodySerializer: null,
+      url: "/v1/direct-uploads/microsoft-365/drive-upload-sessions/content",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
    * Send an existing Outlook draft after explicit user confirmation
    *
    * Requires Mail.Send and the mailSend feature. Only send an existing draft the user explicitly requested to send. Graph HTTP 202 means accepted, not delivered. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.
@@ -12166,17 +12613,28 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Read a OneDrive text or binary file as the calling member
+   * Read a OneDrive or SharePoint text or binary file as the calling member
    *
-   * Returns OneDrive metadata and content using strict-UTF-8 content sniffing: text is returned regardless of MIME type, while binary files are returned as standard base64 up to 10 MiB. Folders and oversized files return metadata with an explicit contentUnavailableReason.
+   * Returns metadata and content using strict-UTF-8 content sniffing: text is returned regardless of MIME type, while binary files are returned as standard base64 up to 10 MiB. Folders and oversized files return metadata with an explicit contentUnavailableReason. Pass driveId for files outside the member's own OneDrive.
    */
   public getV1CapabilitiesMicrosoft365DriveFileByItemId<ThrowOnError extends boolean = false>(
     parameters: {
       itemId: string;
+      driveId?: string;
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "itemId" }] }]);
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "itemId" },
+            { in: "query", key: "driveId" },
+          ],
+        },
+      ],
+    );
     return (options?.client ?? this.client).get<
       GetV1CapabilitiesMicrosoft365DriveFileByItemIdResponses,
       GetV1CapabilitiesMicrosoft365DriveFileByItemIdErrors,
@@ -12189,9 +12647,9 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Rename or move a OneDrive item within the same drive
+   * Rename or move a OneDrive or SharePoint item within the same drive
    *
-   * Requires Files.ReadWrite (or Files.ReadWrite.All) and filesWrite (or filesFull). Updates only the name and/or parent folder id in the caller's OneDrive; cannot move across drives or upload content. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.
+   * Requires Files.ReadWrite and filesWrite for the member's own OneDrive, or Files.ReadWrite.All and filesFull for other drives. Updates only the name and/or parent folder id; cannot move across drives or upload content. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.
    */
   public updateMicrosoft365DriveItem<ThrowOnError extends boolean = false>(
     parameters: {
@@ -12228,9 +12686,9 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Create a folder in the calling member's OneDrive
+   * Create a folder in OneDrive or a SharePoint library
    *
-   * Requires Files.ReadWrite (or Files.ReadWrite.All) and filesWrite (or filesFull). Creates one folder under an existing parent id. Name conflicts fail without overwriting or silently renaming anything. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.
+   * Requires Files.ReadWrite and filesWrite for the member's own OneDrive, or Files.ReadWrite.All and filesFull for other drives. Creates one folder under an existing parent id. Name conflicts fail without overwriting or silently renaming anything. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.
    */
   public createMicrosoft365DriveFolder<ThrowOnError extends boolean = false>(
     parameters: {
@@ -12354,14 +12812,15 @@ export class DenClient extends HeyApiClient {
   }
 
   /**
-   * Search OneDrive files as the calling member
+   * Search OneDrive and SharePoint files as the calling member
    *
-   * Searches the calling member's OneDrive by name and content, returning source links. This capability is delegated and read-only.
+   * Searches file names and content across every OneDrive and SharePoint library the member can open (including files shared with them and Teams files) when the connection has the all-files permission; otherwise only the member's own OneDrive, as scope reports. Results carry driveId and id for reading, pulling or saving. Read-only.
    */
   public getV1CapabilitiesMicrosoft365DriveFiles<ThrowOnError extends boolean = false>(
     parameters: {
       query: string;
       maxResults?: number;
+      pageToken?: string;
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -12372,6 +12831,7 @@ export class DenClient extends HeyApiClient {
           args: [
             { in: "query", key: "query" },
             { in: "query", key: "maxResults" },
+            { in: "query", key: "pageToken" },
           ],
         },
       ],
@@ -12390,7 +12850,7 @@ export class DenClient extends HeyApiClient {
   /**
    * Create or replace a OneDrive text file as the calling member
    *
-   * Creates or replaces a bounded UTF-8 text file at a path in the calling member's OneDrive.
+   * Creates or replaces a bounded UTF-8 text file at a path in the calling member's OneDrive, or in another drive such as a SharePoint library with driveId. For Office, PDF or other binary files, use an upload session.
    */
   public putV1CapabilitiesMicrosoft365DriveFiles<ThrowOnError extends boolean = false>(
     parameters: {

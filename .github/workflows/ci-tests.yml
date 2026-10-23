@@ -154,6 +154,8 @@ jobs:
           bun test apps/server/test/engine-auto-upgrade-boot.test.ts apps/server/test/engine-auto-upgrade.test.ts apps/server/test/engine-auto-upgrade-safety.test.ts
       - name: Test the self-hosted web UI stays on its own origin
         run: bun --conditions=development test apps/server/test/web-ui-origin.test.ts
+      - name: Test OneDrive and SharePoint pulls and saves
+        run: bun --conditions=development test apps/server/test/drive-files-microsoft.test.ts
       - name: Setup headless Chrome for locator regression
         uses: ./.github/actions/setup-browser
       - name: Run eval framework tests (spec lint and its fixtures)

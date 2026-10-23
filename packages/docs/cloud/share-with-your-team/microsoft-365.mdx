@@ -1,7 +1,7 @@
 ---
 title: "Connect Microsoft 365"
-description: "Set up Outlook, calendars, OneDrive, and Teams for your OpenWork organization"
-keywords: ["Microsoft 365", "Outlook", "Teams", "OneDrive", "Entra", "client secret", "admin consent", "AADSTS7000215"]
+description: "Set up Outlook, calendars, OneDrive, SharePoint, and Teams for your OpenWork organization"
+keywords: ["Microsoft 365", "Outlook", "Teams", "OneDrive", "SharePoint", "Entra", "client secret", "admin consent", "AADSTS7000215"]
 ---
 
 An administrator sets up Microsoft 365 once in OpenWork Cloud. Each member
@@ -89,12 +89,19 @@ and choose **Save permissions**.
 | --- | --- |
 | Outlook | Read mail, create drafts, manage mailbox items, or send mail |
 | Calendar | Read events, or create and manage events |
-| OneDrive | Read or update files, including broader access to files the member can access |
+| OneDrive | Read or update the member's own files, or every file they can open, including SharePoint libraries, files shared with them, and Teams files |
+| SharePoint | Find sites and list their document libraries |
 | Teams | Read chats, or send messages in existing chats |
 
 Draft access requires mailbox read/write permission. It does not enable the
 separate **Send Outlook email** option. File permissions that mention “all
-files” can include shared files the member can access beyond their own drive.
+files” can include shared files the member can access beyond their own drive,
+such as SharePoint libraries and files shared in Teams. Without them, file search
+and pulls cover only the member's own OneDrive.
+
+Microsoft's default consent policy does not let members approve the all-files
+or SharePoint sites permissions themselves, so an administrator must grant
+consent for the organization (step 5) before members can connect with them.
 
 Review Microsoft's permission descriptions before consenting. They can cover
 more than one OpenWork action.

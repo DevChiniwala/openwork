@@ -6,6 +6,7 @@ export default defineConfig({
   entry: {
     "browser-demonstration": "src/browser-demonstration.ts",
     "google-drive-upload": "src/google-drive-upload.ts",
+    "microsoft-drive-transfer": "src/microsoft-drive-transfer.ts",
     "managed-provider-config": "src/managed-provider-config.ts",
     "cloud-model-fast": "src/cloud-model-fast.ts",
     "mcp-app-timing": "src/mcp-app-timing.ts",

@@ -21076,26 +21076,99 @@
           "message"
         ]
       },
-      "Microsoft365MailSendResponse": {
+      "Microsoft365DriveItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "driveId": {
+            "type": "string",
+            "description": "Pass with id to read, list or save this item. Empty when Microsoft did not say; resolve webUrl with the link capability then."
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string",
+            "description": "SharePoint site holding the item, when Microsoft reports one."
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "modifiedTime": {
+            "type": "string"
+          },
+          "webUrl": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file",
+              "folder",
+              "unknown"
+            ]
+          },
+          "eTag": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "driveId",
+          "parentId",
+          "siteId",
+          "name",
+          "size",
+          "modifiedTime",
+          "webUrl",
+          "mimeType",
+          "kind",
+          "eTag"
+        ]
+      },
+      "Microsoft365DriveChildrenResponse": {
         "type": "object",
         "properties": {
           "ok": {
             "type": "boolean",
             "const": true
           },
-          "draftId": {
-            "type": "string"
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Microsoft365DriveItem"
+            }
           },
-          "status": {
-            "type": "string",
-            "const": "accepted",
-            "description": "Graph accepted the send request. This is not confirmation of delivery."
+          "nextPageToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "ok",
-          "draftId",
-          "status"
+          "files",
+          "nextPageToken"
         ]
       },
       "Microsoft365NeedsConnectionError": {
@@ -21136,6 +21209,659 @@
         "required": [
           "error",
           "message"
+        ]
+      },
+      "Microsoft365DriveItemResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "file": {
+            "$ref": "#/components/schemas/Microsoft365DriveItem"
+          }
+        },
+        "required": [
+          "ok",
+          "file"
+        ]
+      },
+      "Microsoft365Site": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "webUrl": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "webUrl",
+          "description"
+        ]
+      },
+      "Microsoft365SitesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "sites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Microsoft365Site"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "sites"
+        ]
+      },
+      "Microsoft365Drive": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Pass as driveId to list, read or save files in this library."
+          },
+          "name": {
+            "type": "string"
+          },
+          "webUrl": {
+            "type": "string"
+          },
+          "driveType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "webUrl",
+          "driveType"
+        ]
+      },
+      "Microsoft365SiteDrivesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "drives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Microsoft365Drive"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "drives"
+        ]
+      },
+      "Microsoft365DriveDownloadLink": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "driveId": {
+                "type": "string"
+              },
+              "parentId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "revision": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The file's eTag. Pass it back as baseRevision when replacing the file, so newer changes are never overwritten silently."
+              },
+              "size": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "modifiedTime": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "webUrl": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "driveId",
+              "parentId",
+              "name",
+              "mimeType",
+              "revision",
+              "size",
+              "modifiedTime",
+              "webUrl"
+            ]
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "pdf"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "extension": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Extension the saved file needs, for conversions."
+              },
+              "size": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Exact bytes for stored files; unknown until downloaded for conversions."
+              },
+              "exported": {
+                "type": "boolean"
+              },
+              "maxBytes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "format",
+              "mimeType",
+              "extension",
+              "size",
+              "exported",
+              "maxBytes"
+            ]
+          },
+          "downloadUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Secret bearer URL for this one file, valid for five minutes. Do not print, share, log or persist it."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "resourceLink": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "resource_link"
+              },
+              "uri": {
+                "type": "string",
+                "format": "uri"
+              },
+              "name": {
+                "type": "string"
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "type",
+              "uri",
+              "name",
+              "mimeType"
+            ],
+            "description": "The same download as an MCP resource link."
+          },
+          "instructions": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "file",
+          "download",
+          "downloadUrl",
+          "expiresAt",
+          "resourceLink",
+          "instructions"
+        ]
+      },
+      "Microsoft365DriveUploadSessionResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "uploadUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Secret bearer upload-session URL. Never print, share, persist or log it, and never send an Authorization header to it."
+          },
+          "method": {
+            "type": "string",
+            "const": "PUT"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "chunkSize": {
+            "type": "number",
+            "const": 10485760
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replaces": {
+            "type": "object",
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "driveId": {
+                "type": "string"
+              },
+              "previousRevision": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "itemId",
+              "driveId",
+              "previousRevision"
+            ],
+            "description": "Present when the upload replaces an existing file's content."
+          },
+          "instructions": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "uploadUrl",
+          "method",
+          "size",
+          "chunkSize",
+          "expiresAt",
+          "instructions"
+        ]
+      },
+      "Microsoft365DriveDownloadInfo": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "driveId": {
+                "type": "string"
+              },
+              "parentId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "revision": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The file's eTag. Pass it back as baseRevision when replacing the file, so newer changes are never overwritten silently."
+              },
+              "size": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "modifiedTime": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "webUrl": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "driveId",
+              "parentId",
+              "name",
+              "mimeType",
+              "revision",
+              "size",
+              "modifiedTime",
+              "webUrl"
+            ]
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "pdf"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "extension": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Extension the saved file needs, for conversions."
+              },
+              "size": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Exact bytes for stored files; unknown until downloaded for conversions."
+              },
+              "exported": {
+                "type": "boolean"
+              },
+              "maxBytes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "format",
+              "mimeType",
+              "extension",
+              "size",
+              "exported",
+              "maxBytes"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "file",
+          "download"
+        ]
+      },
+      "Microsoft365HostDriveUploadSession": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "uploadToken": {
+            "type": "string",
+            "description": "Opaque token for the relay route; Microsoft's session URL stays in OpenWork Cloud."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "chunkSize": {
+            "type": "number",
+            "const": 10485760
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "replaces": {
+            "type": "object",
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "driveId": {
+                "type": "string"
+              },
+              "previousRevision": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "itemId",
+              "driveId",
+              "previousRevision"
+            ],
+            "description": "Present when the upload replaces an existing file's content."
+          }
+        },
+        "required": [
+          "ok",
+          "uploadToken",
+          "size",
+          "chunkSize",
+          "expiresAt"
+        ]
+      },
+      "Microsoft365DriveUploadProgress": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": true
+              },
+              "status": {
+                "type": "string",
+                "const": "partial"
+              },
+              "nextOffset": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Send the bytes from this offset next."
+              }
+            },
+            "required": [
+              "ok",
+              "status",
+              "nextOffset"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": true
+              },
+              "status": {
+                "type": "string",
+                "const": "complete"
+              },
+              "file": {
+                "$ref": "#/components/schemas/Microsoft365DriveItem"
+              }
+            },
+            "required": [
+              "ok",
+              "status",
+              "file"
+            ]
+          }
+        ]
+      },
+      "Microsoft365MailSendResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "draftId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "accepted",
+            "description": "Graph accepted the send request. This is not confirmation of delivery."
+          }
+        },
+        "required": [
+          "ok",
+          "draftId",
+          "status"
         ]
       },
       "Microsoft365MailSendBody": {
@@ -21554,53 +22280,6 @@
         ],
         "additionalProperties": false
       },
-      "Microsoft365DriveItem": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "size": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "modifiedTime": {
-            "type": "string"
-          },
-          "webUrl": {
-            "type": "string"
-          },
-          "mimeType": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "file",
-              "folder",
-              "unknown"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "size",
-          "modifiedTime",
-          "webUrl",
-          "mimeType",
-          "kind"
-        ]
-      },
       "Microsoft365DriveFileWriteResponse": {
         "type": "object",
         "properties": {
@@ -21620,13 +22299,19 @@
       "Microsoft365DriveItemUpdateBody": {
         "type": "object",
         "properties": {
+          "driveId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+          },
           "name": {
             "type": "string",
             "minLength": 1,
             "maxLength": 255
           },
           "parentId": {
-            "description": "Destination folder id within the calling member's same OneDrive; cross-drive moves are not supported.",
+            "description": "Destination folder id within the item's same drive; cross-drive moves are not supported.",
             "type": "string",
             "minLength": 1,
             "maxLength": 512
@@ -21637,11 +22322,17 @@
       "Microsoft365DriveFolderBody": {
         "type": "object",
         "properties": {
+          "driveId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+          },
           "parentId": {
             "type": "string",
             "minLength": 1,
             "maxLength": 512,
-            "description": "Existing parent folder id in the calling member's OneDrive."
+            "description": "Existing parent folder id in that drive."
           },
           "name": {
             "type": "string",
@@ -21758,11 +22449,31 @@
             "items": {
               "$ref": "#/components/schemas/Microsoft365DriveItem"
             }
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "all",
+              "myDrive"
+            ],
+            "description": "all: every OneDrive and SharePoint file the member can open; myDrive: only their own OneDrive, because the connection lacks the all-files permission."
+          },
+          "nextPageToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "ok",
-          "files"
+          "files",
+          "scope",
+          "nextPageToken"
         ]
       },
       "Microsoft365DriveFileResponse": {
@@ -21777,6 +22488,17 @@
             "properties": {
               "id": {
                 "type": "string"
+              },
+              "driveId": {
+                "type": "string",
+                "description": "Pass with id to read, list or save this item. Empty when Microsoft did not say; resolve webUrl with the link capability then."
+              },
+              "parentId": {
+                "type": "string"
+              },
+              "siteId": {
+                "type": "string",
+                "description": "SharePoint site holding the item, when Microsoft reports one."
               },
               "name": {
                 "type": "string"
@@ -21807,6 +22529,9 @@
                   "folder",
                   "unknown"
                 ]
+              },
+              "eTag": {
+                "type": "string"
               },
               "content": {
                 "anyOf": [
@@ -21867,12 +22592,16 @@
             },
             "required": [
               "id",
+              "driveId",
+              "parentId",
+              "siteId",
               "name",
               "size",
               "modifiedTime",
               "webUrl",
               "mimeType",
               "kind",
+              "eTag",
               "content",
               "contentBase64",
               "encoding",
@@ -21990,6 +22719,12 @@
       "Microsoft365DriveFileWriteBody": {
         "type": "object",
         "properties": {
+          "driveId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+          },
           "path": {
             "type": "string",
             "minLength": 1,
@@ -100296,6 +101031,2420 @@
         ]
       }
     },
+    "/v1/capabilities/microsoft-365/drive-children": {
+      "get": {
+        "operationId": "listMicrosoft365DriveChildren",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "List a OneDrive or SharePoint folder",
+        "description": "Lists the items in a folder, or the top of a drive when folderId is omitted: the member's own OneDrive by default, or a SharePoint library or other drive with driveId. Read-only.",
+        "responses": {
+          "200": {
+            "description": "Folder items.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365DriveChildrenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "driveId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+          },
+          {
+            "in": "query",
+            "name": "folderId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "description": "Folder id; omit for the top of the drive."
+          },
+          {
+            "in": "query",
+            "name": "maxResults",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "description": "nextPageToken from the previous page of the same folder."
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/capabilities/microsoft-365/drive-item-by-link": {
+      "get": {
+        "operationId": "resolveMicrosoft365DriveLink",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "Find the OneDrive, SharePoint or Teams file behind a link",
+        "description": "Turns a OneDrive, SharePoint or Teams file link the member can open into the item's driveId and id, for reading, pulling or saving it. Read-only; files outside the member's own OneDrive need the all-files permission.",
+        "responses": {
+          "200": {
+            "description": "The linked item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365DriveItemResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "url",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048,
+              "format": "uri",
+              "pattern": "^https:\\/\\/.*"
+            },
+            "required": true,
+            "description": "The file's OneDrive, SharePoint or Teams link."
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/capabilities/microsoft-365/sites": {
+      "get": {
+        "operationId": "searchMicrosoft365Sites",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "Search SharePoint sites",
+        "description": "Finds SharePoint sites the member can open by name. List a site's document libraries next, then browse or search their files. Read-only; needs the SharePoint sites permission.",
+        "responses": {
+          "200": {
+            "description": "Sites.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365SitesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "required": true,
+            "description": "Words in the site name; * lists sites the member can open."
+          },
+          {
+            "in": "query",
+            "name": "maxResults",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/capabilities/microsoft-365/sites/{siteId}/drives": {
+      "get": {
+        "operationId": "listMicrosoft365SiteDrives",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "List a SharePoint site's document libraries",
+        "description": "Lists the document libraries (drives) of one SharePoint site. Pass a library's id as driveId to browse, read or save its files. Read-only; needs the SharePoint sites permission.",
+        "responses": {
+          "200": {
+            "description": "Document libraries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365SiteDrivesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "siteId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[A-Za-z0-9.,_-]+$"
+            },
+            "required": true,
+            "description": "SharePoint site id from a site search."
+          }
+        ],
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/capabilities/microsoft-365/drive-download-links": {
+      "post": {
+        "operationId": "createMicrosoft365DriveDownloadLink",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "Create a five-minute download link for one OneDrive or SharePoint file, for clients with a shell",
+        "description": "For clients without OpenWork host file transport but with a shell, such as a Workbot computer or a coding agent. Download with curl into a file instead of reading the file into context; format pdf converts Office files. To save edits back, prepare createMicrosoft365DriveUploadSession with itemId and this revision as baseRevision. Uses the selected connection.",
+        "responses": {
+          "200": {
+            "description": "Short-lived bearer download URL, as JSON and as an MCP resource link, with the file's revision; no file content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365DriveDownloadLink"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is larger than the pull size limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "driveId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "format": {
+                    "description": "pdf converts a Word, Excel, PowerPoint or other Office file; omit to transfer the stored bytes.",
+                    "type": "string",
+                    "const": "pdf"
+                  }
+                },
+                "required": [
+                  "itemId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/direct-downloads/microsoft-365/drive-link": {
+      "get": {
+        "operationId": "downloadMicrosoftDriveFileByLink",
+        "tags": [
+          "Direct uploads"
+        ],
+        "security": [],
+        "summary": "Download one OneDrive or SharePoint file with a short-lived link",
+        "description": "The signed link names one member, connection, file and format and expires after five minutes. The member's current organization access and Microsoft 365 connection are checked again on every download.",
+        "responses": {
+          "200": {
+            "description": "File bytes.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired link.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/v1/capabilities/microsoft-365/drive-upload-sessions": {
+      "post": {
+        "operationId": "createMicrosoft365DriveUploadSession",
+        "tags": [
+          "Capability Sources"
+        ],
+        "summary": "Prepare an upload to OneDrive or SharePoint, or a replacement of an existing file's content, for a client with a shell",
+        "description": "Prepare a Microsoft upload session for an explicitly requested upload. This does not upload bytes or prove completion. With itemId and baseRevision the upload replaces that file's content as a new version; otherwise it creates name in folderId (or the top of the drive). Do not automatically create another session after an uncertain result. Uses the selected connection.",
+        "responses": {
+          "200": {
+            "description": "Secret upload session; file not yet uploaded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365DriveUploadSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "driveId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+                  },
+                  "itemId": {
+                    "description": "Replace this existing file's content. It keeps its link and sharing; the previous version stays in its version history.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "baseRevision": {
+                    "description": "Required with itemId: the eTag your copy was downloaded from. Refused with drive_conflict when the file changed since; download it again and reapply the edits, or save a new file.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "pattern": "^[\\x20-\\x7e]+$"
+                  },
+                  "folderId": {
+                    "description": "New files only: the folder to create the file in; omit for the top of the drive.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "name": {
+                    "description": "New files only: the file name.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "conflictBehavior": {
+                    "default": "fail",
+                    "description": "New files only: fail, or let Microsoft rename the file when the name is taken.",
+                    "type": "string",
+                    "enum": [
+                      "fail",
+                      "rename"
+                    ]
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 250000000000,
+                    "description": "Exact file size in bytes."
+                  }
+                },
+                "required": [
+                  "size"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "denApiKey": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/direct-downloads/microsoft-365/drive-files": {
+      "get": {
+        "operationId": "describeHostMicrosoftDriveDownload",
+        "tags": [
+          "Direct uploads"
+        ],
+        "security": [
+          {
+            "mcpAccessToken": []
+          }
+        ],
+        "summary": "Describe a OneDrive or SharePoint file pull for host file transport",
+        "description": "Returns the file's drive, eTag revision and the exact format and size a pull would save, without downloading content. Hosts then fetch the content route in ranged chunks. Optional connectionId selects a Microsoft 365 connection; unavailable selections never fall back to the default.",
+        "responses": {
+          "200": {
+            "description": "Pull plan; no file content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365DriveDownloadInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is larger than the pull size limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "driveId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+          },
+          {
+            "in": "query",
+            "name": "itemId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          {
+            "in": "query",
+            "name": "url",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048,
+              "format": "uri",
+              "pattern": "^https:\\/\\/.*"
+            },
+            "description": "A OneDrive, SharePoint or Teams file link instead of driveId and itemId."
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string",
+              "const": "pdf"
+            },
+            "description": "pdf converts a Word, Excel, PowerPoint or other Office file; omit to transfer the stored bytes."
+          },
+          {
+            "in": "query",
+            "name": "connectionId",
+            "schema": {
+              "type": "string",
+              "pattern": "^(microsoft-365|emc_[A-Za-z0-9]+)$"
+            },
+            "description": "Selected Microsoft 365 connection; omit for the default. Unavailable selections never fall back to another account."
+          }
+        ]
+      }
+    },
+    "/v1/direct-downloads/microsoft-365/drive-files/content": {
+      "get": {
+        "operationId": "downloadHostMicrosoftDriveFile",
+        "tags": [
+          "Direct uploads"
+        ],
+        "security": [
+          {
+            "mcpAccessToken": []
+          }
+        ],
+        "summary": "Stream a OneDrive or SharePoint file's bytes to host file transport",
+        "description": "Streams stored files as-is (Range: bytes=START-END, up to 8 MiB per request) or converts Office files to PDF whole. Den does not keep or inspect the bytes. Responses stop at the pull size limit.",
+        "responses": {
+          "200": {
+            "description": "File bytes.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested byte range.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "driveId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+          },
+          {
+            "in": "query",
+            "name": "itemId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string",
+              "const": "pdf"
+            },
+            "description": "pdf converts a Word, Excel, PowerPoint or other Office file; omit to transfer the stored bytes."
+          },
+          {
+            "in": "query",
+            "name": "connectionId",
+            "schema": {
+              "type": "string",
+              "pattern": "^(microsoft-365|emc_[A-Za-z0-9]+)$"
+            },
+            "description": "Selected Microsoft 365 connection; omit for the default. Unavailable selections never fall back to another account."
+          }
+        ]
+      }
+    },
+    "/v1/direct-uploads/microsoft-365/drive-upload-sessions": {
+      "post": {
+        "operationId": "prepareHostMicrosoftDriveUploadSession",
+        "tags": [
+          "Direct uploads"
+        ],
+        "security": [
+          {
+            "mcpAccessToken": []
+          }
+        ],
+        "summary": "Prepare a OneDrive or SharePoint upload for host file transport",
+        "description": "Like createMicrosoft365DriveUploadSession, but Microsoft's session URL stays in OpenWork Cloud: the host sends the file in chunks to the relay route with the returned uploadToken. Saves through OpenWork Cloud are limited to the pull size limit.",
+        "responses": {
+          "200": {
+            "description": "Opaque upload token; file not yet uploaded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365HostDriveUploadSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, a folder, or an item without content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Organization policy blocks the selected connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365NeedsConnectionError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "currentRevision": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "modifiedTime": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft refused or did not return the file; the message gives Microsoft's reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Microsoft365GraphError"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "driveId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
+                  },
+                  "itemId": {
+                    "description": "Replace this existing file's content. It keeps its link and sharing; the previous version stays in its version history.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "baseRevision": {
+                    "description": "Required with itemId: the eTag your copy was downloaded from. Refused with drive_conflict when the file changed since; download it again and reapply the edits, or save a new file.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "pattern": "^[\\x20-\\x7e]+$"
+                  },
+                  "folderId": {
+                    "description": "New files only: the folder to create the file in; omit for the top of the drive.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "name": {
+                    "description": "New files only: the file name.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "conflictBehavior": {
+                    "default": "fail",
+                    "description": "New files only: fail, or let Microsoft rename the file when the name is taken.",
+                    "type": "string",
+                    "enum": [
+                      "fail",
+                      "rename"
+                    ]
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 262144000
+                  },
+                  "connectionId": {
+                    "description": "Selected Microsoft 365 connection; omit for the default. Unavailable selections never fall back to another account.",
+                    "type": "string",
+                    "pattern": "^(microsoft-365|emc_[A-Za-z0-9]+)$"
+                  }
+                },
+                "required": [
+                  "size"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/direct-uploads/microsoft-365/drive-upload-sessions/content": {
+      "put": {
+        "operationId": "relayHostMicrosoftDriveUpload",
+        "tags": [
+          "Direct uploads"
+        ],
+        "security": [
+          {
+            "mcpAccessToken": []
+          }
+        ],
+        "summary": "Send one part of a host upload to OneDrive or SharePoint",
+        "description": "Send the file in order with Content-Range: bytes START-END/TOTAL, in parts of chunkSize bytes; non-final parts must be multiples of 320 KiB. Den forwards each part to Microsoft without keeping it.",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Progress or the saved file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365DriveUploadProgress"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Content-Range or part size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired upload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session expired, the name is taken, the file changed (drive_conflict), or the part was out of order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The part is larger than chunkSize.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft did not confirm the part.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            },
+            "required": true
+          }
+        ]
+      },
+      "get": {
+        "operationId": "getHostMicrosoftDriveUploadStatus",
+        "tags": [
+          "Direct uploads"
+        ],
+        "security": [
+          {
+            "mcpAccessToken": []
+          }
+        ],
+        "summary": "Check how much of a host upload Microsoft has received",
+        "description": "After an uncertain part, returns the offset to continue from. Never start another upload before checking.",
+        "responses": {
+          "200": {
+            "description": "Progress or the saved file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Microsoft365DriveUploadProgress"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Content-Range or part size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired upload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session expired, the name is taken, the file changed (drive_conflict), or the part was out of order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The part is larger than chunkSize.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Microsoft did not confirm the part.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            },
+            "required": true
+          }
+        ]
+      }
+    },
     "/v1/capabilities/microsoft-365/mail-drafts/{messageId}/send": {
       "post": {
         "operationId": "sendMicrosoft365MailDraft",
@@ -101110,8 +104259,8 @@
         "tags": [
           "Capability Sources"
         ],
-        "summary": "Rename or move a OneDrive item within the same drive",
-        "description": "Requires Files.ReadWrite (or Files.ReadWrite.All) and filesWrite (or filesFull). Updates only the name and/or parent folder id in the caller's OneDrive; cannot move across drives or upload content. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.",
+        "summary": "Rename or move a OneDrive or SharePoint item within the same drive",
+        "description": "Requires Files.ReadWrite and filesWrite for the member's own OneDrive, or Files.ReadWrite.All and filesFull for other drives. Updates only the name and/or parent folder id; cannot move across drives or upload content. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.",
         "responses": {
           "200": {
             "description": "Microsoft Graph mutation receipt returned.",
@@ -101214,8 +104363,8 @@
         "tags": [
           "Capability Sources"
         ],
-        "summary": "Read a OneDrive text or binary file as the calling member",
-        "description": "Returns OneDrive metadata and content using strict-UTF-8 content sniffing: text is returned regardless of MIME type, while binary files are returned as standard base64 up to 10 MiB. Folders and oversized files return metadata with an explicit contentUnavailableReason.",
+        "summary": "Read a OneDrive or SharePoint text or binary file as the calling member",
+        "description": "Returns metadata and content using strict-UTF-8 content sniffing: text is returned regardless of MIME type, while binary files are returned as standard base64 up to 10 MiB. Folders and oversized files return metadata with an explicit contentUnavailableReason. Pass driveId for files outside the member's own OneDrive.",
         "responses": {
           "200": {
             "description": "OneDrive file returned.",
@@ -101269,6 +104418,16 @@
             },
             "required": true,
             "description": "Microsoft Graph drive item id."
+          },
+          {
+            "in": "query",
+            "name": "driveId",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "description": "The file's driveId from a search, folder or link result. Omit for the member's own OneDrive."
           }
         ],
         "security": [
@@ -101287,8 +104446,8 @@
         "tags": [
           "Capability Sources"
         ],
-        "summary": "Create a folder in the calling member's OneDrive",
-        "description": "Requires Files.ReadWrite (or Files.ReadWrite.All) and filesWrite (or filesFull). Creates one folder under an existing parent id. Name conflicts fail without overwriting or silently renaming anything. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.",
+        "summary": "Create a folder in OneDrive or a SharePoint library",
+        "description": "Requires Files.ReadWrite and filesWrite for the member's own OneDrive, or Files.ReadWrite.All and filesFull for other drives. Creates one folder under an existing parent id. Name conflicts fail without overwriting or silently renaming anything. Uses only the calling member's delegated Microsoft 365 connection. Never automatically retry a mutation after a timeout, cancellation, or ambiguous response; inspect current state first.",
         "responses": {
           "200": {
             "description": "Microsoft Graph mutation receipt returned.",
@@ -101626,11 +104785,11 @@
         "tags": [
           "Capability Sources"
         ],
-        "summary": "Search OneDrive files as the calling member",
-        "description": "Searches the calling member's OneDrive by name and content, returning source links. This capability is delegated and read-only.",
+        "summary": "Search OneDrive and SharePoint files as the calling member",
+        "description": "Searches file names and content across every OneDrive and SharePoint library the member can open (including files shared with them and Teams files) when the connection has the all-files permission; otherwise only the member's own OneDrive, as scope reports. Results carry driveId and id for reading, pulling or saving. Read-only.",
         "responses": {
           "200": {
-            "description": "OneDrive files returned.",
+            "description": "Files returned.",
             "content": {
               "application/json": {
                 "schema": {
@@ -101680,7 +104839,7 @@
               "maxLength": 500
             },
             "required": true,
-            "description": "Text to search in OneDrive file names and content."
+            "description": "Text to search in file names and content."
           },
           {
             "in": "query",
@@ -101692,6 +104851,15 @@
               "maximum": 25
             },
             "description": "Maximum files to return, capped at 25."
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,6}$"
+            },
+            "description": "nextPageToken from the previous page of the same search."
           }
         ],
         "security": [
@@ -101709,7 +104877,7 @@
           "Capability Sources"
         ],
         "summary": "Create or replace a OneDrive text file as the calling member",
-        "description": "Creates or replaces a bounded UTF-8 text file at a path in the calling member's OneDrive.",
+        "description": "Creates or replaces a bounded UTF-8 text file at a path in the calling member's OneDrive, or in another drive such as a SharePoint library with driveId. For Office, PDF or other binary files, use an upload session.",
         "responses": {
           "200": {
             "description": "OneDrive file written.",

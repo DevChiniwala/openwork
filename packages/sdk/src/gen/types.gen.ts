@@ -4812,13 +4812,30 @@ export type GoogleWorkspaceMissingThreadIdError = {
   message: string;
 };
 
-export type Microsoft365MailSendResponse = {
-  ok: true;
-  draftId: string;
+export type Microsoft365DriveItem = {
+  id: string;
   /**
-   * Graph accepted the send request. This is not confirmation of delivery.
+   * Pass with id to read, list or save this item. Empty when Microsoft did not say; resolve webUrl with the link capability then.
    */
-  status: "accepted";
+  driveId: string;
+  parentId: string;
+  /**
+   * SharePoint site holding the item, when Microsoft reports one.
+   */
+  siteId: string;
+  name: string;
+  size: number | null;
+  modifiedTime: string;
+  webUrl: string;
+  mimeType: string;
+  kind: "file" | "folder" | "unknown";
+  eTag: string;
+};
+
+export type Microsoft365DriveChildrenResponse = {
+  ok: true;
+  files: Array<Microsoft365DriveItem>;
+  nextPageToken: string | null;
 };
 
 export type Microsoft365NeedsConnectionError = {
@@ -4831,6 +4848,182 @@ export type Microsoft365GraphError = {
   message: string;
   outcome?: "unknown";
   retryable?: false;
+};
+
+export type Microsoft365DriveItemResponse = {
+  ok: true;
+  file: Microsoft365DriveItem;
+};
+
+export type Microsoft365Site = {
+  id: string;
+  name: string;
+  webUrl: string;
+  description: string;
+};
+
+export type Microsoft365SitesResponse = {
+  ok: true;
+  sites: Array<Microsoft365Site>;
+};
+
+export type Microsoft365Drive = {
+  /**
+   * Pass as driveId to list, read or save files in this library.
+   */
+  id: string;
+  name: string;
+  webUrl: string;
+  driveType: string;
+};
+
+export type Microsoft365SiteDrivesResponse = {
+  ok: true;
+  drives: Array<Microsoft365Drive>;
+};
+
+export type Microsoft365DriveDownloadLink = {
+  ok: true;
+  file: {
+    id: string;
+    driveId: string;
+    parentId: string;
+    name: string;
+    mimeType: string;
+    /**
+     * The file's eTag. Pass it back as baseRevision when replacing the file, so newer changes are never overwritten silently.
+     */
+    revision: string | null;
+    size: number | null;
+    modifiedTime: string | null;
+    webUrl: string | null;
+  };
+  download: {
+    format: "pdf" | null;
+    mimeType: string;
+    /**
+     * Extension the saved file needs, for conversions.
+     */
+    extension: string | null;
+    /**
+     * Exact bytes for stored files; unknown until downloaded for conversions.
+     */
+    size: number | null;
+    exported: boolean;
+    maxBytes: number;
+  };
+  /**
+   * Secret bearer URL for this one file, valid for five minutes. Do not print, share, log or persist it.
+   */
+  downloadUrl: string;
+  expiresAt: string;
+  /**
+   * The same download as an MCP resource link.
+   */
+  resourceLink: {
+    type: "resource_link";
+    uri: string;
+    name: string;
+    mimeType: string;
+    size?: number;
+  };
+  instructions: string;
+};
+
+export type Microsoft365DriveUploadSessionResponse = {
+  ok: true;
+  /**
+   * Secret bearer upload-session URL. Never print, share, persist or log it, and never send an Authorization header to it.
+   */
+  uploadUrl: string;
+  method: "PUT";
+  size: number;
+  chunkSize: 10485760;
+  expiresAt: string | null;
+  /**
+   * Present when the upload replaces an existing file's content.
+   */
+  replaces?: {
+    itemId: string;
+    driveId: string;
+    previousRevision: string | null;
+  };
+  instructions: string;
+};
+
+export type Microsoft365DriveDownloadInfo = {
+  ok: true;
+  file: {
+    id: string;
+    driveId: string;
+    parentId: string;
+    name: string;
+    mimeType: string;
+    /**
+     * The file's eTag. Pass it back as baseRevision when replacing the file, so newer changes are never overwritten silently.
+     */
+    revision: string | null;
+    size: number | null;
+    modifiedTime: string | null;
+    webUrl: string | null;
+  };
+  download: {
+    format: "pdf" | null;
+    mimeType: string;
+    /**
+     * Extension the saved file needs, for conversions.
+     */
+    extension: string | null;
+    /**
+     * Exact bytes for stored files; unknown until downloaded for conversions.
+     */
+    size: number | null;
+    exported: boolean;
+    maxBytes: number;
+  };
+};
+
+export type Microsoft365HostDriveUploadSession = {
+  ok: true;
+  /**
+   * Opaque token for the relay route; Microsoft's session URL stays in OpenWork Cloud.
+   */
+  uploadToken: string;
+  size: number;
+  chunkSize: 10485760;
+  expiresAt: string;
+  /**
+   * Present when the upload replaces an existing file's content.
+   */
+  replaces?: {
+    itemId: string;
+    driveId: string;
+    previousRevision: string | null;
+  };
+};
+
+export type Microsoft365DriveUploadProgress =
+  | {
+      ok: true;
+      status: "partial";
+      /**
+       * Send the bytes from this offset next.
+       */
+      nextOffset: number;
+    }
+  | {
+      ok: true;
+      status: "complete";
+      file: Microsoft365DriveItem;
+    };
+
+export type Microsoft365MailSendResponse = {
+  ok: true;
+  draftId: string;
+  /**
+   * Graph accepted the send request. This is not confirmation of delivery.
+   */
+  status: "accepted";
 };
 
 export type Microsoft365MailSendBody = {
@@ -4967,32 +5160,30 @@ export type Microsoft365CalendarDeleteBody = {
   confirmDelete: true;
 };
 
-export type Microsoft365DriveItem = {
-  id: string;
-  name: string;
-  size: number | null;
-  modifiedTime: string;
-  webUrl: string;
-  mimeType: string;
-  kind: "file" | "folder" | "unknown";
-};
-
 export type Microsoft365DriveFileWriteResponse = {
   ok: true;
   file: Microsoft365DriveItem;
 };
 
 export type Microsoft365DriveItemUpdateBody = {
+  /**
+   * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+   */
+  driveId?: string;
   name?: string;
   /**
-   * Destination folder id within the calling member's same OneDrive; cross-drive moves are not supported.
+   * Destination folder id within the item's same drive; cross-drive moves are not supported.
    */
   parentId?: string;
 };
 
 export type Microsoft365DriveFolderBody = {
   /**
-   * Existing parent folder id in the calling member's OneDrive.
+   * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+   */
+  driveId?: string;
+  /**
+   * Existing parent folder id in that drive.
    */
   parentId: string;
   name: string;
@@ -5023,18 +5214,33 @@ export type Microsoft365CalendarEventsResponse = {
 export type Microsoft365DriveFilesResponse = {
   ok: true;
   files: Array<Microsoft365DriveItem>;
+  /**
+   * all: every OneDrive and SharePoint file the member can open; myDrive: only their own OneDrive, because the connection lacks the all-files permission.
+   */
+  scope: "all" | "myDrive";
+  nextPageToken: string | null;
 };
 
 export type Microsoft365DriveFileResponse = {
   ok: true;
   file: {
     id: string;
+    /**
+     * Pass with id to read, list or save this item. Empty when Microsoft did not say; resolve webUrl with the link capability then.
+     */
+    driveId: string;
+    parentId: string;
+    /**
+     * SharePoint site holding the item, when Microsoft reports one.
+     */
+    siteId: string;
     name: string;
     size: number | null;
     modifiedTime: string;
     webUrl: string;
     mimeType: string;
     kind: "file" | "folder" | "unknown";
+    eTag: string;
     content: string | null;
     /**
      * Standard base64-encoded file bytes for binary files; decode locally.
@@ -5070,6 +5276,10 @@ export type Microsoft365CalendarEventBody = {
 };
 
 export type Microsoft365DriveFileWriteBody = {
+  /**
+   * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+   */
+  driveId?: string;
   path: string;
   content: string;
 };
@@ -29640,6 +29850,911 @@ export type PostV1CapabilitiesGoogleWorkspaceDriveFileShareByFileIdResponses = {
 export type PostV1CapabilitiesGoogleWorkspaceDriveFileShareByFileIdResponse =
   PostV1CapabilitiesGoogleWorkspaceDriveFileShareByFileIdResponses[keyof PostV1CapabilitiesGoogleWorkspaceDriveFileShareByFileIdResponses];
 
+export type ListMicrosoft365DriveChildrenData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+     */
+    driveId?: string;
+    /**
+     * Folder id; omit for the top of the drive.
+     */
+    folderId?: string;
+    maxResults?: number;
+    /**
+     * nextPageToken from the previous page of the same folder.
+     */
+    pageToken?: string;
+  };
+  url: "/v1/capabilities/microsoft-365/drive-children";
+};
+
+export type ListMicrosoft365DriveChildrenErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type ListMicrosoft365DriveChildrenError =
+  ListMicrosoft365DriveChildrenErrors[keyof ListMicrosoft365DriveChildrenErrors];
+
+export type ListMicrosoft365DriveChildrenResponses = {
+  /**
+   * Folder items.
+   */
+  200: Microsoft365DriveChildrenResponse;
+};
+
+export type ListMicrosoft365DriveChildrenResponse =
+  ListMicrosoft365DriveChildrenResponses[keyof ListMicrosoft365DriveChildrenResponses];
+
+export type ResolveMicrosoft365DriveLinkData = {
+  body?: never;
+  path?: never;
+  query: {
+    /**
+     * The file's OneDrive, SharePoint or Teams link.
+     */
+    url: string;
+  };
+  url: "/v1/capabilities/microsoft-365/drive-item-by-link";
+};
+
+export type ResolveMicrosoft365DriveLinkErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type ResolveMicrosoft365DriveLinkError =
+  ResolveMicrosoft365DriveLinkErrors[keyof ResolveMicrosoft365DriveLinkErrors];
+
+export type ResolveMicrosoft365DriveLinkResponses = {
+  /**
+   * The linked item.
+   */
+  200: Microsoft365DriveItemResponse;
+};
+
+export type ResolveMicrosoft365DriveLinkResponse =
+  ResolveMicrosoft365DriveLinkResponses[keyof ResolveMicrosoft365DriveLinkResponses];
+
+export type SearchMicrosoft365SitesData = {
+  body?: never;
+  path?: never;
+  query: {
+    /**
+     * Words in the site name; * lists sites the member can open.
+     */
+    query: string;
+    maxResults?: number;
+  };
+  url: "/v1/capabilities/microsoft-365/sites";
+};
+
+export type SearchMicrosoft365SitesErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type SearchMicrosoft365SitesError = SearchMicrosoft365SitesErrors[keyof SearchMicrosoft365SitesErrors];
+
+export type SearchMicrosoft365SitesResponses = {
+  /**
+   * Sites.
+   */
+  200: Microsoft365SitesResponse;
+};
+
+export type SearchMicrosoft365SitesResponse = SearchMicrosoft365SitesResponses[keyof SearchMicrosoft365SitesResponses];
+
+export type ListMicrosoft365SiteDrivesData = {
+  body?: never;
+  path: {
+    /**
+     * SharePoint site id from a site search.
+     */
+    siteId: string;
+  };
+  query?: never;
+  url: "/v1/capabilities/microsoft-365/sites/{siteId}/drives";
+};
+
+export type ListMicrosoft365SiteDrivesErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type ListMicrosoft365SiteDrivesError = ListMicrosoft365SiteDrivesErrors[keyof ListMicrosoft365SiteDrivesErrors];
+
+export type ListMicrosoft365SiteDrivesResponses = {
+  /**
+   * Document libraries.
+   */
+  200: Microsoft365SiteDrivesResponse;
+};
+
+export type ListMicrosoft365SiteDrivesResponse =
+  ListMicrosoft365SiteDrivesResponses[keyof ListMicrosoft365SiteDrivesResponses];
+
+export type CreateMicrosoft365DriveDownloadLinkData = {
+  body: {
+    /**
+     * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+     */
+    driveId?: string;
+    itemId: string;
+    /**
+     * pdf converts a Word, Excel, PowerPoint or other Office file; omit to transfer the stored bytes.
+     */
+    format?: "pdf";
+  };
+  path?: never;
+  query?: never;
+  url: "/v1/capabilities/microsoft-365/drive-download-links";
+};
+
+export type CreateMicrosoft365DriveDownloadLinkErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * The file is larger than the pull size limit.
+   */
+  413: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type CreateMicrosoft365DriveDownloadLinkError =
+  CreateMicrosoft365DriveDownloadLinkErrors[keyof CreateMicrosoft365DriveDownloadLinkErrors];
+
+export type CreateMicrosoft365DriveDownloadLinkResponses = {
+  /**
+   * Short-lived bearer download URL, as JSON and as an MCP resource link, with the file's revision; no file content.
+   */
+  200: Microsoft365DriveDownloadLink;
+};
+
+export type CreateMicrosoft365DriveDownloadLinkResponse =
+  CreateMicrosoft365DriveDownloadLinkResponses[keyof CreateMicrosoft365DriveDownloadLinkResponses];
+
+export type DownloadMicrosoftDriveFileByLinkData = {
+  body?: never;
+  path?: never;
+  query: {
+    token: string;
+  };
+  url: "/v1/direct-downloads/microsoft-365/drive-link";
+};
+
+export type DownloadMicrosoftDriveFileByLinkErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Unknown or expired link.
+   */
+  404: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type DownloadMicrosoftDriveFileByLinkError =
+  DownloadMicrosoftDriveFileByLinkErrors[keyof DownloadMicrosoftDriveFileByLinkErrors];
+
+export type DownloadMicrosoftDriveFileByLinkResponses = {
+  /**
+   * File bytes.
+   */
+  200: Blob | File;
+};
+
+export type DownloadMicrosoftDriveFileByLinkResponse =
+  DownloadMicrosoftDriveFileByLinkResponses[keyof DownloadMicrosoftDriveFileByLinkResponses];
+
+export type CreateMicrosoft365DriveUploadSessionData = {
+  body: {
+    /**
+     * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+     */
+    driveId?: string;
+    /**
+     * Replace this existing file's content. It keeps its link and sharing; the previous version stays in its version history.
+     */
+    itemId?: string;
+    /**
+     * Required with itemId: the eTag your copy was downloaded from. Refused with drive_conflict when the file changed since; download it again and reapply the edits, or save a new file.
+     */
+    baseRevision?: string;
+    /**
+     * New files only: the folder to create the file in; omit for the top of the drive.
+     */
+    folderId?: string;
+    /**
+     * New files only: the file name.
+     */
+    name?: string;
+    /**
+     * New files only: fail, or let Microsoft rename the file when the name is taken.
+     */
+    conflictBehavior?: "fail" | "rename";
+    /**
+     * Exact file size in bytes.
+     */
+    size: number;
+  };
+  path?: never;
+  query?: never;
+  url: "/v1/capabilities/microsoft-365/drive-upload-sessions";
+};
+
+export type CreateMicrosoft365DriveUploadSessionErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type CreateMicrosoft365DriveUploadSessionError =
+  CreateMicrosoft365DriveUploadSessionErrors[keyof CreateMicrosoft365DriveUploadSessionErrors];
+
+export type CreateMicrosoft365DriveUploadSessionResponses = {
+  /**
+   * Secret upload session; file not yet uploaded.
+   */
+  200: Microsoft365DriveUploadSessionResponse;
+};
+
+export type CreateMicrosoft365DriveUploadSessionResponse =
+  CreateMicrosoft365DriveUploadSessionResponses[keyof CreateMicrosoft365DriveUploadSessionResponses];
+
+export type DescribeHostMicrosoftDriveDownloadData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+     */
+    driveId?: string;
+    itemId?: string;
+    /**
+     * A OneDrive, SharePoint or Teams file link instead of driveId and itemId.
+     */
+    url?: string;
+    /**
+     * pdf converts a Word, Excel, PowerPoint or other Office file; omit to transfer the stored bytes.
+     */
+    format?: "pdf";
+    /**
+     * Selected Microsoft 365 connection; omit for the default. Unavailable selections never fall back to another account.
+     */
+    connectionId?: string;
+  };
+  url: "/v1/direct-downloads/microsoft-365/drive-files";
+};
+
+export type DescribeHostMicrosoftDriveDownloadErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * The file is larger than the pull size limit.
+   */
+  413: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type DescribeHostMicrosoftDriveDownloadError =
+  DescribeHostMicrosoftDriveDownloadErrors[keyof DescribeHostMicrosoftDriveDownloadErrors];
+
+export type DescribeHostMicrosoftDriveDownloadResponses = {
+  /**
+   * Pull plan; no file content.
+   */
+  200: Microsoft365DriveDownloadInfo;
+};
+
+export type DescribeHostMicrosoftDriveDownloadResponse =
+  DescribeHostMicrosoftDriveDownloadResponses[keyof DescribeHostMicrosoftDriveDownloadResponses];
+
+export type DownloadHostMicrosoftDriveFileData = {
+  body?: never;
+  path?: never;
+  query: {
+    /**
+     * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+     */
+    driveId?: string;
+    itemId: string;
+    /**
+     * pdf converts a Word, Excel, PowerPoint or other Office file; omit to transfer the stored bytes.
+     */
+    format?: "pdf";
+    /**
+     * Selected Microsoft 365 connection; omit for the default. Unavailable selections never fall back to another account.
+     */
+    connectionId?: string;
+  };
+  url: "/v1/direct-downloads/microsoft-365/drive-files/content";
+};
+
+export type DownloadHostMicrosoftDriveFileErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type DownloadHostMicrosoftDriveFileError =
+  DownloadHostMicrosoftDriveFileErrors[keyof DownloadHostMicrosoftDriveFileErrors];
+
+export type DownloadHostMicrosoftDriveFileResponses = {
+  /**
+   * File bytes.
+   */
+  200: Blob | File;
+  /**
+   * Requested byte range.
+   */
+  206: Blob | File;
+};
+
+export type DownloadHostMicrosoftDriveFileResponse =
+  DownloadHostMicrosoftDriveFileResponses[keyof DownloadHostMicrosoftDriveFileResponses];
+
+export type PrepareHostMicrosoftDriveUploadSessionData = {
+  body: {
+    /**
+     * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+     */
+    driveId?: string;
+    /**
+     * Replace this existing file's content. It keeps its link and sharing; the previous version stays in its version history.
+     */
+    itemId?: string;
+    /**
+     * Required with itemId: the eTag your copy was downloaded from. Refused with drive_conflict when the file changed since; download it again and reapply the edits, or save a new file.
+     */
+    baseRevision?: string;
+    /**
+     * New files only: the folder to create the file in; omit for the top of the drive.
+     */
+    folderId?: string;
+    /**
+     * New files only: the file name.
+     */
+    name?: string;
+    /**
+     * New files only: fail, or let Microsoft rename the file when the name is taken.
+     */
+    conflictBehavior?: "fail" | "rename";
+    size: number;
+    /**
+     * Selected Microsoft 365 connection; omit for the default. Unavailable selections never fall back to another account.
+     */
+    connectionId?: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/v1/direct-uploads/microsoft-365/drive-upload-sessions";
+};
+
+export type PrepareHostMicrosoftDriveUploadSessionErrors = {
+  /**
+   * Invalid request, a folder, or an item without content.
+   */
+  400:
+    | InvalidRequestError
+    | {
+        error: string;
+        message: string;
+      };
+  /**
+   * Sign in first.
+   */
+  401: UnauthorizedError;
+  /**
+   * Organization policy blocks the selected connection.
+   */
+  403: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Connect Microsoft 365 with the needed permission, or the file changed since baseRevision (drive_conflict).
+   */
+  409:
+    | Microsoft365NeedsConnectionError
+    | {
+        error: string;
+        message: string;
+        currentRevision?: string | null;
+        modifiedTime?: string | null;
+      };
+  /**
+   * Microsoft refused or did not return the file; the message gives Microsoft's reason.
+   */
+  502:
+    | Microsoft365GraphError
+    | {
+        error: string;
+        message: string;
+      };
+};
+
+export type PrepareHostMicrosoftDriveUploadSessionError =
+  PrepareHostMicrosoftDriveUploadSessionErrors[keyof PrepareHostMicrosoftDriveUploadSessionErrors];
+
+export type PrepareHostMicrosoftDriveUploadSessionResponses = {
+  /**
+   * Opaque upload token; file not yet uploaded.
+   */
+  200: Microsoft365HostDriveUploadSession;
+};
+
+export type PrepareHostMicrosoftDriveUploadSessionResponse =
+  PrepareHostMicrosoftDriveUploadSessionResponses[keyof PrepareHostMicrosoftDriveUploadSessionResponses];
+
+export type GetHostMicrosoftDriveUploadStatusData = {
+  body?: never;
+  path?: never;
+  query: {
+    token: string;
+  };
+  url: "/v1/direct-uploads/microsoft-365/drive-upload-sessions/content";
+};
+
+export type GetHostMicrosoftDriveUploadStatusErrors = {
+  /**
+   * Invalid Content-Range or part size.
+   */
+  400: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Unknown or expired upload.
+   */
+  404: {
+    error: string;
+    message: string;
+  };
+  /**
+   * The session expired, the name is taken, the file changed (drive_conflict), or the part was out of order.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+  /**
+   * The part is larger than chunkSize.
+   */
+  413: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Microsoft did not confirm the part.
+   */
+  502: {
+    error: string;
+    message: string;
+  };
+};
+
+export type GetHostMicrosoftDriveUploadStatusError =
+  GetHostMicrosoftDriveUploadStatusErrors[keyof GetHostMicrosoftDriveUploadStatusErrors];
+
+export type GetHostMicrosoftDriveUploadStatusResponses = {
+  /**
+   * Progress or the saved file.
+   */
+  200: Microsoft365DriveUploadProgress;
+};
+
+export type GetHostMicrosoftDriveUploadStatusResponse =
+  GetHostMicrosoftDriveUploadStatusResponses[keyof GetHostMicrosoftDriveUploadStatusResponses];
+
+export type RelayHostMicrosoftDriveUploadData = {
+  body?: Blob | File;
+  path?: never;
+  query: {
+    token: string;
+  };
+  url: "/v1/direct-uploads/microsoft-365/drive-upload-sessions/content";
+};
+
+export type RelayHostMicrosoftDriveUploadErrors = {
+  /**
+   * Invalid Content-Range or part size.
+   */
+  400: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Unknown or expired upload.
+   */
+  404: {
+    error: string;
+    message: string;
+  };
+  /**
+   * The session expired, the name is taken, the file changed (drive_conflict), or the part was out of order.
+   */
+  409: {
+    error: string;
+    message: string;
+  };
+  /**
+   * The part is larger than chunkSize.
+   */
+  413: {
+    error: string;
+    message: string;
+  };
+  /**
+   * Microsoft did not confirm the part.
+   */
+  502: {
+    error: string;
+    message: string;
+  };
+};
+
+export type RelayHostMicrosoftDriveUploadError =
+  RelayHostMicrosoftDriveUploadErrors[keyof RelayHostMicrosoftDriveUploadErrors];
+
+export type RelayHostMicrosoftDriveUploadResponses = {
+  /**
+   * Progress or the saved file.
+   */
+  200: Microsoft365DriveUploadProgress;
+};
+
+export type RelayHostMicrosoftDriveUploadResponse =
+  RelayHostMicrosoftDriveUploadResponses[keyof RelayHostMicrosoftDriveUploadResponses];
+
 export type SendMicrosoft365MailDraftData = {
   body: Microsoft365MailSendBody;
   path: {
@@ -30007,7 +31122,12 @@ export type GetV1CapabilitiesMicrosoft365DriveFileByItemIdData = {
      */
     itemId: string;
   };
-  query?: never;
+  query?: {
+    /**
+     * The file's driveId from a search, folder or link result. Omit for the member's own OneDrive.
+     */
+    driveId?: string;
+  };
   url: "/v1/capabilities/microsoft-365/drive-file/{itemId}";
 };
 
@@ -30260,13 +31380,17 @@ export type GetV1CapabilitiesMicrosoft365DriveFilesData = {
   path?: never;
   query: {
     /**
-     * Text to search in OneDrive file names and content.
+     * Text to search in file names and content.
      */
     query: string;
     /**
      * Maximum files to return, capped at 25.
      */
     maxResults?: number;
+    /**
+     * nextPageToken from the previous page of the same search.
+     */
+    pageToken?: string;
   };
   url: "/v1/capabilities/microsoft-365/drive-files";
 };
@@ -30291,7 +31415,7 @@ export type GetV1CapabilitiesMicrosoft365DriveFilesError =
 
 export type GetV1CapabilitiesMicrosoft365DriveFilesResponses = {
   /**
-   * OneDrive files returned.
+   * Files returned.
    */
   200: Microsoft365DriveFilesResponse;
 };

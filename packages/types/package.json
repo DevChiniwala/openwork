@@ -21,6 +21,15 @@
       "bun": "./src/google-drive-upload.ts",
       "default": "./dist/google-drive-upload.js"
     },
+    "./microsoft-drive-transfer": {
+      "types": {
+        "openwork-build": "./dist/types/src/microsoft-drive-transfer.d.ts",
+        "default": "./src/microsoft-drive-transfer.ts"
+      },
+      "development": "./src/microsoft-drive-transfer.ts",
+      "bun": "./src/microsoft-drive-transfer.ts",
+      "default": "./dist/microsoft-drive-transfer.js"
+    },
     "./den/managed-deployments": {
       "types": {
         "openwork-build": "./dist/types/src/den/managed-deployments.d.ts",
