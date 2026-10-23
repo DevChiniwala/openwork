@@ -1510,7 +1510,9 @@ async function forwardOpencodeV2Request(input: {
       isRecord(entry) && entry.name === "openwork-cloud" && isRecord(entry.status) && entry.status.status === "connected");
     // Keep organization skill discovery on demand through Connect. The full
     // catalog can exceed the engine's instruction-entry request limit.
-    const value = buildOpenWorkV2Instructions(connectReady);
+    // The organization's Prompts arrive with the cloud provider sync.
+    const organizationPrompts = (await readGlobalRuntimeOpencodeConfig(input.config)).managedPrompt;
+    const value = buildOpenWorkV2Instructions(connectReady, organizationPrompts);
     const instructionUrl = new URL(target);
     instructionUrl.pathname = `/api/experimental/session/${encodeURIComponent(sessionId)}/instructions/entries/${OPENWORK_V2_INSTRUCTION_KEY}`;
     const synced = await engineFetch(instructionUrl.toString(), {

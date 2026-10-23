@@ -4,6 +4,7 @@ import { delegatedRoute } from "../../middleware/index.js"
 import { registerOrgActivityRoutes } from "./activity.js"
 import { registerOrgAgentPermissionRoutes } from "./agent-permissions.js"
 import { registerOrgDefaultModelRoutes } from "./default-model.js"
+import { registerOrgPromptRoutes } from "./prompts.js"
 import { registerOrgApiKeyRoutes } from "./api-keys.js"
 import { registerManagedDeploymentRoutes } from "./managed-deployments.js"
 import { registerOrgAuditRoutes } from "./audit.js"
@@ -111,6 +112,7 @@ export function registerOrgRoutes<T extends { Variables: OrgRouteVariables & Req
   registerOrgWorkbotSettingsRoutes(app)
   registerOrgWorkbotReadinessRoutes(app)
   registerOrgDefaultModelRoutes(app)
+  registerOrgPromptRoutes(app)
 
   app.all("/v1/orgs/:orgId/*", delegatedRoute, async (c) => {
     const url = new URL(c.req.raw.url)

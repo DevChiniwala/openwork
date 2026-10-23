@@ -130,6 +130,12 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   member("GET", "/v1/org/default-model/options", "tenant_read", "default_model.options.list", "organization.settings", "organization", null, { notes: "Reads the organization's OpenWork Models, AI Gateway and provider model catalogs; no write." }),
   member("PUT", "/v1/org/default-model/everyone", "tenant_change", "default_model.everyone.update", "organization.settings", "organization", null, { notes: "Sets or clears org_default_model for everyone (the model new OpenCode v2 desktop chats start with)." }),
   member("PUT", "/v1/org/default-model/teams/:teamId", "tenant_change", "default_model.team.update", "organization.settings", "team", "teamId", { notes: "Sets or clears one team's org_default_model override; null returns the team to the organization default." }),
+  member("GET", "/v1/org/prompts", "tenant_read", "prompt.list", "prompt.management", "organization", null),
+  member("PUT", "/v1/org/prompts/everyone", "tenant_change", "prompt.everyone.update", "prompt.management", "organization", null, { notes: "Creates or updates the org_prompt assigned to everyone (org_prompt_access org_wide); prompt text is not recorded." }),
+  member("DELETE", "/v1/org/prompts/everyone", "tenant_change", "prompt.everyone.delete", "prompt.management", "organization", null, { notes: "Deletes the org_prompt assigned to everyone and its assignments." }),
+  member("PUT", "/v1/org/prompts/teams/:teamId", "tenant_change", "prompt.team.update", "prompt.management", "team", "teamId", { notes: "Creates or updates the team's org_prompt and its org_prompt_access row; prompt text is not recorded." }),
+  member("DELETE", "/v1/org/prompts/teams/:teamId", "tenant_change", "prompt.team.delete", "prompt.management", "team", "teamId", { notes: "Deletes the team's org_prompt and its assignments." }),
+  member("GET", "/v1/me/prompts", "tenant_read", "prompt.effective.read", "prompt.management", "organization", null),
 
   // SCIM management
   member("GET", "/v1/scim", "tenant_read", "scim.connection.read", "scim.configuration", "scim_connection", null),

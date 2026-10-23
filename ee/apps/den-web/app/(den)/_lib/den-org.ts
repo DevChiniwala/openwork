@@ -134,6 +134,10 @@ export type DenOrgAccessFlags = {
   canViewAgentPermissions: boolean;
   /** `agent_permissions.manage`: change what agents can do on members' computers. */
   canManageAgentPermissions: boolean;
+  /** `prompts.view`: see the system prompts that steer members' agents. */
+  canViewPrompts: boolean;
+  /** `prompts.manage`: change the system prompts that steer members' agents. */
+  canManagePrompts: boolean;
   /** `api_keys.view` */
   canViewApiKeys: boolean;
   /** `api_keys.manage` */
@@ -597,6 +601,8 @@ export function getOrgAccessFlags(roleValue: string, isOwner: boolean, permissio
     canManagePermissions: can("permissions.manage"),
     canViewAgentPermissions: can("agent_permissions.view"),
     canManageAgentPermissions: can("agent_permissions.manage"),
+    canViewPrompts: can("prompts.view"),
+    canManagePrompts: can("prompts.manage"),
     canViewApiKeys: can("api_keys.view"),
     canManageApiKeys: can("api_keys.manage"),
     canViewScim: can("scim.view"),

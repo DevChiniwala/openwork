@@ -106,6 +106,10 @@ import type {
   DeleteV1MembersByMemberIdResponses,
   DeleteV1MemoryByIdErrors,
   DeleteV1OrgErrors,
+  DeleteV1OrgPromptsEveryoneErrors,
+  DeleteV1OrgPromptsEveryoneResponses,
+  DeleteV1OrgPromptsTeamsByTeamIdErrors,
+  DeleteV1OrgPromptsTeamsByTeamIdResponses,
   DeleteV1OrgResponses,
   DeleteV1OrgWebOriginsByWebOriginIdErrors,
   DeleteV1OrgWebOriginsByWebOriginIdResponses,
@@ -482,6 +486,8 @@ import type {
   GetV1MeOrgsResponses,
   GetV1MePluginAccessErrors,
   GetV1MePluginAccessResponses,
+  GetV1MePromptsErrors,
+  GetV1MePromptsResponses,
   GetV1MeResponses,
   GetV1OauthProvidersByProviderIdApiCheckErrors,
   GetV1OauthProvidersByProviderIdApiCheckResponses,
@@ -504,6 +510,8 @@ import type {
   GetV1OrgErrors,
   GetV1OrgInventoryRevisionErrors,
   GetV1OrgInventoryRevisionResponses,
+  GetV1OrgPromptsErrors,
+  GetV1OrgPromptsResponses,
   GetV1OrgResponses,
   GetV1OrgServiceReadinessErrors,
   GetV1OrgServiceReadinessResponses,
@@ -632,6 +640,7 @@ import type {
   OpenGoogleDriveOfficeEditorErrors,
   OpenGoogleDriveOfficeEditorResponses,
   OrganizationWebOriginApproveBody,
+  OrgPromptWrite,
   PatchApiAuthScimV2GroupsByGroupIdErrors,
   PatchApiAuthScimV2GroupsByGroupIdResponses,
   PatchApiAuthScimV2UsersByUserIdErrors,
@@ -1051,6 +1060,10 @@ import type {
   PutV1OrgDefaultModelEveryoneResponses,
   PutV1OrgDefaultModelTeamsByTeamIdErrors,
   PutV1OrgDefaultModelTeamsByTeamIdResponses,
+  PutV1OrgPromptsEveryoneErrors,
+  PutV1OrgPromptsEveryoneResponses,
+  PutV1OrgPromptsTeamsByTeamIdErrors,
+  PutV1OrgPromptsTeamsByTeamIdResponses,
   PutV1OrgWorkbotSettingsErrors,
   PutV1OrgWorkbotSettingsResponses,
   PutV1PermissionsSetsByPermissionSetIdPermissionsErrors,
@@ -1326,6 +1339,7 @@ export class DenClient extends HeyApiClient {
         connectStandardTools?: boolean | null;
         teamPlan?: boolean | null;
         selfServeEnterprise?: boolean | null;
+        orgPrompts?: boolean | null;
       };
     },
     options?: Options<never, ThrowOnError>,
@@ -3267,6 +3281,18 @@ export class DenClient extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    });
+  }
+
+  /**
+   * Get current user's prompts
+   *
+   * Returns the system prompts that apply to the caller in their active organization, in the order desktops append them to OpenWork's instructions: prompts for everyone, then each of the caller's teams' prompts by team name, then prompts assigned to the caller. Desktops read it with their provider sync. Requires the Prompts feature; answers 404 while it is off, and desktops then add no prompts.
+   */
+  public getV1MePrompts<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GetV1MePromptsResponses, GetV1MePromptsErrors, ThrowOnError>({
+      url: "/v1/me/prompts",
+      ...options,
     });
   }
 
@@ -16930,6 +16956,121 @@ export class DenClient extends HeyApiClient {
       ThrowOnError
     >({
       url: "/v1/org/default-model/teams/{teamId}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Get prompts
+   *
+   * Returns the organization's system prompts: the prompt for everyone (null for none) and each team's own prompt (null for none), teams by name. Desktops append the prompts that apply to a member to every agent's instructions, Everyone's first, then each team's by team name. Requires the View prompts permission and the Prompts feature.
+   */
+  public getV1OrgPrompts<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GetV1OrgPromptsResponses, GetV1OrgPromptsErrors, ThrowOnError>({
+      url: "/v1/org/prompts",
+      ...options,
+    });
+  }
+
+  /**
+   * Remove the prompt for everyone
+   *
+   * Removes the system prompt for everyone; teams' prompts are kept. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public deleteV1OrgPromptsEveryone<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).delete<
+      DeleteV1OrgPromptsEveryoneResponses,
+      DeleteV1OrgPromptsEveryoneErrors,
+      ThrowOnError
+    >({ url: "/v1/org/prompts/everyone", ...options });
+  }
+
+  /**
+   * Set the prompt for everyone
+   *
+   * Sets the system prompt every member's agents follow. The first save creates the prompt and assigns it to everyone. Desktops pick it up at their next provider sync. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public putV1OrgPromptsEveryone<ThrowOnError extends boolean = false>(
+    parameters: {
+      orgPromptWrite: OrgPromptWrite;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "orgPromptWrite", map: "body" }] }]);
+    return (options?.client ?? this.client).put<
+      PutV1OrgPromptsEveryoneResponses,
+      PutV1OrgPromptsEveryoneErrors,
+      ThrowOnError
+    >({
+      url: "/v1/org/prompts/everyone",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    });
+  }
+
+  /**
+   * Remove a team's prompt
+   *
+   * Removes one team's system prompt; the prompt for everyone still applies. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public deleteV1OrgPromptsTeamsByTeamId<ThrowOnError extends boolean = false>(
+    parameters: {
+      teamId: string;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "teamId" }] }]);
+    return (options?.client ?? this.client).delete<
+      DeleteV1OrgPromptsTeamsByTeamIdResponses,
+      DeleteV1OrgPromptsTeamsByTeamIdErrors,
+      ThrowOnError
+    >({
+      url: "/v1/org/prompts/teams/{teamId}",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Set a team's prompt
+   *
+   * Sets the system prompt one team's members' agents follow, after the prompt for everyone. The first save creates the prompt and assigns it to the team. Requires the Manage prompts permission, a recent sign-in and the Prompts feature.
+   */
+  public putV1OrgPromptsTeamsByTeamId<ThrowOnError extends boolean = false>(
+    parameters: {
+      teamId: string;
+      orgPromptWrite: OrgPromptWrite;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "teamId" },
+            { key: "orgPromptWrite", map: "body" },
+          ],
+        },
+      ],
+    );
+    return (options?.client ?? this.client).put<
+      PutV1OrgPromptsTeamsByTeamIdResponses,
+      PutV1OrgPromptsTeamsByTeamIdErrors,
+      ThrowOnError
+    >({
+      url: "/v1/org/prompts/teams/{teamId}",
       ...options,
       ...params,
       headers: {

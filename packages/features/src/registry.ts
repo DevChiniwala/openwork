@@ -232,6 +232,13 @@ export const FEATURES = defineFeatures({
     deployments: ["cloud"],
     default: false,
   },
+  orgPrompts: {
+    label: "Prompts",
+    description: "Admins write a system prompt for everyone and for each team on the team's Prompts tab. Desktops add the prompts that apply to a member to every agent's instructions: Everyone's first, then each team's by team name. Turning this off stops desktops adding them at their next sync; saved prompts are kept.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES

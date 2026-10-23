@@ -302,6 +302,14 @@
       "development": "./src/den/default-model.ts",
       "default": "./src/den/default-model.ts"
     },
+    "./den/prompts": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/prompts.d.ts",
+        "default": "./src/den/prompts.ts"
+      },
+      "development": "./src/den/prompts.ts",
+      "default": "./src/den/prompts.ts"
+    },
     "./den/credential-prompt": {
       "types": {
         "openwork-build": "./dist/types/src/den/credential-prompt.d.ts",

@@ -132,6 +132,8 @@ export const idTypesMapNameToPrefix = {
   headlessResumeGrant: "hrsg",
   desktopStartupReport: "dsr",
   accountFollowUpAction: "afa",
+  orgPrompt: "osp",
+  orgPromptAccess: "ospa",
 } as const
 
 export const denTypeIdPrefixes = idTypesMapNameToPrefix

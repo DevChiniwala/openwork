@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { GatewayAuthorizationRequest, GatewayDesktopOauthStartResponse, GatewayUsableModel } from "@openwork/types/den/gateway";
 import { CLOUD_MODEL_CONFIG_VERSION } from "@openwork/types/cloud-model-fast";
+import { composeMemberPromptText, memberPromptsSchema } from "@openwork/types/den/prompts";
 
 import { enginePoolForConfig, rolloverOutcomeApplied, type RolloverOutcome } from "./engine-pool.js";
 import type { EnvService } from "./env-file.js";
@@ -20,6 +21,7 @@ import {
   readRuntimeOpencodeConfig,
   runtimeProviderMap,
   writeGlobalRuntimeOpencodeConfig,
+  writeManagedPrompt,
   writeRuntimeOpencodeConfig,
 } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
@@ -100,6 +102,8 @@ export type CloudProviderSyncSkippedProvider = {
 
 export type CloudProviderSyncRunDetail = {
   fingerprintChanged: boolean;
+  /** The organization's Prompts text for this member changed. Additive. */
+  promptChanged?: boolean;
   providerStateChanged: boolean;
   envUpserts: number;
   envDeletes: number;
@@ -579,6 +583,33 @@ async function fetchProviders(
     liveProviderSync ? Promise.resolve([]) : fetchInferenceProviders(fetchImpl, session, signal),
   ]);
   return { llmProviders, inferenceProviders };
+}
+
+/**
+ * The organization's Prompts for this member, joined in Den's order, from
+ * GET /v1/me/prompts. "" when there are none, when Prompts is off for the
+ * organization, or when Den is too old to serve them (404): desktops then add
+ * nothing. null when they could not be read, so the last known text stays.
+ */
+async function fetchOrganizationPrompts(
+  fetchImpl: typeof globalThis.fetch,
+  session: CloudProviderDenSession,
+  signal: AbortSignal,
+  logger?: CloudProviderSyncLogger,
+): Promise<string | null> {
+  try {
+    const payload = await requestJson(fetchImpl, session, "/v1/me/prompts", signal, { allowUnavailableResource: true });
+    if (payload === undefined) return "";
+    const parsed = memberPromptsSchema.safeParse(payload);
+    if (!parsed.success) throw new Error("den_prompts_invalid_response");
+    return composeMemberPromptText(parsed.data.prompts);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    logger?.warn("organization prompts could not be read; keeping the last known prompts", {
+      message: error instanceof Error ? error.message : "den_prompts_failed",
+    });
+    return null;
+  }
 }
 
 function stableValue(value: unknown): unknown {
@@ -1211,9 +1242,10 @@ export class CloudProviderSync {
       if (request.generation !== this.contextGeneration) return { status: "no_session" };
       const liveProviderSync = await this.liveProviderSync?.() ?? false;
       if (request.generation !== this.contextGeneration) return { status: "no_session" };
-      const [{ llmProviders, inferenceProviders }, storedEnv] = await Promise.all([
+      const [{ llmProviders, inferenceProviders }, storedEnv, organizationPrompts] = await Promise.all([
         fetchProviders(this.fetchImpl, session, this.providerFetchController.signal, liveProviderSync),
         this.env.list(),
+        fetchOrganizationPrompts(this.fetchImpl, session, this.providerFetchController.signal, this.logger),
       ]);
       if (request.generation !== this.contextGeneration) return { status: "no_session" };
       if (inferenceProviders === undefined && hadGatewayProviders && matchesMaterializationContext) {
@@ -1228,7 +1260,7 @@ export class CloudProviderSync {
       // Ownership follows the apply that can write, not a pending session.
       // Retain it through suspension, including a partially completed apply.
       this.materializationContextKey = request.contextKey;
-      const { changed, detail, reloadError } = await this.apply(prepared, liveProviderSync);
+      const { changed, detail, reloadError } = await this.apply(prepared, liveProviderSync, organizationPrompts);
       if (request.generation !== this.contextGeneration) return { status: "no_session" };
       // The materialization itself succeeded (config + env writes landed), so
       // record it even when the engine reload failed: hiding the providers
@@ -1257,6 +1289,7 @@ export class CloudProviderSync {
   private async apply(
     prepared: PreparedMaterialization,
     liveProviderSync = false,
+    organizationPrompts: string | null = null,
   ): Promise<{ changed: boolean; detail: CloudProviderSyncRunDetail; reloadError?: unknown }> {
     const contextHash = this.materializationContextKey === null ? null : hashString(this.materializationContextKey);
     const desiredProviders = desiredProviderMap(prepared);
@@ -1329,6 +1362,11 @@ export class CloudProviderSync {
       this.ownedEnvKeys.delete(key);
     }
 
+    // The organization's Prompts ride the same pass: v1 engines read them from
+    // the runtime config file (the reload below), v2 sets them before each prompt.
+    const promptChanged = organizationPrompts === null
+      ? false
+      : (await writeManagedPrompt(this.config, organizationPrompts)).changed;
     const workspaceCleanup = await this.cleanupWorkspaceTakeovers();
     const engineAvailable = this.engineAvailable();
     const runtimeFileChanged = engineAvailable
@@ -1363,6 +1401,7 @@ export class CloudProviderSync {
     this.reloadPending = this.reloadPending
       || templateBindingsChanged
       || providerStateChanged
+      || promptChanged
       || workspaceCleanup.runtimeChanged
       || runtimeFileChanged
       || authChanged;
@@ -1404,6 +1443,7 @@ export class CloudProviderSync {
     await this.persistOwnership();
     const detail: CloudProviderSyncRunDetail = {
       fingerprintChanged: this.fingerprint !== prepared.fingerprint,
+      promptChanged,
       providerStateChanged,
       envUpserts: envUpserts.length,
       envDeletes: envDeletes.length,
@@ -1413,6 +1453,7 @@ export class CloudProviderSync {
       reloadDeferred,
     };
     const changed = detail.fingerprintChanged
+      || promptChanged
       || templateBindingsChanged
       || providerStateChanged
       || envUpserts.length > 0
@@ -1490,6 +1531,9 @@ export class CloudProviderSync {
       }));
       providerChanged = result.changed;
     }
+    // Signing out or switching organization drops the previous organization's Prompts.
+    const promptCleared = (await writeManagedPrompt(this.config, "")).changed;
+    providerChanged = providerChanged || promptCleared;
     const storedEnv = new Map((await this.env.list()).map((entry) => [entry.key, entry.value]));
     for (const [key, hash] of this.ownedEnvKeys) {
       const value = storedEnv.get(key);
