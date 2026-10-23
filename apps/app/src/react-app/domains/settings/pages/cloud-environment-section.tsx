@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Lock } from "lucide-react";
 
@@ -40,21 +40,32 @@ export function useCloudEnvironment(client: OpenworkServerClient | null, runtime
     queryFn: async (): Promise<OpenworkCloudEnvironmentStatus | null> => {
       if (!client) return null;
       try {
-        // Opening settings asks Den now rather than waiting for the next
-        // background sync, so a change an admin just made shows right away.
-        return await client.syncCloudEnvironment();
+        return await client.getCloudEnvironment();
       } catch {
-        try {
-          return await client.getCloudEnvironment();
-        } catch {
-          // An older server has no organization variables.
-          return null;
-        }
+        // An older server has no organization variables.
+        return null;
       }
     },
     enabled: client !== null,
     staleTime: 30_000,
   });
+}
+
+/**
+ * Opening settings asks Den now rather than waiting for the next background
+ * sync, so a variable an admin just deployed shows up. The last known list
+ * stays on screen meanwhile (P11).
+ */
+function useRefreshCloudEnvironmentOnOpen(client: OpenworkServerClient | null, runtimeKey?: string | null) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!client) return;
+    let cancelled = false;
+    void client.syncCloudEnvironment().then((next) => {
+      if (!cancelled) queryClient.setQueryData(cloudEnvironmentQueryKey(runtimeKey), next);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [client, queryClient, runtimeKey]);
 }
 
 /** Where an admin-provisioned value comes from, as the person sees it. */
@@ -248,6 +259,7 @@ export function CloudEnvironmentSection(props: {
   const { activeOrgName } = useCloudSession();
   const queryClient = useQueryClient();
   const { data } = useCloudEnvironment(props.client, props.runtimeKey);
+  useRefreshCloudEnvironmentOnOpen(props.client, props.runtimeKey);
   const [editing, setEditing] = useState<OpenworkCloudEnvironmentVariable | null>(null);
   const [clearing, setClearing] = useState<string | null>(null);
 
