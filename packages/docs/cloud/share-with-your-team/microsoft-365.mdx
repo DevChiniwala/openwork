@@ -10,11 +10,12 @@ permissions.
 
 ## Before you start
 
-You need administrator access in OpenWork and permission to manage an app
-registration in your company's Microsoft Entra tenant. Organization-wide
-consent also requires an authorized Entra administrator, such as a Cloud
-Application Administrator or Global Administrator. Azure subscription Owner
-access alone does not grant that authority.
+You need the **Manage OAuth apps** permission in OpenWork (included for
+organization owners and admins) and permission to manage an app registration
+in your company's Microsoft Entra tenant. Organization-wide consent also
+requires an authorized Entra administrator, such as a Cloud Application
+Administrator or Application Administrator for the delegated permissions used
+here. Azure subscription Owner access alone does not grant that authority.
 
 Use your existing company tenant and sign-in configuration. Connecting
 Microsoft 365 does not require changing your domain federation or SSO setup.
@@ -39,8 +40,11 @@ your company directory, and go to **Entra ID › App registrations › All
 applications**. Select your existing OpenWork Microsoft 365 app.
 
 For a new setup, choose **New registration**, name it **OpenWork Microsoft 365
-Connector**, and select **Accounts in this organizational directory only**.
-Add the OpenWork callback as a **Web** redirect URI.
+Connector**, and select the single-tenant account type (**Single tenant only**
+or **Accounts in this organizational directory only**, depending on the portal).
+Register the app, then open **Authentication › Add a platform › Web** and add
+the exact callback copied from OpenWork. If registration already offered a
+redirect URI field, you can set the **Web** callback there instead.
 
 <Frame caption="Microsoft's example registration form. Use your own tenant and the callback shown by OpenWork.">
   ![Microsoft Entra application registration form showing the application name, account types, and redirect URI](https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-create-service-principal-portal/create-app.png)
@@ -80,6 +84,14 @@ so you can replace it before it expires. Microsoft's
 [credential guide](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials)
 explains the available credential options and secret lifetimes.
 
+<Note>
+OpenWork's Microsoft 365 connector currently accepts a client secret, not a
+certificate or federated credential. Microsoft recommends certificate or
+federated credentials rather than secrets for production applications. If your
+organization prohibits client secrets, this setup does not meet that policy;
+consult your security administrator before proceeding.
+</Note>
+
 ## 4. Choose what your agent can do
 
 Under **What your AI can do**, enable the capabilities your organization needs
@@ -106,6 +118,40 @@ consent for the organization (step 5) before members can connect with them.
 Review Microsoft's permission descriptions before consenting. They can cover
 more than one OpenWork action.
 
+### Microsoft Graph permissions
+
+OpenWork requests **delegated permissions**, not **application permissions**.
+The enabled choices determine the scopes requested during sign-in:
+
+| OpenWork choice | Microsoft Graph delegated permission |
+| --- | --- |
+| Read Outlook mail | `Mail.Read` |
+| Create and manage email drafts; manage read status, categories, and mailbox folders | `Mail.ReadWrite` |
+| Send Outlook email | `Mail.Send` |
+| Read Outlook calendar | `Calendars.Read` |
+| Create and manage calendar events | `Calendars.ReadWrite` |
+| Read OneDrive files | `Files.Read` |
+| Create and update OneDrive files | `Files.ReadWrite` |
+| Read all files the member can access | `Files.Read.All` |
+| Full access to files the member can access | `Files.ReadWrite.All` |
+| Find SharePoint sites and libraries | `Sites.Read.All` |
+| Read Teams chats | `Chat.Read` |
+| Send Teams chat messages | `Chat.Read` and `ChatMessage.Send` |
+
+Sign-in also requests `openid`, `profile`, `email`, `offline_access`, and
+`User.Read` to identify the member and renew their connection. If you configure
+permissions manually in Entra, use **API permissions › Add a permission ›
+Microsoft Graph › Delegated permissions**. Add only the permissions needed for
+your enabled choices; do not substitute application permissions.
+
+### Change permissions for an existing connection
+
+Saving permissions does not add new Microsoft grants to existing member
+connections. If a new choice needs access their account has not already
+granted, grant any required admin consent and ask affected members to sign in
+again. OpenWork may show **Reconnect** for those accounts. An existing broader
+grant can already cover the new choice, so not every change requires sign-in.
+
 ## 5. Grant admin consent
 
 An authorized Entra administrator chooses **Sign in** on the OpenWork
@@ -131,10 +177,13 @@ calendar, file, or chat access. See Microsoft's
 
 ## 6. Connect and test a member account
 
-Each person opens **Your Connections › Microsoft 365 › Connect** in OpenWork
-Cloud, selects their company account, and completes sign-in. In the desktop
-app, use **Settings › Library**, choose the **Connectors** filter, and select
-**Sign in** for Microsoft 365.
+Each person opens **My Library › Microsoft 365 › Sign in** in OpenWork Cloud,
+selects their company account, and completes sign-in. In the desktop app, open
+**Library** from the main sidebar (or **Settings › Library**), choose the
+**Connectors** filter, and select **Sign in** for Microsoft 365.
+
+If Microsoft 365 is missing from their Library, an OpenWork administrator
+should check that the connector is set up and the member has access.
 
 Confirm the account shows as connected, then try a read-only request for an
 enabled service:
@@ -153,6 +202,7 @@ their own Microsoft 365 license, provisioning, and enabled permissions.
 | Wrong directory or account rejected | Match OpenWork's tenant ID and client ID to the app's Overview page. Use a work account in that tenant. |
 | Need admin approval | An authorized Entra administrator must approve the requested permissions. If their role is eligible through PIM, activate it first. |
 | Redirect URI mismatch | Register the exact callback displayed by OpenWork under the **Web** platform. |
+| New permissions still ask for access | Save the enabled choices, grant any required admin consent, and have the affected member sign in again. Saving settings alone does not update their existing grant. |
 | Connected, but a service call fails | Check enabled features, consent, and the member's mailbox, OneDrive, or Teams provisioning and license. |
 
 ## Replace an expiring secret
@@ -161,4 +211,11 @@ Create another secret in the same app and save its Value through **Replace
 credentials** in OpenWork. Test a fresh connection before retiring the old
 secret, and check whether another service still uses it.
 
-Routine secret replacement keeps the same client ID and tenant ID.
+Routine secret replacement keeps the same client ID and tenant ID. Replacing
+only the secret does not itself disconnect existing member accounts.
+
+<Warning>
+Changing the client ID or tenant ID disconnects existing member accounts for
+that connector. Treat switching apps or tenants as a migration: review the new
+app's permissions and consent, and plan for members to sign in again.
+</Warning>
