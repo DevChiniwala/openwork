@@ -1378,6 +1378,7 @@ export class DenClient extends HeyApiClient {
         remoteComputers?: boolean | null;
         remoteSessionSubagents?: boolean | null;
         desktopSignInReturn?: boolean | null;
+        claudeHistoryImport?: boolean | null;
         activationChecklist?: boolean | null;
         connectStandardTools?: boolean | null;
         teamPlan?: boolean | null;

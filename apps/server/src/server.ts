@@ -109,6 +109,7 @@ import { registerOperationRoutes } from "./routes/operations.js";
 import { addRoute, matchRoute, type AuthMode, type RequestContext, type Route } from "./routes/registry.js";
 import { registerSessionGroupRoutes } from "./routes/session-groups.js";
 import { registerWorkspaceDefaultModelRoutes } from "./routes/workspace-default-model.js";
+import { createNativeClaudeImportEngine, registerClaudeImportRoutes } from "./routes/claude-import.js";
 import { registerUiControlRoutes } from "./routes/ui-control.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 import { registerCloudMcpRoutes } from "./routes/cloud-mcp.js";
@@ -2853,6 +2854,17 @@ function createRoutes(
   registerWorkspaceDefaultModelRoutes({
     routes,
     config,
+    jsonResponse,
+    readJsonBody,
+    ensureWritable,
+    requireClientScope,
+    resolveWorkspaceWithoutBootstrap,
+  });
+
+  registerClaudeImportRoutes({
+    routes,
+    config,
+    engineForWorkspace: () => createNativeClaudeImportEngine(engineV2Preview),
     jsonResponse,
     readJsonBody,
     ensureWritable,

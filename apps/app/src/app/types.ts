@@ -200,6 +200,7 @@ export const SETTINGS_TAB_VALUES = [
   "extensions",
   "environment",
   "advanced",
+  "import",
   "appearance",
   "shortcuts",
   "updates",

@@ -4879,6 +4879,7 @@
               "remoteComputers",
               "remoteSessionSubagents",
               "desktopSignInReturn",
+              "claudeHistoryImport",
               "activationChecklist",
               "connectStandardTools",
               "teamPlan",
@@ -5131,6 +5132,9 @@
                     "desktopSignInReturn": {
                       "type": "boolean"
                     },
+                    "claudeHistoryImport": {
+                      "type": "boolean"
+                    },
                     "activationChecklist": {
                       "type": "boolean"
                     },
@@ -5181,6 +5185,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "claudeHistoryImport",
                     "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
@@ -6561,6 +6566,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "claudeHistoryImport": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "activationChecklist": {
                       "type": "object",
                       "properties": {
@@ -6929,6 +6991,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "claudeHistoryImport",
                     "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
@@ -7376,6 +7439,9 @@
                     "desktopSignInReturn": {
                       "type": "boolean"
                     },
+                    "claudeHistoryImport": {
+                      "type": "boolean"
+                    },
                     "activationChecklist": {
                       "type": "boolean"
                     },
@@ -7426,6 +7492,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "claudeHistoryImport",
                     "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
@@ -8806,6 +8873,63 @@
                         "overrideApplies"
                       ]
                     },
+                    "claudeHistoryImport": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "member",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "activationChecklist": {
                       "type": "object",
                       "properties": {
@@ -9174,6 +9298,7 @@
                     "remoteComputers",
                     "remoteSessionSubagents",
                     "desktopSignInReturn",
+                    "claudeHistoryImport",
                     "activationChecklist",
                     "connectStandardTools",
                     "teamPlan",
@@ -36765,6 +36890,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "claudeHistoryImport": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "activationChecklist": {
                           "type": "object",
                           "properties": {
@@ -37133,6 +37315,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "claudeHistoryImport",
                         "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
@@ -38603,6 +38786,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "claudeHistoryImport": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "activationChecklist": {
                           "type": "object",
                           "properties": {
@@ -38971,6 +39211,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "claudeHistoryImport",
                         "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
@@ -39269,6 +39510,16 @@
                         ]
                       },
                       "desktopSignInReturn": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "claudeHistoryImport": {
                         "anyOf": [
                           {
                             "type": "boolean"
@@ -43950,6 +44201,9 @@
                         "desktopSignInReturn": {
                           "type": "boolean"
                         },
+                        "claudeHistoryImport": {
+                          "type": "boolean"
+                        },
                         "activationChecklist": {
                           "type": "boolean"
                         },
@@ -44000,6 +44254,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "claudeHistoryImport",
                         "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
@@ -45380,6 +45635,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "claudeHistoryImport": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "activationChecklist": {
                           "type": "object",
                           "properties": {
@@ -45748,6 +46060,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "claudeHistoryImport",
                         "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
@@ -45944,6 +46257,9 @@
                         "desktopSignInReturn": {
                           "type": "boolean"
                         },
+                        "claudeHistoryImport": {
+                          "type": "boolean"
+                        },
                         "activationChecklist": {
                           "type": "boolean"
                         },
@@ -45994,6 +46310,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "claudeHistoryImport",
                         "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",
@@ -47374,6 +47691,63 @@
                             "overrideApplies"
                           ]
                         },
+                        "claudeHistoryImport": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "member",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "activationChecklist": {
                           "type": "object",
                           "properties": {
@@ -47742,6 +48116,7 @@
                         "remoteComputers",
                         "remoteSessionSubagents",
                         "desktopSignInReturn",
+                        "claudeHistoryImport",
                         "activationChecklist",
                         "connectStandardTools",
                         "teamPlan",

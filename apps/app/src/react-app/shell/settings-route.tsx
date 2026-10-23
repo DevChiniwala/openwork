@@ -97,6 +97,8 @@ import { AuthorizedFoldersPanel } from "@/react-app/domains/settings/panels/auth
 import { EffectivePermissionsPanel } from "@/react-app/domains/settings/panels/effective-permissions-panel";
 import { SettingsStack } from "@/react-app/domains/settings/settings-section";
 import { AdvancedView } from "@/react-app/domains/settings/pages/advanced-view";
+import { ClaudeImportView } from "@/react-app/domains/settings/pages/claude-import-view";
+import { useDesktopFeature } from "@/react-app/domains/session/status/use-desktop-feature";
 import { AppearanceView } from "@/react-app/domains/settings/pages/appearance-view";
 import { KeyboardShortcutsView } from "@/react-app/domains/settings/pages/keyboard-shortcuts-view";
 import { CloudAccountView } from "@/react-app/domains/settings/pages/cloud-account-view";
@@ -303,6 +305,7 @@ export function parseSettingsPath(pathname: string): {
     case "environment":
     case "updates":
     case "debug":
+    case "import":
       return { tab: head, redirectPath: null };
     case "advanced":
       return { tab: "advanced", redirectPath: null, advancedSection: tail };
@@ -448,6 +451,7 @@ export type SettingsSurfaceProps = {
 
 function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const navigate = useNavigate();
+  const claudeImportEnabled = useDesktopFeature("claudeHistoryImport");
   const toggleSidebar = useUiStateStore((state) => state.toggleSidebar);
   const location = useLocation();
   const params = useParams<{ workspaceId?: string }>();
@@ -2427,6 +2431,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             serverSync={providerAuthSnapshot.cloudProviderServerSync}
           />
         );
+      case "import":
+        return claudeImportEnabled ? (
+          <SettingsStack>
+            <ClaudeImportView
+              key={runtimeWorkspaceId ?? selectedWorkspaceId}
+              client={openworkClient}
+              workspaceId={runtimeWorkspaceId ?? selectedWorkspaceId}
+              onOpenSession={(sessionId) => navigate(workspaceSessionRoute(selectedWorkspaceId, sessionId))}
+            />
+          </SettingsStack>
+        ) : null;
       case "advanced":
         return (
           <SettingsStack>

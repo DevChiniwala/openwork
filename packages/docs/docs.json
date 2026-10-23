@@ -45,7 +45,13 @@
           "start-here/downloads",
           "start-here/use-openwork-from-an-ai-agent",
           "start-here/pricing-and-licensing",
-          "start-here/migrate-from-claude-cowork",
+          {
+            "group": "Move from Claude",
+            "pages": [
+              "start-here/migrate-from-claude-cowork",
+              "start-here/import-claude-history"
+            ]
+          },
           "start-here/stewardship",
           {
             "group": "Help improve OpenWork",

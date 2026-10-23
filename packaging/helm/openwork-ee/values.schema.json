@@ -301,6 +301,16 @@
               ],
               "description": "Desktop: sign-in returns you to the same task: Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact. Renders DEN_FEATURE_DESKTOP_SIGN_IN_RETURN."
             },
+            "claudeHistoryImport": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Desktop: import Claude conversations: Settings has an Import page that brings conversations from a Claude data export and Claude Code sessions saved on this computer into the workspace as regular OpenWork chats. Renders DEN_FEATURE_CLAUDE_HISTORY_IMPORT."
+            },
             "activationChecklist": {
               "enum": [
                 "",

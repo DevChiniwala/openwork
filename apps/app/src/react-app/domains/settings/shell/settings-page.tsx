@@ -9,6 +9,7 @@ import {
   Cog,
   FolderLock,
   Gauge,
+  HardDriveDownload,
   Keyboard,
   Paintbrush,
   Puzzle,
@@ -61,6 +62,7 @@ import {
   SettingsPanelToolbarStatus,
 } from "./panel";
 import { SidebarDestination } from "../../session/sidebar/sidebar-destination";
+import { useDesktopFeature } from "../../session/status/use-desktop-feature";
 
 export function getSettingsTabIcon(tab: SettingsTab) {
   switch (tab) {
@@ -88,6 +90,8 @@ export function getSettingsTabIcon(tab: SettingsTab) {
       return Terminal;
     case "advanced":
       return Wrench;
+    case "import":
+      return HardDriveDownload;
     case "appearance":
       return Paintbrush;
     case "shortcuts":
@@ -131,6 +135,8 @@ export function getSettingsTabLabel(tab: SettingsTab) {
       return t("settings.tab_environment");
     case "advanced":
       return t("settings.tab_advanced");
+    case "import":
+      return t("settings.tab_import");
     case "appearance":
       return t("settings.tab_appearance");
     case "shortcuts":
@@ -176,6 +182,8 @@ export function getSettingsTabDescription(tab: SettingsTab) {
       return t("settings.tab_description_environment");
     case "advanced":
       return t("settings.tab_description_advanced");
+    case "import":
+      return t("settings.tab_description_import");
     case "appearance":
       return t("settings.tab_description_appearance");
     case "shortcuts":
@@ -193,8 +201,11 @@ export function getSettingsTabDescription(tab: SettingsTab) {
   }
 }
 
-export function getWorkspaceSettingsTabs(): SettingsTab[] {
-  return ["preferences", "permissions", "extensions", "advanced"];
+export function getWorkspaceSettingsTabs(options: { claudeImport?: boolean } = {}): SettingsTab[] {
+  const tabs: SettingsTab[] = ["preferences", "permissions", "extensions"];
+  if (options.claudeImport) tabs.push("import");
+  tabs.push("advanced");
+  return tabs;
 }
 
 export function getGlobalSettingsTabs(
@@ -258,11 +269,12 @@ export type SettingsNavGroups = {
 export function useSettingsNavGroups(developerMode: boolean): SettingsNavGroups {
   const platform = usePlatform();
   const checkRestriction = useCheckDesktopRestriction();
+  const claudeImport = useDesktopFeature("claudeHistoryImport");
   const allowed = (tabs: SettingsTab[]) =>
     tabs.filter((tab) => isSettingsTabAllowed({ tab, checkRestriction }));
   return {
     hub: allowed(["general"]),
-    workspace: allowed(getWorkspaceSettingsTabs()),
+    workspace: allowed(getWorkspaceSettingsTabs({ claudeImport })),
     global: allowed(getGlobalSettingsTabs(developerMode, platform.capabilities)),
     cloud: allowed(CLOUD_SETTINGS_TABS),
   };

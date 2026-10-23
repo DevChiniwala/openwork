@@ -1193,6 +1193,7 @@ export type AdminFeature = {
     | "remoteComputers"
     | "remoteSessionSubagents"
     | "desktopSignInReturn"
+    | "claudeHistoryImport"
     | "activationChecklist"
     | "connectStandardTools"
     | "teamPlan"
@@ -1261,6 +1262,7 @@ export type AdminOrganizationsPageResponse = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      claudeHistoryImport: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
@@ -1494,6 +1496,15 @@ export type AdminOrganizationsPageResponse = {
         override: boolean | null;
         overrideApplies: boolean;
       };
+      claudeHistoryImport: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       activationChecklist: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -1635,6 +1646,7 @@ export type AdminOverviewResponse = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      claudeHistoryImport: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
@@ -1860,6 +1872,15 @@ export type AdminOverviewResponse = {
         overrideApplies: boolean;
       };
       desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      claudeHistoryImport: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -8537,6 +8558,15 @@ export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         override: boolean | null;
         overrideApplies: boolean;
       };
+      claudeHistoryImport: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
       activationChecklist: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
@@ -8625,6 +8655,7 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
       remoteComputers?: boolean | null;
       remoteSessionSubagents?: boolean | null;
       desktopSignInReturn?: boolean | null;
+      claudeHistoryImport?: boolean | null;
       activationChecklist?: boolean | null;
       connectStandardTools?: boolean | null;
       teamPlan?: boolean | null;
@@ -8877,6 +8908,15 @@ export type PutV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilities
         overrideApplies: boolean;
       };
       desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      claudeHistoryImport: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -10706,6 +10746,7 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      claudeHistoryImport: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
@@ -10931,6 +10972,15 @@ export type GetV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      claudeHistoryImport: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;
@@ -11068,6 +11118,7 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
       remoteComputers: boolean;
       remoteSessionSubagents: boolean;
       desktopSignInReturn: boolean;
+      claudeHistoryImport: boolean;
       activationChecklist: boolean;
       connectStandardTools: boolean;
       teamPlan: boolean;
@@ -11293,6 +11344,15 @@ export type PutV1AdminOrganizationsByOrganizationIdCapabilitiesResponses = {
         overrideApplies: boolean;
       };
       desktopSignInReturn: {
+        enabled: boolean;
+        source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
+        everyone: boolean;
+        killed: boolean;
+        lock: boolean | null;
+        override: boolean | null;
+        overrideApplies: boolean;
+      };
+      claudeHistoryImport: {
         enabled: boolean;
         source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
         everyone: boolean;

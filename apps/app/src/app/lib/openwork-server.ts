@@ -21,6 +21,7 @@ import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } fro
 import type { DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin, CloudImportedProvider } from "../cloud/import-state";
 import { desktopFreeAccessStatusSchema } from "./inference-access";
+import { claudeImportItemsSchema, claudeImportResultsSchema } from "./claude-import";
 
 const desktopFreePreferencesSchema = z.object({ enabled: z.boolean(), available: z.boolean(), canEnable: z.boolean(), refresh: z.enum(["reloaded", "deferred"]).optional() });
 export type DesktopFreePreferences = z.infer<typeof desktopFreePreferencesSchema>;
@@ -2315,6 +2316,44 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
         hostToken,
         method: "DELETE",
       }),
+    listClaudeCodeSessions: async (workspaceId: string) =>
+      claudeImportItemsSchema.parse(
+        await requestJson<unknown>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/claude-import/code`, { token, hostToken, timeoutMs: 60_000 }),
+      ).items,
+    importClaudeCodeSessions: async (workspaceId: string, ids: string[]) =>
+      claudeImportResultsSchema.parse(
+        await requestJson<unknown>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/claude-import/code`, {
+          token,
+          hostToken,
+          method: "POST",
+          body: { ids },
+          timeoutMs: 10 * 60_000,
+        }),
+      ).results,
+    readClaudeExport: async (workspaceId: string, file: File, selection?: { importIds: string[] }) => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("mode", selection ? "import" : "preview");
+      if (selection) form.append("ids", JSON.stringify(selection.importIds));
+      const result = await requestMultipartRaw(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/claude-import/export`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: form,
+        timeoutMs: 10 * 60_000,
+      });
+      let parsed: unknown = null;
+      try { parsed = result.text ? JSON.parse(result.text) : null; } catch { parsed = null; }
+      if (!result.ok) {
+        const error = z.object({ code: z.string().optional(), message: z.string().optional() }).safeParse(parsed);
+        throw new OpenworkServerError(
+          result.status,
+          error.success ? error.data.code ?? "request_failed" : "request_failed",
+          error.success && error.data.message ? error.data.message : "This file could not be read.",
+        );
+      }
+      return parsed;
+    },
     uploadInbox: async (workspaceId: string, file: File, options?: { path?: string }) => {
       const id = workspaceId.trim();
       if (!id) throw new Error("workspaceId is required");
