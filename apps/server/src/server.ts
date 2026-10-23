@@ -101,6 +101,7 @@ import {
 } from "./workspace-export-safety.js";
 import { serve, type ServeResult } from "./serve-node.js";
 import { serveStaticUi } from "./static-ui.js";
+import { isAllowedHost } from "./allowed-hosts.js";
 import { externalFetch, loopbackFetch, transferResponseBody } from "./server-fetch.js";
 import { registerCoreRoutes } from "./routes/core.js";
 import { registerFileRoutes } from "./routes/files.js";
@@ -927,8 +928,8 @@ export async function startServer(
         errorCause = error instanceof Error ? error.message : String(error);
       };
 
-      const finalize = (response: Response) => {
-        const wrapped = withCors(response, request, config);
+      const finalize = (response: Response, options: { cors?: boolean } = {}) => {
+        const wrapped = options.cors === false ? response : withCors(response, request, config);
         if (config.logRequests) {
             logRequest({
               logger,
@@ -1062,6 +1063,13 @@ export async function startServer(
         }
       };
 
+      if (!isAllowedHost(request, config)) {
+        const apiError = new ApiError(403, "host_not_allowed",
+          "This server does not answer to this host name. Add it with --allowed-hosts or OPENWORK_ALLOWED_HOSTS.");
+        recordApiError(apiError);
+        return finalize(jsonResponse(formatError(apiError), apiError.status));
+      }
+
       if (request.method === "OPTIONS") {
         return finalize(new Response(null, { status: 204 }));
       }
@@ -1136,7 +1144,8 @@ export async function startServer(
       const route = matchRoute(routes, request.method, url.pathname);
       if (!route) {
         const staticUiResponse = await serveStaticUi(request, config);
-        if (staticUiResponse) return finalize(staticUiResponse);
+        // The web UI loads from its own origin; other sites never read its pages.
+        if (staticUiResponse) return finalize(staticUiResponse, { cors: false });
         errorMessage = "not_found";
         return finalize(jsonResponse({ code: "not_found", message: "Not found" }, 404));
       }

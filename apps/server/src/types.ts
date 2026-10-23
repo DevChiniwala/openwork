@@ -104,6 +104,11 @@ export interface ServerConfig {
   opencodePassword?: string;
   approval: ApprovalConfig;
   corsOrigins: string[];
+  /**
+   * Host names the server answers to besides loopback names, IP addresses and
+   * its bind host ("*" for any). Unset skips the check; `web` always sets it.
+   */
+  allowedHosts?: string[];
   workspaces: WorkspaceInfo[];
   authorizedRoots: string[];
   readOnly: boolean;
