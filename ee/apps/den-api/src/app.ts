@@ -23,6 +23,7 @@ import { registerExternalConnectionProxyRoutes } from "./mcp/external-connection
 import { registerMcpRoutes } from "./mcp/index.js"
 import type { MemberTeamsContext, OrganizationContextVariables, UserOrganizationsContext } from "./middleware/index.js"
 import { buildOperationId, htmlResponse, jsonResponse } from "./openapi.js"
+import { publicOpenApiDocument } from "./openapi-public.js"
 import { appLogger } from "./observability/logger.js"
 import { isWebOriginApprovedByAnyOrganization } from "./organization-web-origins.js"
 import { createRequestAccessLogMiddleware, createTelemetryErrorSanitizerMiddleware, registerAppErrorHandler, registerObservabilityMiddleware } from "./observability/hono.js"
@@ -380,6 +381,7 @@ configureCloudWorkflowExecutor(async ({ organizationId, ownerMemberId, automatio
 })
 
 let openApiDocument: OpenApiDocument | undefined
+let publishedOpenApiDocument: Record<string, unknown> | undefined
 const openApiOptions: Parameters<typeof generateSpecs>[1] = {
   documentation: {
     openapi: "3.1.0",
@@ -526,7 +528,7 @@ app.get(
     tags: ["System"],
     security: [],
     summary: "Get OpenAPI document",
-    description: "Returns the machine-readable OpenAPI 3.1 document for the Den API so humans and tools can inspect the API surface.",
+    description: "Returns the machine-readable OpenAPI 3.1 document for the Den API. Use ?public=1 for the normalized public documentation contract.",
     responses: {
       200: jsonResponse("OpenAPI document returned successfully.", openApiDocumentSchema),
     },
@@ -534,6 +536,10 @@ app.get(
   publicRoute,
   async (c) => {
     openApiDocument ??= withExplicitOperationSecurity(await generateSpecs(app, openApiOptions, c))
+    if (c.req.query("public") === "1") {
+      publishedOpenApiDocument ??= publicOpenApiDocument(openApiDocument).document
+      return c.json(publishedOpenApiDocument)
+    }
     return c.json(openApiDocument)
   },
 )

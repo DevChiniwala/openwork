@@ -60,11 +60,11 @@ jobs:
             core.setOutput("lane", lane)
             core.info(`Selected lane: ${lane}`)
 
-            // Route, schema, or contract changes must ship the regenerated
-            // packages/docs/openapi.json and packages/sdk/src/gen.
+            // Generate and validate contracts from route/schema source; outputs
+            // are ignored build artifacts, never PR inputs.
             const denContractPrefixes = ["ee/apps/den-api/", "ee/packages/", "packages/types/", "packages/features/", "packages/sdk/"]
             // The workflow itself is listed so changes to this check exercise it.
-            const denContractFiles = new Set(["packages/docs/openapi.json", ".spectral.yaml", ".spectral-baseline.json", "scripts/api-lint.mjs", "scripts/den-contract.mjs", "scripts/den-contract-database.mjs", "scripts/den-contract-hook.mjs", "scripts/features-sync.mjs", "scripts/tests/den-contract-database.test.mjs", "scripts/tests/den-contract-hook.test.mjs", "scripts/tests/den-contract-format.test.mjs", ".github/workflows/ci-tests.yml"])
+            const denContractFiles = new Set(["packages/docs/openapi.json", ".spectral.yaml", ".spectral-baseline.json", "scripts/api-lint.mjs", "scripts/den-contract.mjs", "scripts/den-contract-cache.mjs", "scripts/den-contract-database.mjs", "scripts/den-contract-hook.mjs", "scripts/features-sync.mjs", "scripts/tests/den-contract-database.test.mjs", "scripts/tests/den-contract-hook.test.mjs", "scripts/tests/den-contract-format.test.mjs", "scripts/tests/den-contract-cache.test.mjs", ".github/workflows/ci-tests.yml"])
             const touchesDenContract = (name) => Boolean(name) && (denContractFiles.has(name) || denContractPrefixes.some((prefix) => name.startsWith(prefix)))
             const denContract = lane === "full" && files.some((file) => touchesDenContract(file.filename) || touchesDenContract(file.previous_filename))
             core.setOutput("den_contract", denContract ? "true" : "false")
@@ -396,7 +396,7 @@ jobs:
       # build directory, so parallel Den specs crash each other's Den web.
       - name: Run all PR specs
         if: (success() || failure()) && steps.lane.outcome == 'success'
-        run: pnpm sdk:build && pnpm --dir evals exec vitest run --config vitest.config.ts --project pr --no-file-parallelism
+        run: pnpm --dir evals exec vitest run --config vitest.config.ts --project pr --no-file-parallelism
       - name: Run engine smoke tests
         if: (success() || failure()) && steps.setup.outcome == 'success'
         run: pnpm test:e2e
@@ -536,8 +536,8 @@ jobs:
       - name: Check for broken links and images
         run: npx -y mint@4.2.868 broken-links
 
-  # Pull requests that change Den API routes or schemas must commit the
-  # regenerated OpenAPI snapshot and SDK. Pushes to dev keep the dedicated
+  # Pull requests that change Den API routes or schemas generate and validate
+  # OpenAPI and SDK artifacts directly from their source. Pushes to dev keep the dedicated
   # Generated Den SDK and API Contract workflows.
   den-contract:
     needs: classify-changes
@@ -577,21 +577,19 @@ jobs:
           version: 11.4.0
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build den-api workspace dependencies
-        run: pnpm --filter @openwork-ee/den-api build:workspace-dependencies
       - name: Test contract generation guards
-        run: node --test scripts/tests/den-contract-hook.test.mjs scripts/tests/den-contract-database.test.mjs scripts/tests/den-contract-format.test.mjs
+        run: node --test scripts/tests/den-contract-hook.test.mjs scripts/tests/den-contract-database.test.mjs scripts/tests/den-contract-cache.test.mjs scripts/tests/den-contract-format.test.mjs
       # den:contract owns schema preparation and cleanup, just as locally.
       - name: Regenerate the OpenAPI snapshot and SDK
         run: pnpm den:contract
-      - name: Fail if the committed contract drifted from the route source
-        run: |
-          set -euo pipefail
-          if ! git diff --exit-code --stat -- packages/docs/openapi.json packages/sdk/src/gen; then
-            echo "::error::The Den API contract is out of date. With MySQL on 127.0.0.1:3306 (pnpm dev:den:mysql), run 'pnpm den:contract' and commit packages/docs/openapi.json and packages/sdk/src/gen."
-            exit 1
-          fi
-          echo "OpenAPI snapshot and generated SDK match the route source."
+      - name: Upload generated API contract and SDK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: den-api-contract
+          path: |
+            packages/docs/openapi.json
+            packages/sdk/src/gen/**/*.ts
+          if-no-files-found: error
       # den:contract drops its own disposable database. Route introspection below
       # uses DATABASE_URL instead, and importing Better Auth seeds oauthResource.
       - name: Prepare the CI database for audit route introspection
