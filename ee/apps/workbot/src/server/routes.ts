@@ -266,23 +266,27 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
         const updated = await client.putSession(sessionId, { computer: true, desktop: true })
         if (!updated.ok) return desktopFailure(c, operation, updated.error)
       }
+      // An outdated computer never connects or resumes and rebuilding is the only fix, so do it instead of asking. Not
+      // under a running turn, though: rebuilding stops it, so that stays the person's Rebuild.
+      const canRebuild = !existing.ok || existing.value.status !== "busy"
+      const rebuildOutdated = () => {
+        let rebuilding = autoRebuilds.get(sessionId)
+        if (!rebuilding) {
+          console.error("[workbot] rebuilding an outdated computer", { operation })
+          rebuilding = client.desktopAction(sessionId, "rebuild").finally(() => autoRebuilds.delete(sessionId))
+          autoRebuilds.set(sessionId, rebuilding)
+        }
+        return rebuilding
+      }
       if (operation === "viewer") {
         const body = viewer
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         if (body.data.control) await workbot.stop(actorOf(member))
         const open = () => client.desktopViewer(sessionId, { ...body.data, origin: new URL(config.publicUrl).origin })
         let result = await open()
-        // An outdated computer never connects and rebuilding is the only fix, so do it now instead of asking. Not under
-        // a running turn, though: rebuilding stops it, so that stays the person's Rebuild.
-        if (!result.ok && result.error === "desktop_outdated" && (!existing.ok || existing.value.status !== "busy")) {
-          let rebuilding = autoRebuilds.get(sessionId)
-          if (!rebuilding) {
-            console.error("[workbot] rebuilding an outdated computer")
-            rebuilding = client.desktopAction(sessionId, "rebuild").finally(() => autoRebuilds.delete(sessionId))
-            autoRebuilds.set(sessionId, rebuilding)
-          }
-          const rebuilt = await rebuilding
-          if (!rebuilt.ok) return desktopFailure(c, operation, rebuilt.error)
+        if (!result.ok && result.error === "desktop_outdated" && canRebuild) {
+          const rebuilt = await rebuildOutdated()
+          if (!rebuilt.ok) return desktopFailure(c, operation, rebuilt.error, true)
           result = await open()
           if (!result.ok) return desktopFailure(c, operation, result.error, true)
         }
@@ -296,8 +300,13 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
       // Rebuilding deletes the VM under any running turn, so stop the turn first, as pausing does.
       if (body.data.action === "pause" || body.data.action === "rebuild") await workbot.stop(actorOf(member))
-      const result = await client.desktopAction(sessionId, body.data.action)
-      return result.ok ? c.json({ ok: true }) : desktopFailure(c, operation, result.error)
+      let result = await client.desktopAction(sessionId, body.data.action)
+      let rebuilt = body.data.action === "rebuild"
+      if (!result.ok && result.error === "desktop_outdated" && body.data.action === "resume" && canRebuild) {
+        result = await rebuildOutdated()
+        rebuilt = true
+      }
+      return result.ok ? c.json({ ok: true }) : desktopFailure(c, operation, result.error, rebuilt)
     } catch (error) {
       console.error("[workbot] desktop request failed", { operation, error: error instanceof Error ? error.message : "unknown" })
       return desktopFailure(c, operation, "desktop_unavailable")

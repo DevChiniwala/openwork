@@ -153,18 +153,24 @@ test("Rebuilding the computer stops the running turn before the runner replaces 
 test("Computer rebuilds an out-of-date computer by itself, but not under a running turn", async t => {
   const signed = member("outdated")
   const connected = { state: "connected", url: "wss://viewer.example.test/vnc/synthetic", expiresAt: Date.now() + 60_000, paused: false }
+  const outdated = () => Response.json({ error: "desktop_outdated" }, { status: 409 })
   let current = false
   let stillOutdated = false
   let busy = false
-  const rebuilds: unknown[] = []
+  const actions: string[] = []
+  const rebuilds = () => actions.filter(action => action === "rebuild").length
   t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
     const parsed = new URL(url instanceof Request ? url.url : url)
-    if (parsed.pathname.endsWith("/desktop/viewer")) return current ? Response.json(connected) : Response.json({ error: "desktop_outdated" }, { status: 409 })
+    if (parsed.pathname.endsWith("/desktop/viewer")) return current ? Response.json(connected) : outdated()
+    // Like the runner: resuming starts the desktop, and a rebuild starts the fresh computer's desktop before it answers.
     if (parsed.pathname.endsWith("/desktop/action")) {
-      rebuilds.push(typeof init?.body === "string" ? JSON.parse(init.body) : null)
-      await new Promise(resolve => setTimeout(resolve, 20))
-      current = !stillOutdated
-      return Response.json({ ok: true })
+      const { action } = JSON.parse(String(init?.body)) as { action: string }
+      actions.push(action)
+      if (action === "rebuild") {
+        await new Promise(resolve => setTimeout(resolve, 20))
+        current = !stillOutdated
+      }
+      return current ? Response.json({ ok: true }) : outdated()
     }
     if (init?.method === "PUT") return Response.json({ id: parsed.pathname.split("/").at(-1) })
     return Response.json({ turns: [], messages: [], finalAssistantText: "", ...(busy ? { status: "busy" } : {}) })
@@ -176,23 +182,32 @@ test("Computer rebuilds an out-of-date computer by itself, but not under a runni
     member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
   })
   const open = () => app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })
+  const act = (action: string) => app.request("/v1/workbot/computer/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) })
+  const askToRebuild = { error: "desktop_outdated", message: "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." }
+  const askAnAdmin = { error: "desktop_outdated", message: "Your computer still needs an update after rebuilding. Ask your workspace admin for help." }
   // The Browser view and the chat's live glimpse open together: one rebuild, then both connect.
   const opened = await Promise.all([open(), open()])
   assert.deepEqual(opened.map(response => response.status), [200, 200])
   assert.deepEqual(await opened[0]!.json(), connected)
-  assert.deepEqual(rebuilds, [{ action: "rebuild" }])
+  assert.equal(rebuilds(), 1)
+  // A paused computer shows Resume first; resuming an outdated one rebuilds it the same way.
+  current = false
+  const resumed = await act("resume")
+  assert.equal(resumed.status, 200)
+  assert.deepEqual(actions.slice(-2), ["resume", "rebuild"])
   // Rebuilding stops a running turn, so while one runs the person decides.
   current = false
   busy = true
-  const waiting = await open()
-  assert.equal(waiting.status, 409)
-  assert.deepEqual(await waiting.json(), { error: "desktop_outdated", message: "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." })
-  assert.equal(rebuilds.length, 1)
-  // A fresh computer that is still out of date needs an operator, not another rebuild.
+  assert.deepEqual(await (await open()).json(), askToRebuild)
+  assert.deepEqual(await (await act("resume")).json(), askToRebuild)
+  assert.equal(rebuilds(), 2)
+  // A fresh computer that is still out of date needs an operator, not another rebuild, however the rebuild started.
   busy = false
   stillOutdated = true
-  assert.deepEqual(await (await open()).json(), { error: "desktop_outdated", message: "Your computer still needs an update after rebuilding. Ask your workspace admin for help." })
-  assert.equal(rebuilds.length, 2)
+  assert.deepEqual(await (await open()).json(), askAnAdmin)
+  assert.deepEqual(await (await act("resume")).json(), askAnAdmin)
+  assert.deepEqual(await (await act("rebuild")).json(), askAnAdmin)
+  assert.equal(rebuilds(), 5)
 })
 
 test("Computer asks to reconnect for other desktop failures", async t => {
