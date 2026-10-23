@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { browserScript } from "@openwork/cdp";
 import type { Seed } from "@openwork/env";
 import { denForAppWeb, signedInAppWeb } from "./signed-in-app-web.ts";
 import { isRecord, records } from "./library.ts";
@@ -97,16 +98,24 @@ export async function orgPromptsDesktop(seed: Seed) {
     env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken, OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "600000" },
   });
   const mount = `/workspace/${workspace.workspaceId}`;
-  async function request(path: string, init: { method?: string; body?: unknown } = {}) {
-    const response = await fetch(`${app.openworkUrl}${path}`, {
-      method: init.method ?? "GET", signal: AbortSignal.timeout(120_000),
-      headers: { Authorization: `Bearer ${token}`, "x-openwork-host-token": hostToken, "Content-Type": "application/json" },
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-    });
-    const text = await response.text();
-    let body: unknown = text;
-    try { body = text ? JSON.parse(text) : null; } catch { /* diagnostic text */ }
-    return { status: response.status, body };
+  /**
+   * Calls Riley's local OpenWork server from inside the app's page, as the app
+   * does, so it also works when the app runs in a Daytona sandbox.
+   */
+  async function request(path: string, init: { method?: string; body?: unknown } = {}): Promise<{ status: number; body: unknown }> {
+    const result = await seed.evalIn(app, browserScript(async (path, method, bodyJson, token, hostToken) => {
+      const port = localStorage.getItem("openwork.server.port");
+      if (!port) return { status: 0, text: "missing local server port" };
+      const response = await fetch("http://127.0.0.1:" + port + path, {
+        method,
+        headers: { Authorization: "Bearer " + token, "x-openwork-host-token": hostToken, "Content-Type": "application/json" },
+        ...(bodyJson ? { body: bodyJson } : {}),
+      });
+      return { status: response.status, text: await response.text() };
+    }, [path, init.method ?? "GET", init.body === undefined ? "" : JSON.stringify(init.body), token, hostToken]), { awaitPromise: true, timeoutMs: 120_000 });
+    let body: unknown = result.text;
+    try { body = result.text ? JSON.parse(result.text) : null; } catch { /* diagnostic text */ }
+    return { status: result.status, body };
   }
   async function modelAdmin(path: string, body: unknown) {
     if (!model) throw new Error("Missing model");
