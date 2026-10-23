@@ -5,7 +5,7 @@ import { parseOrganizationPlan } from "../../entitlements.js"
 
 // A transparent heuristic, not an employer directory. A verified address on an
 // unlisted domain is a signal only; never merge organizations by email domain.
-const PERSONAL_EMAIL_DOMAINS = [
+export const PERSONAL_EMAIL_DOMAINS = [
   "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "yahoo.fr", "yahoo.de", "yahoo.co.jp", "ymail.com", "rocketmail.com",
   "outlook.com", "hotmail.com", "hotmail.co.uk", "hotmail.fr", "live.com", "live.co.uk", "live.fr", "msn.com",
   "icloud.com", "me.com", "mac.com", "aol.com", "aim.com", "proton.me", "protonmail.com", "pm.me",

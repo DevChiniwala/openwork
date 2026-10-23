@@ -259,6 +259,10 @@ import type {
   GetV1AdminOverviewResponses,
   GetV1AdminSandboxOrgsErrors,
   GetV1AdminSandboxOrgsResponses,
+  GetV1AdminSecurityErrors,
+  GetV1AdminSecurityRequestsErrors,
+  GetV1AdminSecurityRequestsResponses,
+  GetV1AdminSecurityResponses,
   GetV1AdminServicesErrors,
   GetV1AdminServicesResponses,
   GetV1AdminUsersByUserIdInferenceUsageErrors,
@@ -1313,6 +1317,38 @@ export class DenClient extends HeyApiClient {
       ...options,
       ...params,
     });
+  }
+
+  /**
+   * Get security signals across all organizations
+   *
+   * Returns threshold-based findings for the last `days` days: sign-up bursts, unverified and disposable sign-ups, accounts used from many networks, organization, API key, app registration and invitation bursts, new platform admins and model spend spikes. Findings are prompts for review, not verdicts.
+   */
+  public getV1AdminSecurity<ThrowOnError extends boolean = false>(
+    parameters?: {
+      days?: number;
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "days" }] }]);
+    return (options?.client ?? this.client).get<GetV1AdminSecurityResponses, GetV1AdminSecurityErrors, ThrowOnError>({
+      url: "/v1/admin/security",
+      ...options,
+      ...params,
+    });
+  }
+
+  /**
+   * Get refused and failed platform requests for the last 24 hours
+   *
+   * Returns hourly counts of refused, rate-limited and failed requests that had no trusted organization (sign-in, token, app registration and stale-credential calls), the busiest endpoints, and findings for failed sign-ins, rate limiting and refusal spikes. No addresses are stored or returned.
+   */
+  public getV1AdminSecurityRequests<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GetV1AdminSecurityRequestsResponses,
+      GetV1AdminSecurityRequestsErrors,
+      ThrowOnError
+    >({ url: "/v1/admin/security/requests", ...options });
   }
 
   /**

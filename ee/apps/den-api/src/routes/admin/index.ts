@@ -43,6 +43,7 @@ import { parseOrganizationPlan, type PlanTier } from "../../entitlements.js"
 import { adminRoute, jsonValidator, queryValidator } from "../../middleware/index.js"
 import { registerAdminFreeAutoConversionsRoutes } from "./free-auto-conversions.js"
 import { registerAdminFreeAutoUsageRoutes } from "./free-auto-usage.js"
+import { registerAdminSecurityRoutes } from "./security.js"
 import { registerAdminDashboardRoute } from "./dashboard.js"
 import { registerAdminOpportunitiesRoute } from "./opportunities.js"
 import { registerAdminServiceReadinessRoutes } from "./services.js"
@@ -1438,6 +1439,7 @@ const adminRouteErrors = {
 export function registerAdminRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
   registerAdminFreeAutoUsageRoutes(app)
   registerAdminFreeAutoConversionsRoutes(app)
+  registerAdminSecurityRoutes(app)
   registerAdminMemberFeatureRoutes(app)
   registerAdminOrganizationDetailRoutes(app)
   registerAdminOrganizationControlPanelRoutes(app)

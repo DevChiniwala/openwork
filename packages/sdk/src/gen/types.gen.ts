@@ -199,6 +199,84 @@ export type AdminFreeAutoConversions = {
   };
 };
 
+export type AdminSecurityFinding = {
+  id: string;
+  category: "access" | "accounts" | "credentials" | "usage";
+  severity: "high" | "medium" | "low" | "clear";
+  title: string;
+  /**
+   * What is true now, in one sentence.
+   */
+  summary: string;
+  /**
+   * The threshold that decides the severity.
+   */
+  rule: string;
+  why: string;
+  /**
+   * What a reviewer should check next.
+   */
+  review: string;
+  value: number;
+  unit: "count" | "micro_usd";
+  entities: Array<{
+    id: string;
+    label: string;
+    detail: string | null;
+    value: number;
+    severity: "high" | "medium" | "low" | "clear";
+    target:
+      | {
+          type: "user";
+          userId: string;
+        }
+      | {
+          type: "organization";
+          organizationId: string;
+        }
+      | null;
+  }>;
+  /**
+   * Matching entities, including any past the listed ones.
+   */
+  entityCount: number;
+};
+
+export type AdminSecurityReportResponse = {
+  generatedAt: string;
+  range: {
+    days: number;
+    from: string;
+    to: string;
+  };
+  findings: Array<AdminSecurityFinding>;
+};
+
+export type AdminSecurityRequestsResponse = {
+  generatedAt: string;
+  range: {
+    hours: number;
+    from: string;
+    to: string;
+  };
+  hourly: Array<{
+    hour: string;
+    refused: number;
+    rateLimited: number;
+    failed: number;
+    failedSignIns: number;
+  }>;
+  endpoints: Array<{
+    action: string;
+    refused: number;
+    rateLimited: number;
+    failed: number;
+    peakHour: number;
+    typicalHour: number;
+  }>;
+  findings: Array<AdminSecurityFinding>;
+};
+
 export type NotFoundError = {
   error: string;
   message?: string;
@@ -8323,6 +8401,71 @@ export type GetV1AdminFreeAutoConversionsResponses = {
 
 export type GetV1AdminFreeAutoConversionsResponse =
   GetV1AdminFreeAutoConversionsResponses[keyof GetV1AdminFreeAutoConversionsResponses];
+
+export type GetV1AdminSecurityData = {
+  body?: never;
+  path?: never;
+  query?: {
+    days?: number;
+  };
+  url: "/v1/admin/security";
+};
+
+export type GetV1AdminSecurityErrors = {
+  /**
+   * The query parameters were invalid.
+   */
+  400: InvalidRequestError;
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminSecurityError = GetV1AdminSecurityErrors[keyof GetV1AdminSecurityErrors];
+
+export type GetV1AdminSecurityResponses = {
+  /**
+   * Security signals returned.
+   */
+  200: AdminSecurityReportResponse;
+};
+
+export type GetV1AdminSecurityResponse = GetV1AdminSecurityResponses[keyof GetV1AdminSecurityResponses];
+
+export type GetV1AdminSecurityRequestsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/admin/security/requests";
+};
+
+export type GetV1AdminSecurityRequestsErrors = {
+  /**
+   * The caller must be authenticated.
+   */
+  401: UnauthorizedError;
+  /**
+   * The authenticated user is not an admin.
+   */
+  403: ForbiddenError;
+};
+
+export type GetV1AdminSecurityRequestsError = GetV1AdminSecurityRequestsErrors[keyof GetV1AdminSecurityRequestsErrors];
+
+export type GetV1AdminSecurityRequestsResponses = {
+  /**
+   * Request activity returned.
+   */
+  200: AdminSecurityRequestsResponse;
+};
+
+export type GetV1AdminSecurityRequestsResponse =
+  GetV1AdminSecurityRequestsResponses[keyof GetV1AdminSecurityRequestsResponses];
 
 export type GetV1AdminOrganizationsByOrganizationIdMembersByMemberIdCapabilitiesData = {
   body?: never;
