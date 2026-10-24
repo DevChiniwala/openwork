@@ -127,6 +127,8 @@ export const FEATURES = defineFeatures({
     label: "OpenCode v2: providers added on this computer",
     description: "API keys people add on their computer, such as OpenRouter, OpenAI or Anthropic, show in the chat model picker on the new engine. AI Providers says when the organization manages providers or a sign-in is not available on the new engine yet.",
     since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/local-provider-mirror/README.md",
     deployments: everywhere,
     default: false,
   },
