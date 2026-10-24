@@ -2748,6 +2748,11 @@ export function SessionRoute() {
     focusPromptSoon();
   }, [navigate]);
 
+  // Shared by Cmd/Ctrl+N and the command palette's "New session".
+  const createNewSessionInSelectedWorkspace = useCallback(() => {
+    if (selectedWorkspaceId) handleCreateTaskInWorkspace(selectedWorkspaceId);
+  }, [handleCreateTaskInWorkspace, selectedWorkspaceId]);
+
   const handleCreateSplitTaskInWorkspace = useCallback(
     (_workspaceId: string) => {
       const parent = useWorkbenchStore.getState().primary;
@@ -2967,9 +2972,7 @@ export function SessionRoute() {
     setTerminalOpen,
     sessionNumberShortcuts,
   } = useShellShortcuts({
-    canCreateTask,
-    workspaceId: selectedWorkspaceId,
-    onCreateTask: (workspaceId: string) => void handleCreateTaskInWorkspace(workspaceId),
+    onCreateNewSession: createNewSessionInSelectedWorkspace,
     onNextSessionTab: goToNextSessionTab,
     onPrevSessionTab: goToPrevSessionTab,
     onCycleThinkingMode: cycleThinkingMode,
@@ -4209,11 +4212,7 @@ export function SessionRoute() {
       open={commandPaletteOpen}
       onClose={() => setCommandPaletteOpen(false)}
       developerMode={developerMode}
-      onCreateNewSession={() => {
-        if (selectedWorkspaceId) {
-          void handleCreateTaskInWorkspace(selectedWorkspaceId);
-        }
-      }}
+      onCreateNewSession={createNewSessionInSelectedWorkspace}
       onCreateNewSplitSession={() => {
         if (selectedWorkspaceId) {
           void handleCreateSplitTaskInWorkspace(selectedWorkspaceId);

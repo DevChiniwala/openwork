@@ -71,9 +71,7 @@ const opened: string[] = [];
 
 function Probe() {
   latest = useShellShortcuts({
-    canCreateTask: false,
-    workspaceId: "ws",
-    onCreateTask: () => {},
+    onCreateNewSession: () => {},
   }).sessionNumberShortcuts;
   return null;
 }
