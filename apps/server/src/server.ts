@@ -778,6 +778,7 @@ function admitSessionCommand(
 // Backoff for re-sending managed provider credentials the engine did not take
 // during startup. After the last attempt, the next launch tries again.
 const STARTUP_PROVIDER_AUTH_RETRY_DELAYS_MS = [2_000, 10_000, 30_000, 120_000];
+const LOCAL_PROVIDER_MIRROR_POLICY_WAIT_MS = 1_500;
 
 export async function startServer(
   config: ServerConfig,
@@ -836,11 +837,17 @@ export async function startServer(
   };
   const engineV2Preview: EngineV2Preview = createEngineV2Preview({ config, env, deferStart: true,
     resolveLiveProviderSync,
-    // The signed-in member's rollout from Den, without waiting on Den once it
-    // answered for this sign-in (cloud provider sync rereads it); signed out it stays off.
+    // The signed-in member's rollout from Den; signed out it stays off. A slow
+    // or unreachable Den never holds the mirror: the answer last verified for
+    // this sign-in stands in.
     resolveLocalProviderMirror: async () => {
       const policy = managedDesktopPolicy(config);
-      return (policy.known() ?? await policy.current())?.localProviderMirror === true;
+      let timer: NodeJS.Timeout | undefined;
+      const fresh = await Promise.race([
+        policy.current().catch(() => policy.known()),
+        new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), LOCAL_PROVIDER_MIRROR_POLICY_WAIT_MS); }),
+      ]).finally(() => clearTimeout(timer));
+      return (fresh === undefined ? policy.known() : fresh)?.localProviderMirror === true;
     },
     autoUpgradeIdle: async () => (await describeV1EngineActivity(config)).verdict === "idle",
     autoUpgradeError: (error) => logger.log("warn", "Automatic engine upgrade failed; keeping v1", { error }),
@@ -996,6 +1003,16 @@ export async function startServer(
             // credential store. Join v2 catalog reconciliation before reporting
             // that save complete, so the engine's status already explains it.
             await engineV2Preview.refreshProviders();
+            // With the localProviderMirror rollout (the mirror then explains
+            // its skips), also rebuild v1's provider state for this folder:
+            // AI Providers lists providers from v1, which otherwise keeps the
+            // old list until a restart. Never while v1 is running work.
+            if (engineV2Preview.status().skippedProviders && !await engineHasActiveSessions(config, workspace)) {
+              await reloadOpencodeEngine(config, workspace, engineMcpServerState, { reason: "local_provider_auth", awaitPostRefreshSync: false })
+                .catch((error) => logger.log("warn", "Could not refresh OpenCode v1 providers after a provider change.", {
+                  error: error instanceof Error ? error.message : String(error),
+                }));
+            }
           }
           return finalizeProxyResponse(response);
         } catch (error) {
