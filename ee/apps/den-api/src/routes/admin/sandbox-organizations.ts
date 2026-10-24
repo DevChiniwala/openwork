@@ -1,11 +1,11 @@
 import { isDenTypeId, normalizeDenTypeId } from "@openwork-ee/utils/typeid"
-import { sandboxCreatedSchema, sandboxCreateInputSchema, sandboxExtendInputSchema, sandboxListSchema } from "@openwork/types/den/sandbox-organizations"
+import { sandboxCreatedSchema, sandboxCreateInputSchema, sandboxExtendInputSchema, sandboxJoinRoleInputSchema, sandboxListSchema } from "@openwork/types/den/sandbox-organizations"
 import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { deploymentFeatureEnabled } from "../../features.js"
 import { adminRoute, jsonValidator } from "../../middleware/index.js"
 import { forbiddenSchema, invalidRequestSchema, jsonResponse, notFoundSchema, unauthorizedSchema } from "../../openapi.js"
-import { closeSandbox, createSandbox, extendSandbox, listSandboxes, rotateSandboxLink, SandboxInputError } from "../../sandbox-organizations.js"
+import { closeSandbox, createSandbox, extendSandbox, listSandboxes, rotateSandboxLink, SandboxInputError, setSandboxJoinRole } from "../../sandbox-organizations.js"
 import type { AuthContextVariables } from "../../session.js"
 
 const base = "/v1/admin/sandbox-orgs"
@@ -42,6 +42,14 @@ export function registerAdminSandboxOrganizationRoutes<T extends { Variables: Au
     const id = c.req.param("sandboxId")
     if (!isDenTypeId("sandboxOrganization", id)) return c.json({ error: "invalid_request", message: "Invalid sandbox id." }, 400)
     const sandbox = await rotateSandboxLink(normalizeDenTypeId("sandboxOrganization", id))
+    return sandbox ? c.json({ sandbox }) : c.json({ error: "not_found", message: "Sandbox not found." }, 404)
+  })
+
+  app.post(`${base}/:sandboxId/join-role`, updated("Choose what people who join become", "Sets whether people who join with the link from now on become members or admins. People who already joined keep their role; change it on the organization's Members page. Platform administrators only."), adminRoute(), jsonValidator(sandboxJoinRoleInputSchema), async c => {
+    if (!await deploymentFeatureEnabled("sandboxOrgs")) return c.json(disabled, 404)
+    const id = c.req.param("sandboxId")
+    if (!isDenTypeId("sandboxOrganization", id)) return c.json({ error: "invalid_request", message: "Invalid sandbox id." }, 400)
+    const sandbox = await setSandboxJoinRole(normalizeDenTypeId("sandboxOrganization", id), c.req.valid("json").joinRole)
     return sandbox ? c.json({ sandbox }) : c.json({ error: "not_found", message: "Sandbox not found." }, 404)
   })
 

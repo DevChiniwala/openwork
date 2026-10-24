@@ -12,6 +12,10 @@ export const SANDBOX_WORKPLACE_APPS = [
 export const SANDBOX_MAX_DAYS = 90;
 export const SANDBOX_MAX_MEMBERS = 500;
 
+/** What people who join with the link become. Owners stay owners. */
+export const sandboxJoinRoleSchema = z.enum(["member", "admin"]);
+export type SandboxJoinRole = z.infer<typeof sandboxJoinRoleSchema>;
+
 const domainSchema = z.string().trim().toLowerCase().regex(/^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/, "Enter a domain such as example.com.");
 
 export const sandboxCreateInputSchema = z.object({
@@ -24,7 +28,11 @@ export const sandboxCreateInputSchema = z.object({
   allowedEmailDomains: z.array(domainSchema).max(20),
   /** Extra Free Auto usage for the whole sandbox on top of each member's standard allowance, expiring with it. */
   extraFreeAutoUsd: z.number().finite().positive().max(10_000).multipleOf(0.01).nullable(),
+  /** Omitted means member, as before. */
+  joinRole: sandboxJoinRoleSchema.optional(),
 }).strict();
+
+export const sandboxJoinRoleInputSchema = z.object({ joinRole: sandboxJoinRoleSchema }).strict();
 
 export const sandboxExtendInputSchema = z.object({ days: z.number().int().min(1).max(SANDBOX_MAX_DAYS) }).strict();
 
@@ -41,6 +49,7 @@ export const sandboxSchema = z.object({
   connectorBaseUrl: z.string().nullable(),
   connectorCount: z.number().int(),
   allowedEmailDomains: z.array(z.string()),
+  joinRole: sandboxJoinRoleSchema,
   expiresAt: z.iso.datetime({ offset: true }),
   closedAt: z.iso.datetime({ offset: true }).nullable(),
   createdAt: z.iso.datetime({ offset: true }),
@@ -56,6 +65,8 @@ export const sandboxCreatedSchema = z.object({ sandbox: sandboxSchema });
 export const sandboxJoinPreviewSchema = z.object({
   organizationName: z.string(),
   state: sandboxStateSchema.or(z.literal("full")),
+  /** Older servers omit it; then people join as members. */
+  joinRole: sandboxJoinRoleSchema.optional(),
   expiresAt: z.iso.datetime({ offset: true }),
   connectors: z.array(z.string()),
 });

@@ -7,13 +7,16 @@ import {
   SANDBOX_MAX_DAYS,
   SANDBOX_MAX_MEMBERS,
   sandboxCreatedSchema,
+  sandboxJoinRoleSchema,
   sandboxListSchema,
   type Sandbox,
+  type SandboxJoinRole,
   type SandboxCreateInput,
   type SandboxList,
 } from "@openwork/types/den/sandbox-organizations";
 import { DenButton } from "../../../app/(den)/_components/ui/button";
 import { DenInput } from "../../../app/(den)/_components/ui/input";
+import { DenSelect } from "../../../app/(den)/_components/ui/select";
 import { AdminAccessScreen } from "../admin-access-screen";
 import { requestAdmin, sendAdmin, type AdminAccess } from "../admin-request";
 
@@ -22,8 +25,9 @@ const parseList = (value: unknown) => { const result = sandboxListSchema.safePar
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
 const stateLabel = { open: "Open", expired: "Ended", closed: "Closed" } as const;
 
-type Draft = { name: string; connectorBaseUrl: string; days: string; memberLimit: string; domains: string; extraUsd: string };
-const freshDraft = (): Draft => ({ name: "", connectorBaseUrl: "", days: "14", memberLimit: "50", domains: "", extraUsd: "" });
+type Draft = { name: string; connectorBaseUrl: string; days: string; memberLimit: string; domains: string; extraUsd: string; joinRole: SandboxJoinRole };
+const freshDraft = (): Draft => ({ name: "", connectorBaseUrl: "", days: "14", memberLimit: "50", domains: "", extraUsd: "", joinRole: "member" });
+const roleLabel: Record<SandboxJoinRole, string> = { member: "Members", admin: "Admins" };
 
 export function SandboxOrgsPage() {
   const [data, setData] = useState<SandboxList | null>(null);
@@ -80,6 +84,7 @@ export function SandboxOrgsPage() {
       memberLimit: Number(draft.memberLimit),
       allowedEmailDomains: draft.domains.split(/[\s,]+/).map(value => value.trim().toLowerCase()).filter(Boolean),
       extraFreeAutoUsd: draft.extraUsd.trim() ? Number(draft.extraUsd) : null,
+      joinRole: draft.joinRole,
     };
     if (await mutate(base, body, `Created ${body.name}. Copy its join link below.`)) setDraft(null);
   }
@@ -112,6 +117,7 @@ export function SandboxOrgsPage() {
         {data.sandboxes.length === 0 ? <p className="border-t border-[var(--dls-border)] py-6 text-sm text-[color:var(--dls-text-secondary)]">No sandboxes yet. Create one to get a join link.</p>
           : data.sandboxes.map(sandbox => <SandboxRow key={sandbox.id} sandbox={sandbox} busy={busy}
             onRotate={() => void mutate(`${base}/${encodeURIComponent(sandbox.id)}/rotate-link`, undefined, "New link ready. The old link no longer works.")}
+            onJoinRole={(joinRole) => void mutate(`${base}/${encodeURIComponent(sandbox.id)}/join-role`, { joinRole }, `People who join ${sandbox.name} now become ${joinRole === "admin" ? "admins" : "members"}. People who already joined keep their role.`)}
             onExtend={() => void mutate(`${base}/${encodeURIComponent(sandbox.id)}/extend`, { days: 7 }, `${sandbox.name} is open for 7 more days.`)}
             onClose={() => void mutate(`${base}/${encodeURIComponent(sandbox.id)}/close`, undefined, `${sandbox.name} is closed. Members and data are kept.`)} />)}
       </div>
@@ -126,11 +132,13 @@ export function SandboxOrgsPage() {
             <label className="grid gap-2 text-xs">Open for (days)<DenInput aria-label="Days open" type="number" required min={1} max={SANDBOX_MAX_DAYS} step={1} value={draft.days} disabled={saving} onChange={event => setDraft({ ...draft, days: event.target.value })} /></label>
             <label className="grid gap-2 text-xs">Seats<DenInput aria-label="Seats" type="number" required min={1} max={SANDBOX_MAX_MEMBERS} step={1} value={draft.memberLimit} disabled={saving} onChange={event => setDraft({ ...draft, memberLimit: event.target.value })} /></label>
           </div>
+          <label className="grid gap-2 text-xs">People who join become<DenSelect aria-label="People who join become" value={draft.joinRole} disabled={saving} onChange={event => { const parsed = sandboxJoinRoleSchema.safeParse(event.target.value); if (parsed.success) setDraft({ ...draft, joinRole: parsed.data }); }}><option value="member">Members</option><option value="admin">Admins</option></DenSelect>
+            <span className="text-[color:var(--dls-text-secondary)]">Admins can manage connectors, members and settings in the sandbox.</span></label>
           <label className="grid gap-2 text-xs">Who can join<DenInput aria-label="Allowed email domains" placeholder="Anyone with the link" value={draft.domains} disabled={saving} onChange={event => setDraft({ ...draft, domains: event.target.value })} />
             <span className="text-[color:var(--dls-text-secondary)]">Optional. Email domains separated by commas, such as example.com.</span></label>
           <label className="grid gap-2 text-xs">Extra Free Auto usage (USD)<DenInput aria-label="Extra Free Auto usage in USD" type="number" min="0.01" max="10000" step="0.01" placeholder="None" value={draft.extraUsd} disabled={saving} onChange={event => setDraft({ ...draft, extraUsd: event.target.value })} />
             <span className="text-[color:var(--dls-text-secondary)]">Optional pool shared by the sandbox after each person&apos;s standard allowance. Ends with the sandbox.</span></label>
-          <div className="grid gap-1 rounded-md bg-[var(--dls-hover)] p-3 text-xs"><span className="font-medium">You become the owner.</span><span className="text-[color:var(--dls-text-secondary)]">People who join are members, never admins. When the sandbox ends, the link and included models stop; members and data stay.</span></div>
+          <div className="grid gap-1 rounded-md bg-[var(--dls-hover)] p-3 text-xs"><span className="font-medium">You become the owner.</span><span className="text-[color:var(--dls-text-secondary)]">People who join become {draft.joinRole === "admin" ? "admins" : "members"}, never owners. When the sandbox ends, the link and included models stop; members and data stay.</span></div>
           <div className="flex flex-wrap justify-end gap-2"><DenButton type="button" variant="secondary" size="sm" disabled={saving} onClick={() => setDraft(null)}>Cancel</DenButton><DenButton type="submit" size="sm" disabled={busy} loading={saving} data-testid="admin-sandbox-create-submit">Create sandbox</DenButton></div>
         </form>
       </section> : null}
@@ -138,7 +146,7 @@ export function SandboxOrgsPage() {
   </section>;
 }
 
-function SandboxRow({ sandbox, busy, onRotate, onExtend, onClose }: { sandbox: Sandbox; busy: boolean; onRotate: () => void; onExtend: () => void; onClose: () => void }) {
+function SandboxRow({ sandbox, busy, onRotate, onExtend, onClose, onJoinRole }: { sandbox: Sandbox; busy: boolean; onRotate: () => void; onExtend: () => void; onClose: () => void; onJoinRole: (joinRole: SandboxJoinRole) => void }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     await navigator.clipboard.writeText(sandbox.joinLink);
@@ -154,10 +162,12 @@ function SandboxRow({ sandbox, busy, onRotate, onExtend, onClose }: { sandbox: S
           {" · "}{sandbox.state === "open" ? `Ends ${date(sandbox.expiresAt)}` : sandbox.closedAt ? `Closed ${date(sandbox.closedAt)}` : `Ended ${date(sandbox.expiresAt)}`}
           {" · "}<span className="tabular-nums">{sandbox.memberCount} / {sandbox.memberLimit} seats</span>
           {" · "}{sandbox.connectorCount ? `${sandbox.connectorCount} sample apps` : "No connectors"}
+          {" · "}<span data-testid="admin-sandbox-join-role">Joins as {roleLabel[sandbox.joinRole].toLowerCase()}</span>
           {sandbox.allowedEmailDomains.length ? ` · ${sandbox.allowedEmailDomains.join(", ")} only` : ""}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <DenSelect aria-label={`${sandbox.name}: people who join become`} value={sandbox.joinRole} disabled={busy} onChange={event => { const parsed = sandboxJoinRoleSchema.safeParse(event.target.value); if (parsed.success && parsed.data !== sandbox.joinRole) onJoinRole(parsed.data); }}><option value="member">Join as members</option><option value="admin">Join as admins</option></DenSelect>
         <DenButton variant="secondary" size="sm" disabled={busy} onClick={onExtend}>{sandbox.state === "open" ? "Add 7 days" : "Reopen for 7 days"}</DenButton>
         {sandbox.state === "open" ? <DenButton variant="secondary" size="sm" disabled={busy} onClick={onClose}>Close</DenButton> : null}
       </div>

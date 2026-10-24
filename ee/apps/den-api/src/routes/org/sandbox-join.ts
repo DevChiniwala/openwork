@@ -48,7 +48,7 @@ export function registerOrgSandboxJoinRoutes<T extends { Variables: OrgRouteVari
       // The token proves the organization; the read is attributed there with an unknown actor. The token is never recorded.
       await attributeAuditRequest(c, { organizationId: preview.organizationId, actor: { type: "unknown", id: null }, principalKey: "unknown:sandbox_join_token" })
       c.header("Cache-Control", "no-store")
-      return c.json({ organizationName: preview.organizationName, state: preview.state, expiresAt: preview.expiresAt, connectors: preview.connectors })
+      return c.json({ organizationName: preview.organizationName, state: preview.state, joinRole: preview.joinRole, expiresAt: preview.expiresAt, connectors: preview.connectors })
     },
   )
 
@@ -58,7 +58,7 @@ export function registerOrgSandboxJoinRoutes<T extends { Variables: OrgRouteVari
       tags: ["Sandbox organizations"],
       security: [{ bearerAuth: [] }],
       summary: "Join a sandbox organization",
-      description: "Joins the signed-in person to the sandbox organization as a member and makes it their active organization. Joining again is harmless.",
+      description: "Joins the signed-in person to the sandbox organization with the sandbox's join role (member, or admin when its admin chose that) and makes it their active organization. Joining again is harmless and never changes an existing role.",
       responses: {
         200: jsonResponse("Joined.", sandboxJoinedSchema),
         400: jsonResponse("Invalid request.", invalidRequestSchema),

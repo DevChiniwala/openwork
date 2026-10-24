@@ -15,6 +15,7 @@ import {
   type Sandbox,
   type SandboxCreateInput,
   type SandboxJoinPreview,
+  type SandboxJoinRole,
   type SandboxState,
 } from "@openwork/types/den/sandbox-organizations"
 import { customAlphabet } from "nanoid"
@@ -22,6 +23,7 @@ import { externalMcpOAuthConfigurationDefaults } from "./capability-sources/exte
 import { createExternalMcpConnection } from "./capability-sources/external-mcp-connections.js"
 import { assertPublicUrl } from "./capability-sources/url-guard.js"
 import { db } from "./db.js"
+import { updateOrganizationMetadata } from "./organization-metadata.js"
 import { env } from "./env.js"
 import { updateOrganizationFeatureOverrides } from "./features.js"
 import { cache } from "./cache.js"
@@ -37,6 +39,21 @@ const DAY_MS = 86_400_000
 const createJoinToken = customAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 32)
 
 export class SandboxInputError extends Error {}
+
+/** Organization metadata key holding what joiners become; missing means member. */
+const SANDBOX_JOIN_ROLE_KEY = "sandboxJoinRole"
+
+function readJoinRole(metadata: unknown): SandboxJoinRole {
+  let record: unknown = metadata
+  if (typeof metadata === "string") {
+    try { record = JSON.parse(metadata) } catch { record = null }
+  }
+  return typeof record === "object" && record !== null && !Array.isArray(record) && Object.entries(record).some(([key, value]) => key === SANDBOX_JOIN_ROLE_KEY && value === "admin") ? "admin" : "member"
+}
+
+async function writeJoinRole(organizationId: DenTypeId<"organization">, joinRole: SandboxJoinRole) {
+  await updateOrganizationMetadata(organizationId, current => ({ ...current, [SANDBOX_JOIN_ROLE_KEY]: joinRole }))
+}
 
 export function sandboxJoinLink(token: string) {
   return new URL(`/join-sandbox?token=${encodeURIComponent(token)}`, getInvitationOrigin()).toString()
@@ -61,7 +78,7 @@ async function serialize(rows: SandboxRow[], now = new Date()): Promise<Sandbox[
   if (rows.length === 0) return []
   const ids = rows.map(row => row.organizationId)
   const [orgs, members, connectors] = await Promise.all([
-    db.select({ id: OrganizationTable.id, name: OrganizationTable.name, allowedEmailDomains: OrganizationTable.allowedEmailDomains })
+    db.select({ id: OrganizationTable.id, name: OrganizationTable.name, allowedEmailDomains: OrganizationTable.allowedEmailDomains, metadata: OrganizationTable.metadata })
       .from(OrganizationTable).where(inArray(OrganizationTable.id, ids)),
     db.select({ organizationId: MemberTable.organizationId, total: count() }).from(MemberTable)
       .where(and(inArray(MemberTable.organizationId, ids), isNull(MemberTable.removedAt), isNotNull(MemberTable.joinedAt)))
@@ -84,6 +101,7 @@ async function serialize(rows: SandboxRow[], now = new Date()): Promise<Sandbox[
     connectorBaseUrl: row.connectorBaseUrl,
     connectorCount: connectorCount.get(row.organizationId) ?? 0,
     allowedEmailDomains: org.get(row.organizationId)?.allowedEmailDomains ?? [],
+    joinRole: readJoinRole(org.get(row.organizationId)?.metadata),
     expiresAt: row.expiresAt.toISOString(),
     closedAt: row.closedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -138,6 +156,7 @@ export async function createSandbox(actor: UserId, input: SandboxCreateInput): P
     id, organizationId, joinToken: createJoinToken(), connectorBaseUrl: input.connectorBaseUrl,
     memberLimit: input.memberLimit, expiresAt, createdByUserId: actor,
   })
+  if (input.joinRole === "admin") await writeJoinRole(organizationId, "admin")
   if (input.allowedEmailDomains.length > 0) {
     await db.update(OrganizationTable).set({ allowedEmailDomains: [...new Set(input.allowedEmailDomains)] }).where(eq(OrganizationTable.id, organizationId))
   }
@@ -182,6 +201,14 @@ export async function createSandbox(actor: UserId, input: SandboxCreateInput): P
   return created
 }
 
+/** Changes what people who join from now on become. Existing members keep their role. */
+export async function setSandboxJoinRole(id: DenTypeId<"sandboxOrganization">, joinRole: SandboxJoinRole) {
+  const [row] = await db.select({ organizationId: SandboxOrganizationTable.organizationId }).from(SandboxOrganizationTable).where(eq(SandboxOrganizationTable.id, id)).limit(1)
+  if (!row) return null
+  await writeJoinRole(row.organizationId, joinRole)
+  return getSandbox(id)
+}
+
 export async function rotateSandboxLink(id: DenTypeId<"sandboxOrganization">) {
   const [row] = await db.select({ id: SandboxOrganizationTable.id }).from(SandboxOrganizationTable).where(eq(SandboxOrganizationTable.id, id)).limit(1)
   if (!row) return null
@@ -223,7 +250,7 @@ async function joinedMemberCount(organizationId: DenTypeId<"organization">) {
 export async function previewSandboxJoin(token: string): Promise<(SandboxJoinPreview & { organizationId: DenTypeId<"organization"> }) | null> {
   const row = await findByToken(token)
   if (!row) return null
-  const [org] = await db.select({ name: OrganizationTable.name }).from(OrganizationTable).where(eq(OrganizationTable.id, row.organizationId)).limit(1)
+  const [org] = await db.select({ name: OrganizationTable.name, metadata: OrganizationTable.metadata }).from(OrganizationTable).where(eq(OrganizationTable.id, row.organizationId)).limit(1)
   if (!org) return null
   const state = sandboxState(row)
   const full = state === "open" && await joinedMemberCount(row.organizationId) >= row.memberLimit
@@ -231,6 +258,7 @@ export async function previewSandboxJoin(token: string): Promise<(SandboxJoinPre
     organizationId: row.organizationId,
     organizationName: org.name,
     state: full ? "full" : state,
+    joinRole: readJoinRole(org.metadata),
     expiresAt: row.expiresAt.toISOString(),
     connectors: row.connectorBaseUrl ? SANDBOX_WORKPLACE_APPS.map(app => app.name) : [],
   }
@@ -242,7 +270,7 @@ export type SandboxJoinResult =
   | { status: "domain_not_allowed"; allowedEmailDomains: string[] }
 
 /**
- * Joins the signed-in person as a member (never an admin). Idempotent for existing members. The sandbox row is
+ * Joins the signed-in person with the sandbox's join role (member unless an admin chose admin; never owner). Idempotent for existing members. The sandbox row is
  * locked while seats are counted and the membership is written, so concurrent joins cannot exceed the seat limit.
  */
 export async function joinSandbox(input: { token: string; userId: string; email: string; emailVerified: boolean }): Promise<SandboxJoinResult> {
@@ -260,7 +288,7 @@ export async function joinSandbox(input: { token: string; userId: string; email:
 
     const state = sandboxState(row)
     if (state !== "open") return { status: state }
-    const [org] = await tx.select({ allowedEmailDomains: OrganizationTable.allowedEmailDomains }).from(OrganizationTable).where(eq(OrganizationTable.id, row.organizationId)).limit(1)
+    const [org] = await tx.select({ allowedEmailDomains: OrganizationTable.allowedEmailDomains, metadata: OrganizationTable.metadata }).from(OrganizationTable).where(eq(OrganizationTable.id, row.organizationId)).limit(1)
     if (!org) return { status: "not_found" }
     if (!isEmailAllowedForOrganization(org.allowedEmailDomains, input.email)) return { status: "domain_not_allowed", allowedEmailDomains: org.allowedEmailDomains ?? [] }
     // A domain limit is only as strong as the email proof behind it.
@@ -268,7 +296,8 @@ export async function joinSandbox(input: { token: string; userId: string; email:
     if (members.filter(member => member.removedAt === null).length >= row.memberLimit) return { status: "full" }
 
     const memberId = createDenTypeId("member")
-    await tx.insert(MemberTable).values({ id: memberId, organizationId: row.organizationId, userId, role: "member", joinedAt: new Date() })
+    // Members by default; an admin chose "admin" for this sandbox. Never owner.
+    await tx.insert(MemberTable).values({ id: memberId, organizationId: row.organizationId, userId, role: readJoinRole(org.metadata), joinedAt: new Date() })
     return { status: "added", organizationId: row.organizationId, memberId }
   })
   if (result.status === "expired") await closeExpiredSandboxes(null)
