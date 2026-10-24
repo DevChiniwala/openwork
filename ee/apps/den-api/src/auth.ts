@@ -130,6 +130,7 @@ import {
 } from "./device-authorization.js";
 import { WORKBOT_OAUTH_CLIENT_ID } from "./workbot/config.js";
 import { DEN_LIMITED_BETTER_AUTH_PATHS } from "./auth-rate-limits.js";
+import { MCP_SESSION_REVOKED_GRANT_DESCRIPTION } from "./oauth-token-rate-limit-observability.js";
 import { CLIENT_IP_IPV6_SUBNET, RESOLVED_CLIENT_IP_HEADER } from "./client-ip.js";
 import { ensureWorkbotOAuthClient } from "./workbot/oauth-client.js";
 
@@ -209,7 +210,6 @@ export const DEN_MCP_RESOURCE_CLAIM = `${env.mcpClaimNamespace}/resource`;
 export const DEN_MCP_GRANT_ID_CLAIM = `${env.mcpClaimNamespace}/grant_id`;
 export const DEN_MCP_OPAQUE_ACCESS_TOKEN_PREFIX = "ow_mcp_at_";
 const DEN_MCP_REFRESH_TOKEN_PREFIX = "ow_mcp_rt_";
-const INVALID_MCP_SESSION_GRANT_DESCRIPTION = "The authorization backing this grant has been revoked. Re-authorize the connection.";
 export { DEN_MCP_SCOPES } from "./mcp/scopes.js";
 
 export function normalizeMcpOAuthResource(resource: string): string | null {
@@ -590,7 +590,7 @@ async function assertLiveMcpSessionForRefreshGrant(ctx: Parameters<Parameters<ty
     }
     throw new APIError("BAD_REQUEST", {
       error: "invalid_grant",
-      error_description: INVALID_MCP_SESSION_GRANT_DESCRIPTION,
+      error_description: MCP_SESSION_REVOKED_GRANT_DESCRIPTION,
     });
   }
 }
