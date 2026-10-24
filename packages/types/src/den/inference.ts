@@ -158,6 +158,18 @@ export const INFERENCE_MODEL_ALIASES = {
     enabled: true,
     usageFactor: 1,
   },
+  "moonshotai/kimi-k3.1-pro": {
+    upstreamModel: "moonshotai/kimi-k3.1-pro",
+    displayName: "OpenWork: Kimi K3.1 Pro",
+    enabled: true,
+    usageFactor: 1,
+  },
+  "deepseek/deepseek-v4.1-flash": {
+    upstreamModel: "deepseek/deepseek-v4.1-flash",
+    displayName: "OpenWork: DeepSeek V4.1 Flash",
+    enabled: true,
+    usageFactor: 1,
+  },
 } as const;
 
 export type InferenceModelAlias = keyof typeof INFERENCE_MODEL_ALIASES;

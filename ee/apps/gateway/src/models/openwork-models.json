@@ -344,5 +344,95 @@
       "cache_read": 0.01,
       "cache_write": 0.125
     }
+  },
+  "moonshotai/kimi-k3.1-pro": {
+    "id": "moonshotai/kimi-k3.1-pro",
+    "name": "Kimi K3.1 Pro",
+    "description": "Kimi multimodal agent model for visual understanding, coding, and planning",
+    "family": "kimi-k3",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+      {
+        "type": "effort",
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ]
+      }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": false,
+    "release_date": "2026-10-23",
+    "last_updated": "2026-10-23",
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "open_weights": false,
+    "limit": {
+      "context": 1048576,
+      "output": 943718
+    },
+    "cost": {
+      "input": 2,
+      "output": 10,
+      "cache_read": 0.2
+    },
+    "canonical_model_id": "moonshotai/kimi-k3.1-pro"
+  },
+  "deepseek/deepseek-v4.1-flash": {
+    "id": "deepseek/deepseek-v4.1-flash",
+    "name": "DeepSeek V4.1 Flash",
+    "description": "Fast DeepSeek model for efficient chat, coding help, and agent loops",
+    "family": "deepseek-flash",
+    "attachment": true,
+    "reasoning": true,
+    "reasoning_options": [
+      {
+        "type": "effort",
+        "values": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ]
+      }
+    ],
+    "tool_call": true,
+    "structured_output": true,
+    "temperature": true,
+    "knowledge": "2025-05",
+    "release_date": "2026-09-10",
+    "last_updated": "2026-09-10",
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "open_weights": true,
+    "limit": {
+      "context": 1048576,
+      "output": 943718
+    },
+    "cost": {
+      "input": 0.02,
+      "output": 1,
+      "cache_read": 0.015
+    },
+    "canonical_model_id": "deepseek/deepseek-v4.1-flash"
   }
 }
