@@ -45,6 +45,7 @@ import { ComputerNavigationContext, ComputerOffer, DocumentNavigationContext, Do
 import { useQueryClient } from "@tanstack/react-query";
 import { useNativeDictation } from "@openwork/ui/react";
 import { WorkbotDictation } from "./native-dictation";
+import { WorkbotCommandPalette, type WorkbotPaletteTab } from "./command-palette";
 
 /**
  * Workbot: one thread, instant. Layout and values follow the Paper file "WorkBot — one chat, set up once",
@@ -235,6 +236,35 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   }, [preview, data]);
   const filesEnabled = data?.filesEnabled ?? false;
   const addFiles = uploads.add;
+  // The command palette (feature `workbotCommandPalette`). Off: no button, no shortcut, no extra requests.
+  const paletteOn = host.commandPalette === true;
+  const paletteChats = useWorkbotChats(paletteOn && navigation !== null);
+  const paletteTasks = useMemo(() => (data?.turns ?? []).flatMap((turn) => turn.tasks), [data?.turns]);
+  const palette = paletteOn ? (
+    <WorkbotCommandPalette
+      name={data?.name ?? "Workbot"}
+      tab={tab}
+      tabs={paletteTabs(host)}
+      onTab={(next) => setTab(next)}
+      chats={navigation ? {
+        current: navigation.chat,
+        list: paletteChats.data,
+        loading: paletteChats.isPending,
+        failed: paletteChats.isError,
+        retry: () => void paletteChats.refetch(),
+        open: navigation.openChat,
+        locked: documentsDirty,
+      } : null}
+      busy={data?.status === "busy" || pending.some((entry) => !entry.failed)}
+      onStop={data ? () => stop.mutate() : null}
+      onOpenFiles={filesEnabled ? () => { if (!workspaceShell && tab !== "home") setTab("home"); setFilesOpen(true); } : null}
+      tasks={paletteTasks}
+      onFocusComposer={data ? focusComposer : null}
+      onShowTask={showTask}
+      homeHref={host.homeHref}
+      connectionsHref={host.connectionsHref ?? null}
+    />
+  ) : null;
   const dragging = useFileDrop(filesEnabled, addFiles);
 
   useEffect(() => {
@@ -326,7 +356,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       <ComputerNavigationContext.Provider value={navigateComputerFromChat}>
       <DocumentNavigationContext.Provider value={guided && host.documents ? { status: navigationStatus, open: followNavigation } : null}>
         <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased" data-workbot-workspace>
-          <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null} answered={hasAnsweredTurn(data?.turns)}
+          <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null} answered={hasAnsweredTurn(data?.turns)} search={palette}
             files={filesEnabled ? <FilesButton open={filesOpen} onOpen={() => setFilesOpen(true)} /> : null}
             chats={host.workspaceAssistant ? <WorkspaceMenu page={tab} onPage={setTab} onDocument={navigateDocument} drafts={documentsDirty} onChats={navigation?.openChats} /> : navigation ? <ChatsButton onOpen={navigation.openChats} /> : null}
             nav={host.workspaceAssistant ? null : <WorkbotNav tab={tab} onTab={setTab} />}
@@ -369,6 +399,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           files={null}
           nav={<WorkbotNav tab={tab} onTab={setTab} />}
           answered={hasAnsweredTurn(data?.turns)}
+          search={palette}
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
@@ -452,6 +483,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         remove={navigation && chatId && data.turns.length > 0 ? <RemoveChatButton chatId={chatId} title={navigation.title} onRemoved={() => { composerState.dispose(); navigation.openChat(null); }} /> : null}
         nav={!chatId ? <WorkbotNav tab={tab} onTab={setTab} /> : null}
         answered={hasAnsweredTurn(data.turns)}
+        search={palette}
       />
       <div className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -604,7 +636,28 @@ function useConnectedApps() {
   return workbotHost().useConnectedApps();
 }
 
-type WorkbotTab = "home" | "calendar" | "documents" | "computer";
+type WorkbotTab = WorkbotPaletteTab;
+
+/** The pages this person has, in the header's order. */
+function paletteTabs(host: WorkbotHost): WorkbotTab[] {
+  return ["home", ...(host.calendar ? ["calendar" as const] : []), ...(host.documents ? ["documents" as const] : []), ...(host.computer ? ["computer" as const] : [])];
+}
+
+/** Puts the caret in the message box on screen (the Home composer, or the workspace chat's). */
+function focusComposer() {
+  for (const box of document.querySelectorAll<HTMLTextAreaElement>("[data-workbot-composer] textarea")) {
+    if (box.offsetParent !== null && !box.disabled) { box.focus(); return; }
+  }
+}
+
+/** Brings a background task's card into view and onto its own action (Stop, Try again). */
+function showTask(taskId: string) {
+  const card = document.querySelector<HTMLElement>(`[data-workbot-task="${CSS.escape(taskId)}"]`);
+  if (!card) return;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  card.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+  card.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+}
 
 function tabFromLocation(): WorkbotTab {
   const path = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") : "";
@@ -673,6 +726,8 @@ function WorkbotHeader(props: {
   nav?: ReactNode;
   /** Whether an answer to the person has finished, for the Get set up chip (shown only after the first answer). */
   answered?: boolean;
+  /** The command palette's button (and the palette), where it is on. */
+  search?: ReactNode;
 }) {
   const { name, organizationName, userName, files } = props;
   const apps = useConnectedApps();
@@ -688,6 +743,7 @@ function WorkbotHeader(props: {
         </div>
       )}
       <div className="flex shrink-0 items-center gap-2.5 sm:gap-3.5">
+        {props.search}
         {props.remove}
         <WorkbotSetupChip answered={props.answered === true} />
         {files}

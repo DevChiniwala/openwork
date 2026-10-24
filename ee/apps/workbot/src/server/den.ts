@@ -46,6 +46,8 @@ export const denSessionSchema = z.object({
   activationChecklist: z.boolean().default(false),
   /** Side chats are on for this person. A Den from before side chats doesn't say: off. */
   sideChats: z.boolean().default(false),
+  /** The Cmd+K / Ctrl+K command palette. A Den from before it doesn't say: off. */
+  commandPalette: z.boolean().default(false),
   /** The organization's default model for Workbot's turns. Null, or a Den from before it, means the runner's default. */
   model: z.string().nullable().default(null),
   verifyModel: z.boolean().default(false),

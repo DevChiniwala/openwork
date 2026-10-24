@@ -76,6 +76,8 @@ const sessionSchema = z.object({
   activationChecklist: z.boolean().optional(),
   /** The person can start side chats next to their main chat (while Workbot is on). */
   sideChats: z.boolean(),
+  /** The Cmd+K / Ctrl+K command palette (`workbotCommandPalette`); older Dens omit it: off. */
+  commandPalette: z.boolean().optional(),
   /**
    * The model Workbot's turns run on: the organization's default model. Null, and
    * omitted by older Dens, means the headless runner's default.
@@ -400,6 +402,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         usageRecovery: includedModels,
         activationChecklist: features.activationChecklist,
         sideChats: true,
+        commandPalette: features.workbotCommandPalette,
         model,
         gatewayModels: true,
         stepTurns: true,
