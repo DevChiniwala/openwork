@@ -76,6 +76,24 @@ export class DenSignedOutError extends Error {
   }
 }
 
+/** Den's token endpoint asked Workbot to wait this many seconds before asking again. */
+export class DenRateLimitedError extends Error {
+  constructor(readonly retryAfter: number) {
+    super("den_token_rate_limited")
+    this.name = "DenRateLimitedError"
+  }
+}
+
+/** Bounds Den's Retry-After: a missing or unreadable value waits a little, a huge one never strands a sign-in for long. */
+const DEFAULT_TOKEN_RETRY_AFTER_S = 30
+const MAX_TOKEN_RETRY_AFTER_S = 300
+
+export function tokenRetryAfterSeconds(header: string | null) {
+  const value = header?.trim() ?? ""
+  if (!/^\d{1,9}$/.test(value)) return DEFAULT_TOKEN_RETRY_AFTER_S
+  return Math.min(Math.max(Number(value), 1), MAX_TOKEN_RETRY_AFTER_S)
+}
+
 /** Only this allowlisted refusal survives a failed credential mint. Never retain Den's raw payload. */
 export class WorkbotTurnAccessError extends Error {
   constructor(readonly reason: WorkbotAccessReason, readonly status: 403 | 429 | 503, readonly retryAfter?: number) {
@@ -142,6 +160,7 @@ export function createDen(options: { apiUrl: string; publicUrl: string; serviceT
     })
     const payload: unknown = await response.json().catch(() => null)
     if (response.status === 400 || response.status === 401) throw new DenSignedOutError()
+    if (response.status === 429) throw new DenRateLimitedError(tokenRetryAfterSeconds(response.headers.get("retry-after")))
     const tokens = tokenSchema.safeParse(payload)
     if (!response.ok || !tokens.success) throw new Error(`den_token_${response.status}`)
     return {
