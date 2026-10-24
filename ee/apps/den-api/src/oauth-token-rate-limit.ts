@@ -29,8 +29,8 @@ async function defaultRateLimitCheck(
   now: number,
   consume = true,
 ) {
-  const { checkRateLimit } = await import("./utils/rate-limit.js")
-  return checkRateLimit(key, maxRequests, windowMs, now, consume)
+  const { checkFixedWindowRateLimit } = await import("./utils/rate-limit.js")
+  return checkFixedWindowRateLimit(key, maxRequests, windowMs, now, consume)
 }
 
 /**
