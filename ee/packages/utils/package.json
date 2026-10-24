@@ -38,6 +38,14 @@
       "development": "./src/den-urls.ts",
       "default": "./dist/den-urls.js"
     },
+    "./client-ip-signature": {
+      "types": {
+        "openwork-build": "./dist/types/src/client-ip-signature.d.ts",
+        "default": "./src/client-ip-signature.ts"
+      },
+      "development": "./src/client-ip-signature.ts",
+      "default": "./dist/client-ip-signature.js"
+    },
     "./inference-egress": {
       "types": {
         "openwork-build": "./dist/types/src/inference-egress.d.ts",

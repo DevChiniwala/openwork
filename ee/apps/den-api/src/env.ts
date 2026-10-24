@@ -1,6 +1,7 @@
 import os from "node:os"
 import { readFileSync } from "node:fs"
 import path from "node:path"
+import { CLIENT_IP_SECRET_MIN_LENGTH } from "@openwork-ee/utils/client-ip-signature"
 import { denUrls } from "@openwork-ee/utils/den-urls"
 import { parseGatewayDeploymentEnv } from "@openwork-ee/utils/gateway-env"
 import { DEN_WORKER_POLL_INTERVAL_MS } from "./CONSTS.js"
@@ -37,6 +38,8 @@ const EnvSchema = z.object({
   DEN_AUTH_COOKIE_PREFIX: z.string().regex(/^openwork-den(-[a-z0-9]{1,32})?$/).optional(),
   DEN_BETTER_AUTH_TRUSTED_ORIGINS: z.string().optional(),
   DEN_TRUSTED_PROXIES: z.string().optional(),
+  /** Shared with Den Web, which signs the person's address with it when it forwards a request. */
+  DEN_WEB_CLIENT_IP_SECRET: z.string().optional(),
   DEN_WEB_APP_HOSTS: z.string().optional(),
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
@@ -596,6 +599,11 @@ if (headlessRunnerCallbackToken && headlessRunnerCallbackToken.length < 32) {
 if (headlessRunnerCallbackToken && headlessRunnerCallbackToken === optionalString(parsed.DEN_HEADLESS_RUNNER_TOKEN)) {
   throw new Error("DEN_HEADLESS_RUNNER_CALLBACK_TOKEN must differ from DEN_HEADLESS_RUNNER_TOKEN.")
 }
+// Unset: a forwarded address from Den Web is never trusted, and addresses come from the proxy chain alone.
+const webClientIpSecret = optionalString(parsed.DEN_WEB_CLIENT_IP_SECRET)
+if (webClientIpSecret && webClientIpSecret.length < CLIENT_IP_SECRET_MIN_LENGTH) {
+  throw new Error(`DEN_WEB_CLIENT_IP_SECRET must contain at least ${CLIENT_IP_SECRET_MIN_LENGTH} characters.`)
+}
 const derivedDenApiPublicUrl = configuredDenUrls && devMode && denBaseUrlIsLoopback(configuredDenUrls.web)
   ? `http://127.0.0.1:${port}`
   : configuredDenUrls?.api ?? deriveApiPublicUrlFromWebOrigin({ devMode, port, webOrigin: betterAuthPublicWebOrigin })
@@ -693,6 +701,7 @@ export const env = {
   betterAuthCookieDomain,
   authCookiePrefix: parsed.DEN_AUTH_COOKIE_PREFIX ?? "openwork-den",
   trustedProxies: splitCsv(parsed.DEN_TRUSTED_PROXIES),
+  webClientIpSecret,
   webUrl: normalizePublicWebOrigin(betterAuthUrl),
   // SECURITY: `redis://` carries cached auth-session material in plaintext.
   // Non-local redis:// is rejected by default. Hosted platforms such as Render
