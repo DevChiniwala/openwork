@@ -32,6 +32,7 @@ config:
     sandboxOrgs: ""                    # default off (cloud only) · Platform admins create try-it-out organizations from /admin with fictional workplace connectors, included models and a shareable join link that expires.
     organizationAutomationSettings: "" # default off · Organization admins turn Desktop Automations and Cloud Automations on or off for their organization. Cloud Automations need the deployment's headless runner.
     connectionMcpServers: ""           # default off · Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.
+    localProviderMirror: ""            # default off · API keys people add on their computer, such as OpenRouter, OpenAI or Anthropic, show in the chat model picker on the new engine. AI Providers says when the organization manages providers or a sign-in is not available on the new engine yet.
     liveProviderSync: ""               # default off · Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.
     agentConnectionRemoval: ""         # default off · People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.
     managedDeployments: ""             # default off (cloud only) · Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments.

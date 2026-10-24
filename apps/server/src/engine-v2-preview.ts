@@ -56,7 +56,10 @@ export function engineInstanceId(env: NodeJS.ProcessEnv = process.env): string |
 }
 import { findManagedEngineWorkspace, hasExternalOpencode } from "./workspaces.js";
 import { globalSkillDirectories } from "./skills.js";
-import { localProviderDefinitions, readLocalProviderApiKeys } from "./opencode-v2-local-auth.js";
+import { localProviderDefinitions, readLocalProviderAuth, type EngineV2SkippedProvider, type EngineV2SkippedProviderReason } from "./opencode-v2-local-auth.js";
+import { organizationProviderGate } from "./organization-provider-gate.js";
+
+export type { EngineV2SkippedProvider, EngineV2SkippedProviderReason } from "./opencode-v2-local-auth.js";
 
 const OPENCODE_V2_VERSION = constants.opencodeV2Version;
 const PREVIEW_STATE_FILE = "engine-v2-preview.json";
@@ -104,6 +107,12 @@ export interface EngineV2PreviewStatus {
   binSource?: "env" | "path" | "cache";
   mirroredProviderIds: string[];
   skippedProviderIds: string[];
+  /**
+   * Why each provider in `skippedProviderIds` is not on this engine, including
+   * providers connected on this computer that never reached the mirror. Only
+   * present while the `localProviderMirror` rollout is on.
+   */
+  skippedProviders?: EngineV2SkippedProvider[];
   catalogModelIds: string[];
   lastMirroredAt?: string;
   lastError?: string;
@@ -137,6 +146,8 @@ export interface EngineV2Preview {
   connection(): { url: string; username: string; password: string } | undefined;
   ensureWorkspaceReady(directory: string): Promise<void>;
   refreshProviders(): Promise<void>;
+  /** Mirror again when the `localProviderMirror` rollout changed since the last mirror, so turning it off applies without a restart. */
+  recheckLocalProviderMirror(): Promise<void>;
   setLiveProviderSync(enabled: boolean): Promise<void>;
   /**
    * Reconcile a folder's MCP connections with the engine: register new or
@@ -351,13 +362,14 @@ export function mapRuntimeProvidersToV2Specs(
   storedCredentials: ReadonlyMap<string, string> = new Map(),
   localApiKeys: ReadonlyMap<string, string> = new Map(),
   configuredProviderIds: ReadonlySet<string> = new Set(),
-): { specs: OpencodeV2ProviderSpec[]; skippedProviderIds: string[] } {
+): { specs: OpencodeV2ProviderSpec[]; skippedProviderIds: string[]; skippedProviders: EngineV2SkippedProvider[] } {
   const specs: OpencodeV2ProviderSpec[] = [];
-  const skippedProviderIds: string[] = [];
+  const skippedProviders: EngineV2SkippedProvider[] = [];
+  const skip = (id: string, reason: EngineV2SkippedProviderReason) => { skippedProviders.push({ id, reason }); };
 
   for (const [id, value] of Object.entries(providerMap)) {
     if (!isRecord(value)) {
-      skippedProviderIds.push(id);
+      skip(id, "metadata");
       continue;
     }
     // Only built-in adapters: do not turn organization configuration into a
@@ -385,7 +397,7 @@ export function mapRuntimeProvidersToV2Specs(
       } catch { return false; }
     };
     if (!safeBaseUrl(baseUrl)) {
-      skippedProviderIds.push(id);
+      skip(id, "unsupported");
       continue;
     }
     if (!explicitBaseUrl && value.api !== undefined) {
@@ -400,12 +412,12 @@ export function mapRuntimeProvidersToV2Specs(
         trusted = typeof value.npm === "string" && Object.hasOwn(nativeOrigins, value.npm)
           && url.origin === nativeOrigins[value.npm];
       } catch { /* Invalid endpoint metadata is never mirrored. */ }
-      if (!trusted && !isConfigured) { skippedProviderIds.push(id); continue; }
+      if (!trusted && !isConfigured) { skip(id, "unsupported"); continue; }
     }
     const packageName = typeof value.npm === "string" && Object.hasOwn(packages, value.npm) ? packages[value.npm] : undefined;
     if ((value.npm !== undefined && !packageName)
       || (!baseUrl && (!packageName || value.npm === "@ai-sdk/openai-compatible"))) {
-      skippedProviderIds.push(id);
+      skip(id, "unsupported");
       continue;
     }
     const { apiKey, baseURL, headers, ...settings } = options;
@@ -428,7 +440,7 @@ export function mapRuntimeProvidersToV2Specs(
     const explicitKey = typeof apiKey === "string" && apiKey.trim() !== "" && !apiKey.includes("{env:") ? apiKey : undefined;
     const resolvedKey = explicitKey ?? storedKey ?? localApiKeys.get(id);
     if (envNames.length > 0 && !resolvedKey) {
-      skippedProviderIds.push(id);
+      skip(id, "credentials");
       continue;
     }
     const models = isRecord(value.models)
@@ -455,8 +467,15 @@ export function mapRuntimeProvidersToV2Specs(
   }
 
   specs.sort((left, right) => left.id.localeCompare(right.id));
-  skippedProviderIds.sort((left, right) => left.localeCompare(right));
-  return { specs, skippedProviderIds };
+  skippedProviders.sort((left, right) => left.id.localeCompare(right.id));
+  return { specs, skippedProviderIds: skippedProviders.map(provider => provider.id), skippedProviders };
+}
+
+/** One entry per provider, sorted by id; the first reason given for a provider wins. */
+export function mergeSkippedProviders(...groups: ReadonlyArray<readonly EngineV2SkippedProvider[]>): EngineV2SkippedProvider[] {
+  const merged = new Map<string, EngineV2SkippedProvider>();
+  for (const provider of groups.flat()) if (!merged.has(provider.id)) merged.set(provider.id, provider);
+  return [...merged.values()].sort((left, right) => left.id.localeCompare(right.id));
 }
 
 export function shouldSyncLiveProviderOwnerTransition(previous: boolean, next: boolean, rollout: boolean): boolean {
@@ -584,6 +603,12 @@ export async function resolveLiveProviderSyncForEngineStart(resolve?: () => Prom
   catch { return false; }
 }
 
+/** A rollout that cannot be read is off: the mirror keeps its older behavior. */
+export async function resolveLocalProviderMirror(resolve?: () => Promise<boolean>): Promise<boolean> {
+  try { return await resolve?.() === true; }
+  catch { return false; }
+}
+
 export function createEngineV2Preview(options: {
   config: ServerConfig;
   env?: Pick<EnvService, "list" | "onChange">;
@@ -592,6 +617,8 @@ export function createEngineV2Preview(options: {
   providerSession?: () => CloudProviderDenSession | null;
   /** Fresh Den resolution on every child start, independent of the cloud sync timer. */
   resolveLiveProviderSync?: () => Promise<boolean>;
+  /** The `localProviderMirror` rollout, read on every mirror. Missing, unreachable or signed out means off. */
+  resolveLocalProviderMirror?: () => Promise<boolean>;
   waits?: Partial<typeof ENGINE_V2_UPKEEP_WAITS>;
   /** Same running-task probe used by the interactive migration route; unknown is not idle. */
   autoUpgradeIdle?: () => Promise<boolean>;
@@ -649,6 +676,9 @@ export function createEngineV2Preview(options: {
   let binSource: EngineV2PreviewStatus["binSource"];
   let mirroredProviderIds: string[] = [];
   let skippedProviderIds: string[] = [];
+  let skippedProviders: EngineV2SkippedProvider[] | undefined;
+  // The `localProviderMirror` value the last mirror ran with.
+  let appliedLocalProviderMirror: boolean | undefined;
   let currentCatalogModelIds: string[] = [];
   let lastMirroredAt: string | undefined;
   let lastError: string | undefined;
@@ -839,6 +869,7 @@ export function createEngineV2Preview(options: {
       ...(binSource === undefined ? {} : { binSource }),
       mirroredProviderIds: [...mirroredProviderIds],
       skippedProviderIds: [...skippedProviderIds],
+      ...(skippedProviders === undefined ? {} : { skippedProviders: skippedProviders.map(provider => ({ ...provider })) }),
       catalogModelIds: [...currentCatalogModelIds],
       ...(lastMirroredAt === undefined ? {} : { lastMirroredAt }),
       ...(lastError === undefined ? {} : { lastError }),
@@ -866,14 +897,25 @@ export function createEngineV2Preview(options: {
   }
 
   async function pushAndConfirmProviders(active: ManagedOpencodeV2Server, pushed: () => void, discovered: () => void): Promise<void> {
+    const mirrorLocal = await resolveLocalProviderMirror(options.resolveLocalProviderMirror);
+    appliedLocalProviderMirror = mirrorLocal;
     const globalRuntime = await readGlobalRuntimeOpencodeConfig(config);
     const configured = runtimeProviderMap(globalRuntime);
     // Same list v1 receives as `disabled_providers` (e.g. a disconnected
     // OpenCode Zen). Re-enabling removes the entry and this mirror restores it.
     const disabledProviderIds = runtimeDisabledProviderList(globalRuntime);
     const disabled = new Set(disabledProviderIds);
-    const localKeys = await readLocalProviderApiKeys();
-    const combinedProviders = { ...await localProviderDefinitions(config, localKeys, configured), ...configured };
+    // "Only models you provide": the providers v1 omits from `enabled_providers`
+    // never reach v2 either, whether configured or connected on this computer.
+    const allowsProvider = organizationProviderGate(globalRuntime.managedPolicy);
+    const localAuth = await readLocalProviderAuth();
+    const localKeys = allowsProvider
+      ? new Map([...localAuth.apiKeys].filter(([id]) => allowsProvider(id)))
+      : localAuth.apiKeys;
+    const local = await localProviderDefinitions(config, localAuth, configured, { normalize: mirrorLocal, allows: allowsProvider });
+    const blockedConfigured = Object.keys(configured).filter(id => allowsProvider && !allowsProvider(id));
+    const combinedProviders = { ...local.providers, ...Object.fromEntries(Object.entries(configured)
+      .filter(([id]) => !allowsProvider || allowsProvider(id))) };
     // Native plugin is the sole Gateway owner. Local and legacy providers still
     // use the old mirror, including their normal readiness/catalog checks.
     const providerMap = Object.fromEntries(Object.entries(combinedProviders)
@@ -907,7 +949,14 @@ export function createEngineV2Preview(options: {
     mirroredSpecs = specs.filter(spec => !ownsGateway() || !/^ipr_/i.test(spec.id));
     workspaceReadiness.clear();
     mirroredProviderIds = nextMirroredProviderIds.filter(id => !ownsGateway() || !/^ipr_/i.test(id));
-    skippedProviderIds = [...new Set([...mapped.skippedProviderIds, ...templates.errors.map(error => error.providerId)])].sort();
+    const skipped = mergeSkippedProviders(
+      local.skipped,
+      blockedConfigured.map((id): EngineV2SkippedProvider => ({ id, reason: "policy" })),
+      templates.errors.map((error): EngineV2SkippedProvider => ({ id: error.providerId, reason: "metadata" })),
+      mapped.skippedProviders,
+    );
+    skippedProviderIds = skipped.map(provider => provider.id);
+    skippedProviders = mirrorLocal ? skipped : undefined;
     lastMirroredAt = new Date().toISOString();
     pushed();
     // Re-check folders already in use now, so their next prompt pays nothing.
@@ -944,6 +993,11 @@ export function createEngineV2Preview(options: {
     scheduleMirror();
     await mirrorInFlight;
     if (mirrorError) throw new Error(mirrorError);
+  }
+
+  async function recheckLocalProviderMirror(): Promise<void> {
+    if (!running || !sidecar || appliedLocalProviderMirror === undefined) return;
+    if (await resolveLocalProviderMirror(options.resolveLocalProviderMirror) !== appliedLocalProviderMirror) scheduleMirror();
   }
 
   async function setLiveProviderSync(next: boolean): Promise<void> {
@@ -1432,5 +1486,5 @@ export function createEngineV2Preview(options: {
     } else if (enabled && !automaticHistoryCopy && engineOrigin !== "reverted" && !(autoUpgradeEnabled && !chatRouting && !chosenV1Manually())) void start().catch(recordStartError);
   }
   if (!options.deferStart) startWhenReady();
-  return { start: startWhenReady, setForcePolicy, migrateHistory, status, setEnabled, setChatRouting, requireV1HistoryCopied, describeUncopiedChat, connection, ensureWorkspaceReady, refreshProviders, setLiveProviderSync, syncWorkspaceMcp, settleWorkspaceMcp, warmWorkspace, settleWorkspaceSkills, stop };
+  return { start: startWhenReady, setForcePolicy, migrateHistory, status, setEnabled, setChatRouting, requireV1HistoryCopied, describeUncopiedChat, connection, ensureWorkspaceReady, refreshProviders, recheckLocalProviderMirror, setLiveProviderSync, syncWorkspaceMcp, settleWorkspaceMcp, warmWorkspace, settleWorkspaceSkills, stop };
 }

@@ -428,6 +428,8 @@ export const desktopConfigSchema = desktopPolicyValueSchema
     connectEnabled: z.boolean().optional(),
     /** Whether the server may start the live OpenCode provider engine. Missing means off. */
     liveProviderSync: z.boolean().optional(),
+    /** Whether the server mirrors API keys added on this computer into OpenCode v2. Missing means off. */
+    localProviderMirror: z.boolean().optional(),
     /** OpenCode Zen models (Big Pickle and other free `opencode` models) are removed. Missing means off. */
     removeOpencodeZen: z.boolean().optional(),
     onboardingPrompts: onboardingPromptsSchema.optional(),
@@ -845,6 +847,7 @@ export function normalizeDesktopConfig(value: unknown): DesktopConfig {
     ...(dashboardEnabled !== undefined ? { dashboardEnabled } : {}),
     ...(connectEnabled !== undefined ? { connectEnabled } : {}),
     ...(typeof raw?.liveProviderSync === "boolean" ? { liveProviderSync: raw.liveProviderSync } : {}),
+    ...(typeof raw?.localProviderMirror === "boolean" ? { localProviderMirror: raw.localProviderMirror } : {}),
     ...(typeof raw?.removeOpencodeZen === "boolean" ? { removeOpencodeZen: raw.removeOpencodeZen } : {}),
     ...(onboardingPromptConfig !== undefined ? onboardingPromptConfig : {}),
     ...(agentPermissions.success ? { agentPermissions: agentPermissions.data } : {}),

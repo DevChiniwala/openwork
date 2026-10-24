@@ -2,6 +2,7 @@ import { legacyExecutionPermissions } from "./managed-policy-rules.js";
 import { DESKTOP_POLICY_ENFORCEMENT_ENABLED, desktopCapabilityConfig } from "@openwork/types/den/desktop-policies-runtime";
 import { materializeLegacyFastProviders } from "@openwork/types/cloud-model-fast";
 import { isManagedPolicyPlugin } from "./managed-policy-plugin.js";
+import { ORGANIZATION_PROVIDER_ID, organizationProviderGate } from "./organization-provider-gate.js";
 /**
  * Runtime OpenCode configuration injected via a server-managed config file
  * passed to the engine as OPENCODE_CONFIG.
@@ -72,11 +73,12 @@ export function buildOpenworkRuntimeConfigObjectFromSnapshot(
   const permissions = legacyExecutionPermissions(runtimeConfig.managedPolicy?.execution);
   const { managedPolicy: _managedPolicy, managedPrompt, ...engineConfig } = runtimeConfig;
   const provider = materializeLegacyFastProviders(runtimeProviderMap(runtimeConfig));
+  const allowsProvider = organizationProviderGate(runtimeConfig.managedPolicy);
   return {
     ...engineConfig,
-    ...(runtimeConfig.managedPolicy?.allowCustomProviders === false ? { enabled_providers: [
-      ...Object.keys(provider).filter((id) => /^(?:lpr_|ipr_|openwork$)/i.test(id)),
-      ...(runtimeConfig.managedPolicy.allowZenModel !== false ? ["opencode"] : []),
+    ...(allowsProvider ? { enabled_providers: [
+      ...Object.keys(provider).filter((id) => ORGANIZATION_PROVIDER_ID.test(id)),
+      ...(allowsProvider("opencode") ? ["opencode"] : []),
     ] } : {}),
     permission: { ...engineConfig.permission, ...permissions },
     default_agent: runtimeConfig.default_agent ?? "openwork",

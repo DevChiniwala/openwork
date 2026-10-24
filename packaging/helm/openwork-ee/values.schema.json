@@ -121,6 +121,16 @@
               ],
               "description": "Connect: an MCP server for each connection: Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools. Renders DEN_FEATURE_CONNECTION_MCP_SERVERS."
             },
+            "localProviderMirror": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "OpenCode v2: providers added on this computer: API keys people add on their computer, such as OpenRouter, OpenAI or Anthropic, show in the chat model picker on the new engine. AI Providers says when the organization manages providers or a sign-in is not available on the new engine yet. Renders DEN_FEATURE_LOCAL_PROVIDER_MIRROR."
+            },
             "liveProviderSync": {
               "enum": [
                 "",

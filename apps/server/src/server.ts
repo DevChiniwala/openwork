@@ -836,6 +836,12 @@ export async function startServer(
   };
   const engineV2Preview: EngineV2Preview = createEngineV2Preview({ config, env, deferStart: true,
     resolveLiveProviderSync,
+    // The signed-in member's rollout from Den, without waiting on Den once it
+    // answered for this sign-in (cloud provider sync rereads it); signed out it stays off.
+    resolveLocalProviderMirror: async () => {
+      const policy = managedDesktopPolicy(config);
+      return (policy.known() ?? await policy.current())?.localProviderMirror === true;
+    },
     autoUpgradeIdle: async () => (await describeV1EngineActivity(config)).verdict === "idle",
     autoUpgradeError: (error) => logger.log("warn", "Automatic engine upgrade failed; keeping v1", { error }),
     providerSession: () => cloudProviderSync.currentSession(),
@@ -857,6 +863,7 @@ export async function startServer(
       // The same signed-in desktop-config hydration as organization defaults. A
       // missing field/older Den is off; never infer this from org metadata.
       await engineV2Preview.setLiveProviderSync(await resolveLiveProviderSync());
+      void engineV2Preview.recheckLocalProviderMirror().catch(() => undefined);
       return engineV2Preview.status().liveProviderSync;
     },
     reloadEngine: async () => {
@@ -983,10 +990,11 @@ export async function startServer(
           const response = await sendWithOwnershipProof(ownership,
             () => taskRecovery ? taskRecovery.forward(workspace, "v1", mount.restPath, request, send) : send());
           if (response.ok && engineV2Preview.status().chatRouting
-            && ["PUT", "DELETE"].includes(request.method)
-            && /^\/opencode\/auth\/[^/]+$/.test(mount.restPath)) {
-            // The ordinary local-provider form writes v1's credential store.
-            // Join v2 catalog reconciliation before reporting that save complete.
+            && ((["PUT", "DELETE"].includes(request.method) && /^\/opencode\/auth\/[^/]+$/.test(mount.restPath))
+              || (request.method === "POST" && /^\/opencode\/provider\/[^/]+\/oauth\/callback$/.test(mount.restPath)))) {
+            // The ordinary local-provider form and provider sign-in write v1's
+            // credential store. Join v2 catalog reconciliation before reporting
+            // that save complete, so the engine's status already explains it.
             await engineV2Preview.refreshProviders();
           }
           return finalizeProxyResponse(response);

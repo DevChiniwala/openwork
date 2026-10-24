@@ -342,6 +342,10 @@ class ManagedDesktopPolicy {
       : agentPermissionRulesOf((await readGlobalRuntimeOpencodeConfig(this.config)).managedPolicy);
     return rules.filter((rule) => rule.action === "webfetch");
   }
+  /** The desktop config verified for this sign-in, without waiting on Den. Null signed out or before Den first answered. */
+  known(): DesktopConfig | null {
+    return this.knownPolicy();
+  }
   /** The policy to enforce now: verified for this sign-in, else the last one verified for it; never waits on Den. */
   private knownPolicy(): DesktopConfig | null {
     const session = this.session;

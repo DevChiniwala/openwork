@@ -481,6 +481,7 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
         // Compatibility field for published desktops: Connect is always on.
         connectEnabled: true,
         liveProviderSync: features.liveProviderSync,
+        localProviderMirror: features.localProviderMirror,
         removeOpencodeZen: features.removeOpencodeZen,
         agentPermissions,
         ...(defaultModel ? { defaultModel } : {}),

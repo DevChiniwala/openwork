@@ -123,6 +123,13 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  localProviderMirror: {
+    label: "OpenCode v2: providers added on this computer",
+    description: "API keys people add on their computer, such as OpenRouter, OpenAI or Anthropic, show in the chat model picker on the new engine. AI Providers says when the organization manages providers or a sign-in is not available on the new engine yet.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",
