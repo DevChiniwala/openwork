@@ -6,12 +6,13 @@ import { t } from "@/i18n";
 import { gatewayConnectProviderKey, type GatewayConnectProvider, isCloudManagedProviderKey } from "../../connections/provider-auth/cloud-provider-config";
 import { isKeylessZenProvider } from "../../connections/provider-auth/provider-policy";
 import type { ProviderLoadState } from "../../connections/provider-auth/store";
+import type { LocalProviderEngineState } from "../../connections/provider-auth/local-provider-engine-state";
 import { AUTO_PROVIDER_ID, autoProviderSubtitle } from "@/react-app/domains/models/model-catalog";
 import { SettingsNotice } from "../settings-section";
 import { LayoutStack } from "../settings-layout";
 import { SettingsPanel, SettingsPanelDescription, SettingsPanelHeading, SettingsPanelTitle } from "../shell/panel";
 import { getSettingsTabLabel } from "../shell/settings-page";
-import { ProviderList, ProviderMeta, ProviderRow, ProviderStatus, ProviderTile } from "./provider-rows";
+import { LocalProviderStatus, ProviderList, ProviderMeta, ProviderRow, ProviderStatus, ProviderTile } from "./provider-rows";
 
 export type ConnectedProvider = {
   id: string;
@@ -59,6 +60,8 @@ export type AiSettingsViewProps = {
   autoError?: string | null;
   onSetAutoEnabled?: (enabled: boolean) => void | Promise<void>;
   organizationProviderIds?: ReadonlySet<string>;
+  /** Providers on this device the engine chat runs on cannot use, from the server's skipped list. */
+  localProviderStates?: ReadonlyMap<string, LocalProviderEngineState>;
   onOpenDen?: () => void;
 };
 
@@ -153,10 +156,11 @@ export function AiSettingsView(props: AiSettingsViewProps) {
         /> : null}
         {local.map((provider) => <ProviderRow
           key={provider.id}
+          testId={`local-provider-${provider.id}`}
           scope="device"
           tile={<ProviderTile providerId={provider.id} name={provider.name} />}
           name={provider.name}
-          status={<ProviderStatus tone="ready">Ready to use</ProviderStatus>}
+          status={<LocalProviderStatus state={props.localProviderStates?.get(provider.id)} organizationName={props.organizationName} />}
           meta={<ProviderMeta id={provider.id} parts={[deviceSourceLabel(provider.source), props.organizationProviderIds?.has(provider.id) ? `also available from ${props.organizationName || "your organization"}` : null]} />}
           actions={<Button variant="ghost" disabled={rowsBusy || !ready || !props.canDisconnectProvider(provider)} onClick={() => void props.onDisconnectProvider(provider.id)}>{props.disconnectingProviderId === provider.id ? t("settings.disconnecting") : props.canDisconnectProvider(provider) ? t("settings.disconnect") : t("settings.managed_by_env")}</Button>}
         />)}

@@ -178,9 +178,36 @@ export interface EngineV2PreviewStatus {
   v1HistoryAvailable?: boolean;
   mirroredProviderIds: string[];
   skippedProviderIds: string[];
+  /** Why each skipped provider is not on OpenCode v2. Older servers, and the rollout switched off, omit it. */
+  skippedProviders?: EngineV2SkippedProvider[];
   catalogModelIds: string[];
   lastMirroredAt?: string;
   lastError?: string;
+}
+
+/**
+ * `policy`: the organization allows only its own providers. Every other
+ * reason means the provider is connected on this computer but OpenCode v2
+ * cannot use it yet (`oauth` sign-ins, `unsupported` adapters, `metadata` or
+ * `credentials` it could not read). A reason a newer server adds reads as
+ * `unsupported`, never as ready.
+ */
+export type EngineV2SkippedProviderReason = "policy" | "oauth" | "unsupported" | "metadata" | "credentials";
+
+export interface EngineV2SkippedProvider {
+  id: string;
+  reason: EngineV2SkippedProviderReason;
+}
+
+const ENGINE_V2_SKIP_REASONS: readonly EngineV2SkippedProviderReason[] = ["policy", "oauth", "unsupported", "metadata", "credentials"];
+
+function parseEngineV2SkippedProviders(value: unknown): EngineV2SkippedProvider[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((item): EngineV2SkippedProvider[] => {
+    if (!item || typeof item !== "object" || !("id" in item) || typeof item.id !== "string" || !item.id) return [];
+    const reason = "reason" in item ? ENGINE_V2_SKIP_REASONS.find((known) => known === item.reason) : undefined;
+    return [{ id: item.id, reason: reason ?? "unsupported" }];
+  });
 }
 
 const workspaceDefaultModelRefSchema = z.object({
@@ -215,6 +242,7 @@ function parseEngineV2PreviewStatus(value: unknown): EngineV2PreviewStatus {
   ) {
     throw new Error("Invalid OpenCode v2 engine preview status response.");
   }
+  const skippedProviders = parseEngineV2SkippedProviders("skippedProviders" in value ? value.skippedProviders : undefined);
   return {
     migration: parseEngineV2Migration("migration" in value ? value.migration : undefined),
     ...("v1HistoryAvailable" in value && typeof value.v1HistoryAvailable === "boolean"
@@ -235,6 +263,7 @@ function parseEngineV2PreviewStatus(value: unknown): EngineV2PreviewStatus {
     binSource: "binSource" in value && typeof value.binSource === "string" ? value.binSource : undefined,
     mirroredProviderIds: value.mirroredProviderIds,
     skippedProviderIds: value.skippedProviderIds,
+    ...(skippedProviders ? { skippedProviders } : {}),
     catalogModelIds: value.catalogModelIds,
     lastMirroredAt: "lastMirroredAt" in value && typeof value.lastMirroredAt === "string" ? value.lastMirroredAt : undefined,
     lastError: "lastError" in value && typeof value.lastError === "string" ? value.lastError : undefined,
