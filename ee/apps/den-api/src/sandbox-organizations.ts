@@ -29,7 +29,7 @@ import { updateOrganizationFeatureOverrides } from "./features.js"
 import { cache } from "./cache.js"
 import { ensureMemberGatewayKey } from "./gateway-keys.js"
 import { runPostOrganizationMemberChangeHooks } from "./organization-member-hooks.js"
-import { createOrganizationForUser, isEmailAllowedForOrganization } from "./orgs.js"
+import { createOrganizationForUser, isEmailAllowedForOrganization, updateOrganizationMemberRole } from "./orgs.js"
 import { getInvitationOrigin } from "./routes/org/shared.js"
 
 type UserId = DenTypeId<"user">
@@ -40,7 +40,7 @@ const createJoinToken = customAlphabet("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcd
 
 export class SandboxInputError extends Error {}
 
-/** Organization metadata key holding what joiners become; missing means member. */
+/** Organization metadata key holding what joiners become; missing means admin (sandboxes are for trying everything). */
 const SANDBOX_JOIN_ROLE_KEY = "sandboxJoinRole"
 
 function readJoinRole(metadata: unknown): SandboxJoinRole {
@@ -48,11 +48,23 @@ function readJoinRole(metadata: unknown): SandboxJoinRole {
   if (typeof metadata === "string") {
     try { record = JSON.parse(metadata) } catch { record = null }
   }
-  return typeof record === "object" && record !== null && !Array.isArray(record) && Object.entries(record).some(([key, value]) => key === SANDBOX_JOIN_ROLE_KEY && value === "admin") ? "admin" : "member"
+  return typeof record === "object" && record !== null && !Array.isArray(record) && Object.entries(record).some(([key, value]) => key === SANDBOX_JOIN_ROLE_KEY && value === "member") ? "member" : "admin"
 }
 
 async function writeJoinRole(organizationId: DenTypeId<"organization">, joinRole: SandboxJoinRole) {
   await updateOrganizationMetadata(organizationId, current => ({ ...current, [SANDBOX_JOIN_ROLE_KEY]: joinRole }))
+}
+
+/** Makes people who joined as members admins, through the normal role change (audit, caches, key rotation). */
+async function promoteJoinedMembers(organizationId: DenTypeId<"organization">, onlyUserId?: DenTypeId<"user">) {
+  const members = await db.select({ id: MemberTable.id }).from(MemberTable).where(and(
+    eq(MemberTable.organizationId, organizationId),
+    eq(MemberTable.role, "member"),
+    isNull(MemberTable.removedAt),
+    isNotNull(MemberTable.joinedAt),
+    ...(onlyUserId ? [eq(MemberTable.userId, onlyUserId)] : []),
+  ))
+  for (const member of members) await updateOrganizationMemberRole({ organizationId, memberId: member.id, nextRole: "admin" })
 }
 
 export function sandboxJoinLink(token: string) {
@@ -156,7 +168,7 @@ export async function createSandbox(actor: UserId, input: SandboxCreateInput): P
     id, organizationId, joinToken: createJoinToken(), connectorBaseUrl: input.connectorBaseUrl,
     memberLimit: input.memberLimit, expiresAt, createdByUserId: actor,
   })
-  if (input.joinRole === "admin") await writeJoinRole(organizationId, "admin")
+  await writeJoinRole(organizationId, input.joinRole ?? "admin")
   if (input.allowedEmailDomains.length > 0) {
     await db.update(OrganizationTable).set({ allowedEmailDomains: [...new Set(input.allowedEmailDomains)] }).where(eq(OrganizationTable.id, organizationId))
   }
@@ -201,11 +213,12 @@ export async function createSandbox(actor: UserId, input: SandboxCreateInput): P
   return created
 }
 
-/** Changes what people who join from now on become. Existing members keep their role. */
+/** Changes what people who join become. Choosing admin also makes everyone who already joined an admin; choosing member demotes nobody. */
 export async function setSandboxJoinRole(id: DenTypeId<"sandboxOrganization">, joinRole: SandboxJoinRole) {
   const [row] = await db.select({ organizationId: SandboxOrganizationTable.organizationId }).from(SandboxOrganizationTable).where(eq(SandboxOrganizationTable.id, id)).limit(1)
   if (!row) return null
   await writeJoinRole(row.organizationId, joinRole)
+  if (joinRole === "admin") await promoteJoinedMembers(row.organizationId)
   return getSandbox(id)
 }
 
@@ -301,6 +314,11 @@ export async function joinSandbox(input: { token: string; userId: string; email:
     return { status: "added", organizationId: row.organizationId, memberId }
   })
   if (result.status === "expired") await closeExpiredSandboxes(null)
+  if (result.status === "joined" && result.alreadyMember) {
+    // Someone who joined as a member before the sandbox became admin-joining is promoted when they open the link again.
+    const [org] = await db.select({ metadata: OrganizationTable.metadata }).from(OrganizationTable).where(eq(OrganizationTable.id, result.organizationId)).limit(1)
+    if (org && readJoinRole(org.metadata) === "admin") await promoteJoinedMembers(result.organizationId, userId)
+  }
   if (result.status !== "added") return result
   // Same effects as any other join, after the membership commits: caches, billing quantities and the member's gateway key.
   await cache.org.deleteMemberList(result.organizationId)

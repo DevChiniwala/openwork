@@ -64,15 +64,15 @@ test("a platform admin creates a sandbox organization from /admin and people who
     await anonymous.screenshot();
   });
 
-  await step("Avery opens the link, sees what the sandbox includes and joins", async () => {
+  await step("Avery opens the link, sees what the sandbox includes and joins as an admin", async () => {
     await avery.navigate(joinLink);
     await avery.see({ testId: "join-sandbox-connectors" }, { text: /Outlook, Calendar, Drive, Jira, Confluence/, timeoutMs: 30_000 });
     await avery.screenshot();
     await avery.click({ testId: "join-sandbox-submit" });
     await avery.see({ testId: "join-org-success" }, { timeoutMs: 30_000 });
     const membership = await world.membership("avery", organizationId);
-    evidence.recordAssertionEvidence("Joining makes Avery a member, never an admin", `status=${membership.status}; role=${membership.role}`, membership.status === 200 && membership.role === "member");
-    expect(membership.role).toBe("member");
+    evidence.recordAssertionEvidence("Joining makes Avery an admin of the sandbox, never its owner", `status=${membership.status}; role=${membership.role}`, membership.status === 200 && membership.role === "admin");
+    expect(membership.role).toBe("admin");
     await avery.screenshot();
   });
 
@@ -120,7 +120,7 @@ test("a platform admin creates a sandbox organization from /admin and people who
     await riley.see({ testId: "join-org-success" }, { timeoutMs: 30_000 });
     const outlook = (await world.connections("riley", organizationId)).find(connection => connection.id === outlookId);
     const membership = await world.membership("riley", organizationId);
-    const ok = membership.role === "member" && outlook?.connectedForMe === false;
+    const ok = membership.role === "admin" && outlook?.connectedForMe === false;
     evidence.recordAssertionEvidence("Avery's sign-in does not carry over to Riley", `Riley role=${membership.role}; Riley Outlook connected=${outlook?.connectedForMe}`, ok);
     expect(ok).toBe(true);
     await riley.screenshot();

@@ -26,7 +26,7 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
 const stateLabel = { open: "Open", expired: "Ended", closed: "Closed" } as const;
 
 type Draft = { name: string; connectorBaseUrl: string; days: string; memberLimit: string; domains: string; extraUsd: string; joinRole: SandboxJoinRole };
-const freshDraft = (): Draft => ({ name: "", connectorBaseUrl: "", days: "14", memberLimit: "50", domains: "", extraUsd: "", joinRole: "member" });
+const freshDraft = (): Draft => ({ name: "", connectorBaseUrl: "", days: "14", memberLimit: "50", domains: "", extraUsd: "", joinRole: "admin" });
 const roleLabel: Record<SandboxJoinRole, string> = { member: "Members", admin: "Admins" };
 
 export function SandboxOrgsPage() {
@@ -132,8 +132,8 @@ export function SandboxOrgsPage() {
             <label className="grid gap-2 text-xs">Open for (days)<DenInput aria-label="Days open" type="number" required min={1} max={SANDBOX_MAX_DAYS} step={1} value={draft.days} disabled={saving} onChange={event => setDraft({ ...draft, days: event.target.value })} /></label>
             <label className="grid gap-2 text-xs">Seats<DenInput aria-label="Seats" type="number" required min={1} max={SANDBOX_MAX_MEMBERS} step={1} value={draft.memberLimit} disabled={saving} onChange={event => setDraft({ ...draft, memberLimit: event.target.value })} /></label>
           </div>
-          <label className="grid gap-2 text-xs">People who join become<DenSelect aria-label="People who join become" value={draft.joinRole} disabled={saving} onChange={event => { const parsed = sandboxJoinRoleSchema.safeParse(event.target.value); if (parsed.success) setDraft({ ...draft, joinRole: parsed.data }); }}><option value="member">Members</option><option value="admin">Admins</option></DenSelect>
-            <span className="text-[color:var(--dls-text-secondary)]">Admins can manage connectors, members and settings in the sandbox.</span></label>
+          <label className="grid gap-2 text-xs">People who join become<DenSelect aria-label="People who join become" value={draft.joinRole} disabled={saving} onChange={event => { const parsed = sandboxJoinRoleSchema.safeParse(event.target.value); if (parsed.success) setDraft({ ...draft, joinRole: parsed.data }); }}><option value="admin">Admins</option><option value="member">Members</option></DenSelect>
+            <span className="text-[color:var(--dls-text-secondary)]">Admins can try everything: connectors, members and settings.</span></label>
           <label className="grid gap-2 text-xs">Who can join<DenInput aria-label="Allowed email domains" placeholder="Anyone with the link" value={draft.domains} disabled={saving} onChange={event => setDraft({ ...draft, domains: event.target.value })} />
             <span className="text-[color:var(--dls-text-secondary)]">Optional. Email domains separated by commas, such as example.com.</span></label>
           <label className="grid gap-2 text-xs">Extra Free Auto usage (USD)<DenInput aria-label="Extra Free Auto usage in USD" type="number" min="0.01" max="10000" step="0.01" placeholder="None" value={draft.extraUsd} disabled={saving} onChange={event => setDraft({ ...draft, extraUsd: event.target.value })} />
