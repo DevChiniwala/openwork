@@ -1305,7 +1305,13 @@ config:
 
 #### 1. Run the repair and read the Job log
 
-Start the upgrade in one terminal:
+First find the release name and chart version:
+
+```sh
+helm list --namespace my-openwork
+```
+
+Use that release name in the upgrade command. This example uses `openwork`:
 
 ```sh
 helm upgrade openwork <chart> --namespace my-openwork -f values.yaml -f recovery.yaml
@@ -1313,20 +1319,34 @@ helm upgrade openwork <chart> --namespace my-openwork -f values.yaml -f recovery
 
 The Job always uses the normal `migrations.hookDeletePolicy` in both Secret
 modes (default: delete after success). Capture the result **during the upgrade
-in a second terminal**. Watch for the Job, then follow its log as soon as it appears:
+in a second terminal**, before successful-hook cleanup removes it. Replace the
+Job placeholder with `<release fullname>-migrate`, including any fullname override:
 
 ```sh
-kubectl --namespace my-openwork get jobs -w
-# Once the migrate Job appears, stop the watch (Ctrl-C), then:
 umask 077
-kubectl --namespace my-openwork logs -f job/<name-ending-in-migrate> > recovery.log
+until kubectl --namespace my-openwork logs -f job/<release-fullname>-migrate > recovery.log 2>/dev/null; do
+  sleep 2
+done
 ```
 
-Keep `recovery.log` privately; it contains the full member roster. Find the Job
-whose name ends in `-migrate`; its prefix follows the chart fullname and any
-override. A refused run (for example, an `expectedMembers` mismatch) fails the
-Job. Under the normal default policy, that failed Job and its log stay available
-until the next upgrade. Read the log even if Helm reports a failed upgrade.
+This explicit loop retries startup errors without relying on the kubectl client's
+own retry behavior. Start it promptly for the new migration Job. When retrying a
+failed upgrade, wait until Helm has replaced the previous failed Job so you do
+not capture its old log. If the loop does not finish, inspect the Job's status
+and your access rather than leaving it unattended.
+
+Keep `recovery.log` privately; it contains the full member roster. A refused run
+(for example, an `expectedMembers` mismatch) makes Helm report **`UPGRADE FAILED`**.
+That failure is expected for a refusal: in this single-organization example, no
+repair changes are written and the existing Den workloads keep running. It is
+not a successful upgrade. Under the normal default policy, the failed Job and
+its log stay readable until the next upgrade:
+
+```sh
+kubectl --namespace my-openwork logs job/<release-fullname>-migrate
+```
+
+Read that log, correct the reported configuration, and only then retry.
 
 With the default `migrations.hook: true`, this is a **pre-upgrade** Job: a
 recovery refusal or SQL error makes bootstrap exit nonzero and, once the Job
