@@ -126,7 +126,7 @@ const FEATURES_WITHOUT_DOCS = new Set([
   "workbotDocumentEditing", "workbotWorkspaceAssistant", "workbotIncludedModels", "workbotUsageRecovery",
   "usageLimitUpgrade", "automationCalendar", "removeOpencodeZen", "computerUse", "browserLiveView",
   "browserFloatingView", "remoteComputers", "desktopSignInReturn", "activationChecklist",
-  "connectStandardTools", "teamPlan", "selfServeEnterprise", "orgPrompts", "sessionTokenHashing",
+  "connectStandardTools", "claudeHistoryImport", "teamPlan", "selfServeEnterprise", "orgPrompts", "sessionTokenHashing",
 ])
 
 /** The internal doc exists under docs/ (not the published packages/docs) and its images resolve. */

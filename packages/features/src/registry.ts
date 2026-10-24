@@ -287,6 +287,7 @@ export const FEATURES = defineFeatures({
     label: "Desktop: import Claude conversations",
     description: "Settings has an Import page that brings conversations from a Claude data export and Claude Code sessions saved on this computer into the workspace as regular OpenWork chats.",
     since: "2026-10",
+    author: "benjaminshafii",
     deployments: everywhere,
     default: false,
   },
