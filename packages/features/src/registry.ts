@@ -74,6 +74,15 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  mcpAppLibraries: {
+    label: "Apps: built-in libraries",
+    description: "Apps built in OpenWork can use icons, charts, animation, 3D and SVG drawing from pinned libraries bundled into each App, with no remote scripts or network access.",
+    since: "2026-10",
+    author: "reachjalil",
+    docs: "docs/features/mcp-app-libraries/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   administratorRecovery: {
     label: "Deploy-time administrator recovery",
     description: "Run a one-time, operator-selected Admin-team permission repair at deployment; disabling stops future repairs, not existing grants.",

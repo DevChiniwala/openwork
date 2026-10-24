@@ -794,7 +794,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
             await appActor()
             const tools = await resolveTools((await withCapabilities(request)).tools ?? [])
             await appActor()
-            return appAuthoringStarter(request, tools)
+            return appAuthoringStarter(request, tools, { libraries: organizationFeatures.mcpAppLibraries })
           }),
           create: (request) => appOperation(async () => {
             const context = await appActor()
