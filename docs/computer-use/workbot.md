@@ -113,6 +113,11 @@ HEADLESS_COMPUTER_PERSISTENT=true
 HEADLESS_COMPUTER_DOMAIN=computers.example.com
 ```
 
+The production deploy (`celld-runner-deploy.yml`) stops before the fleet
+changes when the configured slug was built for a different guest, for example
+after a dependency bump changes a package the guest bundles. Build the new
+snapshot at that commit, update `CELLD_RUNNER_VARS`, then rerun the deploy.
+
 Keep `FREESTYLE_API_KEY` in the runner's secrets. Each desktop computer
 publishes only its viewer port, at a random host under that domain; the guest's
 single-use, origin-bound viewer tickets still gate every connection. Freestyle

@@ -104,6 +104,33 @@ jobs:
           pnpm install --filter "@openwork-ee/headless-runner..." --frozen-lockfile
           pnpm --filter "@openwork-ee/headless-runner^..." --if-present run build
 
+      # The runner only accepts a computer whose desktop guest has its identity (dist/desktop-guest.version), and
+      # rebuilding a computer starts it again from the configured snapshot. A runner whose guest changed (its code, or a
+      # package it bundles, such as a lockfile bump) would turn every computer "out of date" until a new snapshot exists,
+      # so stop before the fleet changes. Build the snapshot with snapshot:build:freestyle-desktop at this commit, set
+      # HEADLESS_COMPUTER_SNAPSHOT in CELLD_RUNNER_VARS, then rerun this run.
+      - name: Check the computer snapshot was built for this runner
+        id: snapshot
+        run: |
+          set -euo pipefail
+          computer="$(printf '%s' "$RUNNER_VARS" | jq -r '.HEADLESS_COMPUTER // ""')"
+          desktop="$(printf '%s' "$RUNNER_VARS" | jq -r '.HEADLESS_COMPUTER_DESKTOP // ""')"
+          snapshot="$(printf '%s' "$RUNNER_VARS" | jq -r '.HEADLESS_COMPUTER_SNAPSHOT // ""')"
+          if [ "$computer" != "freestyle" ] || [ "$desktop" != "true" ]; then
+            echo "No Freestyle desktop computers configured; nothing to check."
+            exit 0
+          fi
+          identity="$(head -c 16 ee/packages/headless-computer/dist/desktop-guest.version)"
+          if ! [[ "$snapshot" =~ ^workbot-desktop-freestyle-([0-9a-f]{16})$ ]]; then
+            echo "::warning title=Computer snapshot not checked::$snapshot isn't named by snapshot:build:freestyle-desktop, so its desktop can't be compared with this runner's ($identity)."
+            exit 0
+          fi
+          if [ "${BASH_REMATCH[1]}" != "$identity" ]; then
+            echo "::error title=Computer snapshot is out of date::$snapshot was built for desktop ${BASH_REMATCH[1]}, but this runner's desktop is $identity. Build workbot-desktop-freestyle-$identity with snapshot:build:freestyle-desktop at this commit, set it as HEADLESS_COMPUTER_SNAPSHOT in CELLD_RUNNER_VARS, then rerun."
+            exit 1
+          fi
+          echo "$snapshot was built for this runner's desktop."
+
       - name: Check model and smoke result boundaries
         run: pnpm --filter @openwork-ee/headless-runner exec tsx --test scripts/model-responses.test.ts scripts/celld-smoke-result.test.ts
 
@@ -300,6 +327,7 @@ jobs:
           JOB_STATUS: ${{ job.status }}
           FLEET_OUTCOME: ${{ steps.fleet.outcome }}
           COMPAT_OUTCOME: ${{ steps.compat.outcome }}
+          SNAPSHOT_OUTCOME: ${{ steps.snapshot.outcome }}
           UNCHANGED: ${{ steps.fleet.outputs.unchanged }}
           VERSION: ${{ steps.fleet.outputs.version }}
           PREVIOUS: ${{ steps.live.outputs.version }}
@@ -324,6 +352,9 @@ jobs:
           elif [ "$FLEET_OUTCOME" = "success" ]; then
             outcome="failed"
             summary=":red_circle: Runner \`$VERSION\` is in the fleet bucket but only ${ADOPTED:-?} of ${INSTANCES:-?} nodes adopted it (was \`$previous\`)."
+          elif [ "$SNAPSHOT_OUTCOME" = "failure" ]; then
+            outcome="failed"
+            summary=":red_circle: Runner deploy stopped: its computer desktop changed and the configured snapshot was built for the old one. Build a new snapshot, set it in CELLD_RUNNER_VARS and rerun. The fleet stays on \`$previous\`."
           elif [ "$COMPAT_OUTCOME" = "failure" ]; then
             outcome="failed"
             summary=":red_circle: Runner deploy stopped: the live runner and this one can't serve each other during a switch. The fleet stays on \`$previous\`."
