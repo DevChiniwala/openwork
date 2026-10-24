@@ -24,8 +24,12 @@ With the feature on, for the signed-in member:
   adds `skippedProviders: [{ id, reason }]`, with `reason` one of `policy`,
   `oauth`, `unsupported`, `metadata` or `credentials`.
 - After a key is saved or a provider sign-in finishes, the server mirrors it
-  into v2 and rebuilds v1's provider list for that folder (never while v1 runs
-  work), so AI Providers and the picker agree right away.
+  into v2 and disposes v1's instance for that folder in place (never while v1
+  runs work, never through the engine pool, which skips a folder whose config
+  file did not change), so v1's provider list is fresh on the next read.
+- AI Providers lists every provider on this device that the engine mirrored
+  (Ready to use) or skipped (with its reason), even when v1's list has not
+  caught up, so a provider that works in the picker is never missing.
 - AI Providers reads the skipped list: a sign-in v2 cannot use yet (ChatGPT,
   for example) reads "Not available on the new engine yet", and a provider the
   organization does not allow keeps its row with a lock and "Acme manages AI

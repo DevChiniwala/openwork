@@ -85,7 +85,7 @@ import ProviderAuthModal, { PROVIDER_LABELS } from "@/react-app/domains/connecti
 import { keylessProviderIds } from "@/react-app/domains/connections/provider-auth/provider-policy";
 import ConnectionsModals from "@/react-app/domains/connections/modals";
 import { AiSettingsView } from "@/react-app/domains/settings/pages/ai-view";
-import { useLocalProviderEngineStates } from "@/react-app/domains/connections/provider-auth/local-provider-engine-state";
+import { deviceProviders, useLocalProviderEngineStates } from "@/react-app/domains/connections/provider-auth/local-provider-engine-state";
 // Side-effect imports: register extension config components into the registry.
 import { OllamaConfig } from "@/react-app/domains/settings/ollama-config";
 import "@/react-app/domains/settings/browser-extension-config";
@@ -1805,12 +1805,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const disabledProviderIdSet = new Set(
     disabledProviders.map((id) => id.trim().toLowerCase()).filter(Boolean),
   );
+  // Read the engine's view again whenever the provider list is read again,
+  // including when v1's list did not change.
   const localProviderStates = useLocalProviderEngineStates(
     selectedWorkspaceEndpoint?.client ?? openworkClient,
-    providerConnectedIds.join("\n"),
+    `${providerAuthSnapshot.providerLoadState.status}\n${providerConnectedIds.join("\n")}`,
   );
-  const connectedProviders = [
-    ...providers.flatMap((provider) =>
+  // While chat runs on v2, v1's list can lag the engine (it caches per folder):
+  // a provider the engine mirrored or skipped stays listed with its state.
+  const connectedProviders = deviceProviders({
+    connected: providers.flatMap((provider) =>
       providerConnectedIdSet.has(provider.id) &&
       !disabledProviderIdSet.has(provider.id.trim().toLowerCase())
         ? [{
@@ -1820,14 +1824,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           }]
         : [],
     ),
-    // v1 leaves a provider the organization does not allow out of its list.
-    // On v2 it stays visible with the reason instead of disappearing.
-    ...[...localProviderStates.keys()].flatMap((id) =>
-      providerConnectedIdSet.has(id) || disabledProviderIdSet.has(id.trim().toLowerCase())
-        ? []
-        : [{ id, name: providers.find((provider) => provider.id === id)?.name ?? PROVIDER_LABELS[id.toLowerCase()] ?? id }],
-    ),
-  ];
+    engine: localProviderStates,
+    hidden: disabledProviderIdSet,
+    nameFor: (id) => providers.find((provider) => provider.id === id)?.name ?? PROVIDER_LABELS[id.toLowerCase()] ?? id,
+  });
   // Disconnect hides built-in/config providers through disabled_providers, and
   // the engine then omits them everywhere. List them so they can come back.
   const hiddenProviders = [...new Set(disabledProviders.map((id) => id.trim()).filter(Boolean))].flatMap((id) =>

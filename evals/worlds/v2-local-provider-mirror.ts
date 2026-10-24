@@ -85,6 +85,7 @@ export async function v2LocalProviderMirror(seed: Seed) {
     app, den, workspace, session, setMirror, allowPersonalProviders, signInWithChatGpt,
     organizationName: "Acme",
     openRouterKey: "sk-or-v1-synthetic-not-a-real-key",
+    anthropicKey: "sk-ant-synthetic-not-a-real-key",
     settingsUrl: `${app.webUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/settings/ai`,
     sessionUrl: `${app.webUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/session/${encodeURIComponent(session.sessionId)}`,
   };

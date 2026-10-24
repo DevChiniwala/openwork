@@ -1005,10 +1005,15 @@ export async function startServer(
             await engineV2Preview.refreshProviders();
             // With the localProviderMirror rollout (the mirror then explains
             // its skips), also rebuild v1's provider state for this folder:
-            // AI Providers lists providers from v1, which otherwise keeps the
-            // old list until a restart. Never while v1 is running work.
+            // AI Providers lists providers from v1, which caches them per
+            // folder and otherwise keeps the old list until a restart.
+            // Disposed in place, not through the engine pool: the pool skips a
+            // folder already reloaded onto the same config file, and saved
+            // credentials are not part of that file, so every save after the
+            // first was skipped. Never spawns an engine, and never while v1 is
+            // running work.
             if (engineV2Preview.status().skippedProviders && !await engineHasActiveSessions(config, workspace)) {
-              await reloadOpencodeEngine(config, workspace, engineMcpServerState, { reason: "local_provider_auth", awaitPostRefreshSync: false })
+              await reloadOpencodeEngineInPlace(config, workspace, engineMcpServerState, { awaitPostRefreshSync: false })
                 .catch((error) => logger.log("warn", "Could not refresh OpenCode v1 providers after a provider change.", {
                   error: error instanceof Error ? error.message : String(error),
                 }));
