@@ -71,6 +71,16 @@
               ],
               "description": "Apps: built-in libraries: Apps built in OpenWork can use icons, charts, animation, 3D and SVG drawing from pinned libraries bundled into each App, with no remote scripts or network access. Renders DEN_FEATURE_MCP_APP_LIBRARIES."
             },
+            "mermaidZoom": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Desktop: zoom into diagrams: Mermaid diagrams in chat and file previews can be zoomed, panned and opened full screen so large diagrams are readable. Renders DEN_FEATURE_MERMAID_ZOOM."
+            },
             "administratorRecovery": {
               "enum": [
                 "",

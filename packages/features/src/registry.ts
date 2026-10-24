@@ -83,6 +83,15 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  mermaidZoom: {
+    label: "Desktop: zoom into diagrams",
+    description: "Mermaid diagrams in chat and file previews can be zoomed, panned and opened full screen so large diagrams are readable.",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/mermaid-zoom/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   administratorRecovery: {
     label: "Deploy-time administrator recovery",
     description: "Run a one-time, operator-selected Admin-team permission repair at deployment; disabling stops future repairs, not existing grants.",
