@@ -48,6 +48,8 @@ export const sandboxSchema = z.object({
   memberLimit: z.number().int(),
   connectorBaseUrl: z.string().nullable(),
   connectorCount: z.number().int(),
+  /** AI Gateway providers in the sandbox organization. Older servers omit it. */
+  modelProviderCount: z.number().int().optional(),
   allowedEmailDomains: z.array(z.string()),
   joinRole: sandboxJoinRoleSchema,
   expiresAt: z.iso.datetime({ offset: true }),
@@ -55,9 +57,19 @@ export const sandboxSchema = z.object({
   createdAt: z.iso.datetime({ offset: true }),
 });
 
+/** What a new sandbox gets on this deployment. Older servers omit it. */
+export const sandboxDefaultsSchema = z.object({
+  /** Workshop service the sample work apps use; null when none is configured. */
+  workplaceUrl: z.string().nullable(),
+  /** Models every member gets through the AI Gateway; empty when no sandbox key is configured. */
+  gatewayModels: z.array(z.string()),
+  gatewayProviderId: z.string().nullable(),
+});
+
 export const sandboxListSchema = z.object({
   enabled: z.boolean(),
   sandboxes: z.array(sandboxSchema),
+  defaults: sandboxDefaultsSchema.optional(),
 });
 
 export const sandboxCreatedSchema = z.object({ sandbox: sandboxSchema });
@@ -78,4 +90,5 @@ export type SandboxExtendInput = z.infer<typeof sandboxExtendInputSchema>;
 export type Sandbox = z.infer<typeof sandboxSchema>;
 export type SandboxState = z.infer<typeof sandboxStateSchema>;
 export type SandboxList = z.infer<typeof sandboxListSchema>;
+export type SandboxDefaults = z.infer<typeof sandboxDefaultsSchema>;
 export type SandboxJoinPreview = z.infer<typeof sandboxJoinPreviewSchema>;

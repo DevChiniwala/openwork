@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { and, count, desc, eq, inArray, isNotNull, isNull } from "@openwork-ee/den-db/drizzle"
 import {
   ExternalMcpConnectionTable,
+  GatewayProviderTable,
   MemberTable,
   OrganizationBenefitSettingTable,
   OrganizationGrantTable,
@@ -13,6 +14,7 @@ import { INFERENCE_USAGE_CONVERSION_FACTOR } from "@openwork/types/den/inference
 import {
   SANDBOX_WORKPLACE_APPS,
   type Sandbox,
+  type SandboxDefaults,
   type SandboxCreateInput,
   type SandboxJoinPreview,
   type SandboxJoinRole,
@@ -23,6 +25,8 @@ import { externalMcpOAuthConfigurationDefaults } from "./capability-sources/exte
 import { createExternalMcpConnection } from "./capability-sources/external-mcp-connections.js"
 import { assertPublicUrl } from "./capability-sources/url-guard.js"
 import { db } from "./db.js"
+import { appLogger } from "./observability/logger.js"
+import { addSandboxGatewayProvider, sandboxGatewayConfigured } from "./sandbox-gateway.js"
 import { updateOrganizationMetadata } from "./organization-metadata.js"
 import { env } from "./env.js"
 import { updateOrganizationFeatureOverrides } from "./features.js"
@@ -102,6 +106,9 @@ async function serialize(rows: SandboxRow[], now = new Date()): Promise<Sandbox[
   const org = new Map(orgs.map(row => [row.id, row]))
   const memberCount = new Map(members.map(row => [row.organizationId, Number(row.total)]))
   const connectorCount = new Map(connectors.map(row => [row.organizationId, Number(row.total)]))
+  const providerRows = await db.select({ organizationId: GatewayProviderTable.organization_id, total: count() }).from(GatewayProviderTable)
+    .where(inArray(GatewayProviderTable.organization_id, ids)).groupBy(GatewayProviderTable.organization_id)
+  const providerCount = new Map(providerRows.map(row => [row.organizationId, Number(row.total)]))
   return rows.map(row => ({
     id: row.id,
     organizationId: row.organizationId,
@@ -112,6 +119,7 @@ async function serialize(rows: SandboxRow[], now = new Date()): Promise<Sandbox[
     memberLimit: row.memberLimit,
     connectorBaseUrl: row.connectorBaseUrl,
     connectorCount: connectorCount.get(row.organizationId) ?? 0,
+    modelProviderCount: providerCount.get(row.organizationId) ?? 0,
     allowedEmailDomains: org.get(row.organizationId)?.allowedEmailDomains ?? [],
     joinRole: readJoinRole(org.get(row.organizationId)?.metadata),
     expiresAt: row.expiresAt.toISOString(),
@@ -131,6 +139,11 @@ export async function closeExpiredSandboxes(actor: UserId | null, now = new Date
     await db.update(SandboxOrganizationTable).set({ closedAt: now }).where(and(eq(SandboxOrganizationTable.id, row.id), isNull(SandboxOrganizationTable.closedAt)))
     await setFreeAuto(row.organizationId, "disabled", actor ?? row.createdByUserId)
   }
+}
+
+export function sandboxDefaults(): SandboxDefaults {
+  const gateway = sandboxGatewayConfigured() ? env.sandbox.gateway : null
+  return { workplaceUrl: env.sandbox.workplaceUrl, gatewayModels: gateway?.modelIds ?? [], gatewayProviderId: gateway?.providerId ?? null }
 }
 
 export async function listSandboxes(actor: UserId): Promise<Sandbox[]> {
@@ -188,10 +201,15 @@ export async function createSandbox(actor: UserId, input: SandboxCreateInput): P
     })
   }
 
+  const [owner] = await db.select({ id: MemberTable.id }).from(MemberTable)
+    .where(and(eq(MemberTable.organizationId, organizationId), eq(MemberTable.userId, actor), isNull(MemberTable.removedAt))).limit(1)
+  if (!owner) throw new Error("sandbox_owner_missing")
+  // Models through the AI Gateway for everyone, from the deployment's sandbox key. A failure leaves the sandbox on
+  // its included models and is visible as zero model providers in /admin.
+  await addSandboxGatewayProvider({ organizationId, ownerMemberId: owner.id }).catch((error: unknown) => {
+    appLogger.error("sandbox gateway provider failed", { organization_id: organizationId, error: error instanceof Error ? error.message : "unknown" })
+  })
   if (connectors.length > 0) {
-    const [owner] = await db.select({ id: MemberTable.id }).from(MemberTable)
-      .where(and(eq(MemberTable.organizationId, organizationId), eq(MemberTable.userId, actor), isNull(MemberTable.removedAt))).limit(1)
-    if (!owner) throw new Error("sandbox_owner_missing")
     for (const connector of connectors) {
       await createExternalMcpConnection({
         organizationId,

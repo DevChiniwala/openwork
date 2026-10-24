@@ -132,6 +132,12 @@ const EnvSchema = z.object({
   WORKER_URL_TEMPLATE: z.string().optional(),
   WORKER_ACTIVITY_BASE_URL: z.string().optional(),
   DEN_AUTOMATIONS_ENABLED: z.string().optional(),
+  // Sandbox organizations: the fictional workplace service their connectors use,
+  // and the AI Gateway provider each sandbox gets (the key is a secret).
+  DEN_SANDBOX_WORKPLACE_URL: z.string().optional(),
+  DEN_SANDBOX_GATEWAY_PROVIDER: z.string().optional(),
+  DEN_SANDBOX_GATEWAY_MODELS: z.string().optional(),
+  DEN_SANDBOX_GATEWAY_API_KEY: z.string().optional(),
   DEN_DASHBOARDS_ENABLED: z.string().optional(),
   // Default-on deployment kill switches.
   DEN_AUDIT_CAPTURE_ENABLED: z.enum(["true", "false"]).default("true"),
@@ -683,6 +689,11 @@ const planetscaleCredentials =
       }
     : null
 
+// OpenWork Cloud's sandboxes use OpenWork's public workshop service unless configured otherwise.
+const sandboxWorkplaceUrl = optionalString(parsed.DEN_SANDBOX_WORKPLACE_URL)
+  ?? (featureEnvironment.deployment === "cloud" ? "https://open-workplace-workshop.onrender.com" : null)
+const sandboxGatewayApiKey = optionalString(parsed.DEN_SANDBOX_GATEWAY_API_KEY)
+
 export const env = {
   databaseUrl: parsed.DATABASE_URL,
   dbEncryptionKey: optionalString(parsed.DEN_DB_ENCRYPTION_KEY),
@@ -882,6 +893,16 @@ export const env = {
     runnerClaimDeadlineMs: automationTuning(parsed.DEN_AUTOMATIONS_RUNNER_CLAIM_DEADLINE_MS, 900_000),
   },
   dashboardsEnabled,
+  sandbox: {
+    workplaceUrl: sandboxWorkplaceUrl,
+    gateway: sandboxGatewayApiKey
+      ? {
+          providerId: optionalString(parsed.DEN_SANDBOX_GATEWAY_PROVIDER) ?? "openai",
+          modelIds: (optionalString(parsed.DEN_SANDBOX_GATEWAY_MODELS) ?? "gpt-6-luna").split(",").map(value => value.trim()).filter(Boolean),
+          apiKey: sandboxGatewayApiKey,
+        }
+      : null,
+  },
   features: { deployment: featureEnvironment.deployment, locks: featureEnvironment.locks },
   auditCaptureEnabled: parsed.DEN_AUDIT_CAPTURE_ENABLED === "true",
   auditVisibilityEnabled: parsed.DEN_AUDIT_VISIBILITY_ENABLED === "true",

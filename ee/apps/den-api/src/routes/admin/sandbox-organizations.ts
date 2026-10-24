@@ -5,7 +5,7 @@ import { describeRoute } from "hono-openapi"
 import { deploymentFeatureEnabled } from "../../features.js"
 import { adminRoute, jsonValidator } from "../../middleware/index.js"
 import { forbiddenSchema, invalidRequestSchema, jsonResponse, notFoundSchema, unauthorizedSchema } from "../../openapi.js"
-import { closeSandbox, createSandbox, extendSandbox, listSandboxes, rotateSandboxLink, SandboxInputError, setSandboxJoinRole } from "../../sandbox-organizations.js"
+import { closeSandbox, createSandbox, extendSandbox, listSandboxes, rotateSandboxLink, SandboxInputError, sandboxDefaults, setSandboxJoinRole } from "../../sandbox-organizations.js"
 import type { AuthContextVariables } from "../../session.js"
 
 const base = "/v1/admin/sandbox-orgs"
@@ -21,7 +21,7 @@ export function registerAdminSandboxOrganizationRoutes<T extends { Variables: Au
   app.get(base, describeRoute({ tags: ["Admin"], summary: "List sandbox organizations", description: "Lists try-it-out organizations with their join link, members, connectors and when they end. Sandboxes whose time ran out are closed first. Platform administrators only.", responses: { 200: jsonResponse("Sandbox organizations.", sandboxListSchema), ...errors } }), adminRoute(), async c => {
     c.header("Cache-Control", "no-store")
     if (!await deploymentFeatureEnabled("sandboxOrgs")) return c.json({ enabled: false, sandboxes: [] })
-    return c.json({ enabled: true, sandboxes: await listSandboxes(normalizeDenTypeId("user", c.get("user").id)) })
+    return c.json({ enabled: true, sandboxes: await listSandboxes(normalizeDenTypeId("user", c.get("user").id)), defaults: sandboxDefaults() })
   })
 
   app.post(base, describeRoute({ tags: ["Admin"], summary: "Create a sandbox organization", description: "Creates an organization owned by the calling admin with included models, optional extra Free Auto usage, one per-person OAuth connector for each fictional workplace app, and a join link that joins people as members until the sandbox ends. Platform administrators only.", responses: { 200: jsonResponse("Sandbox created.", sandboxCreatedSchema), ...errors } }), adminRoute(), jsonValidator(sandboxCreateInputSchema), async c => {

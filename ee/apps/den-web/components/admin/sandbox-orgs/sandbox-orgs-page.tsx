@@ -26,7 +26,7 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
 const stateLabel = { open: "Open", expired: "Ended", closed: "Closed" } as const;
 
 type Draft = { name: string; connectorBaseUrl: string; days: string; memberLimit: string; domains: string; extraUsd: string; joinRole: SandboxJoinRole };
-const freshDraft = (): Draft => ({ name: "", connectorBaseUrl: "", days: "14", memberLimit: "50", domains: "", extraUsd: "", joinRole: "admin" });
+const freshDraft = (workplaceUrl: string | null | undefined): Draft => ({ name: "", connectorBaseUrl: workplaceUrl ?? "", days: "14", memberLimit: "50", domains: "", extraUsd: "", joinRole: "admin" });
 const roleLabel: Record<SandboxJoinRole, string> = { member: "Members", admin: "Admins" };
 
 export function SandboxOrgsPage() {
@@ -106,7 +106,7 @@ export function SandboxOrgsPage() {
   return <section className="min-w-0 text-[color:var(--dls-text-primary)]" data-testid="admin-sandbox-orgs" aria-busy={busy}>
     <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
       <h1 className="text-base font-medium">Sandbox organizations</h1>
-      <DenButton size="sm" icon={Plus} disabled={busy || draft !== null} onClick={() => { setDraft(freshDraft()); setError(null); setNotice(""); }} data-testid="admin-sandbox-new">New sandbox</DenButton>
+      <DenButton size="sm" icon={Plus} disabled={busy || draft !== null} onClick={() => { setDraft(freshDraft(data.defaults?.workplaceUrl)); setError(null); setNotice(""); }} data-testid="admin-sandbox-new">New sandbox</DenButton>
     </div>
     <p className="mb-5 max-w-2xl text-sm text-[color:var(--dls-text-secondary)]">Try-it-out organizations on this deployment. People join with the link as members, use included models, and connect their own copy of the sample work apps. Separate from Daytona demos.</p>
     {error ? <p role="alert" className="mb-4 text-sm text-[color:var(--ow-danger)]">{error}</p> : null}
@@ -128,6 +128,12 @@ export function SandboxOrgsPage() {
           <label className="grid gap-2 text-xs">Name<DenInput aria-label="Sandbox name" required minLength={2} maxLength={120} placeholder="OpenWork Sandbox" value={draft.name} disabled={saving} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
           <label className="grid gap-2 text-xs">Sample work apps address<DenInput aria-label="Sample work apps address" type="url" placeholder="https://workplace.example.com" value={draft.connectorBaseUrl} disabled={saving} onChange={event => setDraft({ ...draft, connectorBaseUrl: event.target.value })} />
             <span className="text-[color:var(--dls-text-secondary)]">Adds Outlook, Calendar, Drive, Jira and Confluence. Each person signs in to their own copy. Leave empty for no connectors.</span></label>
+          <div className="grid gap-1 text-xs" data-testid="admin-sandbox-models">
+            <span>Models</span>
+            <span className="text-[color:var(--dls-text-secondary)]">{data.defaults?.gatewayModels.length
+              ? `Included models, plus ${data.defaults.gatewayModels.join(", ")} through AI Gateway (${data.defaults.gatewayProviderId ?? "provider"}) for everyone.`
+              : "Included models only. Add DEN_SANDBOX_GATEWAY_API_KEY on this deployment to give every sandbox an AI Gateway provider."}</span>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="grid gap-2 text-xs">Open for (days)<DenInput aria-label="Days open" type="number" required min={1} max={SANDBOX_MAX_DAYS} step={1} value={draft.days} disabled={saving} onChange={event => setDraft({ ...draft, days: event.target.value })} /></label>
             <label className="grid gap-2 text-xs">Seats<DenInput aria-label="Seats" type="number" required min={1} max={SANDBOX_MAX_MEMBERS} step={1} value={draft.memberLimit} disabled={saving} onChange={event => setDraft({ ...draft, memberLimit: event.target.value })} /></label>
@@ -162,6 +168,7 @@ function SandboxRow({ sandbox, busy, onRotate, onExtend, onClose, onJoinRole }: 
           {" · "}{sandbox.state === "open" ? `Ends ${date(sandbox.expiresAt)}` : sandbox.closedAt ? `Closed ${date(sandbox.closedAt)}` : `Ended ${date(sandbox.expiresAt)}`}
           {" · "}<span className="tabular-nums">{sandbox.memberCount} / {sandbox.memberLimit} seats</span>
           {" · "}{sandbox.connectorCount ? `${sandbox.connectorCount} sample apps` : "No connectors"}
+          {sandbox.modelProviderCount ? ` · ${sandbox.modelProviderCount} AI Gateway provider${sandbox.modelProviderCount === 1 ? "" : "s"}` : ""}
           {" · "}<span data-testid="admin-sandbox-join-role">Joins as {roleLabel[sandbox.joinRole].toLowerCase()}</span>
           {sandbox.allowedEmailDomains.length ? ` · ${sandbox.allowedEmailDomains.join(", ")} only` : ""}
         </p>
