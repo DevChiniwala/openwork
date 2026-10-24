@@ -199,6 +199,15 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotCommandPalette: {
+    label: "Workbot: command palette",
+    description: "Members press Cmd+K or Ctrl+K, or the search button in Workbot's header, to search and jump to their chats, background tasks, pages and settings, or run an action, from the keyboard.",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-command-palette/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",

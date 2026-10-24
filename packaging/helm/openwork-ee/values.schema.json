@@ -211,6 +211,16 @@
               ],
               "description": "Workbot: workspace assistant: Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Renders DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT."
             },
+            "workbotCommandPalette": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: command palette: Members press Cmd+K or Ctrl+K, or the search button in Workbot's header, to search and jump to their chats, background tasks, pages and settings, or run an action, from the keyboard. Renders DEN_FEATURE_WORKBOT_COMMAND_PALETTE."
+            },
             "workbotIncludedModels": {
               "enum": [
                 "",
