@@ -703,7 +703,7 @@ async function handleAuthRequest(c: Context) {
     ? request.clone()
     : null
   const oauthTokenRateLimit = observabilityRequest
-    ? await checkOAuthTokenRateLimit(request, checkRateLimit)
+    ? await checkOAuthTokenRateLimit(request)
     : null
   if (observabilityRequest && oauthTokenRateLimit?.response) {
     const rateLimitFields = await getOAuthTokenRateLimitLogFields(observabilityRequest, oauthTokenRateLimit.response)
@@ -716,7 +716,7 @@ async function handleAuthRequest(c: Context) {
     const jwtBearerResponse = await handleJwtBearerGrant(observabilityRequest.clone())
     if (jwtBearerResponse) {
       if (oauthTokenRateLimit && !jwtBearerResponse.ok) {
-        await recordOAuthTokenFailure(oauthTokenRateLimit.failureKey, jwtBearerResponse, checkRateLimit)
+        await recordOAuthTokenFailure(oauthTokenRateLimit.failure, jwtBearerResponse)
       }
       return jwtBearerResponse
     }
@@ -727,7 +727,7 @@ async function handleAuthRequest(c: Context) {
       // Malformed token requests rejected before auth.handler must still
       // consume the failure budget, or repeated invalid-resource submissions
       // would only ever pay the looser attempt buckets.
-      await recordOAuthTokenFailure(oauthTokenRateLimit.failureKey, authRequest, checkRateLimit)
+      await recordOAuthTokenFailure(oauthTokenRateLimit.failure, authRequest)
     }
     return authRequest
   }
@@ -836,7 +836,7 @@ async function handleAuthRequest(c: Context) {
     await recordEmailSignInResult(emailSignInAttempt, response)
   }
   if (oauthTokenRateLimit) {
-    await recordOAuthTokenFailure(oauthTokenRateLimit.failureKey, response, checkRateLimit)
+    await recordOAuthTokenFailure(oauthTokenRateLimit.failure, response)
   }
   if (response.status === 429 && !observabilityRequest) {
     logAuthRateLimited(authRequest, "better_auth_ip", response.headers.get("x-retry-after"))
