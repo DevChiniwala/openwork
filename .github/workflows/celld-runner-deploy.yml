@@ -61,6 +61,8 @@ jobs:
       # fleet prefix: celld never reads it.
       DEPLOY_RECORD: s3://openwork-celld/ci/fleet-deployed.json
       RUNNER_VARS: ${{ secrets.CELLD_RUNNER_VARS }}
+      # Optional plain override so snapshot rotations don't require rewriting the secret JSON blob.
+      HEADLESS_COMPUTER_SNAPSHOT: ${{ vars.HEADLESS_COMPUTER_SNAPSHOT }}
       RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
       RENDER_OWNER_ID: tea-cspud29u0jms7384itk0
       RENDER_SERVICE_ID: srv-db3upfjbc2fs73c1ii70
@@ -116,6 +118,7 @@ jobs:
           computer="$(printf '%s' "$RUNNER_VARS" | jq -r '.HEADLESS_COMPUTER // ""')"
           desktop="$(printf '%s' "$RUNNER_VARS" | jq -r '.HEADLESS_COMPUTER_DESKTOP // ""')"
           snapshot="$(printf '%s' "$RUNNER_VARS" | jq -r '.HEADLESS_COMPUTER_SNAPSHOT // ""')"
+          if [ -n "${HEADLESS_COMPUTER_SNAPSHOT:-}" ]; then snapshot="$HEADLESS_COMPUTER_SNAPSHOT"; fi
           if [ "$computer" != "freestyle" ] || [ "$desktop" != "true" ]; then
             echo "No Freestyle desktop computers configured; nothing to check."
             exit 0
@@ -194,6 +197,12 @@ jobs:
           set -euo pipefail
           umask 077
           printf '%s' "$RUNNER_VARS" > "$RUNNER_TEMP/vars.json"
+          # Snapshot rotation is a plain environment variable; when unset, keep the secret's existing value.
+          if [ -n "${HEADLESS_COMPUTER_SNAPSHOT:-}" ]; then
+            jq --arg snapshot "$HEADLESS_COMPUTER_SNAPSHOT" '. + { HEADLESS_COMPUTER_SNAPSHOT: $snapshot }' \
+              "$RUNNER_TEMP/vars.json" > "$RUNNER_TEMP/vars.merged.json"
+            mv "$RUNNER_TEMP/vars.merged.json" "$RUNNER_TEMP/vars.json"
+          fi
           # Error reporting (opt-in): the DSN lives in its own secret so it can change without rewriting
           # CELLD_RUNNER_VARS. The version is the runner's source tree hash, not the commit, so an unchanged runner
           # still bundles to the same content hash and nodes don't re-adopt it.

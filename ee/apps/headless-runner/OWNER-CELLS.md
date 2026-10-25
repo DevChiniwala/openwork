@@ -289,6 +289,9 @@ into it, and on demand (Actions → "Deploy runner to celld" → Run workflow). 
   repository secrets), so nothing reaches them without that approval.
 - **`CELLD_DEPLOY_SLACK_WEBHOOK_URL`** (optional): an environment secret holding a Slack incoming-webhook URL for the
   channel that should hear about deploys. Without it the run posts nothing.
+- **`HEADLESS_COMPUTER_SNAPSHOT`** (optional): a plain environment variable holding the current Freestyle desktop
+  snapshot slug. It overrides this field in `CELLD_RUNNER_VARS`, so snapshot rotations don't require rewriting that
+  secret; when unset, the JSON value remains in effect.
 
 **Keep the default model authorized.** `CELLD_RUNNER_VARS` carries a provider route, key, model alias and protocol as
 one configuration. Before replacing a retired alias, list `/models` on the intended route with that same key and
