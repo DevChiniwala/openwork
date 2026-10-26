@@ -57,6 +57,8 @@ export type WorkbotHost = {
   sideChats?: boolean
   /** The Cmd+K / Ctrl+K command palette and its header button. Omitted means off. */
   commandPalette?: boolean
+  /** My files: the Files panel shows the member's whole space (Downloads, agents, uploads) with where each came from. */
+  memberFiles?: boolean
   /** Authenticated identity for permission-protected model-setting caches; absent on older hosts. */
   identity?: { principalId: string; organizationId: string }
 }

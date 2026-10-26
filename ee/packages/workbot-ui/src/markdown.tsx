@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import { googleDriveFileId } from "@openwork/types/workbot-context";
 import { WorkspaceLink } from "./workspace";
+import { MemberFileLink } from "./member-files";
 import { Lexer, type MarkedToken, type Token } from "marked";
 
 /**
@@ -29,6 +30,19 @@ function safeHref(href: string) {
   }
 }
 
+/** The path inside My files a `/files/...` link names, or null. */
+export function memberFilePath(href: string) {
+  if (!href.startsWith("/files/")) return null;
+  let path = href.slice("/files/".length);
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // keep it as written
+  }
+  const parts = path.split("/").filter(Boolean);
+  return parts.length && !parts.some((part) => part === "." || part === "..") ? parts.join("/") : null;
+}
+
 function inline(tokens: Token[] | undefined): ReactNode {
   return tokens?.map((token, index) => <Fragment key={index}>{inlineToken(token)}</Fragment>);
 }
@@ -47,6 +61,9 @@ function inlineToken(token: Token): ReactNode {
     case "br":
       return <br />;
     case "link": {
+      // A file in the person's My files (`[report.pdf](/files/Reports/report.pdf)`): opens beside the chat.
+      const member = memberFilePath(token.href);
+      if (member) return <MemberFileLink path={member}>{inline(token.tokens)}</MemberFileLink>;
       const href = safeHref(token.href);
       return href ? (
         <WorkspaceLink href={href}>

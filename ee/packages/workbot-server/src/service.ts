@@ -2,10 +2,10 @@ import { readBrowserTeachingPrompt, readBrowserSkillRunPrompt, replaceBrowserTea
 import { createHash } from "node:crypto"
 import { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
 export { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
-import type { HeadlessRunnerClient, RunnerSavedFile } from "@openwork-ee/headless-protocol"
+import type { HeadlessRunnerClient, RunnerMemberFile, RunnerSavedFile } from "@openwork-ee/headless-protocol"
 import { AUTOMATION_CLOUD_DEFAULT_MODEL } from "@openwork/types/automations"
 import { readWorkbotContextPrompt, readWorkbotCorrectionPrompt, workbotContextPrompt, workbotCorrectionPrompt, WORKBOT_MAX_MESSAGE_CHARS, type WorkbotViewContext } from "@openwork/types/workbot-context"
-import { buildWorkbotTurns, GREETING_RUNNER_ID, interruptedTurnIds, threadBusy, WORKBOT_MESSAGE_PREFIX, type WorkbotTurn } from "./thread.js"
+import { buildWorkbotTurns, GREETING_RUNNER_ID, interruptedTurnIds, threadBusy, WORKBOT_MESSAGE_PREFIX, type FileName, type FileNames, type WorkbotTurn } from "./thread.js"
 import { workbotModelReady } from "./model-readiness.js"
 
 /**
@@ -75,7 +75,15 @@ export type WorkbotDeps = {
    * that already exist keep their ids. Unset: preserve older Den's legacy chat placement.
    */
   sessionCells?: boolean
+  /**
+   * Den's `memberFiles` feature: the person's chats get their My files at /files (docs/features/member-files), Workbot
+   * acting as the `workbot` agent. Sent as false otherwise, so turning it off reaches existing chats.
+   */
+  memberFiles?: boolean
 }
+
+/** The agent Workbot's chats act as: its own notes and output in My files go in /files/agents/workbot/. */
+export const WORKBOT_AGENT = "workbot"
 
 /** How a turn runs on the runner, as `sendTurn` takes it: nothing means continuous, as before step turns. */
 function executionFor(deps: WorkbotDeps): { execution?: "steps" } {
@@ -360,6 +368,7 @@ async function ensureSession(actor: WorkbotActor, timeZone: string, deps: Workbo
     documentNavigation: guidedNavigation,
     owner: workbotOwner(actor.organizationId, actor.memberId),
     timeZone,
+    ...(deps.memberFiles ? { memberFiles: true, agent: WORKBOT_AGENT } : { memberFiles: false }),
   }
   const savedMain = await client.putSession(main, {
     title: `${name} · ${actor.firstName ?? "member"}`,
@@ -464,12 +473,19 @@ export async function readWorkbotThread(
 
   const filesEnabled = await client.filesEnabled()
   const files = filesEnabled ? await client.listFiles(sessionId) : null
-  const names = new Map(
-    (files?.ok ? files.value : []).map((file) => [
+  // My files this chat wrote (an answer's file, a browser download) show under the answer that wrote them, like its
+  // kept files; a hiccup there never hides the conversation.
+  const mine = deps.memberFiles ? await client.listMemberFiles({ session: sessionId }).catch(() => null) : null
+  const names: FileNames = new Map([
+    ...(files?.ok ? files.value : []).map((file): [string, FileName] => [
       file.id,
       { name: file.name, createdAt: file.createdAt, updatedAt: file.updatedAt, mediaType: file.mediaType, size: file.size, source: file.source },
     ]),
-  )
+    ...(mine?.ok ? mine.value.files : []).map((file): [string, FileName] => [
+      file.id,
+      { name: file.name, createdAt: file.createdAt, updatedAt: file.updatedAt, mediaType: file.mediaType, size: file.size, source: "agent" },
+    ]),
+  ])
   return {
     name,
     organizationName: actor.organizationName,
@@ -665,6 +681,53 @@ export async function deleteWorkbotFile(actor: WorkbotActor, fileId: string, dep
   return clientOf(deps).deleteFile(await sessionOf(actor, chat, deps), fileId)
 }
 
+// ---------------------------------------------------------------------------------------------------- My files
+
+export type WorkbotMemberFile = RunnerMemberFile
+export type WorkbotMemberFiles = { enabled: boolean; files: WorkbotMemberFile[]; usage: { bytes: number; files: number; maxBytes: number; maxFileBytes: number } | null }
+
+/** The person's My files, every folder, with how much they use; `enabled` false when the runner keeps none. */
+export async function listWorkbotMemberFiles(actor: WorkbotActor, deps: WorkbotDeps): Promise<WorkbotMemberFiles> {
+  const client = clientOf(deps)
+  if (!deps.memberFiles || !(await client.memberFilesEnabled())) return { enabled: false, files: [], usage: null }
+  const listed = await client.listMemberFiles()
+  if (!listed.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
+  return { enabled: true, files: listed.value.files, usage: listed.value.usage }
+}
+
+/** A name not used yet in `folder`: "brief.pdf", then "brief (2).pdf". */
+export function freeMemberPath(folder: string, name: string, taken: ReadonlySet<string>) {
+  const clean = name.replace(/[\u0000-\u001f\u007f/\\]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 200) || "file"
+  const dot = clean.lastIndexOf(".")
+  const stem = dot > 0 ? clean.slice(0, dot) : clean
+  const extension = dot > 0 ? clean.slice(dot) : ""
+  for (let attempt = 1; attempt < 1_000; attempt += 1) {
+    const path = `${folder}/${attempt === 1 ? clean : `${stem} (${attempt})${extension}`}`
+    if (!taken.has(path)) return path
+  }
+  return `${folder}/${Date.now()}-${clean}`
+}
+
+/** Adds a file the person picks to My files (Uploads, or a folder they chose), never over an existing one. */
+export async function uploadWorkbotMemberFile(actor: WorkbotActor, input: { name: string; folder?: string; mediaType: string; bytes: ArrayBuffer }, deps: WorkbotDeps) {
+  const client = clientOf(deps)
+  if (!deps.memberFiles || !(await client.memberFilesEnabled())) throw new WorkbotFilesUnavailableError()
+  const folder = input.folder?.trim().replace(/^\/+|\/+$/g, "") || "Uploads"
+  const listed = await client.listMemberFiles({ prefix: folder })
+  const taken = new Set(listed.ok ? listed.value.files.map((file) => file.path) : [])
+  const uploaded = await client.uploadMemberFile({ path: freeMemberPath(folder, input.name, taken), mediaType: input.mediaType, bytes: input.bytes })
+  if (!uploaded.ok) return { ok: false as const, status: uploaded.status, code: uploaded.error, message: uploaded.message ?? null }
+  return { ok: true as const, file: uploaded.value }
+}
+
+export async function downloadWorkbotMemberFile(fileId: string, deps: WorkbotDeps) {
+  return deps.memberFiles ? clientOf(deps).downloadMemberFile(fileId) : null
+}
+
+export async function deleteWorkbotMemberFile(fileId: string, deps: WorkbotDeps) {
+  return deps.memberFiles ? clientOf(deps).deleteMemberFile(fileId) : false
+}
+
 /** Workbot for one host: every operation, bound to its runner and scheduling check. `chat` null is the main chat. */
 export function createWorkbot(deps: WorkbotDeps) {
   return {
@@ -692,6 +755,10 @@ export function createWorkbot(deps: WorkbotDeps) {
     downloadPreviewPage: (actor: WorkbotActor, fileId: string, page: number, chat: WorkbotChat = null) =>
       downloadWorkbotPreviewPage(actor, fileId, page, deps, chat),
     deleteFile: (actor: WorkbotActor, fileId: string, chat: WorkbotChat = null) => deleteWorkbotFile(actor, fileId, deps, chat),
+    listMemberFiles: (actor: WorkbotActor) => listWorkbotMemberFiles(actor, deps),
+    uploadMemberFile: (actor: WorkbotActor, input: { name: string; folder?: string; mediaType: string; bytes: ArrayBuffer }) => uploadWorkbotMemberFile(actor, input, deps),
+    downloadMemberFile: (fileId: string) => downloadWorkbotMemberFile(fileId, deps),
+    deleteMemberFile: (fileId: string) => deleteWorkbotMemberFile(fileId, deps),
   }
 }
 export type Workbot = ReturnType<typeof createWorkbot>

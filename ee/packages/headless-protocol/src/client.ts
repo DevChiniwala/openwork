@@ -213,6 +213,26 @@ export const runnerSavedFileSchema = z.object({
 })
 export type RunnerSavedFile = z.infer<typeof runnerSavedFileSchema>
 
+/** A file in a member's My files (docs/features/member-files): `path` is inside My files, without `/files/`. */
+export const runnerMemberFileSchema = z.object({
+  id: z.string().regex(/^mf_[a-f0-9]{32}$/),
+  path: z.string(),
+  name: z.string(),
+  mediaType: z.string(),
+  size: z.number(),
+  version: z.number(),
+  origin: z.object({ kind: z.enum(["upload", "agent", "browser", "computer"]), agent: z.string().nullable(), url: z.string().nullable() }),
+  lastWriter: z.object({ kind: z.enum(["upload", "agent", "browser", "computer"]), sessionId: z.string().nullable(), messageId: z.string().nullable() }),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+export type RunnerMemberFile = z.infer<typeof runnerMemberFileSchema>
+const memberFilesListSchema = z.object({
+  files: z.array(runnerMemberFileSchema),
+  usage: z.object({ bytes: z.number(), files: z.number(), maxBytes: z.number(), maxFileBytes: z.number() }),
+})
+export type RunnerMemberFiles = z.infer<typeof memberFilesListSchema>
+
 export type RunnerResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string }
 
 const REQUEST_TIMEOUT_MS = 15_000
@@ -248,7 +268,7 @@ export type RunnerRepeatLimits = { maxWaitingMs?: number; maxIdenticalFailures?:
  * the computer must be configured on the runner too), so a caller that never asks (Automations) never gets any of
  * them. Slack asks for reactions and tasks where `slackWorkbotReplies` is on.
  */
-export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?: boolean; reactions?: boolean; tasks?: boolean; documentNavigation?: boolean }
+export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?: boolean; reactions?: boolean; tasks?: boolean; documentNavigation?: boolean; memberFiles?: boolean }
 
 /**
  * Who a conversation belongs to and how it is shown to the model: `owner` (the caller's key for one person) and `ref`
@@ -256,7 +276,18 @@ export type RunnerCapabilities = { files?: boolean; computer?: boolean; desktop?
  * names it after its first answer; `memoryOf` shares memory/ with another of their conversations (legacy chats);
  * `memoryScope: "owner"` keeps memory/ with the owner, shared by all their chats (per-chat session cells).
  */
-export type RunnerSessionSettings = { owner?: string; ref?: string; timeZone?: string; autoTitle?: boolean; memoryOf?: string; memoryScope?: "owner" }
+export type RunnerSessionSettings = {
+  owner?: string
+  ref?: string
+  timeZone?: string
+  autoTitle?: boolean
+  memoryOf?: string
+  memoryScope?: "owner"
+  /** The agent the conversation acts as; its folder in My files is /files/agents/<agent>/. */
+  agent?: string
+  /** Nobody waits on the conversation: its turns save only in their agent folder of My files. */
+  background?: boolean
+}
 
 const capabilityFields = (input: RunnerCapabilities & RunnerSessionSettings) => ({
   ...(input.files !== undefined ? { files: input.files } : {}),
@@ -271,6 +302,9 @@ const capabilityFields = (input: RunnerCapabilities & RunnerSessionSettings) => 
   ...(input.autoTitle !== undefined ? { autoTitle: input.autoTitle } : {}),
   ...(input.memoryOf ? { memoryOf: input.memoryOf } : {}),
   ...(input.memoryScope ? { memoryScope: input.memoryScope } : {}),
+  ...(input.memberFiles !== undefined ? { memberFiles: input.memberFiles } : {}),
+  ...(input.agent ? { agent: input.agent } : {}),
+  ...(input.background !== undefined ? { background: input.background } : {}),
 })
 
 /** A runner older than a setting refuses it as an invalid request; any other refusal is real. */
@@ -358,6 +392,12 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       let compatible: Record<string, unknown> = extras
       if (unknownSetting(status, payload) && input.documentNavigation !== undefined) {
         const { documentNavigation: _navigation, ...rest } = compatible
+        compatible = rest
+        ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
+      }
+      // An older runner has no My files: the conversation keeps its other settings, without them.
+      if (unknownSetting(status, payload) && (input.memberFiles !== undefined || input.agent !== undefined || input.background !== undefined)) {
+        const { memberFiles: _memberFiles, agent: _agent, background: _background, ...rest } = compatible
         compatible = rest
         ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
       }
@@ -620,6 +660,66 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
 
     async deleteFile(sessionId: string, fileId: string): Promise<boolean> {
       const { status } = await request(deps, "DELETE", `${sessionPath(sessionId)}/saved-files/${encodeURIComponent(fileId)}`)
+      return status === 204
+    },
+
+    /** Whether the runner keeps My files (a file store is configured and it knows them). */
+    async memberFilesEnabled(): Promise<boolean> {
+      try {
+        const { status, payload } = await request(deps, "GET", "/v1/files/status")
+        const parsed = z.object({ memberFiles: z.boolean().optional() }).safeParse(payload)
+        return status === 200 && parsed.success && parsed.data.memberFiles === true
+      } catch {
+        return false
+      }
+    },
+
+    /** The client's owner's My files (owner-scoped: needs `owner`), with how much they use. `session`: last written there. */
+    async listMemberFiles(input: { prefix?: string; session?: string } = {}): Promise<RunnerResult<RunnerMemberFiles>> {
+      if (!deps.config.owner) return { ok: false, status: 400, error: "owner_required" }
+      const query = new URLSearchParams({ ...(input.prefix ? { prefix: input.prefix } : {}), ...(input.session ? { session: input.session } : {}) })
+      const { status, payload } = await request(deps, "GET", `/v1/owner/files${query.size ? `?${query.toString()}` : ""}`)
+      const parsed = memberFilesListSchema.safeParse(payload)
+      if (status !== 200 || !parsed.success) return { ok: false, status, error: errorCode(payload, `headless_member_files_${status}`) }
+      return { ok: true, value: parsed.data }
+    },
+
+    /** Adds a file the member uploads to My files at `path`; an existing file is replaced only with `replace`. */
+    async uploadMemberFile(input: { path: string; mediaType: string; bytes: ArrayBuffer; replace?: boolean }): Promise<RunnerResult<RunnerMemberFile> & { message?: string }> {
+      if (!deps.config.owner) return { ok: false, status: 400, error: "owner_required" }
+      const query = new URLSearchParams({ path: input.path, ...(input.replace ? { replace: "1" } : {}) })
+      const response = await deps.fetch(`${deps.config.url}/v1/owner/files?${query.toString()}`, {
+        method: "PUT",
+        headers: runnerHeaders(deps.config, { "content-type": input.mediaType || "application/octet-stream" }),
+        body: input.bytes,
+        signal: AbortSignal.timeout(10 * 60_000),
+      })
+      const payload: unknown = await response.json().catch(() => ({}))
+      const file = runnerMemberFileSchema.safeParse(payload)
+      if ((response.status !== 201 && response.status !== 200) || !file.success) {
+        const message = z.object({ message: z.string() }).safeParse(payload)
+        return { ok: false, status: response.status, error: errorCode(payload, `headless_member_upload_${response.status}`), ...(message.success ? { message: message.data.message } : {}) }
+      }
+      return { ok: true, value: file.data }
+    },
+
+    /** A My files file's bytes as the runner's response, to stream to the browser; null when it isn't the owner's. */
+    async downloadMemberFile(fileId: string): Promise<Response | null> {
+      if (!deps.config.owner) return null
+      const response = await deps.fetch(`${deps.config.url}/v1/owner/files/${encodeURIComponent(fileId)}`, {
+        headers: runnerHeaders(deps.config),
+        signal: AbortSignal.timeout(10 * 60_000),
+      })
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined)
+        return null
+      }
+      return response
+    },
+
+    async deleteMemberFile(fileId: string): Promise<boolean> {
+      if (!deps.config.owner) return false
+      const { status } = await request(deps, "DELETE", `/v1/owner/files/${encodeURIComponent(fileId)}`)
       return status === 204
     },
 

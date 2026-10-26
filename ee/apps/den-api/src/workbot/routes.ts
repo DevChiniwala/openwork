@@ -78,6 +78,8 @@ const sessionSchema = z.object({
   sideChats: z.boolean(),
   /** The Cmd+K / Ctrl+K command palette (`workbotCommandPalette`); older Dens omit it: off. */
   commandPalette: z.boolean().optional(),
+  /** My files (`memberFiles`): one file space per member at /files for chats, their computer and browser; older Dens omit it: off. */
+  memberFiles: z.boolean().optional(),
   /**
    * The model Workbot's turns run on: the organization's default model. Null, and
    * omitted by older Dens, means the headless runner's default.
@@ -403,6 +405,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         activationChecklist: features.activationChecklist,
         sideChats: true,
         commandPalette: features.workbotCommandPalette,
+        memberFiles: features.memberFiles,
         model,
         gatewayModels: true,
         stepTurns: true,

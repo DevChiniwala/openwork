@@ -247,7 +247,8 @@ function appOf(name: string, input: Record<string, unknown>): string | null {
 }
 
 /** The conversation's kept files, so the ones Workbot made show under the answer that made them. */
-export type FileNames = ReadonlyMap<string, { name: string; createdAt: number; updatedAt?: number; mediaType?: string; size?: number; source?: "user" | "agent" }>
+export type FileName = { name: string; createdAt: number; updatedAt?: number; mediaType?: string; size?: number; source?: "user" | "agent" }
+export type FileNames = ReadonlyMap<string, FileName>
 
 const COMPUTER_TOOLS: ReadonlySet<string> = new Set(["bash", "look", "desktop"])
 

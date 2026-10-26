@@ -630,6 +630,82 @@ export function useWorkbotImageUrl(id: string | null, version?: number) {
   return query.data ?? null;
 }
 
+// ---------------------------------------------------------------- My files
+
+const memberFileSchema = z.object({
+  id: z.string(),
+  /** Inside My files, without `/files/`: `Downloads/statement.pdf`. */
+  path: z.string(),
+  name: z.string(),
+  mediaType: z.string(),
+  size: z.number(),
+  version: z.number(),
+  origin: z.object({ kind: z.enum(["upload", "agent", "browser", "computer"]), agent: z.string().nullable(), url: z.string().nullable() }),
+  lastWriter: z.object({ kind: z.enum(["upload", "agent", "browser", "computer"]), sessionId: z.string().nullable(), messageId: z.string().nullable() }),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export type WorkbotMemberFile = z.infer<typeof memberFileSchema>;
+const memberFilesSchema = z.object({
+  enabled: z.boolean(),
+  files: z.array(memberFileSchema),
+  usage: z.object({ bytes: z.number(), files: z.number(), maxBytes: z.number(), maxFileBytes: z.number() }).nullable(),
+});
+export const workbotMemberFilesKey = ["workbot", "my-files"] as const;
+
+/** The person's My files: every folder, with how much they use. */
+export function useWorkbotMemberFiles(enabled: boolean) {
+  return useQuery({
+    queryKey: workbotMemberFilesKey,
+    enabled,
+    queryFn: async () => {
+      const { response, payload } = await requestJson("/v1/workbot/my-files", { method: "GET" }, 30_000);
+      if (!response.ok) throw new Error(getErrorMessage(payload, "Couldn't load your files."));
+      return memberFilesSchema.parse(payload);
+    },
+  });
+}
+
+export function useDeleteWorkbotMemberFile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { response, payload } = await requestJson(`/v1/workbot/files/${id}`, { method: "DELETE" }, 15_000);
+      if (!response.ok) throw new Error(getErrorMessage(payload, "Couldn't delete that file."));
+    },
+    onSettled: async () => queryClient.invalidateQueries({ queryKey: workbotMemberFilesKey }),
+  });
+}
+
+/** Adds one file to My files (Uploads) with progress; resolves with the file, rejects with a person-readable message. */
+export async function uploadWorkbotMemberFile(file: File, onProgress: (loaded: number) => void, signal: AbortSignal): Promise<WorkbotMemberFile> {
+  const target = await workbotHost().prepare(`/v1/workbot/my-files?${new URLSearchParams({ name: file.name || "file" }).toString()}`);
+  if (signal.aborted) throw new Error("Canceled.");
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", target.url);
+    request.withCredentials = target.credentials === "include";
+    target.headers.forEach((value, key) => request.setRequestHeader(key, value));
+    request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    request.upload.onprogress = (event) => onProgress(event.loaded);
+    request.onload = () => {
+      let payload: unknown = null;
+      try {
+        payload = JSON.parse(request.responseText);
+      } catch {
+        payload = null;
+      }
+      const parsed = memberFileSchema.safeParse(payload);
+      if (request.status === 201 && parsed.success) resolve(parsed.data);
+      else reject(new Error(getErrorMessage(payload, request.status === 413 ? "That file is too big for My files." : "Couldn't add it.")));
+    };
+    request.onerror = () => reject(new Error("Couldn't add it."));
+    request.onabort = () => reject(new Error("Canceled."));
+    signal.addEventListener("abort", () => request.abort(), { once: true });
+    request.send(file);
+  });
+}
+
 export async function downloadWorkbotFile(file: { id: string; name: string }, chat: string | null) {
   const url = await fetchWorkbotFileUrl(file.id, chat);
   const link = document.createElement("a");

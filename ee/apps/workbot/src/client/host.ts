@@ -29,6 +29,7 @@ export const meSchema = z.object({
   sideChats: z.boolean().default(false),
   /** The Cmd+K / Ctrl+K command palette; older servers omit it. */
   commandPalette: z.boolean().default(false),
+  memberFiles: z.boolean().default(false),
   denUrl: z.string().nullable(),
 })
 export type Me = z.infer<typeof meSchema>
@@ -109,6 +110,7 @@ export function createHost(me: Me, recovery: { authorization?: WorkbotHost["docu
     },
     sideChats: me.sideChats,
     commandPalette: me.commandPalette,
+    memberFiles: me.memberFiles,
     identity: me.userId && me.organizationId ? { principalId: me.userId, organizationId: me.organizationId } : undefined,
   }
 }
