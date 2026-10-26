@@ -97,6 +97,7 @@ import {
 import { createQuitSequencer } from "./quit-sequence.mjs";
 import { attachFloatingViewWindow, floatingViewWindowOptions } from "./floating-view-window.mjs";
 import { createStartupLog, startupPhase, withStartupPhase } from "./startup-log.mjs";
+import { createWindowStateStore } from "./window-state.mjs";
 
 // Startup milestones (epoch ms) for the renderer's one-per-launch startup
 // report to Den. The OS process creation time includes module loading; the
@@ -136,6 +137,7 @@ const {
   net: electronNet,
   powerMonitor,
   Notification: ElectronNotification,
+  screen,
   session,
   shell,
 } = require("electron");
@@ -2660,9 +2662,15 @@ async function createMainWindowInner() {
     app.dock.setIcon(windowIconImage);
   }
 
+  const windowState = createWindowStateStore({
+    directory: app.getPath("userData"),
+    screen,
+    log: (message, error) => console.warn(message, error),
+  });
+  const restoredWindow = windowState.initialOptions({ width: 1180, height: 820 });
+
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 820,
+    ...restoredWindow.options,
     title: currentDisplayAppName,
     show: false,
     ...(process.platform === "win32" ? { skipTaskbar: true } : {}),
@@ -2684,6 +2692,7 @@ async function createMainWindowInner() {
   if (cachedBrandImage && bootSourceUrl) {
     await applyCachedBrandIcon(cachedBrandImage, bootSourceUrl);
   }
+  windowState.track(mainWindow);
   applicationMenu.applyVisibility(mainWindow);
   browserPanel.registerWindowShortcuts(mainWindow);
 
@@ -2713,6 +2722,7 @@ async function createMainWindowInner() {
     if (startupTimings.windowShownAt === null) startupTimings.windowShownAt = Date.now();
     mainWindow?.setTitle(currentDisplayAppName);
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
+    if (restoredWindow.maximized) mainWindow?.maximize();
     mainWindow?.show();
     endWindowShow();
     resolveShortcutWindowReady();
