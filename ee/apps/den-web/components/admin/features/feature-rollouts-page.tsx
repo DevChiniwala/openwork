@@ -20,6 +20,8 @@ type AdminFeature = {
   key: string;
   label: string;
   description: string;
+  author: string;
+  docsUrl: string | null;
   deployments: Array<"cloud" | "self_hosted">;
   available: boolean;
   enabled: boolean;
@@ -42,6 +44,8 @@ function parseFeature(value: unknown): AdminFeature | null {
     key: value.key,
     label: value.label,
     description: typeof value.description === "string" ? value.description : "",
+    author: typeof value.author === "string" ? value.author : "",
+    docsUrl: typeof value.docsUrl === "string" && value.docsUrl.startsWith("https://") ? value.docsUrl : null,
     deployments,
     available: value.available === true,
     enabled: value.enabled === true,
@@ -91,17 +95,36 @@ function FeatureRow({ feature, onChange }: { feature: AdminFeature; onChange: (n
     <li data-testid={`admin-feature-${feature.key}`} className="flex flex-col gap-3 border-t border-gray-100 py-4 first:border-t-0 sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-[14px] font-medium text-gray-900" title={feature.description}>{feature.label}</p>
+          <p className="text-[14px] font-medium text-gray-900">{feature.label}</p>
           {feature.deployments.length === 1 ? <DenBadge>{feature.deployments[0] === "cloud" ? "Cloud only" : "Self-hosted only"}</DenBadge> : null}
         </div>
         <p data-testid={`admin-feature-state-${feature.key}`} className={`mt-1 text-[13px] ${feature.killed ? "text-red-700" : "text-gray-500"}`}>
           {rolloutState(feature)}
+        </p>
+        {feature.description ? <p className="mt-1 text-[13px] leading-5 text-gray-500">{feature.description}</p> : null}
+        <p data-testid={`admin-feature-owner-${feature.key}`} className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gray-500">
+          {feature.author ? (
+            <span>
+              Author{" "}
+              <a href={`https://github.com/${encodeURIComponent(feature.author)}`} target="_blank" rel="noreferrer" className="font-medium text-gray-700 underline-offset-2 hover:underline">
+                @{feature.author}
+              </a>
+            </span>
+          ) : null}
+          {feature.docsUrl ? (
+            <a data-testid={`admin-feature-docs-${feature.key}`} href={feature.docsUrl} target="_blank" rel="noreferrer" className="font-medium text-gray-700 underline-offset-2 hover:underline">
+              Internal docs
+            </a>
+          ) : (
+            <span>No internal docs yet</span>
+          )}
         </p>
         {error ? <p className="mt-1 text-[13px] text-red-700">{error}</p> : null}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-3 sm:shrink-0">
         <DenSegmented
           aria-label={`${feature.label} for everyone`}
+          optionTestId={(value) => `admin-feature-${feature.key}-${value}`}
           options={ON_OFF.map((option) => ({ ...option, disabled: controlsDisabled }))}
           value={feature.enabled ? "on" : "off"}
           onChange={(value) => {

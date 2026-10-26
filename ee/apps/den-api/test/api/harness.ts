@@ -108,11 +108,25 @@ function mysqlPool(databaseUrl: string) {
 
 async function createDatabase(): Promise<{ url: string; drop: () => Promise<void> }> {
   const base = mysqlBaseUrl()
-  const name = `den_api_test_${process.pid}_${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`
+  const prefix = process.env.DEN_API_TEST_DATABASE_PREFIX || "den_api_test_"
+  if (!/^[a-z0-9_-]{1,24}$/.test(prefix)) throw new Error("Invalid API test database prefix")
+  const defaults = process.env.DEN_API_TEST_DATABASE_DEFAULTS || "utf8mb4"
+  if (defaults !== "server" && defaults !== "utf8mb4") throw new Error("Invalid API test database defaults")
+  const collation = process.env.DEN_API_TEST_DATABASE_COLLATION
+  const collations: Record<string, string> = {
+    latin1_swedish_ci: "latin1", utf8mb3_general_ci: "utf8mb3",
+    utf8mb4_general_ci: "utf8mb4", utf8mb4_unicode_ci: "utf8mb4",
+    utf8mb4_0900_ai_ci: "utf8mb4", utf8mb4_uca1400_ai_ci: "utf8mb4",
+  }
+  if (collation && !Object.hasOwn(collations, collation)) throw new Error("Invalid API test database collation")
+  const charsetClause = collation ? ` CHARACTER SET ${collations[collation]} COLLATE ${collation}` : defaults === "server" ? "" : " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+  const name = `${prefix}${process.pid}_${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`
   const root = mysqlPool(withDatabase(base, "mysql"))
   const [statements] = await Promise.all([
     schemaStatements(),
-    root.query(`CREATE DATABASE \`${name}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`),
+    // Bootstrap's current schema has no table charset clauses: server defaults
+    // must be testable without converting an already-created customer schema.
+    root.query(`CREATE DATABASE \`${name}\`${charsetClause}`),
   ])
   const url = withDatabase(base, name)
   const target = mysqlPool(url)

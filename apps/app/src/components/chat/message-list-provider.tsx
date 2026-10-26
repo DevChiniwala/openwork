@@ -10,6 +10,9 @@ import * as React from "react"
 import type { ConnectorToolIdentity } from "@/react-app/domains/connections/connector-tool-identity"
 import type { OpenworkServerClient } from "@/app/lib/openwork-server"
 import type { McpAppOrigin } from "./mcp-app-origin"
+import { publicModelTitle } from "@/react-app/domains/models/model-catalog"
+import type { ReplyModelTitleResolver } from "@/react-app/domains/session/sync/reply-model"
+import { useModelPickerCatalogStore } from "@/react-app/domains/session/models/model-collections-store"
 import type { ChatConnectionDecisionBinding } from "@/react-app/domains/session/surface/mcp-chat-reconnect"
 
 interface MessageListContextValue {
@@ -28,6 +31,7 @@ interface MessageListContextValue {
   developerMode: boolean
   displaySuggestions: boolean
   providerConnectedCount: number
+  resolveReplyModelTitle: ReplyModelTitleResolver
   connectorIdentities: ConnectorToolIdentity[]
   /**
    * True while the workspace sync layer cannot validate live run status
@@ -189,6 +193,15 @@ export function MessageListProvider({
     () => client ? { client, workspaceId, sessionId, readOnly, ...(mcpAppEngine ? { engine: mcpAppEngine } : {}) } : null,
     [client, workspaceId, sessionId, readOnly, mcpAppEngine],
   )
+  // The composer owns a workspace-scoped catalog even for background panes.
+  const replyModelOptions = useModelPickerCatalogStore(state => state.bySession[sessionId]?.options)
+  const resolveReplyModelTitle = React.useCallback<ReplyModelTitleResolver>(
+    model => {
+      const option = replyModelOptions?.find(option => option.providerID === model.providerID && option.modelID === model.modelID);
+      return option ? publicModelTitle(option) : undefined;
+    },
+    [replyModelOptions],
+  )
   const value = React.useMemo(
     () => ({
       mcpAppOrigin,
@@ -205,6 +218,7 @@ export function MessageListProvider({
       developerMode,
       displaySuggestions,
       providerConnectedCount,
+      resolveReplyModelTitle,
       connectorIdentities,
       syncDegraded,
       ...stableHandlers,
@@ -233,6 +247,7 @@ export function MessageListProvider({
       developerMode,
       displaySuggestions,
       providerConnectedCount,
+      resolveReplyModelTitle,
       connectorIdentities,
       syncDegraded,
       stableHandlers,

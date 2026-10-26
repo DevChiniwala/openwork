@@ -10,6 +10,7 @@ import { mergeReplyMetadata, replyModelFromInfo } from "./reply-model";
 import { closeSessionBrowserTabs } from "@/app/lib/desktop";
 import { captureAnalyticsEvent, takeTaskRunStart } from "@/app/lib/analytics";
 import { trackTaskCompleted, trackTaskFailed } from "@/app/lib/den-telemetry";
+import { noteActivationRunCompleted } from "../../cloud/activation/use-activation";
 import { observeModelsTaskEvent } from "@/app/lib/models-task-analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { createClientV2, isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
@@ -1040,13 +1041,13 @@ function stringField(record: Record<string, unknown>, key: string): string {
 }
 
 /**
- * Background commands (`backgroundShellTasks`): a background tool call adds
+ * Background commands: a background tool call adds
  * one, and its exit, deletion or completion notice settles it. A foreground
  * call never reports a running shell id, so it is never added.
  */
 function applyBackgroundShellEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent) {
   const store = useBackgroundShellStore.getState();
-  if (!store.enabled || !isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
+  if (!isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
   const props = eventRecord(event);
   if (event.type === SHELL_CREATED_EVENT) {
     const shell = readEngineShell(props);
@@ -1129,7 +1130,7 @@ function rememberHistoryBackgroundShells(workspaceId: string, snapshot: Openwork
  * this read is the source of truth on connect, revalidation and session open.
  */
 async function reconcileBackgroundShells(entry: SyncEntry, scope: "all" | string) {
-  if (!useBackgroundShellStore.getState().enabled || !isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
+  if (!isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
   const controller = new AbortController();
   entry.backgroundShellReads.add(controller);
   const startedAt = Date.now();
@@ -1156,27 +1157,6 @@ async function reconcileBackgroundShells(entry: SyncEntry, scope: "all" | string
   } finally {
     entry.backgroundShellReads.delete(controller);
   }
-}
-
-/**
- * Apply the `backgroundShellTasks` switch. Turning it on reads every
- * workspace's running commands at once instead of waiting for a reconnect.
- */
-export function setBackgroundShellTasksEnabled(enabled: boolean) {
-  const store = useBackgroundShellStore.getState();
-  if (store.enabled === enabled) return;
-  store.setEnabled(enabled);
-  if (!enabled) {
-    historyBackgroundShellIds.clear();
-    for (const entry of syncs.values()) entry.shellInfo.clear();
-    return;
-  }
-  for (const entry of syncs.values()) void reconcileBackgroundShells(entry, "all");
-  // History read while the feature was off left completion notices out.
-  // Read open conversations again so their rows appear where they belong.
-  const queryClient = getReactQueryClient();
-  void queryClient.invalidateQueries({ queryKey: ["react-session-snapshot"] });
-  void queryClient.invalidateQueries({ queryKey: ["react-session-latest"] });
 }
 
 function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent) {
@@ -1890,6 +1870,7 @@ function applySessionRunStatus(
         duration_ms: Date.now() - runStartedAt,
       });
       trackTaskCompleted(sessionId, Date.now() - runStartedAt);
+      noteActivationRunCompleted(sessionId, Date.now() - runStartedAt);
       notifyDesktopEvent({ type: "task.completed", sessionId });
       entry.titleRecovery?.observe(sessionId);
     }
@@ -2518,14 +2499,13 @@ export function seedSessionState(
   useSessionActivityStore.getState().observeTranscript(workspaceId, snapshot.session.id, transcript, true, {
     snapshotStartedAt,
   });
-  const backgroundShells = useBackgroundShellStore.getState().enabled;
-  if (backgroundShells) rememberHistoryBackgroundShells(workspaceId, snapshot);
+  rememberHistoryBackgroundShells(workspaceId, snapshot);
   for (const entry of syncs.values()) {
     if (entry.input.workspaceId !== workspaceId) continue;
     discoverTaskSessions(entry, snapshot.session.id);
     // Opening a conversation (or refreshing it after a run) reads which of its
     // background commands still run, now that its run state is seeded.
-    if (backgroundShells && (!options.engine || syncEngine(entry.input.baseUrl) === options.engine)) {
+    if (!options.engine || syncEngine(entry.input.baseUrl) === options.engine) {
       void reconcileBackgroundShells(entry, snapshot.session.id);
     }
   }

@@ -50,12 +50,39 @@ export type ExternalMcpRequiredBy = {
   name: string;
 };
 
+export type ConnectionReadinessFailure = "sign_in_required" | "sign_in_rejected" | "setup_required" | "unavailable" | "timed_out" | "settings_changed" | "tools_unreadable";
+
 export type ConnectionReadiness = {
   status: "ready" | "could_not_verify";
   checkedAt: string;
   lastSuccessfulAt: string | null;
   reason: string | null;
+  /** Why it did not pass. Absent from older servers and older checks. */
+  failure?: ConnectionReadinessFailure | null;
 };
+
+const READINESS_CHECKS_BATCH_LIMIT = 50;
+
+/**
+ * Admin list: bring connectors with no stored status up to date in one call.
+ * The server copies a member's still-valid Ready check or checks the
+ * connector itself; connectors nobody can check stay not checked.
+ */
+export function useRefreshUncheckedConnections() {
+  const { orgId } = useOrgDashboard();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (connectionIds: string[]) => {
+      const { response, payload } = await requestJson("/v1/mcp-connections/readiness-checks", {
+        method: "POST",
+        headers: getOrgScopeHeaders(requireOrgId(orgId)),
+        body: JSON.stringify({ connectionIds: connectionIds.slice(0, READINESS_CHECKS_BATCH_LIMIT) }),
+      }, 60000);
+      if (!response.ok) throw getRequestError(payload, response, "Could not check connections. Try again.");
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all }),
+  });
+}
 
 export function useCheckMcpConnection() {
   const { orgId } = useOrgDashboard();
@@ -68,13 +95,16 @@ export function useCheckMcpConnection() {
       if (!response.ok) throw getRequestError(payload, response, "Could not check this connection. Try again.");
       return z.object({ readiness: z.object({ status: z.enum(["ready", "could_not_verify"]), checkedAt: z.string(), reason: z.string().nullable() }) }).parse(payload).readiness;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all }),
+    // A failed request may still have recorded a result; always show what is stored.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all }),
   });
 }
 
 export type ExternalMcpConnection = {
-  /** Absent from older servers; null means no stored check. */
+  /** The signed-in member's own last check. Absent from older servers; null means not checked for them. */
   readiness?: ConnectionReadiness | null;
+  /** Admin list only: whether the connector itself works (any member's Ready for per-member connectors). Null means nobody checked it yet. */
+  organizationReadiness?: ConnectionReadiness | null;
   id: string;
   name: string;
   url: string;
@@ -88,6 +118,8 @@ export type ExternalMcpConnection = {
   createdByName?: string | null;
   /** Whether the signed-in member added it; they can always edit or remove it. */
   createdByYou?: boolean;
+  /** The server's answer to whether the signed-in member can remove it now. Older servers omit it. */
+  canRemove?: boolean;
   updatedAt: string | null;
   connectedForMe: boolean;
   needsReconnect?: boolean;
@@ -306,6 +338,8 @@ export const mcpConnectionQueryKeys = {
     [...mcpConnectionQueryKeys.all, "tools", orgId ?? "none", connectionId ?? "none"] as const,
   nativeProviderClient: (orgId?: string | null, providerId?: string | null) =>
     [...mcpConnectionQueryKeys.all, "native-provider-client", orgId ?? "none", providerId ?? "none"],
+  googleApiCheck: (orgId?: string | null, providerId?: string | null) =>
+    [...mcpConnectionQueryKeys.all, "google-api-check", orgId ?? "none", providerId ?? "none"],
 };
 
 function isExternalMcpTool(value: unknown): value is ExternalMcpTool {
@@ -661,9 +695,9 @@ export function mcpConnectionsQueryOptions(orgId: string | null, scope: External
   });
 }
 
-export function useMcpConnections(scope: ExternalMcpConnectionScope = "manageable") {
+export function useMcpConnections(scope: ExternalMcpConnectionScope = "manageable", options: { refetchOnMount?: "always" } = {}) {
   const { orgId } = useOrgDashboard();
-  return useQuery({ ...mcpConnectionsQueryOptions(orgId, scope), enabled: Boolean(orgId) });
+  return useQuery({ ...mcpConnectionsQueryOptions(orgId, scope), enabled: Boolean(orgId), ...options });
 }
 
 export function mcpConnectionPresetsQueryOptions() {
@@ -1203,6 +1237,66 @@ export function useNativeProviderClient(providerId: string, enabled: boolean) {
         throw new Error("Native provider client response was incomplete.");
       }
       return client;
+    },
+  });
+}
+
+export type GoogleApiCheckItem = {
+  id: string;
+  name: string;
+  features: string[];
+  status: "enabled" | "disabled" | "unknown";
+  enableUrl: string | null;
+  detail: string | null;
+};
+export type GoogleApiCheck = { checked: boolean; apis: GoogleApiCheckItem[] };
+
+function parseGoogleApiCheck(payload: unknown): GoogleApiCheck {
+  if (!isRecord(payload) || typeof payload.checked !== "boolean" || !Array.isArray(payload.apis)) {
+    throw new Error("Google API check response was incomplete.");
+  }
+  const apis = payload.apis.map((api): GoogleApiCheckItem => {
+    if (
+      !isRecord(api)
+      || typeof api.id !== "string"
+      || typeof api.name !== "string"
+      || !isStringArray(api.features)
+      || (api.status !== "enabled" && api.status !== "disabled" && api.status !== "unknown")
+      || (typeof api.enableUrl !== "string" && api.enableUrl !== null)
+      || (typeof api.detail !== "string" && api.detail !== null)
+    ) {
+      throw new Error("Google API check response was incomplete.");
+    }
+    return { id: api.id, name: api.name, features: api.features, status: api.status, enableUrl: api.enableUrl, detail: api.detail };
+  });
+  return { checked: payload.checked, apis };
+}
+
+/** Whether each Google API the connector's saved permissions call is turned on; checked on request. */
+export function useGoogleApiCheck(providerId: string) {
+  const { orgId, runReauthableAction } = useOrgDashboard();
+
+  return useQuery({
+    enabled: false,
+    queryKey: mcpConnectionQueryKeys.googleApiCheck(orgId, providerId),
+    retry: false,
+    queryFn: async (): Promise<GoogleApiCheck> => {
+      let result: GoogleApiCheck | null = null;
+      await runReauthableAction("check-google-apis", async () => {
+        const { response, payload } = await requestJson(
+          `/v1/oauth-providers/${encodeURIComponent(providerId)}/api-check`,
+          { headers: getOrgScopeHeaders(requireOrgId(orgId)) },
+          30000,
+        );
+        if (!response.ok) {
+          throw getRequestError(payload, response, `Failed to check Google APIs (${response.status}).`);
+        }
+        result = parseGoogleApiCheck(payload);
+      });
+      if (!result) {
+        throw new Error("Google API check response was incomplete.");
+      }
+      return result;
     },
   });
 }

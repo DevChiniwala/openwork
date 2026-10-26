@@ -26,7 +26,7 @@
     }
   },
   "api": {
-    "openapi": "openapi.json"
+    "openapi": "https://api.openworklabs.com/openapi.json?public=1"
   },
   "markdown": {
     "instructions": [
@@ -45,7 +45,13 @@
           "start-here/downloads",
           "start-here/use-openwork-from-an-ai-agent",
           "start-here/pricing-and-licensing",
-          "start-here/migrate-from-claude-cowork",
+          {
+            "group": "Move from Claude",
+            "pages": [
+              "start-here/migrate-from-claude-cowork",
+              "start-here/import-claude-history"
+            ]
+          },
           "start-here/stewardship",
           {
             "group": "Help improve OpenWork",
@@ -97,6 +103,7 @@
             "group": "Do work with it",
             "pages": [
               "start-here/do-work-with-it/control-the-browser",
+              "start-here/do-work-with-it/use-desktop-apps",
               "start-here/do-work-with-it/cross-chat-memory",
               "start-here/do-work-with-it/work-with-excel-workbooks",
               "start-here/do-work-with-it/workflows"
@@ -309,6 +316,7 @@
           {
             "group": "Troubleshoot",
             "pages": [
+              "self-host/diagnostics",
               "start-here/network-diagnostics"
             ]
           }
@@ -316,7 +324,7 @@
       },
       {
         "tab": "API",
-        "openapi": "/openapi.json"
+        "openapi": "https://api.openworklabs.com/openapi.json?public=1"
       },
       {
         "tab": "Roadmap",

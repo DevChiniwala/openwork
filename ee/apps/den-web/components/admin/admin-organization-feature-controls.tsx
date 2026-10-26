@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { FEATURE_KEYS, FEATURES, mapFeatures, type FeatureKey } from "@openwork/features";
+import { FEATURE_KEYS, FEATURES, featureDocsUrl, mapFeatures, type FeatureKey } from "@openwork/features";
 import { DenButton } from "../../app/(den)/_components/ui/button";
 import { DenSwitch } from "../../app/(den)/_components/ui/switch";
 import { requestAdmin, sendAdmin } from "./admin-request";
 
 export type AdminFeatureState = {
   enabled: boolean;
-  source: "unavailable" | "killed" | "lock" | "override" | "everyone";
+  source: "unavailable" | "killed" | "lock" | "override" | "member" | "everyone";
   everyone: boolean;
   killed: boolean;
   override: boolean | null;
@@ -21,7 +21,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-const ADMIN_FEATURE_SOURCES = ["unavailable", "killed", "lock", "override", "everyone"] as const;
+const ADMIN_FEATURE_SOURCES = ["unavailable", "killed", "lock", "override", "member", "everyone"] as const;
 
 function parseAdminFeatureSource(value: unknown): AdminFeatureState["source"] {
   return ADMIN_FEATURE_SOURCES.find((source) => source === value) ?? "everyone";
@@ -51,6 +51,7 @@ export function parseAdminOrganizationFeatures(featureStates: unknown, capabilit
 function describeSource(state: AdminFeatureState): string {
   switch (state.source) {
     case "everyone": return state.everyone ? "On for everyone" : "Off for everyone";
+    case "member": return "Set for this member";
     case "override": return "Set for this organization";
     case "lock": return "Set by deployment config";
     case "killed": return "Turned off everywhere";
@@ -65,8 +66,9 @@ function parseFeatures(payload: unknown): AdminOrganizationFeatures | null {
   return parseAdminOrganizationFeatures(payload.featureStates, payload.capabilities);
 }
 
-export function AdminOrganizationFeatureControls({ organizationId, refreshKey, onAccessFailure }: {
+export function AdminOrganizationFeatureControls({ organizationId, memberId, refreshKey, onAccessFailure }: {
   organizationId: string;
+  memberId?: string;
   refreshKey: number;
   onAccessFailure: (failure: AdminFeatureAccessFailure) => void;
 }) {
@@ -77,7 +79,7 @@ export function AdminOrganizationFeatureControls({ organizationId, refreshKey, o
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [attempt, setAttempt] = useState(0);
-  const path = `/v1/admin/organizations/${encodeURIComponent(organizationId)}/capabilities`;
+  const path = `/v1/admin/organizations/${encodeURIComponent(organizationId)}${memberId ? `/members/${encodeURIComponent(memberId)}` : ""}/capabilities`;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -100,7 +102,7 @@ export function AdminOrganizationFeatureControls({ organizationId, refreshKey, o
     savingRef.current = true;
     setSaving(true);
     setSaveError(null);
-    setFeatures({ ...previous, [key]: { ...previous[key], enabled: value ?? previous[key].everyone, override: value, source: value === null ? "everyone" : "override" } });
+    setFeatures({ ...previous, [key]: { ...previous[key], enabled: value ?? previous[key].everyone, override: value, source: value === null ? "everyone" : memberId ? "member" : "override" } });
     try {
       const result = await sendAdmin(path, "PUT", { capabilities: { [key]: value } });
       if (!result.ok) {
@@ -123,7 +125,7 @@ export function AdminOrganizationFeatureControls({ organizationId, refreshKey, o
   }
 
   return (
-    <section className="min-w-0 py-5" aria-label="Organization features" aria-busy={loading || saving} data-testid="admin-organization-features">
+    <section className="min-w-0 py-5" aria-label={memberId ? "Member features" : "Organization features"} aria-busy={loading || saving} data-testid="admin-organization-features">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-gray-900">Features</h2>
         <Link href="/admin/features" prefetch={false} className="text-xs font-medium text-slate-500 underline-offset-2 hover:underline">Feature rollouts</Link>
@@ -147,14 +149,18 @@ export function AdminOrganizationFeatureControls({ organizationId, refreshKey, o
                   aria-describedby={`admin-feature-source-${key}`} disabled={!state.overrideApplies || loading || saving} onChange={(enabled) => void save(key, enabled)} /></span>
                 <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                   <span className="block text-sm font-medium text-slate-700">{definition.label}</span>
-                  <span id={`admin-feature-source-${key}`} className="mt-1 block text-xs text-slate-500" data-testid={`admin-capability-source-${key}`}>{describeSource(state)}</span>
+                  <span id={`admin-feature-source-${key}`} className="mt-1 block text-xs text-slate-500" data-testid={`admin-capability-source-${key}`}>{memberId && state.source === "everyone" ? `Organization setting: ${state.enabled ? "on" : "off"}` : describeSource(state)}</span>
                   <span className="mt-1 block text-xs leading-5 text-slate-500">{definition.description}</span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    Author @{definition.author}
+                    {featureDocsUrl(key) ? <> · <a href={featureDocsUrl(key) ?? undefined} target="_blank" rel="noreferrer" className="font-medium text-slate-700 underline-offset-2 hover:underline">Internal docs</a></> : null}
+                  </span>
                 </span>
               </label>
-              {state.source === "override" && state.overrideApplies ? <DenButton variant="ghost" size="inline" type="button"
+              {state.override !== null && state.overrideApplies ? <DenButton variant="ghost" size="inline" type="button"
                 data-testid={`admin-capability-reset-${key}`} disabled={loading || saving} onClick={() => void save(key, null)}
                 className="max-w-full justify-self-start whitespace-normal text-left sm:self-start">
-                Use everyone&apos;s setting
+                {memberId ? "Use organization setting" : "Use everyone’s setting"}
               </DenButton> : null}
             </li>
           );

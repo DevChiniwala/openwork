@@ -103,6 +103,28 @@ export function autoProviderSubtitle() {
   return "Auto";
 }
 
+const MODEL_MAKERS: readonly [RegExp, string][] = [
+  [/\bclaude\b/, "anthropic"], [/\b(gpt|codex|o[1-9])(\b|-|\d)/, "openai"], [/\b(gemini|gemma)\b/, "google"],
+  [/\bgrok\b/, "xai"], [/\bllama\b/, "meta"], [/\b(mistral|codestral|devstral|magistral)\b/, "mistral"], [/\bdeepseek\b/, "deepseek"],
+];
+
+/**
+ * Who made a model, from its name: Claude is Anthropic's wherever it is served.
+ * The picker shows this maker's logo, so a gateway or self-hosted provider
+ * without a logo of its own still reads at a glance. Null when unknown.
+ */
+export function modelMakerId(model: ModelRef & { title?: string }): string | null {
+  const text = `${model.title ?? ""} ${model.modelID}`.toLowerCase();
+  return MODEL_MAKERS.find(([pattern]) => pattern.test(text))?.[1] ?? null;
+}
+
+/** Only what is true about this model right now, without its provider (rows already show the logo and group). */
+export function modelStateLabel(model: ModelOption): string | null {
+  if (model.gatewayAuthorization) return "Sign-in required";
+  if (model.organizationPinOrder !== undefined) return "Pinned by your org";
+  return null;
+}
+
 export function modelSubtitle(model: ModelOption, exhausted = false) {
   if (isAutoModel(model)) return exhausted ? "Limit used up" : "OpenWork picks the model";
   // Gateway models assigned to the member that wait on their own provider sign-in.
@@ -168,17 +190,18 @@ export function modelGroups(options: readonly ModelOption[], personal: readonly 
   const shown = new Set<string>();
   const search = query.trim().toLowerCase();
   const available = options.filter((option) => !option.disabled);
-  const add = (value: string, candidates: readonly ModelOption[]) => {
+  // `claim`: listed only here. Recent is a shortcut; its models still appear under their provider.
+  const add = (value: string, candidates: readonly ModelOption[], claim = true) => {
     const items = candidates.filter((option) => {
       const key = modelRefKey(option);
       if (shown.has(key) || (search && !`${modelTitle(option)} ${modelSubtitle(option)} ${key}`.toLowerCase().includes(search))) return false;
-      shown.add(key);
+      if (claim) shown.add(key);
       return true;
     });
     if (items.length) groups.push({ value, items });
   };
   add("Pinned", orderedModelPins(available, personal));
-  add("Recent", recent.flatMap((model) => available.filter((option) => modelRefKey(option) === modelRefKey(model))));
+  add("Recent", recent.flatMap((model) => available.filter((option) => modelRefKey(option) === modelRefKey(model))), false);
   add("OpenWork Models", available.filter((option) => option.providerID === "openwork" || option.providerID === AUTO_PROVIDER_ID));
   const providers = [...new Set(available.map((option) => option.providerID))].sort((a, b) => {
     const name = (id: string) => available.find((option) => option.providerID === id)?.description || id;
@@ -189,6 +212,23 @@ export function modelGroups(options: readonly ModelOption[], personal: readonly 
     add(models[0]?.description || id, models);
   }
   return groups;
+}
+
+/**
+ * The model to fall back to when `unavailable` stops working: the first other
+ * model in the order the picker lists them (pinned, recent, then by provider)
+ * that `usable` accepts. Null when nothing else can run.
+ */
+export function nextAvailableModel(
+  options: readonly ModelOption[],
+  personal: readonly ModelRef[],
+  recent: readonly ModelRef[],
+  unavailable: ModelRef,
+  usable: (model: ModelOption) => boolean = () => true,
+): ModelOption | null {
+  const skip = modelRefKey(unavailable);
+  return modelGroups(options, personal, recent).flatMap((group) => group.items)
+    .find((option) => modelRefKey(option) !== skip && usable(option)) ?? null;
 }
 
 export function isPinModelShortcut(event: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean }) {

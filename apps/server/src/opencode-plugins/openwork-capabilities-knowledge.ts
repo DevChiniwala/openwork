@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { appendAgentInstructions, createInstructionSection } from "./agent-instruction-compose.js";
+import { correctWorkspaceRoot, workspaceFileGuidance, workspaceFileHooks } from "./workspace-file-destinations.js";
 
 /**
  * OpenWork Capabilities Knowledge Plugin
@@ -67,6 +68,7 @@ Here is what you can help users with:
 
 ## Other sessions
 - For questions about another chat (what was said, decided, or done), use the session affordances described under OpenWork app context; match by ID, title, workspace, or topic words, ask a short clarifying question if several sessions match, and answer only from the returned transcript — say so when it is limited or missing older context.
+- Sidebar groups (such as Done or In progress) are listed with session.group.list and changed with session.group.create, session.group.move or session.group.remove; never search code or files for them.
 
 ## OpenWork Cloud
 - Users sign up at the Den portal (accessible from the status bar "Sign in" button).
@@ -204,9 +206,13 @@ function excerpt(content: string, query: string): string {
   return content.slice(from, from + 500).replace(/\s+/g, " ").trim();
 }
 
-export const OpenWorkCapabilitiesKnowledge = async () => ({
+export const OpenWorkCapabilitiesKnowledge = async (context?: Parameters<typeof workspaceFileHooks>[0]) => ({
+  ...workspaceFileHooks(context),
   "experimental.chat.system.transform": async (_input: unknown, output: { system: string[] }) => {
-    appendAgentInstructions(output.system, createInstructionSection("capabilities-knowledge", OPENWORK_CAPABILITIES_KNOWLEDGE));
+    if (context?.directory) correctWorkspaceRoot(output.system, context.directory);
+    appendAgentInstructions(output.system,
+      createInstructionSection("capabilities-knowledge", OPENWORK_CAPABILITIES_KNOWLEDGE),
+      ...(context?.directory ? [createInstructionSection("workspace-files", workspaceFileGuidance(context.directory))] : []));
   },
   tool: {
     openwork_docs_search: {

@@ -1,9 +1,9 @@
 # Spectral ruleset for the Den API OpenAPI document (packages/docs/openapi.json).
 #
 # This is the single API-quality gate: `pnpm api:lint` regenerates nothing, it
-# lints the committed snapshot; CI regenerates first (drift check) and then
-# lints. Errors fail the build; warnings are ratcheted against
-# .spectral-baseline.json and may not increase.
+# lints the document `pnpm den:contract` generated from route source; CI
+# generates first and then lints. Errors fail the build; warnings are
+# ratcheted against .spectral-baseline.json and may not increase.
 #
 # Rule intent, exemptions and the protocol-adapter boundary are documented in
 # docs/api-style.md. Keep the two files in sync.

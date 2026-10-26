@@ -21,8 +21,10 @@ import { isEmailAllowedForOrganization, listAssignableRoles, removeOrganizationM
 import type { PermissionDatabase } from "@openwork-ee/den-db/permissions"
 import { resolveTeamActorInTransaction, teamGrantDecisionInTransaction, teamGrantsForbiddenResponse, roleAssignmentDeniedHeaders, roleAssignmentDeniedResponse, roleAssignmentDenial, roleAssignmentDenialInTransaction, type RoleAssignmentDenial } from "../../permissions/team-grants.js"
 import { resolvePermissionsForMember } from "../../permissions/resolve.js"
-import { getOrganizationSeatAddEligibility } from "../../stripe-billing.js"
+import { getOrganizationSeatAddEligibility, getSeatPlanQuote } from "../../stripe-billing.js"
+import { seatPlanQuoteSchema } from "@openwork/types/den/billing-plans"
 import { DenEmailSendError, sendEmail } from "../../utils/email/send-email.js"
+import { organizationInviteEmailProps } from "../../invitation-email.js"
 import type { OrgRouteVariables } from "./shared.js"
 import {
   buildInvitationLink,
@@ -83,6 +85,7 @@ const invitePaymentRequiredSchema = z.object({
   freeSeatCount: z.number(),
   message: z.string(),
   billingUrl: z.string().url().describe("Open in a browser to start seat billing; an owner can finish it there, then retry the invitation."),
+  quote: seatPlanQuoteSchema.describe("The Team plan with this person added: every person at the Team price. `available` is false when Team checkout is off for this organization or not sold on this deployment."),
 }).meta({ ref: "InvitePaymentRequiredError" })
 
 const invitationNotPendingSchema = z.object({
@@ -284,6 +287,10 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         .orderBy(desc(InvitationTable.createdAt))
         .for("update")
       const existingInvitation = existingInvitationRows.find((row) => row.status === "pending") ?? null
+      const now = new Date()
+      // An expired invitation stops counting as a user; resending it makes it
+      // count again, so it needs a seat like a new invitation.
+      const reactivatesExpiredInvitation = Boolean(existingInvitation && existingInvitation.expiresAt <= now)
 
       const existingMembers = await tx
         .select({ id: MemberTable.id })
@@ -313,7 +320,8 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         if (!refreshRole.ok) {
           return { status: "role_error" as const, validation: refreshRole }
         }
-      } else {
+      }
+      if (!existingInvitation || reactivatesExpiredInvitation) {
         const seatEligibility = await getOrganizationSeatAddEligibility(payload.organization.id)
         if (!seatEligibility.allowed) {
           return { status: "payment_required" as const, seatEligibility }
@@ -342,7 +350,6 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         }
       }
 
-      const now = new Date()
       const expiresAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 7)
       const invitationId = existingInvitation?.id ?? createInvitationId()
       const inviteToken = existingInvitation?.inviteToken && existingInvitation.expiresAt > now
@@ -442,6 +449,7 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         invitationId,
         invitationOrgMemberId,
         inviteToken,
+        reactivatesExpiredInvitation,
         refreshed: Boolean(existingInvitation),
       }
     })
@@ -472,14 +480,20 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
     }
     if (invitationWrite.status === "payment_required") {
       const { seatEligibility } = invitationWrite
+      const quote = await getSeatPlanQuote({
+        organizationId: payload.organization.id,
+        currentCount: seatEligibility.currentCount,
+        teamPlanEnabled: payload.features.teamPlan,
+      })
       return c.json({
         error: "payment_required",
         reason: "seat_subscription_required",
         subscriptionType: "seat",
         currentCount: seatEligibility.currentCount,
         freeSeatCount: seatEligibility.freeSeatCount,
-        message: `This workspace includes ${seatEligibility.freeSeatCount} free seats. Start seat billing at ${invitationBillingUrl()} to invite more people.`,
+        message: `The Free plan is limited to ${seatEligibility.freeSeatCount} users, counting pending invitations. Upgrade to the Team plan at ${invitationBillingUrl()} to invite more people.`,
         billingUrl: invitationBillingUrl(),
+        quote,
       }, 402)
     }
 
@@ -490,12 +504,15 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
       invitationId,
       invitationOrgMemberId,
       inviteToken,
+      reactivatesExpiredInvitation,
       refreshed,
     } = invitationWrite
     addAuditRequestResource(c, { type: "invitation", id: invitationId })
 
-    if (createdOrgMemberId) {
-      await runPostOrganizationMemberChangeHooks({ organizationId: payload.organization.id, memberId: createdOrgMemberId, change: "added" })
+    // A new pending invitation, or a resent expired one, counts as a user again.
+    const billingMemberId = createdOrgMemberId ?? (reactivatesExpiredInvitation ? invitationOrgMemberId : null)
+    if (billingMemberId) {
+      await runPostOrganizationMemberChangeHooks({ organizationId: payload.organization.id, memberId: billingMemberId, change: "added" })
     }
 
     await finishLegacyAuditAction(capture, {
@@ -517,13 +534,14 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
       await sendEmail({
         to: email,
         template: "organizationInvite",
-        props: {
+        props: organizationInviteEmailProps({
           inviteLink: buildInvitationLink(inviteToken),
-          invitedByName: user.name ?? user.email ?? "OpenWork",
-          invitedByEmail: user.email ?? "",
+          inviterName: user.name,
+          inviterEmail: user.email,
+          inviteeEmail: email,
           organizationName: payload.organization.name,
           role: assignedRole,
-        },
+        }),
       })
     } catch (error) {
       if (error instanceof DenEmailSendError) {
