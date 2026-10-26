@@ -26,6 +26,30 @@ export interface ComputerFiles {
   putPreview(sessionId: string, id: string, pages: Array<Uint8Array<ArrayBuffer>>, size: { width: number; height: number }): Promise<boolean>
 }
 
+/** A file in the member's My files, as the computer's sync needs it. `path` is inside My files (`Downloads/a.pdf`). */
+export type MemberFileEntry = { path: string; size: number; version: number; updatedAt: number }
+export type MemberFileWrite = { ok: true; file: MemberFileEntry } | { ok: false; code: string; message: string }
+
+/**
+ * One call's view of the member's My files, mirrored at /files on the computer around the call. The runner binds it
+ * to the conversation's owner and to what this run may change; the computer never names a space.
+ */
+export interface ComputerMemberFiles {
+  /** The largest file My files keeps; bigger ones stay on the computer and are reported. */
+  readonly maxFileBytes: number
+  list(): Promise<MemberFileEntry[]>
+  read(path: string): Promise<{ file: MemberFileEntry; bytes: Uint8Array<ArrayBuffer> } | null>
+  /** `ifVersion`: null when the path must be free, otherwise the version this change replaces (else `conflict`). */
+  write(path: string, bytes: Uint8Array<ArrayBuffer>, input: { kind: "computer" | "browser"; ifVersion: number | null; url?: string | null }): Promise<MemberFileWrite>
+  delete(path: string, ifVersion?: number): Promise<{ ok: true } | { ok: false; code: string; message: string }>
+  /** Whether this run may change `path` (a background run only its agent folder), and why not, for the model. */
+  canWrite(path: string): boolean
+  refusal(path: string): string
+}
+
+/** What one computer call may use beyond the conversation; null My files turns an earlier mirror off. */
+export type ComputerCallContext = { memberFiles: ComputerMemberFiles | null }
+
 /**
  * Turns a file into what the model can see: an image or PDF as model input, text as text, or a note. `counts`
  * caps images and PDFs per result across the files of one call.

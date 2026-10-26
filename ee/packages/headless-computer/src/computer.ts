@@ -2,7 +2,8 @@ import { createHash } from "node:crypto"
 import { posix } from "node:path"
 import { ensureRunning, isSandboxError, shellQuote, SCOPE_LABEL, withBlocks, type RunSpec, type SandboxHandle, type SandboxProvider, type SandboxSpec } from "@openwork/sandbox"
 import { z } from "zod"
-import type { ComputerFile, ComputerFiles, FileReader, ToolResult, ToolSpec } from "./types.js"
+import type { ComputerCallContext, ComputerFile, ComputerFiles, ComputerMemberFiles, FileReader, ToolResult, ToolSpec } from "./types.js"
+import { MEMBER_MANIFEST_MARKER, MEMBER_FILES_DIR, MEMBER_FILES_MANIFEST, parseScan, parseSignatures, PATHS_SCRIPT, SCAN_SCRIPT, stampOf, syncMemberFiles, syncNotes, type MirrorVm, type SyncReport } from "./member-files-sync.js"
 import { demonstrationReplySchema, type DemonstrationCommand } from "@openwork/types/browser-demonstration"
 import { Desktop, type DesktopView } from "./desktop.js"
 import { DESKTOP_TOOL } from "./desktop-tool.js"
@@ -54,6 +55,13 @@ export class Computers {
   private readonly pausing = new Map<string, Promise<void>>()
   /** Saved file ids already copied into each session's VM by this process. */
   private readonly copied = new Map<string, Set<string>>()
+  /**
+   * My files on each session's VM, as this process knows it: whether /files is set up there (or why it can't be), the
+   * versions it mirrors (to skip a sync when nothing changed), and whether an earlier mirror was checked off.
+   */
+  private readonly mirrors = new Map<string, { ready?: true; unavailable?: string; stamp?: string; offChecked?: true }>()
+  /** One My files sync at a time per session: background tasks share the computer. */
+  private readonly syncing = new Map<string, Promise<unknown>>()
 
   private readonly snapshot: string
   private readonly files?: ComputerFiles
@@ -80,7 +88,7 @@ export class Computers {
     this.desktopTools = this.desktop ? [DESKTOP_TOOL] : []
   }
 
-  async desktopRun(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
+  async desktopRun(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal, context?: ComputerCallContext): Promise<ToolResult> {
     // `description` is narration for the person watching; it never reaches the computer.
     const parsed = z.object({ view: z.enum(["browser", "computer"]), operation: z.string().max(64), args: z.record(z.string(), z.unknown()), description: z.string().optional() }).strict().parse(input)
     const desktop = this.desktop
@@ -92,8 +100,11 @@ export class Computers {
       stopping ??= desktop.call(box, "/stop", {})
       void stopping.catch(() => {})
     }
+    const member = context?.memberFiles ?? null
     try {
       await desktop.start(box)
+      // My files where the browser can upload from them; only when they changed since this computer last synced.
+      const before = member ? await this.syncMember(sessionId, member, "computer", { onlyIfChanged: true }) : await this.mirrorOff(sessionId).then(() => null)
       signal?.addEventListener("abort", stop, { once: true })
       if (signal?.aborted) { stop(); signal.throwIfAborted() }
       const program = parsed.operation === "computer_run"
@@ -108,7 +119,11 @@ export class Computers {
       if (result.image) images.push({ mediaType: result.image.mediaType ?? result.image.mimeType ?? "image/png", data: result.image.data })
       for (const image of result.images ?? []) images.push({ mediaType: image.mimeType, data: image.data })
       const { image, images: programImages, content, ...text } = result
-      return { output: content ? content.filter(part => part.type === "text").map(part => part.text ?? "").join("\n") : JSON.stringify(text), isError: result.isError === true || result.ok === false, ...(images.length ? { images } : {}) }
+      // Downloads (browser) and files apps saved (computer view) go to My files right after the call.
+      const after = member ? await this.syncMember(sessionId, member, parsed.view === "browser" ? "browser" : "computer") : null
+      const output = content ? content.filter(part => part.type === "text").map(part => part.text ?? "").join("\n") : JSON.stringify(text)
+      const notes = [...memberNotes(before), ...memberNotes(after)]
+      return { output: [output, ...notes].join("\n"), isError: result.isError === true || result.ok === false, ...(images.length ? { images } : {}) }
     } finally {
       signal?.removeEventListener("abort", stop)
       try { if (stopping) await stopping }
@@ -164,8 +179,8 @@ export class Computers {
   }
 
   /** Runs one of the computer's tools (`bash` or `look`) for a conversation. */
-  run(sessionId: string, name: string, input: Record<string, unknown>): Promise<ToolResult> {
-    return runComputerTool(this, sessionId, name, input)
+  run(sessionId: string, name: string, input: Record<string, unknown>, context?: ComputerCallContext): Promise<ToolResult> {
+    return runComputerTool(this, sessionId, name, input, context?.memberFiles ?? null)
   }
 
   /** The snapshot new computers boot from, for logs. */
@@ -201,7 +216,10 @@ export class Computers {
     const pending = prior ? prior.then(async box => {
       const current = await this.provider.inspect(box)
       if (current.state === "running") return current
-      if (current.state === "missing") this.copied.delete(sessionId)
+      if (current.state === "missing") {
+        this.copied.delete(sessionId)
+        this.mirrors.delete(sessionId)
+      }
       return this.resolve(sessionId)
     }) : this.resolve(sessionId)
     this.vms.set(sessionId, pending)
@@ -289,6 +307,7 @@ export class Computers {
     this.cancelPause(sessionId)
     this.vms.delete(sessionId)
     this.copied.delete(sessionId)
+    this.mirrors.delete(sessionId)
     const box = await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })
     if (box) await this.provider.destroy(box, { timeoutMs: 30_000 }).catch((error: unknown) => {
       if (!isSandboxError(error) || error.code !== "not_found") throw error
@@ -452,8 +471,10 @@ export class Computers {
     await this.execute(vm, { command: `rm -rf "$OUT"`, env: { OUT: outDir }, timeoutMs: 10_000 }).catch(() => undefined)
   }
 
-  async bash(sessionId: string, command: string, timeoutSeconds: number): Promise<ToolResult> {
+  async bash(sessionId: string, command: string, timeoutSeconds: number, member: ComputerMemberFiles | null = null): Promise<ToolResult> {
     const copied = await this.copyUploads(sessionId)
+    // My files at /files before the command, and back after it (member-files-sync.ts).
+    const before = member ? await this.syncMember(sessionId, member, "computer") : await this.mirrorOff(sessionId).then(() => null)
     let result
     try { result = await this.exec(sessionId, command, timeoutSeconds) }
     catch (error) {
@@ -461,19 +482,122 @@ export class Computers {
       return { output: `[No confirmed result after ${timeoutSeconds}s. The command may still be running; do not repeat side effects. Use background for long jobs.]`, isError: true }
     }
     const { saved, skipped } = await this.exportOutputs(sessionId).catch(() => ({ saved: [], skipped: [] }))
+    const after = member ? await this.syncMember(sessionId, member, "computer") : null
     const parts = [
       copied.length ? `[Copied the person's files to: ${copied.join(", ")}]` : "",
+      ...memberNotes(before),
       `[exit ${result.exitCode}]`,
       tail(result.stdout ?? ""),
       result.stderr?.trim() ? `[stderr]\n${tail(result.stderr)}` : "",
       saved.length ? `[Added to their Files: ${saved.join(", ")}]` : "",
       skipped.length ? `[Not added to their Files: ${skipped.join("; ")}. Make it smaller, or tell them it is too big to hand over.]` : "",
+      ...memberNotes(after),
     ]
     return { output: parts.filter(Boolean).join("\n"), isError: result.exitCode !== 0 }
   }
 
-  async look(sessionId: string, paths: string[]): Promise<ToolResult> {
+  /**
+   * One sync of /files with My files for this session (one at a time). Sets /files up on a computer that doesn't have it
+   * yet. Never throws: a sync that fails is retried at the next call, and the model is told.
+   */
+  private syncMember(sessionId: string, member: ComputerMemberFiles, kind: "computer" | "browser", options: { onlyIfChanged?: boolean } = {}): Promise<MemberSync> {
+    const previous = this.syncing.get(sessionId) ?? Promise.resolve()
+    const run = previous.catch(() => undefined).then(async (): Promise<MemberSync> => {
+      const state = this.mirrors.get(sessionId) ?? {}
+      this.mirrors.set(sessionId, state)
+      try {
+        const remote = await member.list()
+        if (options.onlyIfChanged && state.ready && state.stamp === stampOf(remote)) return null
+        const vm = await this.vm(sessionId)
+        if (!state.ready) {
+          const problem = await this.prepareMirror(vm)
+          if (problem) {
+            // Said once per process, not after every call.
+            if (state.unavailable === problem) return null
+            state.unavailable = problem
+            return { unavailable: problem }
+          }
+          state.ready = true
+          delete state.unavailable
+          delete state.offChecked
+        }
+        const report = await syncMemberFiles(this.mirrorVm(vm), member, kind, { remote })
+        state.stamp = report.stamp
+        return { report }
+      } catch (error) {
+        console.error("[headless-computer] My files sync failed", { error: error instanceof Error ? error.message : "unknown" })
+        delete state.stamp
+        return { failed: true }
+      }
+    })
+    this.syncing.set(sessionId, run)
+    void run.finally(() => { if (this.syncing.get(sessionId) === run) this.syncing.delete(sessionId) })
+    return run
+  }
+
+  /** Makes /files on this computer (and, on a desktop, points Downloads into it); a reason when it can't. */
+  private async prepareMirror(vm: SandboxHandle): Promise<string | null> {
+    if (this.desktop) {
+      try {
+        await this.desktop.files(vm, true)
+        return null
+      } catch (error) {
+        return error instanceof Error ? error.message : "the desktop couldn't set it up"
+      }
+    }
+    const made = await this.execute(vm, {
+      command: `[ -d ${MEMBER_FILES_DIR} ] && [ -w ${MEMBER_FILES_DIR} ] || { sudo -n mkdir -p ${MEMBER_FILES_DIR} && sudo -n chown "$(id -u):$(id -g)" ${MEMBER_FILES_DIR}; }`,
+      activity: "maintenance",
+      timeoutMs: 30_000,
+    })
+    return made.exitCode === 0 ? null : "this computer can't make /files; it needs a newer image"
+  }
+
+  /**
+   * A conversation whose My files were turned off: the desktop's Downloads go back to /workspace/out. Checked once per
+   * process per session, only where an earlier mirror left its manifest.
+   */
+  private async mirrorOff(sessionId: string) {
+    const state = this.mirrors.get(sessionId) ?? {}
+    if (!this.desktop || state.offChecked) return
+    this.mirrors.set(sessionId, { offChecked: true })
+    const vm = await this.vm(sessionId)
+    await this.execute(vm, {
+      command: `if [ -f ${MEMBER_FILES_MANIFEST} ]; then sudo -n /usr/local/sbin/openwork-desktop-bridge files off && rm -f ${MEMBER_FILES_MANIFEST}; fi`,
+      activity: "maintenance",
+      timeoutMs: 30_000,
+    }).catch(() => undefined)
+  }
+
+  /** /files on this VM, through commands (python3 is in every image) and the provider's file API. */
+  private mirrorVm(vm: SandboxHandle): MirrorVm {
+    const paths = async (action: "folders" | "remove" | "signatures", list: string[]) => {
+      const result = await this.execute(vm, { command: `python3 -c "$MEMBER_SCRIPT" ${MEMBER_FILES_DIR} ${action}`, env: { MEMBER_SCRIPT: PATHS_SCRIPT, MEMBER_PATHS: JSON.stringify(list) }, timeoutMs: 60_000 })
+      return parseSignatures(result.stdout ?? "")
+    }
+    return {
+      scan: async () => {
+        const result = await this.execute(vm, {
+          command: `python3 -c "$MEMBER_SCRIPT" ${MEMBER_FILES_DIR}; echo '${MEMBER_MANIFEST_MARKER}'; cat ${MEMBER_FILES_MANIFEST} 2>/dev/null || echo '{}'`,
+          env: { MEMBER_SCRIPT: SCAN_SCRIPT },
+          timeoutMs: 60_000,
+        })
+        if (result.exitCode !== 0) throw new Error("scan_failed")
+        return parseScan(result.stdout ?? "")
+      },
+      read: async (path) => new Uint8Array(await this.blocks.files.read(vm, `${MEMBER_FILES_DIR}/${path}`, { timeoutMs: 120_000 })),
+      folders: async (list) => { await paths("folders", list) },
+      write: async (path, bytes) => this.blocks.files.write(vm, `${MEMBER_FILES_DIR}/${path}`, bytes, { timeoutMs: 120_000, ...(this.desktop ? { mode: 0o660 } : {}) }),
+      signatures: (list) => paths("signatures", list),
+      remove: async (list) => { await paths("remove", list) },
+      saveManifest: (manifest) => this.blocks.files.write(vm, MEMBER_FILES_MANIFEST, new TextEncoder().encode(JSON.stringify(manifest)), { timeoutMs: 30_000 }),
+    }
+  }
+
+  async look(sessionId: string, paths: string[], member: ComputerMemberFiles | null = null): Promise<ToolResult> {
     await this.copyUploads(sessionId)
+    // /files paths show My files as they are now.
+    if (member) await this.syncMember(sessionId, member, "computer", { onlyIfChanged: true })
     const vm = await this.vm(sessionId)
     const counts = { images: 0, documents: 0 }
     const texts: string[] = []
@@ -507,6 +631,16 @@ export class Computers {
     if (!result.documents?.length) delete result.documents
     return result
   }
+}
+
+/** What one My files sync has to say: what it did, that /files isn't available here, or that it failed this time. */
+type MemberSync = { report: SyncReport } | { unavailable: string } | { failed: true } | null
+
+function memberNotes(sync: MemberSync) {
+  if (!sync) return []
+  if ("report" in sync) return syncNotes(sync.report)
+  if ("unavailable" in sync) return [`[My files aren't on this computer: ${sync.unavailable}. Use read_file and write_file with /files paths instead.]`]
+  return ["[My files didn't sync this time; it will try again with the next command.]"]
 }
 
 /** Width and height from a PNG's header. */
@@ -591,16 +725,16 @@ const bashInput = z.object({
 })
 const lookInput = z.object({ paths: z.array(z.string().min(1)).min(1).max(4) })
 
-async function runComputerTool(computers: Computers, sessionId: string, name: string, input: Record<string, unknown>): Promise<ToolResult> {
+async function runComputerTool(computers: Computers, sessionId: string, name: string, input: Record<string, unknown>, member: ComputerMemberFiles | null): Promise<ToolResult> {
   if (name === "bash") {
     const parsed = bashInput.safeParse(input)
     if (!parsed.success) return { output: "bash needs a command (and optionally timeout_seconds up to 300).", isError: true }
-    return computers.bash(sessionId, parsed.data.command, parsed.data.timeout_seconds ?? DEFAULT_COMMAND_SECONDS)
+    return computers.bash(sessionId, parsed.data.command, parsed.data.timeout_seconds ?? DEFAULT_COMMAND_SECONDS, member)
   }
   if (name === "look") {
     const parsed = lookInput.safeParse(input)
     if (!parsed.success) return { output: "look needs paths: 1 to 4 file paths.", isError: true }
-    return computers.look(sessionId, parsed.data.paths)
+    return computers.look(sessionId, parsed.data.paths, member)
   }
   return { output: `Unknown tool: ${name}`, isError: true }
 }

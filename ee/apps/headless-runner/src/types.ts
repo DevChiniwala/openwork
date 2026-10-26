@@ -117,7 +117,7 @@ export type TurnCredentials = z.infer<typeof turnCredentialsSchema>
  * What one computer call may use beyond the conversation: the owner's My files, mirrored at /files on the computer
  * around the call (null when the conversation has none, which also turns an earlier mirror off).
  */
-export type ComputerCallContext = { memberFiles: import("./member-files.js").MemberFilesAccess | null }
+export type ComputerCallContext = { memberFiles: import("@openwork-ee/headless-computer").ComputerMemberFiles | null }
 
 /**
  * An optional Linux computer per conversation (`@openwork-ee/headless-computer`), loaded only when configured.

@@ -57,6 +57,17 @@ export class Desktop {
     throw new DesktopError("desktop_unresponsive", "The desktop didn't respond. Try reconnecting.")
   }
 
+  /**
+   * Turns My files on or off for this computer's desktop: `on` makes /files for the shared workspace group and points the
+   * browser's and apps' Downloads at /files/Downloads; `off` points them back at /workspace/out. Root, image-owned.
+   */
+  async files(box: SandboxHandle, on: boolean) {
+    const run = this.provider.blocks?.run
+    if (!run) throw new Error("Desktop access is unavailable.")
+    const result = await run(box, { command: `sudo -n ${BRIDGE} files ${on ? "on" : "off"}`, timeoutMs: 30_000 })
+    if (result.exitCode !== 0) throw new Error(result.stderr.trim().slice(0, 300) || "The computer couldn't set up My files.")
+  }
+
   async call(box: SandboxHandle, path: string, body: unknown): Promise<unknown> {
     const run = this.provider.blocks?.run
     if (!run) throw new Error("Desktop access is unavailable.")

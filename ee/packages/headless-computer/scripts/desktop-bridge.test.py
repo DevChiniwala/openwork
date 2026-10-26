@@ -57,5 +57,59 @@ class DesktopPrivilegeBoundary(unittest.TestCase):
                 self.assertNotIn('fixture-bearer', json.dumps(bridge.call('/health', '{}')))
 
 
+
+class MemberFilesFolder(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.base = Path(self.directory.name)
+        for user in ('browser', 'app'):
+            (self.base / user).mkdir()
+        (self.base / 'out').mkdir()
+        account = lambda name: types.SimpleNamespace(pw_uid=bridge.os.getuid(), pw_gid=bridge.os.getgid(), pw_dir=str(self.base / ('browser' if name == 'openwork-browser' else 'app')))
+        self.patches = [
+            patch.object(bridge, 'FILES_ROOT', self.base / 'files'),
+            patch.object(bridge, 'WORKSPACE_OUT', self.base / 'out'),
+            patch.object(bridge.pwd, 'getpwnam', side_effect=account),
+            patch.object(bridge.grp, 'getgrnam', return_value=types.SimpleNamespace(gr_gid=bridge.os.getgid())),
+            patch.object(bridge.subprocess, 'run'),
+        ]
+        for started in self.patches:
+            started.start()
+
+    def tearDown(self):
+        for started in self.patches:
+            started.stop()
+        self.directory.cleanup()
+
+    def test_on_makes_a_shared_files_folder_and_points_downloads_into_it_and_off_points_them_back(self):
+        self.assertEqual(bridge.member_files('on'), {'ok': True, 'files': 'on'})
+        self.assertTrue((self.base / 'files' / 'Downloads').is_dir())
+        self.assertEqual(oct((self.base / 'files').stat().st_mode & 0o7777), '0o2770')
+        for user in ('browser', 'app'):
+            self.assertEqual(bridge.os.readlink(self.base / user / 'Downloads'), str(self.base / 'files' / 'Downloads'))
+            self.assertEqual(bridge.os.readlink(self.base / user / 'My files'), str(self.base / 'files'))
+        self.assertEqual(bridge.member_files('on'), {'ok': True, 'files': 'on'}, 'idempotent')
+        bridge.member_files('off')
+        for user in ('browser', 'app'):
+            self.assertEqual(bridge.os.readlink(self.base / user / 'Downloads'), str(self.base / 'out'))
+            self.assertFalse((self.base / user / 'My files').exists())
+
+    def test_a_link_planted_where_downloads_belongs_is_refused_and_a_real_folder_is_kept(self):
+        (self.base / 'files').mkdir()
+        (self.base / 'files' / 'Downloads').symlink_to(self.base / 'browser')
+        with self.assertRaises(OSError):
+            bridge.member_files('on')
+        (self.base / 'files' / 'Downloads').unlink()
+        (self.base / 'app' / 'Downloads').mkdir()
+        bridge.member_files('on')
+        self.assertFalse((self.base / 'app' / 'Downloads').is_symlink())
+
+    def test_only_on_and_off_are_accepted(self):
+        self.assertEqual(bridge.arguments(['files', 'on']), ('files', 'on'))
+        for args in [['files'], ['files', '/etc'], ['files', 'on', 'extra']]:
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                bridge.arguments(args)
+
+
 if __name__ == '__main__':
     unittest.main()
