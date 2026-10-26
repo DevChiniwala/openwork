@@ -21,10 +21,10 @@ export function registerAdminSandboxOrganizationRoutes<T extends { Variables: Au
   app.get(base, describeRoute({ tags: ["Admin"], summary: "List sandbox organizations", description: "Lists try-it-out organizations with their join link, members, connectors and when they end. Sandboxes whose time ran out are closed first. Platform administrators only.", responses: { 200: jsonResponse("Sandbox organizations.", sandboxListSchema), ...errors } }), adminRoute(), async c => {
     c.header("Cache-Control", "no-store")
     if (!await deploymentFeatureEnabled("sandboxOrgs")) return c.json({ enabled: false, sandboxes: [] })
-    return c.json({ enabled: true, sandboxes: await listSandboxes(normalizeDenTypeId("user", c.get("user").id)), defaults: sandboxDefaults() })
+    return c.json({ enabled: true, sandboxes: await listSandboxes(), defaults: sandboxDefaults() })
   })
 
-  app.post(base, describeRoute({ tags: ["Admin"], summary: "Create a sandbox organization", description: "Creates an organization owned by the calling admin with included models, optional extra Free Auto usage, one per-person OAuth connector for each fictional workplace app, and a join link that joins people as members until the sandbox ends. Platform administrators only.", responses: { 200: jsonResponse("Sandbox created.", sandboxCreatedSchema), ...errors } }), adminRoute(), jsonValidator(sandboxCreateInputSchema), async c => {
+  app.post(base, describeRoute({ tags: ["Admin"], summary: "Create a sandbox organization", description: "Creates an organization owned by the calling admin with included models, Free Auto until the sandbox closes or expires, one per-person OAuth connector for each fictional workplace app, and a join link that joins people as members until the sandbox ends. Platform administrators only.", responses: { 200: jsonResponse("Sandbox created.", sandboxCreatedSchema), ...errors } }), adminRoute(), jsonValidator(sandboxCreateInputSchema), async c => {
     if (!await deploymentFeatureEnabled("sandboxOrgs")) return c.json(disabled, 404)
     try {
       const sandbox = await createSandbox(normalizeDenTypeId("user", c.get("user").id), c.req.valid("json"))
@@ -53,19 +53,19 @@ export function registerAdminSandboxOrganizationRoutes<T extends { Variables: Au
     return sandbox ? c.json({ sandbox }) : c.json({ error: "not_found", message: "Sandbox not found." }, 404)
   })
 
-  app.post(`${base}/:sandboxId/extend`, updated("Extend or reopen a sandbox", "Adds days from now or from the current end, whichever is later, reopens the join link and turns included models back on. Platform administrators only."), adminRoute(), jsonValidator(sandboxExtendInputSchema), async c => {
+  app.post(`${base}/:sandboxId/extend`, updated("Extend or reopen a sandbox", "Adds days from now or from the current end, whichever is later, reopens the join link and turns included models and Free Auto back on. Platform administrators only."), adminRoute(), jsonValidator(sandboxExtendInputSchema), async c => {
     if (!await deploymentFeatureEnabled("sandboxOrgs")) return c.json(disabled, 404)
     const id = c.req.param("sandboxId")
     if (!isDenTypeId("sandboxOrganization", id)) return c.json({ error: "invalid_request", message: "Invalid sandbox id." }, 400)
-    const sandbox = await extendSandbox(normalizeDenTypeId("user", c.get("user").id), normalizeDenTypeId("sandboxOrganization", id), c.req.valid("json").days)
+    const sandbox = await extendSandbox(normalizeDenTypeId("sandboxOrganization", id), c.req.valid("json").days)
     return sandbox ? c.json({ sandbox }) : c.json({ error: "not_found", message: "Sandbox not found." }, 404)
   })
 
-  app.post(`${base}/:sandboxId/close`, updated("Close a sandbox", "Stops the join link and included models now. The organization, its members, connectors and data are kept and the sandbox can be reopened. Platform administrators only."), adminRoute(), async c => {
+  app.post(`${base}/:sandboxId/close`, updated("Close a sandbox", "Stops the join link, included models and Free Auto now. The organization, its members, connectors and data are kept and the sandbox can be reopened. Platform administrators only."), adminRoute(), async c => {
     if (!await deploymentFeatureEnabled("sandboxOrgs")) return c.json(disabled, 404)
     const id = c.req.param("sandboxId")
     if (!isDenTypeId("sandboxOrganization", id)) return c.json({ error: "invalid_request", message: "Invalid sandbox id." }, 400)
-    const sandbox = await closeSandbox(normalizeDenTypeId("user", c.get("user").id), normalizeDenTypeId("sandboxOrganization", id))
+    const sandbox = await closeSandbox(normalizeDenTypeId("sandboxOrganization", id))
     return sandbox ? c.json({ sandbox }) : c.json({ error: "not_found", message: "Sandbox not found." }, 404)
   })
 }

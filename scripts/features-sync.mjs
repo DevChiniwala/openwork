@@ -122,8 +122,8 @@ const problems = []
 // Features declared before internal docs were required. This list only
 // shrinks: write the doc, set `docs`, and remove the key here.
 const FEATURES_WITHOUT_DOCS = new Set([
-  "administratorRecovery", "organizationGrants", "sandboxOrgs",
-  "connectionMcpServers", "enterprisePlan", "workbotDocuments",
+  "administratorRecovery", "sandboxOrgs",
+  "connectionMcpServers", "workbotDocuments",
   "workbotDocumentEditing", "workbotWorkspaceAssistant", "workbotIncludedModels", "workbotUsageRecovery",
   "automationCalendar", "computerUse", "browserLiveView",
   "browserFloatingView", "remoteComputers", "activationChecklist",

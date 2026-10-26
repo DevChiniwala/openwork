@@ -207,17 +207,13 @@ export const orgAuditRoutes: readonly AuditRouteDeclaration[] = [
   admin("PUT", "/v1/admin/organizations/:organizationId/members/:memberId/capabilities", "tenant_change", "member.capabilities.update", { notes: "Sets or clears registry feature overrides for one active organization membership (member_feature); platform admins only." }),
   admin("GET", "/v1/admin/organizations/:organizationId/capabilities", "tenant_read", "organization.capabilities.read"),
   admin("PUT", "/v1/admin/organizations/:organizationId/capabilities", "tenant_change", "organization.capabilities.update", { notes: "Sets or clears this organization's feature overrides (organization_feature, features registry). The admin MCP tool den_set_org_capability makes the same change (service action organization.capability.set)." }),
-  admin("PATCH", "/v1/admin/organizations/:organizationId/plan", "tenant_change", "organization.plan.update"),
+  admin("PATCH", "/v1/admin/organizations/:organizationId/plan", "tenant_change", "organization.plan.update", { notes: "Sets organization metadata plan (tier, seats, optional display-only endsAt), mirrors limits.members, and the Free plan's seatsFreeAdditional. The admin MCP tool den_update_org_plan makes the same change (service action organization.plan.set). Never calls Stripe." }),
   admin("PATCH", "/v1/admin/organizations/:organizationId/free-seats", "tenant_external", "organization.free_seats.update", { external: "stripe (seat subscription quantity resync)" }),
   admin("GET", "/v1/admin/organizations/:organizationId/enterprise-subscription", "tenant_read", "organization.enterprise_subscription.read"),
   admin("POST", "/v1/admin/organizations/:organizationId/enterprise-subscription", "tenant_external", "organization.enterprise_subscription.create", { external: "stripe (Enterprise subscription create; Team subscription cancel)" }),
   admin("PATCH", "/v1/admin/organizations/:organizationId/enterprise-subscription", "tenant_external", "organization.enterprise_subscription.minimum_update", { external: "stripe (Enterprise subscription metadata and quantity)" }),
   admin("PATCH", "/v1/admin/organizations/:organizationId/dpa", "tenant_change", "organization.dpa.update", { changeEvidence: DOMAIN("organization-settings"), notes: "Legacy organization.dpa_signed.updated; reason text is not snapshotted (reasonProvided only)." }),
   admin("PUT", "/v1/admin/organizations/:organizationId/openwork-web-access", "tenant_change", "organization.openwork_web_access.update", { changeEvidence: DOMAIN("organization-settings"), notes: "Legacy organization.openwork_web.complimentary_access_granted / _revoked; reason text is not snapshotted." }),
-  admin("GET", "/v1/admin/organizations/:organizationId/control-panel", "tenant_read", "organization.control_panel.read"),
-  admin("PUT", "/v1/admin/organizations/:organizationId/control-panel/access", "tenant_change", "organization.benefit_setting.update", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
-  admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants", "tenant_change", "organization.benefit_grant.create", { changeEvidence: "routes/admin/organization-control-panel.ts", notes: "Grant and change evidence commit together. Reason text is not copied to audit snapshots." }),
-  admin("POST", "/v1/admin/organizations/:organizationId/control-panel/grants/:grantId/revoke", "tenant_change", "organization.benefit_grant.revoke", { changeEvidence: "routes/admin/organization-control-panel.ts" }),
 
   // SCIM v2 provisioning (bearer token)
   handler("GET", "/api/auth/scim/v2/Schemas", "tenant_read", "scim.schema.list", "scim.provisioning", "scim_metadata", null, SCIM_PROOF),
