@@ -16,7 +16,17 @@ A file the browser downloads in one chat can be read by the next turn in another
 chat, or opened on that chat's computer. A file the agent writes is something the
 browser can upload. Members see and manage their files in Workbot's Files panel.
 
-![My files in Workbot](./member-files.png)
+![My files in Workbot: Downloads, Workbot's folder, Uploads, each file with where it came from](./member-files.png)
+
+An answer links the files it made, and shows them as cards that open beside the
+chat:
+
+![An answer with /files links and file cards](./member-files-answer.png)
+
+With the feature off nothing changes: the header says Files and lists the chat's
+own files, and `/files` links in older answers are plain words.
+
+![Feature off: the chat's Files panel](./member-files-off.png)
 
 ## Layout
 
@@ -115,8 +125,9 @@ next sync. To upload, the agent clicks the page's upload control and types a
 `/files/...` path in the file chooser, which can read `/files`.
 
 **Workbot.** The Files panel shows My files by folder, with where each file
-came from (Downloaded in the browser, Made by Workbot, Uploaded by you, Made on
-the computer), and preview, download and delete. The chat's own attachments stay
+came from ("From bank.example.test" for a browser download, "Made by Workbot",
+"Added by you", "Made on the computer"), and preview, download, delete (asked
+first) and Add files (into Uploads). The chat's own attachments stay
 under "Sent in this chat". Files a turn wrote appear as cards under its answer,
 and `/files/...` links in answers open the file. My files ids (`mf_…`) work
 everywhere a chat file id (`fl_…`) does, so the preview panel is reused.
@@ -204,6 +215,18 @@ saving a chat attachment into My files.
 ```sh
 pnpm --filter @openwork-ee/headless-runner test:member-files        # store, tools, scopes, routes, cells
 pnpm --filter @openwork-ee/headless-computer test                   # computer sync and conflicts
-pnpm --filter @openwork-ee/headless-runner member-files:e2e         # real Chrome download → headless turn → computer (Docker)
+pnpm --filter @openwork-ee/headless-runner member-files:e2e         # real Chrome download → another chat's turn → its computer
 pnpm evals:e2e workbot-member-files --local                         # Workbot's Files panel, headless
+python3 ee/packages/headless-computer/scripts/desktop-bridge.test.py   # the desktop bridge's files on|off
+```
+
+The end-to-end check runs the runner's real HTTP API, file tools, My files
+store, the computer's sync (its scan and path scripts and the desktop bridge
+protocol) and a real headless Chrome download. The model is scripted, and each
+conversation's computer is a folder on the machine running it (`/files` and
+`/workspace` mapped into it), so it needs no cloud account. A live check on a
+Freestyle or Daytona desktop needs the new desktop snapshot:
+
+```sh
+HEADLESS_COMPUTER=daytona DAYTONA_API_KEY=… HEADLESS_COMPUTER_SNAPSHOT=<new desktop snapshot> pnpm --filter @openwork-ee/headless-computer proof:live
 ```

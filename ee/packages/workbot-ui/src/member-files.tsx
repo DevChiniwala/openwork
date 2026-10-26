@@ -26,7 +26,7 @@ import { OpenFileContext } from "./open-file";
  * under "Sent in this chat".
  */
 
-/** Where a file came from, in the person's words (DESIGN C3). */
+/** Where a file came from, in the person's words (DESIGN C3): a browser download by the site it came from. */
 export function originLabel(file: WorkbotMemberFile, assistantName: string) {
   const { origin } = file;
   if (origin.kind === "browser") {
@@ -36,7 +36,7 @@ export function originLabel(file: WorkbotMemberFile, assistantName: string) {
     } catch {
       host = "";
     }
-    return host ? `Downloaded from ${host}` : "Downloaded in the browser";
+    return host ? `From ${host}` : "Downloaded in the browser";
   }
   if (origin.kind === "upload") return "Added by you";
   if (origin.kind === "computer") return "Made on the computer";
@@ -288,6 +288,8 @@ export function MemberFilesPanel({ open, onClose, assistantName, onOpenFile }: {
           ) : null}
           <input
             ref={picker}
+            data-member-files-input
+            aria-label="Add files to My files"
             type="file"
             multiple
             hidden
