@@ -51,7 +51,7 @@ test("log tails stay short enough for the CI window", () => {
   const lines = message.split("\n");
   expect(lines).toContain("--- /runtime/server.log: unreadable ---");
   expect(lines).toContain("--- end of /runtime/web.log ---");
-  expect(lines).not.toContain("line 28");
+  expect(lines).not.toContain("line 24");
   expect(lines.at(-1)).toBe(`${"x".repeat(300)}…`);
-  expect(lines.length).toBeLessThanOrEqual(20);
+  expect(lines.length).toBeLessThanOrEqual(24);
 });

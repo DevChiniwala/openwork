@@ -1,9 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { open, stat } from "node:fs/promises";
 import net from "node:net";
-import { deleteEnv, mergeEnv } from "@openwork/paths";
+import { join } from "node:path";
+import { deleteEnv, mergeEnv, opencodeDataDirs } from "@openwork/paths";
 import { startupPhase } from "./startup-phase.js";
 import { randomUUID } from "node:crypto";
-import { appendEngineOutputTail, createEngineStartupLineReader } from "./engine-output.js";
+import { appendEngineOutputTail, createEngineStartupLineReader, summarizeEngineLog } from "./engine-output.js";
 
 export type ManagedChildProcess = {
   exitCode: number | null;
@@ -92,6 +94,35 @@ export function createManagedProcessClose(
 }
 
 const SECRET_ENV_PATTERN = /(TOKEN|PASSWORD|USERNAME|AUTH|SECRET|KEY|CREDENTIAL)/i;
+const ENGINE_LOG_READ_BYTES = 256 * 1024;
+
+type EngineLogMark = { path: string; offset: number };
+
+/** Where OpenCode's shared log ends before this launch, so a timeout reads only what came after. */
+async function markEngineLog(env: NodeJS.ProcessEnv): Promise<EngineLogMark> {
+  const path = join(opencodeDataDirs({ env })[0], "log", "opencode.log");
+  return { path, offset: await stat(path).then((info) => info.size, () => 0) };
+}
+
+async function engineLogSince(mark: EngineLogMark, secrets: string[]): Promise<string> {
+  try {
+    const handle = await open(mark.path, "r");
+    try {
+      const { size } = await handle.stat();
+      // A rotated log restarts at zero; a huge one keeps only its end.
+      const from = size < mark.offset ? 0 : mark.offset;
+      const start = Math.max(from, size - ENGINE_LOG_READ_BYTES);
+      const buffer = Buffer.alloc(size - start);
+      await handle.read(buffer, 0, buffer.length, start);
+      const text = buffer.toString("utf8");
+      return summarizeEngineLog(mark.path, start > from ? text.slice(text.indexOf("\n") + 1) : text, secrets);
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    return `OpenCode log unavailable at ${mark.path}: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
 
 function randomSecret(): string {
   return randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
@@ -185,6 +216,10 @@ async function startManagedOpencodeServer(
       redacted: SECRET_ENV_PATTERN.test(name),
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
+  const logMark = await markEngineLog(env);
+  const logSecrets = [username, password, ...Object.entries(options.env ?? {})
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && SECRET_ENV_PATTERN.test(entry[0]))
+    .map(([, value]) => value)];
   const child: ChildProcess = spawn(options.bin?.trim() || "opencode", args, {
     cwd: options.cwd,
     env,
@@ -232,7 +267,10 @@ async function startManagedOpencodeServer(
         if (!match?.[1]) return fail(new Error(`Failed to parse OpenCode server URL from: ${line}\n${output()}`));
         done(match[1]);
       });
-      const timeout = setTimeout(() => fail(new Error(`Timeout waiting for OpenCode server after ${options.timeoutMs ?? 15000}ms\n${output()}`)), options.timeoutMs ?? 15000);
+      const timeout = setTimeout(() => {
+        void engineLogSince(logMark, logSecrets).then((log) =>
+          fail(new Error(`Timeout waiting for OpenCode server after ${options.timeoutMs ?? 15000}ms\n${output()}\n${log}`)));
+      }, options.timeoutMs ?? 15000);
       const onClose = (code: number | null) => {
         if (!settled) fail(new ManagedOpencodeExitError(code, output(),
           addressInUse || /\bEADDRINUSE$/.test(stdout) || /\bEADDRINUSE$/.test(stderr)));

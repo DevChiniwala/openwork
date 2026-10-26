@@ -219,7 +219,7 @@ export function buildHeadlessRuntimeManifest(input: {
 /** The health wait's own requests; left in, they would fill the server log tail. */
 const HEALTH_REQUEST_LINE = /^GET \/health \d{3}\b/;
 const ANSI_ESCAPE = /\x1b\[[0-9;]*m/g;
-const LOG_TAIL_LINES = 12;
+const LOG_TAIL_LINES = 16;
 const LOG_LINE_CHARS = 300;
 
 export type HeadlessHealthTimeoutPart = {
