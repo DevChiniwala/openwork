@@ -49,7 +49,7 @@ isolation requirement: an opaque revision must not signal activity on
 inaccessible resources.
 
 The old server materialization/push/confirm and app refresh triggers remain
-in place for the flag-off path and OpenCode v1. Local/legacy providers keep
+in place for the flag-off path. Local/legacy providers keep
 their existing path; MCP synchronization is independent of this rollout.
 The desktop reads the same `/v1/me/desktop-config` surface as organization
 default models, then uses the server's effective v2 ownership status rather

@@ -63,7 +63,14 @@ providers without deleting their saved credentials or chats.
 - `skippedProviders` in the engine status: a growing `metadata` count means v1
   changed its catalog shape again; `unsupported` lists providers without a v2
   adapter in the mirror (Google, Groq, custom gateways).
-- Server log warning "Could not refresh OpenCode v1 providers after a provider
-  change." means AI Providers may show a stale list until a restart.
 - Out of scope here (ENG-888): sharing a personal provider with the team,
   asking an admin, and signing in again with OAuth on v2.
+
+## After OpenCode v1 was removed
+
+OpenCode v1 no longer runs. OpenWork itself saves and removes keys in the same
+`auth.json` (`PUT|DELETE /workspace/:id/opencode2/auth/:provider`), and the
+mirror reads built-in provider metadata from the model catalog OpenCode v2
+uses instead of v1's `GET /provider`. Existing keys keep working without an
+import. There is no v1 instance to refresh after a save. See
+`docs/opencode-engine-migration.md`.
