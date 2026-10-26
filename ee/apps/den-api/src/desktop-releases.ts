@@ -20,6 +20,7 @@ export type DesktopReleaseMetadata = {
   minAppVersion: string
   latestAppVersion: string
   publishedDesktopVersions: string[]
+  maxDesktopVersion?: string | null
 }
 
 function parseStableVersion(value: string): [number, number, number] | null {
@@ -109,6 +110,22 @@ function singleOrgDenReleaseTag() {
   return DESKTOP_RELEASE_TAG_PATTERN.test(releaseTag) ? releaseTag : null
 }
 
+// Keep the wire fields older desktops already gate on below this Den release.
+// An org allowlist can narrow this range, never lift the deployment ceiling.
+export function capDesktopReleaseMetadata(metadata: DesktopReleaseMetadata): DesktopReleaseMetadata {
+  const maxDesktopVersion = env.features.deployment === "self_hosted" && parseStableVersion(env.serviceVersion)
+    ? env.serviceVersion.replace(/^v/, "") : null
+  if (!maxDesktopVersion) return { ...copyReleaseMetadata(metadata), maxDesktopVersion: null }
+  return {
+    ...metadata,
+    maxDesktopVersion,
+    latestAppVersion: compareStableVersions(metadata.latestAppVersion, maxDesktopVersion) > 0
+      ? maxDesktopVersion : metadata.latestAppVersion,
+    publishedDesktopVersions: metadata.publishedDesktopVersions.filter(version =>
+      parseStableVersion(version) !== null && compareStableVersions(version, maxDesktopVersion) <= 0),
+  }
+}
+
 export function createDesktopReleaseSource() {
   let lastSuccessfulMetadata: DesktopReleaseMetadata | null = null
   let refreshAfter = 0
@@ -142,7 +159,7 @@ export function createDesktopReleaseSource() {
     }
   }
 
-  async function getDesktopReleaseMetadata(): Promise<DesktopReleaseMetadata> {
+  async function getUncappedDesktopReleaseMetadata(): Promise<DesktopReleaseMetadata> {
     if (env.desktopReleasesMode === "static") {
       return staticReleaseMetadata()
     }
@@ -160,6 +177,10 @@ export function createDesktopReleaseSource() {
     } finally {
       refreshPromise = null
     }
+  }
+
+  async function getDesktopReleaseMetadata(): Promise<DesktopReleaseMetadata> {
+    return capDesktopReleaseMetadata(await getUncappedDesktopReleaseMetadata())
   }
 
   async function resolveInstallerReleaseTag() {

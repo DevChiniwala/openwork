@@ -502,6 +502,8 @@ export type DenAppVersionMetadata = {
   minAppVersion: string;
   latestAppVersion: string;
   publishedDesktopVersions: string[];
+  /** Absent on older Den; null means no deployment ceiling (hosted/dev). */
+  maxDesktopVersion?: string | null;
   /**
    * This deployment's web app base URL, as advertised by `GET /v1/app-version`.
    * Null when talking to a den-api that predates the field.
@@ -590,6 +592,8 @@ function getDenAppVersionMetadata(payload: unknown): DenAppVersionMetadata | nul
     publishedDesktopVersions:
       publishedDesktopVersions.length > 0 ? publishedDesktopVersions : [latestAppVersion],
     webUrl: normalizeDenBaseUrl(typeof payload.webUrl === "string" ? payload.webUrl : ""),
+    ...(payload.maxDesktopVersion === null || typeof payload.maxDesktopVersion === "string"
+      ? { maxDesktopVersion: payload.maxDesktopVersion } : {}),
   };
 }
 
@@ -3062,6 +3066,21 @@ export function createDenClient(options: {
         throw new DenApiError(500, "invalid_app_version_payload", "App version response was missing version details.");
       }
       return appVersionMetadata;
+    },
+
+    // Compatibility with Den releases before the version ceiling was advertised.
+    // Both endpoints exist in 0.18.59. Never infer deployment from a hostname.
+    async getLegacyDesktopVersionCeiling(): Promise<string | null> {
+      const features = await requestJson<unknown>(baseUrls, "/v1/features", { method: "GET" });
+      if (isRecord(features) && features.deployment === "cloud") return null;
+      if (!isRecord(features) || features.deployment !== "self_hosted") {
+        throw new DenApiError(500, "invalid_deployment_payload", "Could not determine the desktop update policy.");
+      }
+      const health = await requestJson<unknown>(baseUrls, "/health", { method: "GET" });
+      if (!isRecord(health) || health.service !== "den-api" || typeof health.version !== "string") {
+        throw new DenApiError(500, "invalid_service_version", "Could not determine the Den version.");
+      }
+      return /^\d+\.\d+\.\d+$/.test(health.version) ? health.version : null;
     },
 
     async getDesktopConfig(orgId?: string | null): Promise<DenDesktopConfig> {

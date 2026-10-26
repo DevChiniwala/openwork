@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  capDesktopVersionMetadata,
   isAlphaChannelAllowedByDesktopConfig,
   isAlphaUpdateAllowed,
   isAlphaUpdateAllowedByVersionCeiling,
@@ -8,6 +9,35 @@ import {
   resolveFreshStableDesktopUpdate,
   selectStableDesktopUpdate,
 } from "../src/app/lib/version-gate";
+
+describe("self-hosted Den version ceiling", () => {
+  const published = {
+    minAppVersion: "0.17.0", latestAppVersion: "0.18.62", webUrl: null,
+    publishedDesktopVersions: ["0.18.58", "0.18.59", "0.18.60", "0.18.62"],
+  };
+  test("caps a legacy Den response and intersects even an explicit newer allowlist", () => {
+    const metadata = capDesktopVersionMetadata(published, "0.18.59");
+    expect(metadata.latestAppVersion).toBe("0.18.59");
+    expect(metadata.publishedDesktopVersions).toEqual(["0.18.58", "0.18.59"]);
+    expect(selectStableDesktopUpdate({currentVersion:"0.18.58",metadata,desktopConfig:{}}))
+      .toEqual({kind:"update",targetVersion:"0.18.59",latestPublishedVersion:"0.18.59"});
+    expect(selectStableDesktopUpdate({currentVersion:"0.18.59",metadata,desktopConfig:{allowedDesktopVersions:["0.18.62"]}}))
+      .toEqual({kind:"current",latestPublishedVersion:"0.18.59"});
+    expect(selectStableDesktopUpdate({currentVersion:"0.18.62",metadata,desktopConfig:{}}))
+      .toEqual({kind:"current",latestPublishedVersion:"0.18.59"});
+  });
+  test("Cloud retains the public release range", () => {
+    expect(capDesktopVersionMetadata(published,null)).toEqual({...published,maxDesktopVersion:null});
+  });
+  test("alpha cannot bypass a self-hosted ceiling, even when already newer", () => {
+    for (const currentVersion of ["0.18.59", "0.18.60-alpha.1"]) {
+      expect(isAlphaUpdateAllowedByVersionCeiling({
+        currentVersion,updateVersion:"0.18.60-alpha.2",denLatestAppVersion:"0.18.59",
+        maxDesktopVersion:"0.18.59",desktopConfig:{},
+      })).toBe(false);
+    }
+  });
+});
 
 const metadata = {
   minAppVersion: "0.11.207",

@@ -203,8 +203,13 @@ export function isAlphaUpdateAllowedByVersionCeiling(input: {
   currentVersion?: string | null;
   denLatestAppVersion: string;
   desktopConfig: DenDesktopConfig | null | undefined;
+  maxDesktopVersion?: string | null;
 }): boolean {
   if (!isAlphaChannelAllowedByDesktopConfig(input.desktopConfig)) return false;
+  if (input.maxDesktopVersion) {
+    const comparison = compareVersions(input.updateVersion, input.maxDesktopVersion);
+    if (comparison === null || comparison > 0) return false;
+  }
 
   const denAllowsUpdate = isWithinOnePatchAhead(
     input.updateVersion,
@@ -234,10 +239,33 @@ export async function readFreshDenAppVersionMetadata(): Promise<DenAppVersionMet
   }
   const settings = readDenSettings();
   const token = settings.authToken?.trim() ?? "";
-  return createDenClient({
+  const client = createDenClient({
     baseUrl: settings.baseUrl,
     ...(token ? { token } : {}),
-  }).getAppVersionMetadata();
+  });
+  const metadata = await client.getAppVersionMetadata();
+  const maxDesktopVersion = metadata.maxDesktopVersion === undefined
+    ? await client.getLegacyDesktopVersionCeiling()
+    : metadata.maxDesktopVersion;
+  return capDesktopVersionMetadata(metadata, maxDesktopVersion);
+}
+
+export function capDesktopVersionMetadata(
+  metadata: DenAppVersionMetadata,
+  maxDesktopVersion: string | null,
+): DenAppVersionMetadata {
+  if (maxDesktopVersion === null) return { ...metadata, maxDesktopVersion };
+  const comparison = compareVersions(metadata.latestAppVersion, maxDesktopVersion);
+  if (comparison === null) throw new Error("Invalid desktop version ceiling.");
+  return {
+    ...metadata,
+    maxDesktopVersion,
+    latestAppVersion: comparison > 0 ? maxDesktopVersion : metadata.latestAppVersion,
+    publishedDesktopVersions: metadata.publishedDesktopVersions.filter(version => {
+      const order = compareVersions(version, maxDesktopVersion);
+      return order !== null && order <= 0;
+    }),
+  };
 }
 
 export type StableDesktopUpdateSelection =
@@ -364,12 +392,13 @@ export async function isAlphaUpdateAllowed(
   currentVersion?: string | null,
 ): Promise<boolean> {
   if (!isAlphaChannelAllowedByDesktopConfig(desktopConfig)) return false;
-  const latestAppVersion = await readDenLatestAppVersion();
-  if (!latestAppVersion) return false;
+  const metadata = await readFreshDenAppVersionMetadata().catch(() => null);
+  if (!metadata) return false;
   return isAlphaUpdateAllowedByVersionCeiling({
     updateVersion,
     currentVersion,
-    denLatestAppVersion: latestAppVersion,
+    denLatestAppVersion: metadata.latestAppVersion,
+    maxDesktopVersion: metadata.maxDesktopVersion,
     desktopConfig,
   });
 }
