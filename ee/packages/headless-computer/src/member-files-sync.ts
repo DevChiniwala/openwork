@@ -45,6 +45,8 @@ export interface MirrorVm {
 /** What one sync did that the model, and through it the person, should know. Paths are inside My files. */
 export type SyncReport = {
   saved: string[]
+  /** In My files but couldn't be written here (a folder on this computer has the name). */
+  notPulled: string[]
   deleted: string[]
   copies: Array<{ path: string; copy: string }>
   notSaved: string[]
@@ -96,7 +98,7 @@ export async function syncMemberFiles(vm: MirrorVm, member: ComputerMemberFiles,
   const next: Manifest = { ...manifest }
   const local = new Map(scanned.files.map((file) => [file.path, file]))
   const remote = new Map((options.remote ?? (await member.list())).map((file) => [file.path, file]))
-  const report: SyncReport = { saved: [], deleted: [], copies: [], notSaved: [], notCopied: { count: 0, bytes: 0 }, pulled: 0, stamp: "" }
+  const report: SyncReport = { saved: [], notPulled: [], deleted: [], copies: [], notSaved: [], notCopied: { count: 0, bytes: 0 }, pulled: 0, stamp: "" }
   const pulls = new Map<string, MemberFileEntry>()
   const removals: string[] = []
   const reserved = new Set<string>()
@@ -129,7 +131,10 @@ export async function syncMemberFiles(vm: MirrorVm, member: ComputerMemberFiles,
   const push = async (path: string, file: LocalFile, ifVersion: number | null) => {
     if (!member.canWrite(path)) return keepLocal(path, file, member.refusal(path))
     if (file.size > member.maxFileBytes) return keepLocal(path, file, `${formatBytes(file.size)}; the most a file in My files can be is ${formatBytes(member.maxFileBytes)}`)
-    const saved = await member.write(path, await vm.read(path), { kind, ifVersion, url: file.url })
+    // Gone since the scan (a command still running): the next sync sees what is there then.
+    const bytes = await vm.read(path).catch(() => null)
+    if (!bytes) return
+    const saved = await member.write(path, bytes, { kind, ifVersion, url: file.url })
     if (saved.ok) {
       next[path] = { v: saved.file.version, s: file.sig }
       report.saved.push(path)
@@ -222,7 +227,14 @@ export async function syncMemberFiles(vm: MirrorVm, member: ComputerMemberFiles,
     }
     const found = await member.read(entry.path)
     if (!found) continue
-    await vm.write(entry.path, found.bytes)
+    try {
+      await vm.write(entry.path, found.bytes)
+    } catch {
+      // A folder (or a file in the way of its folder) on this computer has the name: My files keeps it; not copied here.
+      report.notPulled.push(entry.path)
+      delete next[entry.path]
+      continue
+    }
     mirrored += found.file.size
     pulled.push({ path: entry.path, version: found.file.version })
   }
@@ -247,6 +259,7 @@ export function syncNotes(report: SyncReport | null) {
     report.deleted.length ? `[Deleted from My files: ${report.deleted.map(shown).join(", ")}]` : "",
     ...report.copies.map((entry) => `[Kept both: ${shown(entry.path)} changed in My files too, so this computer's version was saved as ${shown(entry.copy)}]`),
     report.notSaved.length ? `[Not saved to My files: ${report.notSaved.join("; ")}]` : "",
+    report.notPulled.length ? `[Not copied to this computer: ${report.notPulled.map(shown).join(", ")} (something here already has that name). Read them with read_file.]` : "",
     report.notCopied.count
       ? `[${report.notCopied.count} of their files (${formatBytes(report.notCopied.bytes)}) are in My files but not on this computer, which holds at most ${formatBytes(MAX_PULL_BYTES)} of them. Read them with read_file.]`
       : "",

@@ -360,13 +360,9 @@ export class MemberFiles {
     const mediaType = mediaTypeFor(nameOf(path), input.mediaType)
     const storageKey = `${memberStoragePrefix(space)}${randomUUID().replaceAll("-", "")}`
     await this.blobs.put(storageKey, bytes, mediaType)
-    let result: MemberFileCommitResult
-    try {
-      result = await this.index.commit(space, { path, size: bytes.byteLength, mediaType, storageKey, writer: input.writer, ...(input.ifVersion !== undefined ? { ifVersion: input.ifVersion } : {}), limits: this.limits })
-    } catch (error) {
-      // The row's fate is unknown (another cell didn't answer): the object stays, at worst an orphan.
-      throw error
-    }
+    // If the owner's cell doesn't answer, the row's fate is unknown: the object stays (at worst an orphan) and the
+    // error reaches the caller, which says the outcome is unknown.
+    const result = await this.index.commit(space, { path, size: bytes.byteLength, mediaType, storageKey, writer: input.writer, ...(input.ifVersion !== undefined ? { ifVersion: input.ifVersion } : {}), limits: this.limits })
     if (!result.ok) {
       await this.blobs.delete(storageKey).catch(() => undefined)
       throw new MemberFileError(result.code, result.message)

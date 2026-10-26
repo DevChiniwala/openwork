@@ -35,7 +35,10 @@ test("a member sees every file their chats, computer and browser saved in one My
   await step("a link in the answer opens the downloaded statement beside the chat", async () => {
     await user.click({ role: "button", label: "october-statement.csv" });
     await user.see({ text: /Coffee beans/ });
-    evidence.recordAssertionEvidence("The browser's download opens in the preview from its /files link", "Preview shows the statement's rows (Coffee beans 18.50, Train ticket 23.50)", true);
+    const preview = (await probe.dom("table")).elements.map((element) => element.text.replace(/\s+/g, " ")).join(" ");
+    const rows = preview.includes("Coffee beans") && preview.includes("23.50");
+    evidence.recordAssertionEvidence("The browser's download opens in the preview from its /files link", preview.slice(0, 160), rows);
+    expect(rows).toBe(true);
     await user.screenshot();
   });
 
@@ -77,7 +80,9 @@ test("a member sees every file their chats, computer and browser saved in one My
     await user.click({ role: "button", label: "My files" });
     await user.see({ text: /Browser downloads, files Workbot makes and files you add show up here/ });
     await user.see({ role: "button", label: "Add files" });
-    evidence.recordAssertionEvidence("The empty panel invites instead of explaining the interface", "Empty state names the three sources and offers Add files", true);
+    const listed = (await probe.dom(`${panel} [data-member-file]`)).elements.length;
+    evidence.recordAssertionEvidence("The empty panel invites instead of explaining the interface", `${listed} files listed; the three sources named; Add files offered`, listed === 0);
+    expect(listed).toBe(0);
     await user.screenshot();
     await user.press("Escape");
     await user.navigate(world.url);

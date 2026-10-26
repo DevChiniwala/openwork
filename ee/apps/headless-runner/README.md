@@ -43,7 +43,7 @@ return credentials or URLs. Public `/health` remains a liveness check. See
 |---|---|---|---|
 | `GET` | `/health` | | `{ ok: true }` |
 | `GET` | `/v1/models` | | `{ defaultModel, models: [{ id, name }] }`: the models the Gateway route serves with the runner's key (cached 5 min), for pickers. Pass one as a turn's `model` |
-| `POST` | `/v1/sessions` | `{ title?, instructions?, repeats?: { maxWaitingMs?, maxIdenticalFailures? }, files?, computer?, reactions?, tasks?, owner?, ref?, timeZone?, autoTitle?, memoryOf?, memoryScope?: "owner" }` | session (`hs_…`). `files`, `computer`, `reactions` and `tasks` are off unless set to `true` (see [Isolation](#isolation)). See [Several conversations per person](#several-conversations-per-person) for the rest |
+| `POST` | `/v1/sessions` | `{ title?, instructions?, repeats?: { maxWaitingMs?, maxIdenticalFailures? }, files?, computer?, reactions?, tasks?, owner?, ref?, timeZone?, autoTitle?, memoryOf?, memoryScope?: "owner", memberFiles?, agent?, background? }` | session (`hs_…`). `files`, `computer`, `reactions` and `tasks` are off unless set to `true` (see [Isolation](#isolation)). See [Several conversations per person](#several-conversations-per-person) for the rest |
 | `PUT` | `/v1/sessions/:id` | same body as `POST` | `201` session when created, `200` when updated; settings left out keep their value. The caller picks the id (`hs_` + 8–96 of `A-Za-z0-9_-`), so it can keep one durable conversation per person without storing the runner's id. Workbot derives one per member, and one per side chat |
 | `GET` | `/v1/sessions` | `?owner=&limit=` | `{ sessions: [{ id, ref, title, createdAt, updatedAt }] }`: one owner's conversations that have a message, most recently used first (on celld, chats in their own session cells included: [Session cells](./OWNER-CELLS.md#session-cells-each-workbot-chat-in-its-own-cell)) |
 | `POST` | `/v1/owner/split` | owner header (celld) | `{ split: "started" \| "running" \| "done" \| "not_needed" }`: moves the owner's chats into their own cells in the background (celld only; the Node host answers `not_needed`). Idempotent |
@@ -57,7 +57,11 @@ return credentials or URLs. Public `/health` remains a liveness check. See
 | `DELETE` | `/v1/sessions/:id` | | `204`: its rows go (scrubbed first), then its sealed segments, large bodies and saved files' bytes, and its computer (see [Deleting a conversation](#deleting-a-conversation)). `409 session_busy` while a turn is queued or running |
 | `GET` | `/v1/sessions/:id/export` | | Every row of the conversation, sealed turns and large outputs inline (lossless; never segment files or step checkpoints), to [move it to Node](#move-conversations-to-node). A conversation on its owner's memory (`memoryScope: "owner"`) also carries that memory (`owner_memory`). `409 session_busy` while a turn is queued or running |
 | `POST` | `/v1/sessions/:id/import` | an export | Node only (celld answers `405`). `201 { id, rows }`, or `409 session_exists`. `owner_memory` is merged into the owner's memory (a file is written unless the owner already has a version at least as new; nothing is deleted); `400` (nothing written) for another conversation's, a cut-off or a newer runner's export |
-| `GET` | `/v1/files/status` | | `{ enabled, kind, maxFileBytes, maxSessionBytes }` |
+| `GET` | `/v1/files/status` | | `{ enabled, kind, maxFileBytes, maxSessionBytes, memberFiles, maxMemberBytes? }` |
+| `GET` | `/v1/owner/files` | owner header; `?prefix=&session=` | `{ files, usage: { bytes, files, maxBytes, maxFileBytes } }`: the owner's [My files](#my-files) (`session`: last written by that conversation) |
+| `PUT` | `/v1/owner/files` | owner header; `?path=&replace=1`, raw body | `201` (or `200` replaced) a file the person adds (origin `upload`); `409 file_exists` without `replace`; `413` past the limits |
+| `GET` | `/v1/owner/files/:fileId` | owner header | the bytes (`mf_…`), with `x-file-name` and `x-file-path` |
+| `DELETE` | `/v1/owner/files/:fileId` | owner header | `204` |
 | `POST` | `/v1/sessions/:id/saved-files` | `?name=`, raw body typed by `Content-Type` | `201` saved file (`fl_…`). Send its id in a turn's `attachments`. `403 files_not_enabled` for a session without `files: true`; `413 file_too_large` or `413 files_full` past the limits |
 | `GET` | `/v1/sessions/:id/saved-files` | | `{ files }`, newest first, `source: user \| agent` |
 | `GET` | `/v1/sessions/:id/saved-files/:fileId` | | the bytes, with `x-file-name` |
@@ -162,6 +166,25 @@ remains in the celld bucket and for how long.
 
 A caller with more than one conversation per person (Workbot's side chats) sets `owner` (its key for the person) and `ref` (its id for the conversation) on each, and lists them with `GET /v1/sessions?owner=`. `autoTitle: true` names a conversation after its first answer, in a few words from the model (or the person's first words when the model can't), while its title is empty; such a session starts with an empty title. `memoryOf` points at another of the person's conversations: this one reads and writes that one's `memory/`, so they remember together; its other files stay its own. `memoryScope: "owner"` (which needs `owner`, and replaces `memoryOf` for new conversations) shares one `memory/` among all of the owner's conversations instead; on celld it lives in the owner's cell ([Session cells](./OWNER-CELLS.md#session-cells-each-workbot-chat-in-its-own-cell)). The first time an owner's memory is used, the memory their conversations already share with `memoryOf` becomes it.
 
+## My files
+
+A session created with `memberFiles: true` (it needs `owner` and a file store) gets its owner's **My files** at
+`/files`: one space per member, shared by all their conversations that ask for it, their computers (mirrored at
+`/files` around every `bash`, `look` and desktop call) and so their browser (Downloads land in `/files/Downloads`).
+The design, scoping, sync and conflict rules are in [docs/features/member-files](../../../docs/features/member-files/README.md).
+
+- **Tools.** The same file tools take `/files/...` paths (`list_files { path? }`, `read_file` shows images, PDFs and
+  Office files the way `open_file` does, `write_file`, `edit_file` over the version it read, `delete_file`);
+  `save_file` also hands a `/files` file to the chat. Sessions without it keep their exact tools and prompt.
+- **Scope.** `agent: "<slug>"` names the conversation's folder, `/files/agents/<slug>/`. A person's message writes
+  anywhere; a background task, a read-only turn, or any turn of a `background: true` session writes only in that
+  folder (nothing without `agent`); a report writes nothing.
+- **Storage.** Rows in `member_files` (migration 4; no `session_id`, never exported or copied with a conversation),
+  bytes under `members/<sha256(owner)[:40]>/`, one object per version. Deleting a conversation keeps them. On celld
+  the rows are the owner cell's ([OWNER-CELLS.md](./OWNER-CELLS.md#my-files-in-cells)).
+- **Limits.** `HEADLESS_FILES_MAX_BYTES` per file, `HEADLESS_MEMBER_FILES_MAX_BYTES` (10 GB) per member, 10,000 files;
+  refusals are sentences for the model.
+
 ## Self-resume
 
 Without it, a turn cut off by a restart, a deploy or a failover, or paused every 50 minutes for a fresh MCP token
@@ -253,7 +276,7 @@ Saved steps are generally available; there is no organization rollout switch. De
 The runner is a private service with one caller (Den), which authorizes each person before it reaches a session. Within the runner:
 
 - **Opt-in per session.** Configuring files or a computer makes them *available*; a session only gets them when it is created (or updated) with `files: true` / `computer: true`. Slack replies and Automations don't ask, so they keep their exact behavior: no file tools, no computer, no uploads, and the preview route never starts a computer for them.
-- **Files belong to one session.** Every read, download, preview and delete looks a file up by session id *and* file id, and bytes are stored under `sessions/<sessionId>/<fileId>`. Deleting a session deletes its bytes and its computer.
+- **Files belong to one session.** Every read, download, preview and delete looks a file up by session id *and* file id, and bytes are stored under `sessions/<sessionId>/<fileId>`. Deleting a session deletes its bytes and its computer. The exception is [My files](#my-files), which belong to the owner: looked up by owner and path (or id), stored under `members/`, and kept when a session is deleted.
 - **Limits.** `HEADLESS_FILES_MAX_BYTES` (100 MB) per file, enforced while the upload streams in (with or without `Content-Length`), and on `save_file` and computer outputs. `HEADLESS_FILES_MAX_SESSION_BYTES` (5 GB) per session in total. Past either, the upload gets `413`, and the model is told why so it can say so.
 - **Storage credentials.** Use a store or bucket for this runner alone, with credentials scoped to it. Neither the storage credentials nor the Freestyle key ever enter a computer.
 - **Computers.** One VM per session, created only when that session first runs a command; it holds no credentials and has outbound internet only.
@@ -323,6 +346,7 @@ Nothing on celld changes, so pointing the URLs back is the rollback.
 | `HEADLESS_FILES` | `off` | Saved files: `off`, `disk`, or `s3`. Only sessions created with `files: true` use them. Off means the file routes answer `files_not_configured` |
 | `HEADLESS_FILES_MAX_BYTES` | `104857600` (100 MB) | Largest single kept file |
 | `HEADLESS_FILES_MAX_SESSION_BYTES` | `5368709120` (5 GB) | Most one session may keep in total |
+| `HEADLESS_MEMBER_FILES_MAX_BYTES` | `10737418240` (10 GB) | Most one member may keep in [My files](#my-files) |
 | `HEADLESS_FILES_DIR` | `files` next to `HEADLESS_DB_PATH` | For `disk`. Defaults to the database's volume so files survive deploys; disk is for development, use a store in production |
 | `HEADLESS_SEGMENTS` | `off` | `on` seals old turns and moves large tool outputs to the files store (needs `HEADLESS_FILES`; see [Sealed history](#sealed-history-and-large-outputs)). `off` is the kill switch; reading what exists always works |
 | `HEADLESS_HOT_LIMIT_BYTES` | `33554432` (32 MiB) | The hot database is kept under this (transcripts and prompts, summed per session) |
