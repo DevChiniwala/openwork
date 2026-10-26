@@ -599,7 +599,7 @@ export function ManageMembersScreen() {
     >
       <OrgLimitDialog
         open={Boolean(limitDialogError)}
-        eyebrow="Plan limit"
+        eyebrow={limitDialogError?.limitType === "members" ? null : "Workspace limit"}
         title={limitDialogError?.limitType === "workers" ? "Worker limit reached" : "Your plan is full"}
         message={limitDialogError?.message ?? "This workspace reached its current plan limit."}
         detail={
