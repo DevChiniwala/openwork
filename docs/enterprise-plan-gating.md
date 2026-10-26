@@ -206,6 +206,30 @@ us and billed through Stripe, not bought at checkout.
   limit bypass for admin-set Enterprise plans. Existing Enterprise subscriptions
   keep billing, keep the plan and keep their organization's invites working.
 
+## Enterprise trials
+
+Behind the same `enterprisePlan` feature (only starting or changing a trial is
+gated; ending one never is). A platform admin opens the organization's Control
+panel in `/admin`, clicks **Start enterprise trial**, and enters seats (at
+least 5) and an expiry date (`PUT /v1/admin/organizations/:id/enterprise-trial`).
+
+- **Plan:** `plan: { tier: "enterprise", source: "trial", trial: { seats,
+  startedAt, endsAt, previousSeatsFreeAdditional, … } }`. Every Enterprise
+  entitlement is on until `endsAt`; from then on the plan reads as Free even
+  before the trial is closed.
+- **Users:** the trial's seats become the Free plan user limit
+  (`seatsFreeAdditional = seats - 5`, and `limits.members = seats`). Unlike an
+  admin-set Enterprise plan, a trial never lifts that limit for invitations,
+  SCIM or SSO. Members see "Your Enterprise trial is full" at the limit.
+- **Ending:** an admin ends it (`DELETE .../enterprise-trial`), or a job every
+  15 minutes closes trials past `endsAt`. The plan returns to Free (then any
+  paid Stripe plan applies again), the earlier Free plan user limit is
+  restored, and the trial is kept as `plan.lastTrial`. Setting a plan by hand
+  or starting a Stripe Enterprise subscription also ends it; buying Team during
+  a trial keeps the trial.
+- **Seen in:** `/admin` (organization header "Enterprise trial · ends …", the
+  Control panel) and the Billing page (seats used, end date).
+
 ## Open questions
 
 - Enterprise self-serve checkout: not built; sales-led only for now.

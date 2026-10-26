@@ -12,6 +12,7 @@ import { readFeatureRollouts } from "@openwork-ee/den-db/organization-features"
 import { updateFeatureRollout, updateOrganizationFeatureOverrides } from "../features.js"
 import { FEATURE_KEYS, featureAvailableOn, featureDefinition, featureDocsUrl, featureKeySchema, featureRollout, resolveFeature } from "@openwork/features"
 import { updateOrganizationMetadata } from "../organization-metadata.js"
+import { metadataWithoutEnterpriseTrial } from "../enterprise-trial-rules.js"
 import { runPlatformAdminPlatformAction, runPlatformAdminServiceAction, type PlatformAdminAuditActor } from "../audit/mcp-service-audit.js"
 import { readWorkbotAdoptionReport, workbotAdoptionInputSchema } from "../workbot/adoption-report.js"
 import { assertReadOnlySql, isDatabaseTimeLimitError, withDatabaseTimeLimit } from "./admin-query-limit.js"
@@ -471,7 +472,9 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
           throw new Error(`No organization found for ${organizationId}`)
         }
 
-        const metadata = await runPlatformAdminServiceAction("organization.plan.set", requireAdmin(), organization, () => updateOrganizationMetadata(organizationId, (current) => {
+        const metadata = await runPlatformAdminServiceAction("organization.plan.set", requireAdmin(), organization, () => updateOrganizationMetadata(organizationId, (stored) => {
+          // Setting a plan by hand ends a running Enterprise trial first.
+          const current = metadataWithoutEnterpriseTrial(stored, { endedAt: new Date(), reason: "ended_by_admin" }) ?? stored
           const normalized = normalizeOrganizationMetadata(current).metadata
           const plan = { ...readOrganizationMetadata(current.plan), ...manualPlan(tier) }
           if (tier !== "enterprise") delete plan.grantedAt

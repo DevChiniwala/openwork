@@ -72,7 +72,9 @@ export function BillingPlanCard({
         action={
           plan.tier === "free"
             ? <DenBadge tone="neutral">Free</DenBadge>
-            : <DenBadge tone="success" icon={Check}>{TIER_NAMES[plan.tier]}</DenBadge>
+            : plan.source === "trial"
+              ? <DenBadge tone="info">{TIER_NAMES[plan.tier]} trial</DenBadge>
+              : <DenBadge tone="success" icon={Check}>{TIER_NAMES[plan.tier]}</DenBadge>
         }
       />
 
@@ -83,7 +85,9 @@ export function BillingPlanCard({
             title={TIER_NAMES[plan.tier]}
             description={paidByStripe
               ? `${billedPeople} ${billedPeople === 1 ? "person" : "people"} × ${formatMoneyMinor(unitAmount, team.currency)}`
-              : "Included for this workspace"}
+              : plan.source === "trial" && plan.trial
+                ? `Trial for up to ${plan.trial.seats} ${plan.trial.seats === 1 ? "person" : "people"} · ends ${new Date(plan.trial.endsAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
+                : "Included for this workspace"}
             value={paidByStripe ? formatMoneyMinor(billedPeople * unitAmount, team.currency) : formatMoneyMinor(0, team.currency)}
             valueCaption={`per ${seatInterval}`}
           />

@@ -472,6 +472,15 @@ export function BillingDashboardScreen() {
   const enterpriseMinimumUsers = enterpriseBilling?.minimumUsers ?? 0;
   const enterpriseRenewsOn = formatBillingDate(enterpriseBilling?.subscription?.currentPeriodEnd ?? null);
   const enterpriseCancelling = enterpriseBilling?.subscription?.cancelAtPeriodEnd === true;
+  // Enterprise without a Stripe subscription: a trial, or a plan granted by
+  // OpenWork (set by an admin, or grandfathered). Never an upgrade offer.
+  const enterpriseTrial = !enterpriseActive && planSummary?.tier === "enterprise" && planSummary.source === "trial" ? planSummary.trial ?? null : null;
+  const enterpriseGranted = !enterpriseActive && planSummary?.tier === "enterprise" && planSummary.source !== "stripe";
+  const enterpriseTrialEndsOn = enterpriseTrial ? formatBillingDate(enterpriseTrial.endsAt) : null;
+  const enterpriseGrantedTitle = enterpriseTrial ? "Enterprise trial" : "Enterprise plan";
+  const enterpriseGrantedDescription = enterpriseTrial
+    ? `${peopleSummary} of ${enterpriseTrial.seats} · trial ends ${enterpriseTrialEndsOn ?? "soon"}`
+    : `${peopleSummary} · included for this workspace`;
   const enterpriseUsersLabel = `${enterpriseBillableUsers} ${enterpriseBillableUsers === 1 ? "user" : "users"} billed${enterpriseMinimumUsers > 0 ? ` (minimum ${enterpriseMinimumUsers})` : ""}`;
 
   const webSubscription = webBilling?.subscription ?? null;
@@ -602,6 +611,16 @@ export function BillingDashboardScreen() {
                   ? <DenBadge tone="warning">Cancelling</DenBadge>
                   : <DenBadge tone="success" icon={Check}>Active</DenBadge>
             }
+          />
+          ) : enterpriseGranted ? (
+          <DenLineItemRow
+            className="mx-4 rounded-[18px]"
+            leading={<DenMarkTile label={enterpriseTrial ? `${planSummary?.people ?? activeMemberCount}/${enterpriseTrial.seats}` : String(planSummary?.people ?? activeMemberCount)} active />}
+            title={enterpriseGrantedTitle}
+            description={enterpriseGrantedDescription}
+            value={formatMoneyMinor(0, seatBilling?.currency ?? "usd")}
+            valueCaption={enterpriseTrial ? "during the trial" : `per ${seatBilling?.interval ?? "month"}`}
+            badge={enterpriseTrial ? <DenBadge tone="info">Trial</DenBadge> : <DenBadge tone="success" icon={Check}>Active</DenBadge>}
           />
           ) : (
           <DenLineItemRow
@@ -887,6 +906,43 @@ export function BillingDashboardScreen() {
                 View invoices
               </DenButton>
             }
+          />
+        </DenActionList>
+      </DenCard>
+      ) : enterpriseGranted && planSummary && !showPlanCard ? (
+      <DenCard className="mb-6" data-testid="billing-enterprise-grant-card">
+        <DenSectionHeader
+          title={enterpriseGrantedTitle}
+          description={enterpriseTrial
+            ? `Every Enterprise feature is on for ${activeOrg?.name ?? "this workspace"} until ${enterpriseTrialEndsOn ?? "the trial ends"}. Up to ${enterpriseTrial.seats} users, counting pending invitations.`
+            : `Every Enterprise feature is on for ${activeOrg?.name ?? "this workspace"}. There is no user limit.`}
+          action={enterpriseTrial ? <DenBadge tone="info">Trial</DenBadge> : <DenBadge tone="success" icon={Check}>Active</DenBadge>}
+        />
+
+        {enterpriseTrial ? (
+          <DenUsageMeter
+            className="mt-5"
+            label="Trial users"
+            used={planSummary.people}
+            total={enterpriseTrial.seats}
+            caption={planSummary.people < enterpriseTrial.seats
+              ? `${enterpriseTrial.seats - planSummary.people} more ${enterpriseTrial.seats - planSummary.people === 1 ? "user fits" : "users fit"} in the trial.`
+              : "The trial is full. Contact your OpenWork account team to add seats."}
+          />
+        ) : null}
+
+        <DenNotice
+          tone="neutral"
+          className="mt-5"
+          message={enterpriseTrial
+            ? `When the trial ends on ${enterpriseTrialEndsOn ?? "its end date"}, the workspace returns to the Free plan unless you continue on Enterprise. Contact your OpenWork account team to continue. AI model access is a separate subscription, below.`
+            : "Enterprise is provided by OpenWork for this workspace. AI model access is a separate subscription, below."}
+        />
+
+        <DenActionList className="mt-5">
+          <DenActionRow
+            description={enterpriseTrial ? `Invite, remove, or change roles. Up to ${enterpriseTrial.seats} users during the trial.` : "Invite, remove, or change roles. Enterprise has no user limit."}
+            action={<DenButton variant="secondary" onClick={goToMembers}>Manage members</DenButton>}
           />
         </DenActionList>
       </DenCard>

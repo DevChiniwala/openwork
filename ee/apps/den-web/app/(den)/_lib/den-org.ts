@@ -334,6 +334,8 @@ export type DenOrgContext = {
   teams: DenOrgTeam[];
   currentMemberTeams: DenCurrentMemberTeam[];
   entitlements: DenOrgEntitlements;
+  /** The organization's plan. `trial` is an Enterprise trial with a user limit and an end date. */
+  plan: DenOrgPlan;
   authMethods: DenOrgAuthMethods;
   /** Frozen for published screens; new code reads `features` through orgFeatureEnabled(). */
   capabilities: DenOrgCapabilities;
@@ -1226,6 +1228,7 @@ export function parseOrgContextPayload(payload: unknown): DenOrgContext | null {
     teams,
     currentMemberTeams,
     entitlements: parseOrgEntitlements(payload.entitlements),
+    plan: parseOrgPlan(payload.plan),
     authMethods: parseOrgAuthMethods(payload.authMethods),
     capabilities: parseOrgCapabilities(payload.capabilities),
     features: parseOrgFeatures(payload.features),
@@ -1272,6 +1275,24 @@ function parseOrgCapabilities(value: unknown): DenOrgCapabilities {
     openworkWeb: value.openworkWeb === true,
     cloud: value.cloud === true,
     workbot: value.workbot === true,
+  };
+}
+
+export type DenOrgPlan = {
+  tier: "free" | "team" | "enterprise";
+  source: string;
+  trial: { seats: number; endsAt: string } | null;
+};
+
+function parseOrgPlan(value: unknown): DenOrgPlan {
+  if (!isRecord(value)) return { tier: "free", source: "default", trial: null };
+  const trial = isRecord(value.trial) && typeof value.trial.seats === "number" && typeof value.trial.endsAt === "string"
+    ? { seats: value.trial.seats, endsAt: value.trial.endsAt }
+    : null;
+  return {
+    tier: value.tier === "team" || value.tier === "enterprise" ? value.tier : "free",
+    source: typeof value.source === "string" ? value.source : "default",
+    trial,
   };
 }
 

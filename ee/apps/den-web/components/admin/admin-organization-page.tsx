@@ -182,7 +182,9 @@ export function AdminOrganizationLayout({ organizationId, children }: { organiza
         {organization ? <>
           <p className="mt-2 break-all text-xs text-gray-500">{organization.slug || organization.id}</p>
           <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 text-sm">
-            <div><dt className="text-gray-500">Plan</dt><dd className="mt-1 capitalize text-gray-900">{organization.planTier}</dd></div>
+            <div><dt className="text-gray-500">Plan</dt><dd className="mt-1 text-gray-900" data-testid="admin-organization-plan">{organization.planSource === "trial" && organization.trialEndsAt
+              ? <>Enterprise trial <span className="text-gray-500">· ends {new Date(organization.trialEndsAt).toLocaleDateString(undefined, { dateStyle: "medium" })}</span></>
+              : <span className="capitalize">{organization.planTier}</span>}</dd></div>
             <div><dt className="text-gray-500">Members</dt><dd className="mt-1 text-gray-900">{count(organization.memberCount)} / {count(organization.seatLimit)} seats</dd></div>
             <div><dt className="text-gray-500">Created</dt><dd className="mt-1 text-gray-900">{date(organization.createdAt)}</dd></div>
           </dl>

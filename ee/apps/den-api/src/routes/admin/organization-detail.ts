@@ -32,10 +32,12 @@ async function organizationDetail(id: typeof OrganizationTable.$inferSelect.id, 
     db.select({ total: sql<number>`count(*)` }).from(MemberTable).leftJoin(AuthUserTable, eq(MemberTable.userId, AuthUserTable.id)).where(filter),
   ])
   const metadata = normalizeOrganizationMetadata(organization.metadata).metadata
+  const plan = parseOrganizationPlan(organization.metadata)
   return {
     organization: {
       id: organization.id, name: organization.name, slug: organization.slug, createdAt: organization.createdAt.toISOString(),
-      planTier: parseOrganizationPlan(metadata).tier, seatLimit: metadata.limits.members ?? DEFAULT_ORGANIZATION_LIMITS.members,
+      planTier: plan.tier, planSource: plan.source, trialEndsAt: plan.source === "trial" && plan.trial ? plan.trial.endsAt : null,
+      seatLimit: metadata.limits.members ?? DEFAULT_ORGANIZATION_LIMITS.members,
       memberCount: Number(totals[0]?.total ?? 0),
     },
     members: members.map((member) => ({ ...member, joinedAt: member.joinedAt?.toISOString() ?? null })),

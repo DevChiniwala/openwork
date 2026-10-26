@@ -68,6 +68,9 @@ export function reconcileOrganizationPlan(input: PlanReconciliationInput): Organ
     if (input.legacyWithoutCharge) return null
     const protectedGrant = current.source === "manual" || current.source === "grandfathered"
     if (protectedGrant && planTierRank(current.tier) >= planTierRank(tier)) return null
+    // A trial is kept over a lower paid plan (Team bought during an Enterprise
+    // trial); paying for the same plan ends the trial and Stripe takes over.
+    if (current.source === "trial" && planTierRank(current.tier) > planTierRank(tier)) return null
     if (current.source === "stripe" && current.tier === tier) return null
     return { tier, source: "stripe" }
   }

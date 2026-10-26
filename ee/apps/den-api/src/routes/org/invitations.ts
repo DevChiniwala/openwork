@@ -1,3 +1,4 @@
+import { parseOrganizationPlan } from "../../entitlements.js"
 import { and, desc, eq, isNull } from "@openwork-ee/den-db/drizzle"
 import { AuthUserTable, InvitationTable, MemberTable, OrganizationTable, TeamTable, TeamMemberTable } from "@openwork-ee/den-db/schema"
 import { createDenTypeId, normalizeDenTypeId } from "@openwork-ee/utils/typeid"
@@ -491,7 +492,9 @@ export function registerOrgInvitationRoutes<T extends { Variables: OrgRouteVaria
         subscriptionType: "seat",
         currentCount: seatEligibility.currentCount,
         freeSeatCount: seatEligibility.freeSeatCount,
-        message: `The Free plan is limited to ${seatEligibility.freeSeatCount} users, counting pending invitations. Upgrade to the Team plan at ${invitationBillingUrl()} to invite more people.`,
+        message: parseOrganizationPlan(payload.organization.metadata).source === "trial"
+          ? `This Enterprise trial includes ${seatEligibility.freeSeatCount} users, counting pending invitations. Contact your OpenWork account team to add seats.`
+          : `The Free plan is limited to ${seatEligibility.freeSeatCount} users, counting pending invitations. Upgrade to the Team plan at ${invitationBillingUrl()} to invite more people.`,
         billingUrl: invitationBillingUrl(),
         quote,
       }, 402)

@@ -8,7 +8,8 @@ import { z } from "zod";
 
 export const BILLING_PLAN_TIERS = ["free", "team", "enterprise"] as const;
 export type BillingPlanTier = (typeof BILLING_PLAN_TIERS)[number];
-export const BILLING_PLAN_SOURCES = ["default", "stripe", "manual", "grandfathered"] as const;
+/** `trial`: an Enterprise trial a platform admin started, with a user limit and an end date. */
+export const BILLING_PLAN_SOURCES = ["default", "stripe", "manual", "grandfathered", "trial"] as const;
 export type BillingPlanSource = (typeof BILLING_PLAN_SOURCES)[number];
 
 /** Plans a billing admin can buy by card. */
@@ -159,6 +160,8 @@ export const billingPlanSummarySchema = z.object({
   joined: z.number().int(),
   invited: z.number().int(),
   freeSeatCount: z.number().int(),
+  /** Present while an Enterprise trial runs: its user limit and when it ends. */
+  trial: z.object({ seats: z.number().int(), endsAt: z.string() }).nullable().optional(),
 });
 export type BillingPlanSummary = z.infer<typeof billingPlanSummarySchema>;
 

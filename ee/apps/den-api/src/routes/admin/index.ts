@@ -76,6 +76,8 @@ import {
 } from "@openwork/features"
 import { DEFAULT_ORGANIZATION_LIMITS, normalizeOrganizationMetadata } from "../../organization-limits.js"
 import { updateOrganizationMetadata } from "../../organization-metadata.js"
+import { EnterpriseTrialError, endEnterpriseTrial, startEnterpriseTrial } from "../../enterprise-trial.js"
+import { ENTERPRISE_TRIAL_MAX_SEATS, ENTERPRISE_TRIAL_MIN_SEATS, metadataWithoutEnterpriseTrial } from "../../enterprise-trial-rules.js"
 import { env } from "../../env.js"
 import type { AuthContextVariables } from "../../session.js"
 import { ORGANIZATION_AUDIT_ACTIONS } from "../../audit-events.js"
@@ -149,7 +151,19 @@ const updateEnterpriseMinimumUsersSchema = z.object({
   minimumUsers: z.number().int().min(0).max(100000),
 })
 
+const enterpriseTrialSchema = z.object({
+  seats: z.number().int().min(ENTERPRISE_TRIAL_MIN_SEATS).max(ENTERPRISE_TRIAL_MAX_SEATS),
+  endsAt: z.string().datetime({ offset: true }),
+})
+
 const enterpriseBillingStateSchema = z.object({
+  plan: z.object({
+    tier: z.enum(["free", "team", "enterprise"]),
+    source: z.enum(["default", "stripe", "manual", "grandfathered", "trial"]),
+    trial: z.object({ seats: z.number().int(), startedAt: z.string(), endsAt: z.string() }).nullable(),
+    lastTrial: z.object({ seats: z.number().int(), endsAt: z.string(), endedAt: z.string(), reason: z.enum(["expired", "ended_by_admin"]) }).nullable(),
+  }),
+  freeSeatCount: z.number().int(),
   featureEnabled: z.boolean(),
   configured: z.boolean(),
   users: z.number().int(),
@@ -1897,7 +1911,9 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         return c.json({ error: "not_found", message: "Organization not found." }, 404)
       }
 
-      const metadata = await updateOrganizationMetadata(organizationId, (current) => {
+      const metadata = await updateOrganizationMetadata(organizationId, (stored) => {
+        // Setting a plan by hand ends a running Enterprise trial first.
+        const current = metadataWithoutEnterpriseTrial(stored, { endedAt: new Date(), reason: "ended_by_admin" }) ?? stored
         const normalized = normalizeOrganizationMetadata(current).metadata
         const plan = { ...readOrganizationMetadata(current.plan), ...getManualPlanMetadata(body.data.tier) }
         if (body.data.tier !== "enterprise") delete plan.grantedAt
@@ -2082,6 +2098,79 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         throw error
       }
       return c.json({ ok: true, enterprise: { ...await getEnterpriseBillingAdminState(organizationId), featureEnabled: true } })
+    },
+  )
+
+  app.put(
+    "/v1/admin/organizations/:organizationId/enterprise-trial",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "Start or change an organization's Enterprise trial",
+      description: "Makes the organization Enterprise until endsAt, with its users (members plus pending invitations) limited to seats: the Free plan user limit becomes seats. Calling it again changes the seats or end date of the running trial. When the trial ends the plan returns to Free and the earlier Free plan user limit is restored. Body: { seats, endsAt }.",
+      responses: {
+        200: jsonResponse("The trial was started or changed.", z.object({ ok: z.literal(true), enterprise: enterpriseBillingStateSchema })),
+        400: jsonResponse("The request body, organization id, seats or end date was invalid.", z.union([adminRequestErrorSchema, enterpriseBillingErrorSchema])),
+        ...adminRouteErrors,
+        404: jsonResponse("The organization does not exist, or Enterprise plan billing is off for it.", z.union([notFoundSchema, z.object({ error: z.literal("feature_disabled"), feature: z.string() })])),
+        409: jsonResponse("The organization already pays for Enterprise through Stripe.", enterpriseBillingErrorSchema),
+      },
+    }),
+    adminRoute(),
+    async (c) => {
+      const body = enterpriseTrialSchema.safeParse(await c.req.json().catch(() => null))
+      if (!body.success) {
+        return c.json({ error: "invalid_request", message: body.error.issues[0]?.message ?? "Invalid Enterprise trial request." }, 400)
+      }
+      const organizationId = c.req.param("organizationId")
+      if (!isOrganizationId(organizationId)) {
+        return c.json({ error: "invalid_request", message: "Invalid organization id." }, 400)
+      }
+      const [organization] = await db.select({ id: OrganizationTable.id }).from(OrganizationTable).where(eq(OrganizationTable.id, organizationId)).limit(1)
+      if (!organization) {
+        return c.json({ error: "not_found", message: "Organization not found." }, 404)
+      }
+      if (!await organizationFeatureEnabled(organizationId, "enterprisePlan")) {
+        return c.json({ error: "feature_disabled", feature: "enterprisePlan" }, 404)
+      }
+      try {
+        await startEnterpriseTrial({ organizationId, seats: body.data.seats, endsAt: new Date(body.data.endsAt), startedByUserId: c.get("user").id })
+      } catch (error) {
+        if (error instanceof EnterpriseTrialError) {
+          return c.json({ error: error.code, message: error.message }, error.code === "paid_enterprise_plan" ? 409 : 400)
+        }
+        throw error
+      }
+      return c.json({ ok: true, enterprise: { ...await getEnterpriseBillingAdminState(organizationId), featureEnabled: true } })
+    },
+  )
+
+  app.delete(
+    "/v1/admin/organizations/:organizationId/enterprise-trial",
+    describeRoute({
+      tags: ["Admin"],
+      summary: "End an organization's Enterprise trial",
+      description: "Ends the running Enterprise trial now: the plan returns to Free (or the paid Stripe plan, if any) and the earlier Free plan user limit is restored. Existing members keep their access.",
+      responses: {
+        200: jsonResponse("The trial ended.", z.object({ ok: z.literal(true), enterprise: enterpriseBillingStateSchema })),
+        400: jsonResponse("The organization id was invalid.", adminRequestErrorSchema),
+        ...adminRouteErrors,
+        404: jsonResponse("The organization has no Enterprise trial.", enterpriseBillingErrorSchema),
+      },
+    }),
+    adminRoute(),
+    async (c) => {
+      const organizationId = c.req.param("organizationId")
+      if (!isOrganizationId(organizationId)) {
+        return c.json({ error: "invalid_request", message: "Invalid organization id." }, 400)
+      }
+      try {
+        await endEnterpriseTrial({ organizationId, reason: "ended_by_admin" })
+      } catch (error) {
+        if (error instanceof EnterpriseTrialError) return c.json({ error: error.code, message: error.message }, 404)
+        throw error
+      }
+      const featureEnabled = await organizationFeatureEnabled(organizationId, "enterprisePlan")
+      return c.json({ ok: true, enterprise: { ...await getEnterpriseBillingAdminState(organizationId), featureEnabled } })
     },
   )
 

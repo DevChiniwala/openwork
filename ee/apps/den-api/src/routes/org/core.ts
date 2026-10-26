@@ -13,7 +13,7 @@ import { verifyBotProtection } from "../../bot-protection.js"
 import { validateBrandIconUrl } from "../../brand-icon-validation.js"
 import { cloudHostingAvailable } from "../../capability-sources/cloud-hosting.js"
 import { db } from "../../db.js"
-import { checkEntitlement, getOrganizationEntitlements, parseOrganizationPlan } from "../../entitlements.js"
+import { checkEntitlement, getOrganizationEntitlements, parseOrganizationPlan, publicOrganizationPlan } from "../../entitlements.js"
 import { env } from "../../env.js"
 import { clientFeatures, clientFeaturesSchema } from "../../feature-response.js"
 import { deploymentCapabilities } from "../../gateway-deployment.js"
@@ -733,7 +733,7 @@ export function registerOrgCoreRoutes<T extends { Variables: OrgRouteVariables }
           ...deploymentCapabilities(),
           ...(serviceReadiness ? { serviceReadiness } : {}),
         },
-        plan: parseOrganizationPlan(currentOrganization.metadata),
+        plan: publicOrganizationPlan(parseOrganizationPlan(currentOrganization.metadata)),
         entitlements: getOrganizationEntitlements(currentOrganization.metadata),
         features: clientFeatures(features),
         // Frozen for published clients; new clients read `features`.

@@ -2,7 +2,7 @@ import { and, eq } from "@openwork-ee/den-db/drizzle"
 import { MemberTable, OrganizationTable, ScimProviderTable, SsoProviderTable } from "@openwork-ee/den-db/schema"
 import { emailDomainMatches } from "./account-linking-policy.js"
 import { db } from "./db.js"
-import { getOrganizationEntitlements, parseOrganizationPlan } from "./entitlements.js"
+import { getOrganizationEntitlements, parseOrganizationPlan, planLiftsUserLimit } from "./entitlements.js"
 import { runPostOrganizationMemberChangeHooks } from "./organization-member-hooks.js"
 import { acceptPendingInvitationForBootstrapMembership, ensureBootstrapMembershipForOrganization } from "./orgs.js"
 import { resolveStoredScimProvider } from "./scim-token-storage.js"
@@ -46,8 +46,9 @@ export async function organizationAllowsProvisioning(organizationId: OrgId, kind
     .limit(1)
   if (!organization) return false
   if (!getOrganizationEntitlements(organization.metadata)[kind]) return false
-  // Enterprise organizations (set by a platform admin) are never held to the Free plan limit here.
-  if (parseOrganizationPlan(organization.metadata).tier === "enterprise") return true
+  // Enterprise organizations (set by a platform admin) are never held to the
+  // Free plan limit here; an Enterprise trial is held to the users it started with.
+  if (planLiftsUserLimit(parseOrganizationPlan(organization.metadata))) return true
   return (await getOrganizationSeatAddEligibility(organizationId)).allowed
 }
 

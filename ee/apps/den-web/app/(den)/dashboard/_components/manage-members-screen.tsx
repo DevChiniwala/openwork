@@ -609,6 +609,16 @@ export function ManageMembersScreen() {
         feedbackHref={feedbackHref}
         onClose={() => setLimitDialogError(null)}
       />
+      {orgContext?.plan.source === "trial" ? (
+      <OrgLimitDialog
+        open={Boolean(seatBillingDialogError)}
+        eyebrow="Enterprise trial"
+        title="Your Enterprise trial is full"
+        message={`This Enterprise trial includes ${seatBillingDialogError?.freeSeatCount ?? orgContext.plan.trial?.seats ?? 0} users, counting pending invitations. Remove a member or an invitation, or contact your OpenWork account team to add seats.`}
+        closeLabel="Close"
+        onClose={() => setSeatBillingDialogError(null)}
+      />
+      ) : (
       <OrgLimitDialog
         open={Boolean(seatBillingDialogError)}
         eyebrow="Free plan limit"
@@ -629,6 +639,7 @@ export function ManageMembersScreen() {
           });
         }}
       />
+      )}
 
       {pageError ? (
         <DenNotice message={pageError} className="mb-6" />

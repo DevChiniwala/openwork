@@ -19,7 +19,8 @@ import { assertOrganizationManagedModelsAllowed, updateOrganizationMetadata } fr
 import { appLogger } from "./observability/logger.js"
 import { complimentaryWebAccessForOrganization, isOpenWorkWebAvailable } from "./openwork-web-availability.js"
 import { resolveOpenWorkWebAccess } from "./openwork-web-access.js"
-import { parseOrganizationPlan, type OrganizationPlan } from "./entitlements.js"
+import { parseOrganizationPlan, planLiftsUserLimit, type OrganizationPlan } from "./entitlements.js"
+import { metadataWithoutEnterpriseTrial } from "./enterprise-trial-rules.js"
 import {
   billingNotConfiguredMessage,
   PLAN_CURRENCY,
@@ -553,7 +554,7 @@ export async function organizationHasActiveEnterpriseSubscription(organizationId
  * subscription makes it Team (at any size), and ending them returns it to
  * Free. Admin-set and grandfathered plans are left alone.
  */
-async function syncOrganizationPlanFromSubscriptions(organizationId: OrgId, seatSubscription?: Stripe.Subscription) {
+export async function syncOrganizationPlanFromSubscriptions(organizationId: OrgId, seatSubscription?: Stripe.Subscription) {
   const [seatRow, enterpriseRow] = await Promise.all([
     findSeatSubscriptionByOrg(organizationId),
     findEnterpriseSubscriptionByOrg(organizationId),
@@ -567,14 +568,20 @@ async function syncOrganizationPlanFromSubscriptions(organizationId: OrgId, seat
       ? "enterprise"
       : "team"
   await updateOrganizationMetadata(organizationId, (current) => {
+    // An Enterprise trial past its end date is closed first, so its Free plan
+    // user limit is restored before Stripe decides the plan.
+    const base = parseOrganizationPlan(current).trialExpired
+      ? metadataWithoutEnterpriseTrial(current, { endedAt: new Date(), reason: "expired" }) ?? current
+      : current
     const next = reconcileOrganizationPlan({
-      current: parseOrganizationPlan(current),
+      current: parseOrganizationPlan(base),
       status: enterpriseActive ? enterpriseActive.status : seatRow?.status ?? "canceled",
       tier: enterpriseActive ? "enterprise" : seatTier,
       legacyWithoutCharge: !enterpriseActive && Boolean(seatRow && seatRow.quantity < 1),
     })
-    if (!next) return current
-    return { ...current, plan: next }
+    if (!next) return base
+    const storedPlan = typeof base.plan === "object" && base.plan !== null && !Array.isArray(base.plan) ? base.plan : {}
+    return { ...base, plan: { ...next, ...("lastTrial" in storedPlan ? { lastTrial: storedPlan.lastTrial } : {}) } }
   })
 }
 
@@ -613,13 +620,13 @@ export async function organizationHasOngoingOpenWorkWebSubscription(organization
   return Boolean(row && isOngoingOpenWorkWebSubscriptionStatus(row.status))
 }
 
-async function organizationPlanTier(organizationId: OrgId) {
+async function organizationPlanLiftsUserLimit(organizationId: OrgId) {
   const rows = await db
     .select({ metadata: OrganizationTable.metadata })
     .from(OrganizationTable)
     .where(eq(OrganizationTable.id, organizationId))
     .limit(1)
-  return parseOrganizationPlan(rows[0]?.metadata).tier
+  return planLiftsUserLimit(parseOrganizationPlan(rows[0]?.metadata))
 }
 
 export async function getOrganizationSeatAddEligibility(organizationId: OrgId) {
@@ -645,9 +652,10 @@ export async function getOrganizationSeatAddEligibility(organizationId: OrgId) {
   // A paying Enterprise subscription always lifts the limit. An Enterprise
   // plan without one (set by a platform admin, or grandfathered) lifts it
   // only while the enterprisePlan feature is on, so turning it off restores
-  // the earlier behaviour.
+  // the earlier behaviour. An Enterprise trial never lifts it: its users are
+  // the Free plan user limit set when the trial started.
   const enterprisePlanBypassesLimit = !hasActiveSeatSubscription && !hasActiveEnterpriseSubscription
-    && await organizationPlanTier(organizationId) === "enterprise"
+    && await organizationPlanLiftsUserLimit(organizationId)
     && await organizationFeatureEnabled(organizationId, "enterprisePlan")
   return {
     allowed: canAddUser({ seats, hasSeatSubscription: hasActiveSeatSubscription, hasEnterpriseSubscription: hasActiveEnterpriseSubscription, enterprisePlanBypassesLimit }),
@@ -1491,6 +1499,9 @@ export async function getOrgBillingSummary(input: {
     joined: peopleCounts.joined,
     invited: peopleCounts.invited,
     freeSeatCount: seatCounts.free,
+    trial: organizationPlan?.source === "trial" && organizationPlan.trial
+      ? { seats: organizationPlan.trial.seats, endsAt: organizationPlan.trial.endsAt }
+      : null,
   }
   const hasActiveSubscription = Boolean(row && ACTIVE_STATUSES.has(row.status))
   const hasActiveSeatSubscription = Boolean(seatRow && ACTIVE_STATUSES.has(seatRow.status))
@@ -2163,11 +2174,15 @@ export async function createEnterpriseSubscription(input: {
     idempotencyKey: `openwork-enterprise-subscription:${input.organizationId}:${existing?.stripe_subscription_id ?? "initial"}:${input.priceId}:${minimumUsers}`,
   })
 
-  // Hand an admin-set or grandfathered plan over to Stripe before syncing, so
-  // the plan follows this subscription from now on.
+  // Hand an admin-set, grandfathered or trial plan over to Stripe before
+  // syncing, so the plan follows this subscription from now on. A trial's
+  // Free plan user limit goes back to what it was before the trial.
   await updateOrganizationMetadata(input.organizationId, (current) => {
     const plan = parseOrganizationPlan(current)
-    if (plan.source !== "manual" && plan.source !== "grandfathered") return current
+    if (plan.source !== "manual" && plan.source !== "grandfathered" && plan.source !== "trial" && !plan.trialExpired) return current
+    if (plan.trial) {
+      return { ...current, seatsFreeAdditional: plan.trial.previousSeatsFreeAdditional, plan: { tier: "enterprise", source: "stripe" } }
+    }
     const stored = typeof current.plan === "object" && current.plan !== null && !Array.isArray(current.plan) ? current.plan : {}
     return { ...current, plan: { ...stored, tier: "enterprise", source: "stripe" } }
   })
@@ -2213,12 +2228,39 @@ export async function updateEnterpriseMinimumUsers(input: { organizationId: OrgI
   return findEnterpriseSubscriptionByOrg(input.organizationId)
 }
 
+function lastEnterpriseTrial(metadata: unknown) {
+  const plan = typeof metadata === "object" && metadata !== null && "plan" in metadata ? metadata.plan : null
+  const last = typeof plan === "object" && plan !== null && "lastTrial" in plan ? plan.lastTrial : null
+  if (typeof last !== "object" || last === null) return null
+  const read = (key: string) => {
+    const value: unknown = Reflect.get(last, key)
+    return value
+  }
+  const seats = read("seats")
+  const endsAt = read("endsAt")
+  const endedAt = read("endedAt")
+  const reason = read("reason")
+  if (typeof seats !== "number" || typeof endsAt !== "string" || typeof endedAt !== "string") return null
+  return { seats, endsAt, endedAt, reason: reason === "ended_by_admin" ? "ended_by_admin" as const : "expired" as const }
+}
+
 export async function getEnterpriseBillingAdminState(organizationId: OrgId) {
-  const [row, quantities] = await Promise.all([
+  const [row, quantities, organization] = await Promise.all([
     findEnterpriseSubscriptionByOrg(organizationId),
     getOrganizationBillingQuantities(organizationId),
+    db.select({ metadata: OrganizationTable.metadata }).from(OrganizationTable).where(eq(OrganizationTable.id, organizationId)).limit(1).then((rows) => rows[0] ?? null),
   ])
+  const plan = parseOrganizationPlan(organization?.metadata)
   return {
+    plan: {
+      tier: plan.tier,
+      source: plan.source,
+      trial: plan.source === "trial" && plan.trial
+        ? { seats: plan.trial.seats, startedAt: plan.trial.startedAt, endsAt: plan.trial.endsAt }
+        : null,
+      lastTrial: lastEnterpriseTrial(organization?.metadata),
+    },
+    freeSeatCount: quantities.seats.free,
     configured: Boolean(env.stripe.secretKey && env.stripe.enterpriseProductId),
     users: quantities.users,
     minimumUsers: row?.minimum_quantity ?? 0,

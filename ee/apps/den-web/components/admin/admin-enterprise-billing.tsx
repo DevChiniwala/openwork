@@ -6,6 +6,7 @@ import { DenButton } from "../../app/(den)/_components/ui/button";
 import { DenInput } from "../../app/(den)/_components/ui/input";
 import { requestAdmin, sendAdmin } from "./admin-request";
 import type { AdminFeatureAccessFailure } from "./admin-organization-feature-controls";
+import { AdminEnterpriseTrial } from "./admin-enterprise-trial";
 
 type EnterpriseSubscription = {
   status: string;
@@ -16,7 +17,16 @@ type EnterpriseSubscription = {
   cancelAtPeriodEnd: boolean;
 };
 
-type EnterpriseBilling = {
+export type AdminEnterprisePlan = {
+  tier: "free" | "team" | "enterprise";
+  source: string;
+  trial: { seats: number; startedAt: string; endsAt: string } | null;
+  lastTrial: { seats: number; endsAt: string; endedAt: string; reason: "expired" | "ended_by_admin" } | null;
+};
+
+export type EnterpriseBilling = {
+  plan: AdminEnterprisePlan;
+  freeSeatCount: number;
   featureEnabled: boolean;
   configured: boolean;
   users: number;
@@ -43,10 +53,25 @@ function parseSubscription(value: unknown): EnterpriseSubscription | null {
   };
 }
 
+function parsePlan(value: unknown): AdminEnterprisePlan {
+  const plan = isRecord(value) ? value : {};
+  const tier = plan.tier === "team" || plan.tier === "enterprise" ? plan.tier : "free";
+  const trial = isRecord(plan.trial) && typeof plan.trial.seats === "number" && typeof plan.trial.startedAt === "string" && typeof plan.trial.endsAt === "string"
+    ? { seats: plan.trial.seats, startedAt: plan.trial.startedAt, endsAt: plan.trial.endsAt }
+    : null;
+  const last = isRecord(plan.lastTrial) ? plan.lastTrial : null;
+  const lastTrial = last && typeof last.seats === "number" && typeof last.endsAt === "string" && typeof last.endedAt === "string"
+    ? { seats: last.seats, endsAt: last.endsAt, endedAt: last.endedAt, reason: last.reason === "ended_by_admin" ? "ended_by_admin" as const : "expired" as const }
+    : null;
+  return { tier, source: typeof plan.source === "string" ? plan.source : "default", trial, lastTrial };
+}
+
 export function parseEnterpriseBilling(payload: unknown): EnterpriseBilling | null {
   const value = isRecord(payload) && isRecord(payload.enterprise) ? payload.enterprise : null;
   if (!value || typeof value.users !== "number" || typeof value.minimumUsers !== "number" || typeof value.billableUsers !== "number") return null;
   return {
+    plan: parsePlan(value.plan),
+    freeSeatCount: typeof value.freeSeatCount === "number" ? value.freeSeatCount : 0,
     featureEnabled: value.featureEnabled === true,
     configured: value.configured === true,
     users: value.users,
@@ -142,7 +167,9 @@ export function AdminEnterpriseBilling({ organizationId, onAccessFailure }: { or
   const subscription = data.subscription;
   const ongoing = subscription !== null && ONGOING_STATUSES.has(subscription.status);
 
-  return <section className="border-t border-[var(--dls-border)] py-5 text-[color:var(--dls-text-primary)]" aria-labelledby="admin-enterprise-billing-title" data-testid="admin-enterprise-billing">
+  return <>
+  <AdminEnterpriseTrial organizationId={organizationId} data={data} onChange={setData} />
+  <section className="border-t border-[var(--dls-border)] py-5 text-[color:var(--dls-text-primary)]" aria-labelledby="admin-enterprise-billing-title" data-testid="admin-enterprise-billing">
     <div className="flex flex-wrap items-center justify-between gap-2">
       {heading}
       <span className="text-xs text-[color:var(--dls-text-secondary)]">{ongoing ? `Stripe: ${subscription.status.replace(/_/g, " ")}` : "No Enterprise subscription"}</span>
@@ -175,5 +202,6 @@ export function AdminEnterpriseBilling({ organizationId, onAccessFailure }: { or
       </form>}
 
     {error ? <p role="alert" className="mt-3 text-xs text-red-700">{error}</p> : null}
-  </section>;
+  </section>
+  </>;
 }
