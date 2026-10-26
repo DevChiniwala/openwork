@@ -25,14 +25,14 @@ type Context = CloudSkillContext & {
   tool: { transform(callback: (editor: { add(tool: Tool): void }) => void): Promise<{ dispose(): Promise<void> }> };
 };
 
-// Separate credentials authorize app reads, sidebar group changes and Drive
-// file transfers the person approves, and conversation-scoped browser and
+// Separate credentials authorize app reads, sidebar group changes, Drive
+// file transfers and Outlook drafts the person approves, and conversation-scoped browser and
 // computer operations. Neither grants arbitrary host APIs or other OpenWork
 // app commands.
 export default {
   id: "openwork.context",
   async setup(context: Context) {
-    // The host asks the person in this tool call's chat before a Drive change.
+    // The host asks the person in this tool call's chat before a Drive change or an Outlook draft.
     const driveCall = async (name: string, input: unknown, call: ToolCall, failure: string) => {
       const response = await fetch(context.options.url, {
         method: "POST", redirect: "error", signal: call.signal,
@@ -80,6 +80,18 @@ export default {
         }, required: ["path"], additionalProperties: false },
         options: { codemode: false },
         execute: (input, call) => driveCall("openwork_drive_upload", input, call, "Drive upload failed"),
+      });
+      addProviderSafeTool(editor, {
+        name: "openwork_outlook_draft",
+        description: "Create an Outlook draft, or a reply draft to one Outlook message, with workspace files attached through OpenWork Cloud, outside model context. Use this when the user asks to email or reply with local files from Outlook. A new draft needs to and subject; a reply takes replyToMessageId and body only, keeping the message's recipients and subject. Up to ten files, each under 3 MB and 4 MiB in all; paths are workspace-relative or absolute under an authorized workspace root. connectionId (microsoft-365 or emc_...) selects a Microsoft account. The person approves each draft in the chat first, and it is never sent. Never retry an unconfirmed draft automatically.",
+        input: { type: "object", properties: {
+          to: { type: "array", items: { type: "string" } }, cc: { type: "array", items: { type: "string" } }, bcc: { type: "array", items: { type: "string" } },
+          subject: { type: "string" }, body: { type: "string" }, replyToMessageId: { type: "string" },
+          connectionId: { type: "string", pattern: "^(microsoft-365|emc_[A-Za-z0-9]+)$" },
+          paths: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 10 },
+        }, required: ["body", "paths"], additionalProperties: false },
+        options: { codemode: false },
+        execute: (input, call) => driveCall("openwork_outlook_draft", input, call, "Outlook draft failed"),
       });
       for (const [name, tool] of Object.entries(DRIVE_FILE_TOOLS)) {
         addProviderSafeTool(editor, {

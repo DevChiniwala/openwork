@@ -86,7 +86,7 @@ function app(overrides: Partial<ConnectionServerRouteDeps> = {}) {
   const calls: Call[] = []
   const deps: ConnectionServerRouteDeps = {
     verify: async () => ({ userId, organizationId, scopes: new Set(["mcp:read", "mcp:write"]), payload: {} }),
-    features: async () => ({ connectionMcpServers: true, managedDeployments: false, remoteSessionSubagents: false }),
+    features: async () => ({ connectionMcpServers: true, managedDeployments: false, remoteSessionSubagents: false, outlookAttachments: false }),
     member: async () => member,
     catalog: async () => [],
     sources,
@@ -211,7 +211,7 @@ test("a provider that fails to list its tools is reported without its error text
 })
 
 test("with the feature off the route is not found", async () => {
-  const { hono, calls } = app({ features: async () => ({ connectionMcpServers: false, managedDeployments: false, remoteSessionSubagents: false }) })
+  const { hono, calls } = app({ features: async () => ({ connectionMcpServers: false, managedDeployments: false, remoteSessionSubagents: false, outlookAttachments: false }) })
   const response = await hono.request(`/mcp/agent/servers/${linear.id}`, {
     method: "POST",
     headers: { "content-type": "application/json" },

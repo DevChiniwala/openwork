@@ -401,6 +401,16 @@
               ],
               "description": "Prompts: Admins write a system prompt for everyone and for each team on the team's Prompts tab. Desktops add the prompts that apply to a member to every agent's instructions: Everyone's first, then each team's by team name. Turning this off stops desktops adding them at their next sync; saved prompts are kept. Renders DEN_FEATURE_ORG_PROMPTS."
             },
+            "outlookAttachments": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Outlook attachments: Agents read the files attached to Outlook messages and create Outlook drafts and replies with workspace files attached, after the member approves each draft. Drafts are never sent. Renders DEN_FEATURE_OUTLOOK_ATTACHMENTS."
+            },
             "sessionTokenHashing": {
               "enum": [
                 "",

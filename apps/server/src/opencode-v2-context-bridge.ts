@@ -6,13 +6,13 @@ import { openworkReadTransport, type OpenworkReadTransport } from "./opencode-pl
 import { createV2ReadAdapter, readV2SessionActivity } from "./opencode-v2-read-adapter.js";
 import { isRecord } from "./workspace-kv-store.js";
 import { createV2BrowserBridge } from "./opencode-v2-browser-bridge.js";
-import { DRIVE_UPLOAD_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID } from "./extensions/cloud-upload-constants.js";
+import { DRIVE_UPLOAD_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, OUTLOOK_DRAFT_PERMISSION } from "./extensions/cloud-upload-constants.js";
 import { createDriveFileTools, DRIVE_FILE_ACTIONS, type DriveFileAction } from "./opencode-plugins/drive-file-tools.js";
 import { SESSION_GROUP_COMMAND_IDS } from "./opencode-plugins/openwork-session-groups.js";
 import { loopbackFetch } from "./server-fetch.js";
 
 const requestSchema = z.object({
-  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", ...DRIVE_FILE_ACTIONS]),
+  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", "openwork_outlook_draft", ...DRIVE_FILE_ACTIONS]),
   input: z.unknown(),
   sessionId: z.string().max(256).optional(),
   // The calling tool's place in its chat, where a Drive approval is shown.
@@ -104,6 +104,12 @@ export function isSessionGroupWritePath(path: string): boolean {
   return sessionGroupRoute.test(rawPath);
 }
 const driveUploadSchema = z.object({ path: z.string().min(1), folderId: z.string().optional(), connectionId: z.string().optional() }).strict();
+const addresses = z.array(z.string().min(1)).max(50).optional();
+const outlookDraftSchema = z.object({
+  to: addresses, cc: addresses, bcc: addresses, subject: z.string().min(1).optional(), body: z.string(),
+  replyToMessageId: z.string().min(1).optional(), connectionId: z.string().optional(),
+  paths: z.array(z.string().min(1)).min(1).max(10),
+}).strict();
 // Advertise only what this bridge executes. Native MCP discovery owns remote
 // tool names; v1 executor spellings and unregistered commands do not belong here.
 function bridgeAffordances(value: unknown): unknown {
@@ -170,6 +176,26 @@ export async function createV2ContextBridge(
         deadline = AbortSignal.timeout(130_000);
         return Response.json(await read("/experimental/extensions/call", { method: "POST", body: JSON.stringify({
           extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: "drive_upload_file", args, context: {},
+        }) }));
+      }
+      // An Outlook draft with attachments uses the same authorized-root file
+      // transport, only after the person allows this draft in the calling chat.
+      if (call.name === "openwork_outlook_draft") {
+        const args = outlookDraftSchema.parse(call.input);
+        if (!call.sessionId || !call.caller) throw new Error("This OpenWork engine cannot ask for your approval, so no draft was created.");
+        await askEngineApproval(engine?.(), {
+          directory: call.caller.directory, sessionId: call.sessionId, messageId: call.caller.messageId, callId: call.caller.callId,
+          ...(call.caller.agent ? { agent: call.caller.agent } : {}), action: OUTLOOK_DRAFT_PERMISSION, resources: args.paths,
+          metadata: {
+            paths: args.paths, ...(args.subject ? { subject: args.subject } : {}),
+            target: args.replyToMessageId ? "Outlook reply draft" : `Outlook draft to ${(args.to ?? []).join(", ")}`,
+            ...(args.connectionId ? { connectionId: args.connectionId } : {}),
+          },
+          subject: "this draft", nothing: "no draft was created",
+        }, AbortSignal.any([request.signal, AbortSignal.timeout(APPROVAL_WAIT_MS)]));
+        deadline = AbortSignal.timeout(130_000);
+        return Response.json(await read("/experimental/extensions/call", { method: "POST", body: JSON.stringify({
+          extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: OUTLOOK_DRAFT_PERMISSION, args, context: { directory: call.caller.directory },
         }) }));
       }
       // Pull, status and push run the v1 tools themselves: the same argument
