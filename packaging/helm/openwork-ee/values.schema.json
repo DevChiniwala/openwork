@@ -201,6 +201,16 @@
               ],
               "description": "Workbot: workspace assistant: Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Renders DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT."
             },
+            "workbotProactive": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: Your agent: Every member gets a background agent that reads their Gmail and Google Calendar each morning and about every three hours in working hours, and sends them one short message in Slack only when something needs them. Admins turn it on and choose what it tells people about in Manage › Workbot; members turn it off, snooze it or mute a kind of message. It only reads and never sends, accepts or edits anything for them. Renders DEN_FEATURE_WORKBOT_PROACTIVE."
+            },
             "workbotIncludedModels": {
               "enum": [
                 "",

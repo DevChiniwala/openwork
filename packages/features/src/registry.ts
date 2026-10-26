@@ -241,6 +241,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotProactive: {
+    label: "Workbot: Your agent",
+    description: "Every member gets a background agent that reads their Gmail and Google Calendar each morning and about every three hours in working hours, and sends them one short message in Slack only when something needs them. Admins turn it on and choose what it tells people about in Manage › Workbot; members turn it off, snooze it or mute a kind of message. It only reads and never sends, accepts or edits anything for them.",
+    category: "workbot",
+    added: "2026-10-24",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-proactive/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",

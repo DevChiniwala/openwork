@@ -1,8 +1,22 @@
 import { readWorkbotModel, withWorkbotModel, isWorkbotManagedLuna, workbotModelTestSchema, workbotSettingsInputSchema, workbotSettingsSchema } from "@openwork/types/den/workbot-settings"
+import {
+  mergeAgentTemplate,
+  mergeWorkbotProactiveSettings,
+  readWorkbotProactiveSettings,
+  withWorkbotProactiveSettings,
+  workbotProactiveSettingsInputSchema,
+  workbotProactiveViewSchema,
+  type WorkbotProactiveSettings,
+  type WorkbotProactiveView,
+} from "@openwork/types/den/workbot-proactive"
 import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { z } from "zod"
+import { requireFeature } from "../../features.js"
 import { jsonValidator, orgMemberRoute, requireOrgPermission, userSessionRoute } from "../../middleware/index.js"
+import { listAgentDestinations, proactiveRunnerReady, readProactiveSettings } from "../../workbot-proactive/access.js"
+import { readAgentTemplate, saveAgentTemplate, type AgentTemplateVersion } from "../../workbot-proactive/template.js"
+import { workbotOrigin } from "../../workbot/config.js"
 import { checkRateLimit } from "../../utils/rate-limit.js"
 import { testOrganizationWorkbotModel } from "../../workbot/model-test.js"
 import { forbiddenSchema, invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
@@ -33,11 +47,100 @@ const requireWorkbotSettingsRead: ReturnType<typeof requireOrgPermission> = asyn
   return requireOrgPermission("inference.view")(c, next)
 }
 
+/** Your agent needs Workbot on this deployment, the same capability that gates Workbot itself. */
+const requireWorkbotDeployed: ReturnType<typeof requireOrgPermission> = async (c, next) => {
+  if (workbotOrigin() === null) return c.json({ error: "feature_disabled" as const, feature: "workbot" }, 404)
+  return next()
+}
+
+const workbotProactiveViewDocumentSchema = workbotProactiveViewSchema.meta({ ref: "WorkbotProactiveSettings" })
+const workbotProactiveInputDocumentSchema = workbotProactiveSettingsInputSchema.meta({ ref: "WorkbotProactiveSettingsInput" })
+const invalidHoursSchema = z.object({ error: z.literal("invalid_working_hours"), message: z.string() }).meta({ ref: "WorkbotProactiveInvalidHoursError" })
+export const INVALID_WORKING_HOURS_MESSAGE = "The workday must end after it starts."
+
+const unknownDestinationSchema = z.object({ error: z.literal("unknown_destination"), message: z.string() }).meta({ ref: "WorkbotProactiveUnknownDestinationError" })
+export const UNKNOWN_DESTINATION_MESSAGE = "Choose a Slack connection from Connectors."
+
+async function proactiveView(organizationId: Parameters<typeof listAgentDestinations>[0], settings: WorkbotProactiveSettings, template: AgentTemplateVersion): Promise<WorkbotProactiveView> {
+  const { versionId, version, responsibilities, instructions } = template
+  return {
+    settings,
+    template: { versionId, version, responsibilities, instructions },
+    destinations: await listAgentDestinations(organizationId),
+    runnerReady: proactiveRunnerReady(),
+  }
+}
+
 /**
  * Manage › Workbot: the organization's default model for its cloud agents (Workbot, the Slack assistant, and cloud
  * Automations set to the cloud default). Admins choose it from their AI Gateway models.
  */
 export function registerOrgWorkbotSettingsRoutes<T extends { Variables: OrgRouteVariables }>(app: Hono<T>) {
+  app.get(
+    "/v1/org/workbot-settings/proactive",
+    describeRoute({
+      tags: ["Organizations"],
+      summary: "Get the settings for members' agents",
+      description:
+        "Returns how members' agents work in this organization (Manage › Workbot): whether they are on, working hours, the daily limit per member, whether members start opted in, the default place messages go, and the current \"Your agent\" template version (responsibilities and organization instructions). Also lists the Slack connections that can deliver messages and whether the headless runner the agents run on is configured. Requires the workbotProactive feature, Workbot on this deployment, and View OpenWork Models settings or Manage OpenWork Models.",
+      responses: {
+        200: jsonResponse("Agent settings returned.", workbotProactiveViewDocumentSchema),
+        401: jsonResponse("Authentication required.", unauthorizedSchema),
+        403: jsonResponse("The caller lacks both View OpenWork Models settings and Manage OpenWork Models.", forbiddenSchema),
+        404: notFound,
+      },
+    }),
+    orgMemberRoute(),
+    requireFeature("workbotProactive"),
+    requireWorkbotDeployed,
+    requireWorkbotSettingsRead,
+    async (c) => {
+      c.header("Cache-Control", "no-store")
+      const organizationId = c.get("organizationContext").organization.id
+      return c.json(await proactiveView(organizationId, await readProactiveSettings(organizationId), await readAgentTemplate(organizationId)))
+    },
+  )
+
+  app.put(
+    "/v1/org/workbot-settings/proactive",
+    describeRoute({
+      tags: ["Organizations"],
+      summary: "Change the settings for members' agents",
+      description:
+        "Changes any subset of how members' agents work. Policy fields (on/off, working hours, daily limit, members' starting choice, default destination) apply from the next pass; members' own choices (muted, snoozed, turned off, their own destination) are kept. A change to responsibilities or instructions saves a new version of the organization's \"Your agent\" template. Agents only read members' email and calendar and never act for them. Requires the workbotProactive feature, Workbot on this deployment and Manage OpenWork Models.",
+      responses: {
+        200: jsonResponse("Agent settings saved.", workbotProactiveViewDocumentSchema),
+        400: jsonResponse("The request was invalid, the workday would end before it starts, or the destination is not a Slack connection.", z.union([invalidHoursSchema, unknownDestinationSchema, invalidRequestSchema])),
+        401: jsonResponse("Authentication required.", unauthorizedSchema),
+        403: jsonResponse("The caller lacks the Manage OpenWork Models permission.", forbiddenSchema),
+        404: notFound,
+      },
+    }),
+    orgMemberRoute(),
+    requireFeature("workbotProactive"),
+    requireWorkbotDeployed,
+    requireOrgPermission("inference.manage"),
+    jsonValidator(workbotProactiveInputDocumentSchema),
+    async (c) => {
+      c.header("Cache-Control", "no-store")
+      const { organization, currentMember } = c.get("organizationContext")
+      const change = c.req.valid("json")
+      if (change.destination && !(await listAgentDestinations(organization.id)).some((option) => option.connectionId === change.destination?.connectionId)) {
+        return c.json({ error: "unknown_destination" as const, message: UNKNOWN_DESTINATION_MESSAGE }, 400)
+      }
+      const result: { settings: WorkbotProactiveSettings | null } = { settings: null }
+      await updateOrganizationMetadata(organization.id, (current) => {
+        result.settings = mergeWorkbotProactiveSettings(readWorkbotProactiveSettings(current), change)
+        return result.settings ? withWorkbotProactiveSettings(current, result.settings) : current
+      })
+      if (!result.settings) return c.json({ error: "invalid_working_hours" as const, message: INVALID_WORKING_HOURS_MESSAGE }, 400)
+      const current = await readAgentTemplate(organization.id)
+      const content = mergeAgentTemplate(current, change)
+      const template = content ? await saveAgentTemplate({ organizationId: organization.id, memberId: currentMember.id, content }) : current
+      return c.json(await proactiveView(organization.id, result.settings, template))
+    },
+  )
+
   app.post(
     "/v1/org/workbot-settings/test-default-model",
     describeRoute({
