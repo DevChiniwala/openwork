@@ -91,14 +91,14 @@ import { getSidePanelSessionKey } from "../panel/side-panel-session";
 import { useCreateTab, useOpenBrowserRailPane } from "../panel/use-side-panel-tabs";
 import { useBrowserPresentationController } from "../panel/use-browser-presentation";
 import { useBrowserAgentTurns } from "../panel/agent-viewport";
-import { BrowserHeaderButton, BrowserPresentationSurfaces } from "../panel/browser-presentation";
+import { BrowserPresentationSurfaces, BrowserRailButton } from "../panel/browser-presentation";
 import { DebugRailProvider, DebugRailSlot } from "../panel/debug-rail-slot";
 import { SessionDebugPanel } from "../surface/debug-panel";
 import { FloatingSlotProvider, SessionFloatingLayer } from "../panel/floating-slot";
 import { useDesktopFeature } from "../status/use-desktop-feature";
 import { CloudComputerControl } from "../computer/cloud-computer-control";
 import { ComputerControl } from "../computer/computer-control";
-import { useComputerBridge } from "../computer/computer-store";
+import { useComputerEndTurn } from "../computer/computer-store";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
@@ -644,7 +644,7 @@ export function SessionPage(props: SessionPageProps) {
   const remoteComputersFeature = useDesktopFeature("remoteComputers");
   // The button hides itself when this computer can't run it and no VM is connected.
   const computerUse = computerUseFeature && isElectronRuntime();
-  useComputerBridge(props.sidebar.sessionStatusById, computerUse, remoteComputersFeature);
+  useComputerEndTurn(props.sidebar.sessionStatusById, computerUse);
   useBrowserAgentTurns(props.sidebar.sessionStatusById);
 
   // Open the side panel of the conversation that owns a browser event. For the
@@ -1643,7 +1643,6 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
               {!isElectronRuntime() && computerUseFeature && remoteComputersFeature && props.openworkServerClient ? <CloudComputerControl client={props.openworkServerClient} /> : null}
               {computerUse && props.selectedSessionId ? <ComputerControl key={props.selectedSessionId} sessionId={props.selectedSessionId} /> : null}
-              {browserPresentation.enabled ? <BrowserHeaderButton controller={browserPresentation} /> : null}
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -2010,7 +2009,8 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
           </ResizablePanelGroup>
           <aside className={cn("w-10 shrink-0 flex-col items-center gap-1 px-1 py-2 text-muted-foreground mac:titlebar-no-drag", props.developerMode ? "flex" : "hidden", props.primarySurface !== "flat" && "lg:flex")}>
-            {isElectronRuntime() ? (
+            {/* With the floating browser on, the same button also brings back a floating page. */}
+            {isElectronRuntime() && browserPresentation.enabled ? <BrowserRailButton controller={browserPresentation} /> : isElectronRuntime() ? (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -2018,7 +2018,7 @@ export function SessionPage(props: SessionPageProps) {
                   "rounded-xl transition-colors hover:bg-muted hover:text-foreground",
                   browserRailActive && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
                 )}
-                onClick={browserPresentation.enabled ? () => browserPresentation.present(browserRailActive ? "hidden" : "side") : openBrowserRailPane}
+                onClick={openBrowserRailPane}
                 title="Browser"
                 aria-label="Browser"
                 aria-pressed={browserRailActive}

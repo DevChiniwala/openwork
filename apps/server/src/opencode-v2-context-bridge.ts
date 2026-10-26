@@ -6,13 +6,13 @@ import { openworkReadTransport, type OpenworkReadTransport } from "./opencode-pl
 import { createV2ReadAdapter, readV2SessionActivity } from "./opencode-v2-read-adapter.js";
 import { isRecord } from "./workspace-kv-store.js";
 import { createV2BrowserBridge } from "./opencode-v2-browser-bridge.js";
-import { DRIVE_UPLOAD_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID } from "./extensions/cloud-upload-constants.js";
+import { DRIVE_UPLOAD_PERMISSION, GMAIL_DRAFT_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID } from "./extensions/cloud-upload-constants.js";
 import { createDriveFileTools, DRIVE_FILE_ACTIONS, type DriveFileAction } from "./opencode-plugins/drive-file-tools.js";
 import { SESSION_GROUP_COMMAND_IDS } from "./opencode-plugins/openwork-session-groups.js";
 import { loopbackFetch } from "./server-fetch.js";
 
 const requestSchema = z.object({
-  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", ...DRIVE_FILE_ACTIONS]),
+  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", "openwork_gmail_draft", ...DRIVE_FILE_ACTIONS]),
   input: z.unknown(),
   sessionId: z.string().max(256).optional(),
   // The calling tool's place in its chat, where a Drive approval is shown.
@@ -104,6 +104,10 @@ export function isSessionGroupWritePath(path: string): boolean {
   return sessionGroupRoute.test(rawPath);
 }
 const driveUploadSchema = z.object({ path: z.string().min(1), folderId: z.string().optional(), connectionId: z.string().optional() }).strict();
+const gmailDraftSchema = z.object({
+  to: z.string().min(1), cc: z.string().optional(), bcc: z.string().optional(), subject: z.string().min(1), body: z.string().min(1),
+  threadId: z.string().min(1).optional(), connectionId: z.string().optional(), paths: z.array(z.string().min(1)).min(1).max(10),
+}).strict();
 // Advertise only what this bridge executes. Native MCP discovery owns remote
 // tool names; v1 executor spellings and unregistered commands do not belong here.
 function bridgeAffordances(value: unknown): unknown {
@@ -170,6 +174,25 @@ export async function createV2ContextBridge(
         deadline = AbortSignal.timeout(130_000);
         return Response.json(await read("/experimental/extensions/call", { method: "POST", body: JSON.stringify({
           extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: "drive_upload_file", args, context: {},
+        }) }));
+      }
+      // A Gmail draft with attachments uses the same authorized-root file
+      // transport v1 fulfills, only after the person allows this draft in the calling chat.
+      if (call.name === "openwork_gmail_draft") {
+        const args = gmailDraftSchema.parse(call.input);
+        if (!call.sessionId || !call.caller) throw new Error("This OpenWork engine cannot ask for your approval, so no draft was created.");
+        await askEngineApproval(engine?.(), {
+          directory: call.caller.directory, sessionId: call.sessionId, messageId: call.caller.messageId, callId: call.caller.callId,
+          ...(call.caller.agent ? { agent: call.caller.agent } : {}), action: GMAIL_DRAFT_PERMISSION, resources: args.paths,
+          metadata: {
+            paths: args.paths, subject: args.subject, target: args.threadId ? `Gmail reply to ${args.to}` : `Gmail draft to ${args.to}`,
+            ...(args.connectionId ? { connectionId: args.connectionId } : {}),
+          },
+          subject: "this draft", nothing: "no draft was created",
+        }, AbortSignal.any([request.signal, AbortSignal.timeout(APPROVAL_WAIT_MS)]));
+        deadline = AbortSignal.timeout(130_000);
+        return Response.json(await read("/experimental/extensions/call", { method: "POST", body: JSON.stringify({
+          extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: GMAIL_DRAFT_PERMISSION, args, context: { directory: call.caller.directory },
         }) }));
       }
       // Pull, status and push run the v1 tools themselves: the same argument

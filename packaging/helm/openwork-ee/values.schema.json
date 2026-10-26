@@ -249,7 +249,7 @@
                 true,
                 false
               ],
-              "description": "Desktop: floating and full-screen browser: The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person. Renders DEN_FEATURE_BROWSER_FLOATING_VIEW."
+              "description": "Desktop: floating and full-screen browser: The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with the side rail's Browser button showing when it needs the person. Renders DEN_FEATURE_BROWSER_FLOATING_VIEW."
             },
             "remoteComputers": {
               "enum": [
@@ -269,7 +269,17 @@
                 true,
                 false
               ],
-              "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
+              "description": "Desktop: tasks on other computers as sub-agents: A task the agent starts on the cloud or another computer shows in the chat as a sub-agent row: where it runs, whether it is working, needs an answer or finished, and a Stop button. Renders DEN_FEATURE_REMOTE_SESSION_SUBAGENTS."
+            },
+            "remoteSessionThreadView": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Desktop: open a sub-agent task's conversation: Clicking the row of a task on another computer opens its conversation beside the chat, where people read it and follow up. Needs tasks on other computers as sub-agents. Renders DEN_FEATURE_REMOTE_SESSION_THREAD_VIEW."
             },
             "activationChecklist": {
               "enum": [

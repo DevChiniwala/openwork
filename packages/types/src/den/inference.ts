@@ -170,6 +170,12 @@ export const INFERENCE_MODEL_ALIASES = {
     enabled: true,
     usageFactor: 1,
   },
+  "openai/gpt-6.1-terra": {
+    upstreamModel: "openai/gpt-6.1-terra",
+    displayName: "OpenWork: GPT-6.1 Terra",
+    enabled: true,
+    usageFactor: 1,
+  },
 } as const;
 
 export type InferenceModelAlias = keyof typeof INFERENCE_MODEL_ALIASES;

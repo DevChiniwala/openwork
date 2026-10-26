@@ -285,7 +285,7 @@ export const FEATURES = defineFeatures({
 
   browserFloatingView: {
     label: "Desktop: floating and full-screen browser",
-    description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.",
+    description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with the side rail's Browser button showing when it needs the person.",
     category: "computerUse",
     added: "2026-10-20",
     since: "2026-10",
@@ -306,9 +306,20 @@ export const FEATURES = defineFeatures({
   },
   remoteSessionSubagents: {
     label: "Desktop: tasks on other computers as sub-agents",
-    description: "A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.",
+    description: "A task the agent starts on the cloud or another computer shows in the chat as a sub-agent row: where it runs, whether it is working, needs an answer or finished, and a Stop button.",
     category: "computerUse",
     added: "2026-10-15",
+    since: "2026-10",
+    author: "reachjalil",
+    docs: "docs/session-offloading-architecture.md",
+    deployments: everywhere,
+    default: false,
+  },
+  remoteSessionThreadView: {
+    label: "Desktop: open a sub-agent task's conversation",
+    description: "Clicking the row of a task on another computer opens its conversation beside the chat, where people read it and follow up. Needs tasks on other computers as sub-agents.",
+    category: "computerUse",
+    added: "2026-10-26",
     since: "2026-10",
     author: "reachjalil",
     docs: "docs/session-offloading-architecture.md",

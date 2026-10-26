@@ -101,6 +101,7 @@ import { AdvancedView } from "@/react-app/domains/settings/pages/advanced-view";
 import { ClaudeImportView } from "@/react-app/domains/settings/pages/claude-import-view";
 import { AppearanceView } from "@/react-app/domains/settings/pages/appearance-view";
 import { KeyboardShortcutsView } from "@/react-app/domains/settings/pages/keyboard-shortcuts-view";
+import { ComputerUseView } from "@/react-app/domains/settings/pages/computer-use-view";
 import { CloudAccountView } from "@/react-app/domains/settings/pages/cloud-account-view";
 import {
   connectPluginsForComposer,
@@ -302,6 +303,7 @@ export function parseSettingsPath(pathname: string): {
     case "permissions":
     case "appearance":
     case "shortcuts":
+    case "computer":
     case "environment":
     case "updates":
     case "debug":
@@ -2528,6 +2530,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onOpenProviders={() => navigateSettingsPath("ai")}
           />
         );
+      case "computer":
+        return <ComputerUseView />;
       case "updates":
         return (
           <UpdatesView
