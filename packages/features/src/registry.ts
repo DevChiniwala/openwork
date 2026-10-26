@@ -347,7 +347,7 @@ export const FEATURES = defineFeatures({
 
   browserFloatingView: {
     label: "Desktop: floating and full-screen browser",
-    description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.",
+    description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with the side rail's Browser button showing when it needs the person.",
     category: "computerUse",
     added: "2026-10-20",
     since: "2026-10",
