@@ -161,7 +161,7 @@ export const billingPlanSummarySchema = z.object({
   invited: z.number().int(),
   freeSeatCount: z.number().int(),
   /** Present while an Enterprise trial runs: its user limit and when it ends. */
-  trial: z.object({ seats: z.number().int(), endsAt: z.string() }).nullable().optional(),
+  trial: z.object({ seats: z.number().int(), endsAt: z.string().datetime() }).nullable().optional(),
 });
 export type BillingPlanSummary = z.infer<typeof billingPlanSummarySchema>;
 

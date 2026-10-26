@@ -153,15 +153,15 @@ const updateEnterpriseMinimumUsersSchema = z.object({
 
 const enterpriseTrialSchema = z.object({
   seats: z.number().int().min(ENTERPRISE_TRIAL_MIN_SEATS).max(ENTERPRISE_TRIAL_MAX_SEATS),
-  endsAt: z.string().datetime({ offset: true }),
+  endsAt: z.string().datetime(),
 })
 
 const enterpriseBillingStateSchema = z.object({
   plan: z.object({
     tier: z.enum(["free", "team", "enterprise"]),
     source: z.enum(["default", "stripe", "manual", "grandfathered", "trial"]),
-    trial: z.object({ seats: z.number().int(), startedAt: z.string(), endsAt: z.string() }).nullable(),
-    lastTrial: z.object({ seats: z.number().int(), endsAt: z.string(), endedAt: z.string(), reason: z.enum(["expired", "ended_by_admin"]) }).nullable(),
+    trial: z.object({ seats: z.number().int(), startedAt: z.string().datetime(), endsAt: z.string().datetime() }).nullable(),
+    lastTrial: z.object({ seats: z.number().int(), endsAt: z.string().datetime(), endedAt: z.string().datetime(), reason: z.enum(["expired", "ended_by_admin"]) }).nullable(),
   }),
   freeSeatCount: z.number().int(),
   featureEnabled: z.boolean(),

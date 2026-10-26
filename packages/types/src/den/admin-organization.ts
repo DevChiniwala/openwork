@@ -7,7 +7,7 @@ export const adminOrganizationDetailSchema = z.object({
     planTier: z.string(), seatLimit: count, memberCount: count,
     /** Where the plan comes from; `trial` is an Enterprise trial. Absent from older servers. */
     planSource: z.string().optional(),
-    trialEndsAt: z.string().nullable().optional(),
+    trialEndsAt: z.string().datetime().nullable().optional(),
   }),
   members: z.array(z.object({
     id: z.string(), userId: z.string().nullable(), name: z.string().nullable(), email: z.string().nullable(),
