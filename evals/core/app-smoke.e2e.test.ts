@@ -4,6 +4,16 @@ import { appSmokeWorld } from "../worlds/first-run.ts";
 
 const test = spec.world(appSmokeWorld);
 
+/** The engine wraps lists in `{ data }`; older shapes answered with the bare list. */
+function engineItems(body: unknown): unknown {
+  if (body !== null && typeof body === "object" && !Array.isArray(body) && "data" in body) {
+    const data: unknown = body.data;
+    if (data !== null && typeof data === "object" && !Array.isArray(data) && "items" in data) return data.items;
+    return data;
+  }
+  return body;
+}
+
 test("app boots with a control route and meaningful visible content", async ({ world, user, probe }) => {
   expect(await probe.hash()).toBeTruthy();
   expect((await probe.text()).trim().length).toBeGreaterThan(40);
@@ -31,11 +41,11 @@ test("app boots with a control route and meaningful visible content", async ({ w
     await user.see("Run task");
     const workspaceId = /^#\/workspace\/([^/]+)\/session$/.exec(await probe.hash())?.[1];
     if (!workspaceId) throw new Error("The packaged app did not open its empty workspace route.");
-    const sessions = await probe.desktopApi(`/workspace/${workspaceId}/opencode/session`);
+    const sessions = await probe.desktopApi(`/workspace/${workspaceId}/opencode2/api/session`);
     expect(sessions.status).toBe(200);
-    expect(sessions.body).toEqual([]);
-    const tools = await world.packagedToolIds();
-    expect(tools).toEqual(expect.arrayContaining(["openwork_docs_search", "openwork_query"]));
+    expect(engineItems(sessions.body)).toEqual([]);
+    const engine = await world.packagedEngineInfo();
+    expect(engine.version).toMatch(/^2\./);
   } else {
     expect(world.workspace?.workspaceId).toBeTruthy();
     await user.looks([

@@ -26,7 +26,8 @@ test("historical Windows baseline before async extraction retains the original a
   const text = readFileSync(join(directory, "windows-startup.log"), "utf8");
   assert.equal(/https?:\/\/|[A-Z]:\\\\Users\\\\|Bearer |token|password|prompt/i.test(text), false);
   const rows = text.trim().split("\n").map((line) => JSON.parse(line));
-  for (const phase of ["app.ready", "window.create", "window.show", "runtime.start", "server.start", "engine.v1.resolve", "engine.version-probe", "engine.v1.serve", "engine.v2.resolve", "engine.v2.version-probe", "engine.v2.serve", "plugin-deps.seed", "plugin-deps.extract", "ca.bundle", "windows.shortcut"]) {
+  // Only phases current builds still emit; OpenCode v1 startup phases are gone.
+  for (const phase of ["app.ready", "window.create", "window.show", "runtime.start", "server.start", "engine.v2.resolve", "engine.v2.version-probe", "engine.v2.serve", "plugin-deps.seed", "plugin-deps.extract", "ca.bundle", "windows.shortcut"]) {
     assert.ok(rows.some((row) => row.event === "start" && row.phase === phase), `${phase} starts`);
     assert.ok(rows.some((row) => row.event === "end" && row.phase === phase && row.durationMs >= 0), `${phase} finishes`);
   }

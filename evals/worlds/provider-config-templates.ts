@@ -76,7 +76,7 @@ export async function providerConfigTemplates(seed: Seed) {
   const token = "fixture-local-owner";
   try {
     managed = await bootManagedOpenworkServer({ scratch, workspace, token, sink: () => undefined,
-      env: { OPENWORK_ENGINE_V2_PREVIEW: "chat", OPENWORK_DISABLE_FREE_INFERENCE: "1", PROCESS_ONLY_PROVIDER_SECRET: "synthetic-process-private",
+      env: { OPENWORK_DISABLE_FREE_INFERENCE: "1", PROCESS_ONLY_PROVIDER_SECRET: "synthetic-process-private",
         ...(process.env.OPENWORK_TEST_OPENCODE2 ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_TEST_OPENCODE2 } : {}) } });
     const call = async (path: string, method = "GET", body?: unknown, host = true) => {
       const response = await fetch(`${managed?.base}${path}`, { method,
@@ -87,17 +87,17 @@ export async function providerConfigTemplates(seed: Seed) {
       const json: unknown = text ? JSON.parse(text) : {};
       return isRecord(json) ? json : {};
     };
-    // The helper waits for v1 readiness. A cold Linux runner can still be
-    // downloading or starting v2, so wait for that prerequisite before sync.
+    // A cold Linux runner can still be downloading or starting the engine, so
+    // wait for it to report running before sync.
     const bootDeadline = Date.now() + 90_000;
     let ready = false;
     while (Date.now() < bootDeadline) {
       const status = await call("/experimental/engine-v2-preview/status");
       if (status.running === true) { ready = true; break; }
-      if (status.lastError) throw new Error("The fixture's native v2 engine failed to start");
+      if (status.lastError) throw new Error("The fixture's engine failed to start");
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    if (!ready) throw new Error("The fixture's native v2 engine did not become ready within 90 seconds");
+    if (!ready) throw new Error("The fixture's engine did not become ready within 90 seconds");
     await call("/den-session", "PUT", { baseUrl: origin, token: "synthetic-den-session", orgId: "org_fixture" });
     const sync = await call("/cloud-provider-sync/run", "POST", { reason: "manual" });
     if (sync.status === "failed") throw new Error(`Fixture Den sync failed: ${String(sync.message)}`);

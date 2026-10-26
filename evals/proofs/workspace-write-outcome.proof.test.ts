@@ -16,7 +16,7 @@ test("a person sees a failed report write as failed, and a saved report as saved
     await user.screenshot();
   };
   let failedSession = "";
-  await step("a denied report write creates no workspace file", async () => {
+  await step("a report write outside the workspace fails and creates no workspace file", async () => {
     await user.reload();
     failedSession = world.sessionIds[0];
     await user.navigate(world.sessionUrls[0]);
@@ -26,9 +26,7 @@ test("a person sees a failed report write as failed, and a saved report as saved
     await user.click({ role: "option", label: /^Report model, Workspace proof/ });
     await user.type("composer", world.failedPrompt);
     await user.click("Run task");
-    await user.see({ text: "Access an external folder?" }, { timeoutMs: 60_000 });
-    await user.click("Deny");
-    await user.see({ text: "The user rejected permission to use this specific tool call." }, { timeoutMs: 30_000 });
+    await user.see({ text: world.failedReply }, { timeoutMs: 60_000 });
     const writes = await world.writes(failedSession);
     const content = await world.fileContent();
     evidence.recordAssertionEvidence("The engine refused the write and no report was saved", `write=${writes.join(",")}; workspace file=${content !== null}`, writes.includes("error") && content === null);

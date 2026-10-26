@@ -17,12 +17,12 @@ export async function workspaceWriteOutcome(seed: Seed) {
   const successReply = "The report is saved in the workspace.";
   const witness = seed.mock({ agentWorkloads: [
     { promptMarker: failedPrompt, latestUserTurn: true, finalReply: failedReply,
-      steps: [{ tool: "write", arguments: { filePath: join(parse(workspace).root, "exp-wspath-proof-report.html"), content } }] },
+      steps: [{ tool: "write", arguments: { filePath: join(parse(workspace).root, "exp-wspath-proof-report.html"), path: join(parse(workspace).root, "exp-wspath-proof-report.html"), content } }] },
     { promptMarker: successPrompt, latestUserTurn: true, finalReply: successReply,
-      steps: [{ tool: "write", arguments: { filePath: filename, content } }] },
+      steps: [{ tool: "write", arguments: { filePath: filename, path: filename, content } }] },
   ] });
   const token = randomUUID();
-  const app = await seed.appWeb({ workspacePath: workspace, engine: "v1", name: "exp-wspath-write-outcome", headless: true,
+  const app = await seed.appWeb({ workspacePath: workspace, name: "exp-wspath-write-outcome", headless: true,
     mocks: { agent: witness }, env: { OPENWORK_TOKEN: token } });
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const listed = await fetch(`${app.openworkUrl}/workspaces`, { headers }).then(r => r.json());
@@ -42,19 +42,21 @@ export async function workspaceWriteOutcome(seed: Seed) {
   const sessionUrls: string[] = [];
   const sessionIds: string[] = [];
   for (const title of ["Report write failed", "Report saved"]) {
-    const response = await fetch(`${app.openworkUrl}${mount}/opencode/session`, { method: "POST", headers, body: JSON.stringify({ title }) });
+    const response = await fetch(`${app.openworkUrl}${mount}/opencode2/api/session`, { method: "POST", headers, body: JSON.stringify({ title, location: { directory: workspace } }) });
     if (!response.ok) throw new Error(`Arranging the report conversation failed: ${response.status}`);
-    const session = z.object({ id: z.string() }).parse(await response.json());
+    const created: unknown = await response.json();
+    const session = z.union([z.object({ data: z.object({ id: z.string() }) }).transform(value => value.data), z.object({ id: z.string() })]).parse(created);
     sessionIds.push(session.id);
     sessionUrls.push(`${app.webUrl}${mount}/session/${session.id}`);
   }
   return { app, sessionIds, sessionUrls, filename, destination: join(workspace, filename), content, failedPrompt, successPrompt, failedReply, successReply,
     async fileContent() { return readFile(join(workspace, filename), "utf8").catch(() => null); },
     async writes(sessionId: string) {
-      const response = await fetch(`${app.openworkUrl}${mount}/opencode/session/${sessionId}/message`, { headers });
+      const response = await fetch(`${app.openworkUrl}${mount}/opencode2/api/session/${sessionId}/message`, { headers });
       if (!response.ok) throw new Error(`Reading the tool outcome failed: ${response.status}`);
-      const messages: { parts: { type: string; tool?: string; state?: { status: string } }[] }[] = await response.json();
-      return messages.flatMap(m => m.parts.filter(p => p.type === "tool" && p.tool === "write").map(p => p.state?.status));
+      const part = z.object({ type: z.string(), name: z.string().optional(), state: z.object({ status: z.string() }).optional() });
+      const messages = z.object({ data: z.array(z.object({ content: z.array(part).optional() })) }).parse(await response.json()).data;
+      return messages.flatMap(m => (m.content ?? []).filter(p => p.type === "tool" && p.name === "write").map(p => p.state?.status));
     },
   };
 }

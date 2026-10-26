@@ -94,7 +94,7 @@ export async function workshopAgent(seed: Seed) {
       permission: { "*": "allow" },
     }));
     const { app, workspace } = await signedInAppWeb(seed, {
-      den, webPort, as: "a", engine: "v2", name: marker, workspacePath,
+      den, webPort, as: "a", name: marker, workspacePath,
       env: { OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "1000" },
     });
     const paths = resolveHeadlessWorldRuntimePaths(fileURLToPath(new URL("../../", import.meta.url)), app.handle.name);

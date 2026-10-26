@@ -6,7 +6,7 @@ import { v2StreamReconnect, streamedContinuityPrompt, streamedContinuityBullets 
 const test = spec.world(v2ChatRecovery, {
   timeout: 180_000,
   resources: { surfaces: ["appWeb"], services: ["mock"] },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 
 test("RECOVERY-01 a member sees older commands finish and a missed question after reconnecting", async ({ world, user, probe, step, evidence }) => {

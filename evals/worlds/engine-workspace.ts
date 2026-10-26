@@ -2,34 +2,47 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { performance as nodePerformance } from "node:perf_hooks";
-import { resolveEvalEngine, type MockHandle, type Place, type Seed } from "@openwork/env";
-import { configureProvider } from "./chat.ts";
+import type { MockHandle, Place, Seed } from "@openwork/env";
 import type { MockAgentToolStep, MockAgentWorkload } from "@openwork/labs";
 import { readHeadlessRuntimeManifest, resolveHeadlessWorldRuntimePaths } from "@openwork/world";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { configureProvider } from "./chat.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Real app, server and pinned engine; only the paid model transport is synthetic. */
-export async function engineParity(seed: Seed, { place }: { place: Place }, options: { mock?: MockHandle; env?: Record<string, string> } = {}) {
-  const engine = resolveEvalEngine();
-  // A fixture-owned provider, not OpenCode Zen: production policy must still
-  // retire Zen while these journeys exercise the real engines on our mock.
-  const bootstrapModel = { provider: "parity-witness", model: "parity-starter", name: "Parity witness" };
-  const bootstrapRef = `${bootstrapModel.provider}/${bootstrapModel.model}`;
-  const binary = engine === "v1" ? process.env.OPENWORK_OPENCODE_BIN ?? "opencode" : process.env.OPENWORK_OPENCODE2_BIN ?? "opencode2";
-  const { stdout } = await promisify(execFile)(binary, ["--version"], { timeout: 15_000 });
-  const engineVersion = stdout.trim().replace(/^opencode2\s+/, "").replace(/^v/, "");
+/** A JSON response body as a record; throws when the body is not an object. */
+export function responseRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a response object");
+  return Object.fromEntries(Object.entries(value));
+}
+
+/** The scripted model every engine workspace chats with; never a hosted or free provider. */
+export const WITNESS_PROVIDER_ID = "engine-witness";
+export const WITNESS_MODEL_ID = "witness-model";
+const WITNESS_MODEL_NAME = "Witness model";
+
+function witnessProvider(mockUrl: string) {
+  return { [WITNESS_PROVIDER_ID]: {
+    npm: "@ai-sdk/openai-compatible", name: "Engine witness",
+    options: { baseURL: `${mockUrl}/v1`, apiKey: "engine-witness-only" },
+    models: { [WITNESS_MODEL_ID]: { name: WITNESS_MODEL_NAME, tool_call: true, limit: { context: 128000, output: 8192 } } },
+  } };
+}
+
+/**
+ * Real app, server and OpenCode v2 engine; only the paid model transport is
+ * synthetic. The workspace chats with a scripted witness model under its own
+ * provider id, selected in the app the way a person's saved choice is.
+ */
+export async function engineWorkspace(seed: Seed, { place }: { place: Place }, options: { mock?: MockHandle; env?: Record<string, string> } = {}) {
   const nonce = randomUUID();
-  const prompt = `Introduce this workspace briefly. PARITY-${nonce}`;
+  const prompt = `Introduce this workspace briefly. WORKSPACE-${nonce}`;
   const reply = `Your workspace is ready. ${nonce}`;
-  const temporaryWorkspace = seed.tmpPath("engine-parity");
+  const temporaryWorkspace = seed.tmpPath("engine-workspace");
   await mkdir(temporaryWorkspace, { recursive: true });
-  // macOS aliases /tmp to /private/tmp; v1 instance disposal uses exact paths.
+  // macOS aliases /tmp to /private/tmp; the engine reports canonical paths.
   const workspacePath = await realpath(temporaryWorkspace);
   const mock = options.mock ?? (await seed.mock({ isolatedProcessEnv: true }).boot(place)).handle;
   try {
@@ -37,40 +50,24 @@ export async function engineParity(seed: Seed, { place }: { place: Place }, opti
       body: JSON.stringify({ workloads: [{ promptMarker: prompt, latestUserTurn: true, finalReply: reply, steps: [] }] }) });
     if (!configured.ok) throw new Error("Could not configure initial model witness");
     await mkdir(workspacePath, { recursive: true });
-    const bootstrapConfig = {
-      permission: { skill: "allow" },
-      model: bootstrapRef,
-      small_model: bootstrapRef,
-      provider: { [bootstrapModel.provider]: {
-        name: "Parity witness",
-        npm: "@ai-sdk/openai-compatible",
-        options: { baseURL: `${mock.url}/v1`, apiKey: "parity-starter-only" },
-        whitelist: [bootstrapModel.model],
-        models: { [bootstrapModel.model]: { name: bootstrapModel.name, tool_call: true,
-          limit: { context: 128_000, output: 16_384 },
-          provider: { npm: "@ai-sdk/openai-compatible", api: `${mock.url}/v1` } } },
-      } },
-    };
-    await writeFile(join(workspacePath, "opencode.json"), JSON.stringify(bootstrapConfig));
+    const witnessConfig = { permission: { skill: "allow" }, provider: witnessProvider(mock.url) };
+    await writeFile(join(workspacePath, "opencode.json"), JSON.stringify({
+      ...witnessConfig, model: `${WITNESS_PROVIDER_ID}/${WITNESS_MODEL_ID}`,
+    }));
     const startedAt = nodePerformance.now();
-    const app = await seed.appWeb({ name: "engine-parity", workspacePath, env: {
+    const app = await seed.appWeb({ name: "engine-workspace", workspacePath, env: {
       OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "1000",
       OPENWORK_LOG_FORMAT: "json",
-      ...(process.env.OPENWORK_OPENCODE_BIN ? { OPENWORK_OPENCODE_BIN: process.env.OPENWORK_OPENCODE_BIN } : {}),
       ...(process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}),
       ...options.env,
     } });
-    // Select the fixture model explicitly: other discoverable providers (for
-    // example a local Ollama) must never receive this synthetic workload.
-    const workspace = await seed.workspace(app, workspacePath);
-    await configureProvider(seed, app, workspace.workspaceId, bootstrapModel.provider, bootstrapModel.model, bootstrapConfig, engine);
     const interactiveMs = nodePerformance.now() - startedAt;
     const paths = resolveHeadlessWorldRuntimePaths(fileURLToPath(new URL("../../", import.meta.url)), app.handle.name);
     const manifest = await readHeadlessRuntimeManifest(paths.runtimeManifestPath);
     if (!manifest) throw new Error("Missing owned app runtime manifest");
     const ownerResponse = await fetch(`${app.openworkUrl}/tokens`, {
       method: "POST", headers: { "X-OpenWork-Host-Token": manifest.hostToken, "Content-Type": "application/json" },
-      body: JSON.stringify({ scope: "owner", label: "engine-parity-fixture" }),
+      body: JSON.stringify({ scope: "owner", label: "engine-workspace-fixture" }),
     });
     const owner: unknown = await ownerResponse.json();
     if (ownerResponse.status !== 201 || !owner || typeof owner !== "object" || !("token" in owner) || typeof owner.token !== "string") throw new Error("Could not mint fixture owner token");
@@ -83,10 +80,27 @@ export async function engineParity(seed: Seed, { place }: { place: Place }, opti
       const value: unknown = text ? JSON.parse(text) : null;
       return { status: response.status, body: value };
     };
+    const route = () => seed.evalIn(app, () => location.hash || `#${location.pathname}`);
+    /** The workspace the app opened, once it lands on a task. */
+    const workspaceId = async () => {
+      let observed = "";
+      for (const deadline = Date.now() + 90_000; Date.now() < deadline;) {
+        observed = await route();
+        const id = /\/workspace\/([^/]+)\/session/.exec(observed)?.[1];
+        if (id) return id;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      throw new Error(`The app never opened a workspace task; route: ${observed}`);
+    };
+    /** Select the witness model in the app, as a person's saved choice; repeat after signing in. */
+    const selectWitnessModel = async () => {
+      await configureProvider(seed, app, await workspaceId(), WITNESS_PROVIDER_ID, WITNESS_MODEL_ID, witnessConfig);
+    };
+    await selectWitnessModel();
     return {
-      app, engine, engineVersion, mock, prompt, reply, interactiveMs, startedAt, workspacePath, request, bootstrapModel,
+      app, mock, prompt, reply, interactiveMs, startedAt, workspacePath, request, route, workspaceId, selectWitnessModel,
+      providerId: WITNESS_PROVIDER_ID, modelId: WITNESS_MODEL_ID,
       documentIdentity: () => seed.evalIn(app, () => performance.timeOrigin),
-      route: () => seed.evalIn(app, () => location.hash || `#${location.pathname}`),
       async reloadRequests() {
         const log = await readFile(paths.headlessLogPath, "utf8");
         return log.split("\n").map((line) => {
@@ -159,7 +173,7 @@ export async function engineParity(seed: Seed, { place }: { place: Place }, opti
       async runtime() {
         const { status, body } = await request("/experimental/engine-v2-preview/status");
         if (status !== 200 || !body || typeof body !== "object" || !("chatRouting" in body)) throw new Error("Missing runtime identity");
-        if (engine === "v2" && (!("pid" in body) || typeof body.pid !== "number")) throw new Error("V2 must report a real process identity");
+        if (!("pid" in body) || typeof body.pid !== "number") throw new Error("The engine must report a real process identity");
         return { chatRouting: body.chatRouting === true, pid: "pid" in body ? body.pid : null, version: "version" in body ? body.version : null };
       },
       async [Symbol.asyncDispose]() { if (!options.mock) await mock.stop(); },

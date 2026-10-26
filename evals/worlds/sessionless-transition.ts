@@ -13,11 +13,11 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export async function sessionlessTransition(seed: Seed, app: AppWeb, workspaceId: string, engine: string, evidenceDirectory: string) {
+export async function sessionlessTransition(seed: Seed, app: AppWeb, workspaceId: string, evidenceDirectory: string) {
   await using setup = new AsyncDisposableStack();
   const endpoint = app.client.webSocketDebuggerUrl;
   if (!endpoint) throw new Error("Sessionless transition requires browser CDP");
-  const base = `/workspace/${encodeURIComponent(workspaceId)}/${engine === "v2" ? "opencode2/api" : "opencode"}/session`;
+  const base = `/workspace/${encodeURIComponent(workspaceId)}/opencode2/api/session`;
   const socket = new WebSocket(endpoint);
   setup.defer(() => socket.close());
   const pending = new Map<number, { resolve(): void; reject(error: Error): void }>();
@@ -79,7 +79,7 @@ export async function sessionlessTransition(seed: Seed, app: AppWeb, workspaceId
   setup.defer(async () => { await release(); await command("Fetch.disable"); });
   const timer = setTimeout(() => { expired = true; void release().catch((error: Error) => { failure = error; }); }, 30_000);
   setup.defer(() => clearTimeout(timer));
-  const filmPath = join(evidenceDirectory, `sessionless-transition-${engine}-film-${Date.now()}`);
+  const filmPath = join(evidenceDirectory, `sessionless-transition-film-${Date.now()}`);
   setup.use(await captureBrowserFilm(app, filmPath));
   await seed.evalIn(app, () => {
     const samples: Sample[] = [];

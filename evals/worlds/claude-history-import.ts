@@ -59,7 +59,7 @@ export async function claudeHistoryImportWorld(seed: Seed) {
 
   const { den, webPort } = await denForAppWeb(seed, { org: { name: "Northwind Studio", admin: { name: "Ola Owner" } } });
   const { app, workspace } = await signedInAppWeb(seed, {
-    den, webPort, name: "claude-history-import", workspacePath, engine: "v2",
+    den, webPort, name: "claude-history-import", workspacePath,
     env: { CLAUDE_CONFIG_DIR: claudeConfig },
   });
   return {

@@ -8,6 +8,11 @@ import type { Place, Seed } from "@openwork/env";
 import { z } from "zod";
 import { denForAppWeb } from "./signed-in-app-web.ts";
 
+/** The engine wraps its answers in `{ data }`. */
+function engineData(value: unknown): unknown {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && "data" in value ? value.data : value;
+}
+
 const AUTO = { providerID: "openwork-free", modelID: "openai/gpt-6-luna" };
 
 const record = z.record(z.string(), z.unknown());
@@ -120,9 +125,9 @@ export async function desktopSignInReturnsToTask(seed: Seed, { place }: { place:
   const workspace = workspaces.find((candidate) => candidate.path === workspacePath);
   if (!workspace) throw new Error("The desktop's local workspace is not registered.");
   const mount = `/workspace/${encodeURIComponent(workspace.id)}`;
-  const created = await server(`${mount}/opencode/session`, { method: "POST", body: JSON.stringify({ title: "Contract summary" }) });
+  const created = await server(`${mount}/opencode2/api/session`, { method: "POST", body: JSON.stringify({ title: "Contract summary", location: { directory: workspacePath } }) });
   if (!created.response.ok) throw new Error(`Arranging the conversation failed: ${created.response.status}`);
-  const sessionId = z.object({ id: z.string() }).parse(created.body).id;
+  const sessionId = z.object({ id: z.string() }).parse(engineData(created.body)).id;
   const sessionPath = `${mount}/session/${sessionId}`;
 
   // TODO(primitive): select the starting model. The desktop picks Auto on its
@@ -157,10 +162,10 @@ export async function desktopSignInReturnsToTask(seed: Seed, { place }: { place:
     },
     /** Conversations and workspaces on this desktop, from its local server. */
     async localCounts() {
-      const sessions = await server(`${mount}/opencode/session`);
+      const sessions = await server(`${mount}/opencode2/api/session`);
       const all = await server("/workspaces");
       return {
-        sessions: z.array(z.object({ id: z.string() })).parse(sessions.body).length,
+        sessions: z.array(z.object({ id: z.string() })).parse(engineData(sessions.body)).length,
         workspaces: z.object({ workspaces: z.array(z.object({ id: z.string() })) }).parse(all.body).workspaces.length,
       };
     },

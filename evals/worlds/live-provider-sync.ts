@@ -79,14 +79,13 @@ export async function liveProviderSync(seed: Seed) {
   const baseline = await createProvider(initialName, [initialModel, siblingModel]);
   const fixtureHostToken = randomBytes(32).toString("hex");
   const { app, workspace } = await signedInAppWeb(seed, {
-    den, webPort, as: "riley", engine: "v2", name: "live-provider-sync", workspacePath: seed.tmpPath("live-provider-sync"),
+    den, webPort, as: "riley", name: "live-provider-sync", workspacePath: seed.tmpPath("live-provider-sync"),
     env: {
       OPENWORK_HOST_TOKEN: fixtureHostToken, VITE_OPENWORK_HOST_TOKEN: fixtureHostToken,
       // A five-second pass must not be ordinary periodic sync in disguise.
       OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "600000",
-      // Without an override, the shipping server installs its pinned verified v2
-      // binary. No external opencode2 command or CLI --engine flag is required.
-      ...(process.env.OPENWORK_OPENCODE_BIN ? { OPENWORK_OPENCODE_BIN: process.env.OPENWORK_OPENCODE_BIN } : {}),
+      // Without an override, the shipping server installs its pinned verified
+      // engine binary. No external opencode2 command is required.
       ...(process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}),
     },
   });
@@ -108,7 +107,7 @@ export async function liveProviderSync(seed: Seed) {
       headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000),
     });
     const status: unknown = await response.json();
-    throw new Error(`Cold v2 session creation failed: ${error instanceof Error ? error.message : String(error)}; native startup status ${JSON.stringify(status)}`);
+    throw new Error(`Cold session creation failed: ${error instanceof Error ? error.message : String(error)}; native startup status ${JSON.stringify(status)}`);
   }
   await app.client.send("Performance.enable");
   // Den is the source of canonical opaque aliases and catalog display names.

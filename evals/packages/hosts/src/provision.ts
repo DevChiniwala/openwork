@@ -1583,7 +1583,7 @@ export function renderConnectorE2eTestEnv(facts: ConnectorE2eTestEnv): string {
     `OPENWORK_EVAL_DAYTONA_SANDBOX_A=${shellQuote(facts.sandboxA)}`,
     `OPENWORK_EVAL_DAYTONA_SANDBOX_B=${shellQuote(facts.sandboxB)}`,
     `OPENWORK_EVAL_CONNECTOR_MOCK_PUBLIC_URL=${shellQuote(facts.mockUrl)}`,
-    "OPENWORK_EVAL_MODEL=big-pickle",
+    "OPENWORK_EVAL_MODEL=connector-mock/connector-model",
     "",
   ].join("\n");
 }

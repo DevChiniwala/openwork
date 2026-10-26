@@ -4,7 +4,7 @@ import { denSignInOrganizationDelay } from "../worlds/den-sign-in-organization-d
 
 const test = spec.world(denSignInOrganizationDelay, {
   timeout: 180_000,
-  needs: { placement: "local", commands: ["bun", "opencode"] },
+  needs: { placement: "local", commands: ["bun"] },
   resources: { surfaces: ["appWeb"], services: [] },
 });
 

@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { eventually, type Place, type Seed } from "@openwork/env";
 import { browserScript } from "@openwork/cdp";
 import { modelRemovalHttpFixture } from "./model-removal-cdp.ts";
+import { configureProvider } from "./chat.ts";
+
+export const PRIMARY_PROVIDER_ID = "debug-primary";
+export const PRIMARY_MODEL_ID = "primary-model";
 
 export async function sessionDebug(seed: Seed, { place }: { place: Place }) {
   await using setup = new AsyncDisposableStack();
@@ -17,19 +21,19 @@ export async function sessionDebug(seed: Seed, { place }: { place: Place }) {
   if (!configured.ok) throw new Error("Could not configure the provider response witness");
   await mkdir(workspacePath, { recursive: true });
   // Real engine configuration; only the paid model HTTP transport is synthetic.
-  await writeFile(join(workspacePath, "opencode.json"), JSON.stringify({ provider: {
-    opencode: { npm: "@ai-sdk/openai-compatible", options: { baseURL: `${mock.url}/v1`, apiKey: "debug-provider-synthetic-key" },
-      whitelist: ["big-pickle"], models: { "big-pickle": { name: "Big Pickle", tool_call: true,
-        limit: { context: 128000, output: 8192 }, provider: { npm: "@ai-sdk/openai-compatible", api: `${mock.url}/v1` } } } },
+  const primary = { [PRIMARY_PROVIDER_ID]: { name: "Primary provider", npm: "@ai-sdk/openai-compatible",
+    options: { baseURL: `${mock.url}/v1`, apiKey: "debug-provider-synthetic-key" },
+    models: { [PRIMARY_MODEL_ID]: { name: "Primary model", tool_call: true, limit: { context: 128000, output: 8192 } } } } };
+  await writeFile(join(workspacePath, "opencode.json"), JSON.stringify({ model: `${PRIMARY_PROVIDER_ID}/${PRIMARY_MODEL_ID}`, provider: {
+    ...primary,
     "debug-secondary": { name: "Secondary provider", npm: "@ai-sdk/openai-compatible",
       options: { baseURL: `${mock.url}/v1`, apiKey: "debug-secondary-synthetic-key" },
       models: { "secondary-model": { name: "Secondary model", limit: { context: 64000, output: 4096 },
         provider: { npm: "@ai-sdk/openai-compatible", api: `${mock.url}/v1` } } } },
   } }));
   const token = randomUUID();
-  const app = await seed.appWeb({ name: "session-debug", workspacePath, engine: "v2", mouse: true, headless: true,
+  const app = await seed.appWeb({ name: "session-debug", workspacePath, mouse: true, headless: true,
     env: { OPENWORK_TOKEN: token,
-      ...(process.env.OPENWORK_OPENCODE_BIN ? { OPENWORK_OPENCODE_BIN: process.env.OPENWORK_OPENCODE_BIN } : {}),
       ...(process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}),
     } });
   // The native archive installer has a 180-second deadline. Settle that setup
@@ -46,8 +50,10 @@ export async function sessionDebug(seed: Seed, { place }: { place: Place }) {
     return { running: Reflect.get(status, "running") === true,
       version: typeof version === "string" ? version : null,
       lastError: typeof lastError === "string" ? lastError : null };
-  }, { within: 210_000, intervalMs: 1_000, label: "the provisioned v2 engine is running", until: status => status.running && Boolean(status.version) });
+  }, { within: 210_000, intervalMs: 1_000, label: "the provisioned engine is running", until: status => status.running && Boolean(status.version) });
   const workspace = await seed.workspace(app, workspacePath);
+  // Conversations use the scripted primary provider, as a person's saved choice.
+  await configureProvider(seed, app, workspace.workspaceId, PRIMARY_PROVIDER_ID, PRIMARY_MODEL_ID, { provider: primary });
   const otherSession = await seed.session(app, { title: "Independent conversation" });
   const session = await seed.session(app, { title: "Debug a conversation" });
   await app.client.send("Browser.grantPermissions", {

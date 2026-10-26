@@ -1,5 +1,5 @@
 import { engineSessionProbe } from "@openwork/behaviors";
-import { resolveEvalEngine, startBrowserFixture } from "@openwork/env";
+import { startBrowserFixture } from "@openwork/env";
 import type { Place, Seed } from "@openwork/env";
 import type { MockAgentToolStep } from "@openwork/labs";
 import { configureProvider } from "./chat.ts";
@@ -15,7 +15,6 @@ const MODEL = "browser-witness-model";
 export async function browserFastPath(seed: Seed, { place }: { place: Place }) {
   const stack = new AsyncDisposableStack();
   try {
-    const engine = resolveEvalEngine();
     const mock = (await seed.mock({ isolatedProcessEnv: true }).boot(place)).handle;
     stack.defer(() => mock.stop());
     const app = await seed.desktop({ name: "browser-fast-path" });
@@ -26,12 +25,12 @@ export async function browserFastPath(seed: Seed, { place }: { place: Place }) {
         options: { baseURL: `${mock.url}/v1`, apiKey: "sk-browser-fast-path-eval-only" },
         models: { [MODEL]: { name: "Browser witness", tool_call: true } },
       } },
-    }, engine);
+    });
     const fixture = stack.use(await startBrowserFixture(app, { requireSignIn: false }));
     const session = await seed.session(app, { title: "Application form" });
-    const native = engineSessionProbe({ engine, surface: app, workspaceId: workspace.workspaceId });
+    const native = engineSessionProbe({ surface: app, workspaceId: workspace.workspaceId });
     return {
-      app, engine, session, origin: fixture.origin,
+      app, session, origin: fixture.origin,
       /** The witness model runs these tool calls when it sees the prompt, then replies. */
       async prepareTurn(promptMarker: string, finalReply: string, steps: MockAgentToolStep[]) {
         const response = await fetch(`${mock.url}/admin/agent-workloads`, {

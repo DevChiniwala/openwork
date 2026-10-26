@@ -3,8 +3,6 @@ import type { Surface } from "@openwork/cdp";
 
 import { evalIn } from "./desktop.ts";
 
-export type EngineSessionProbeEngine = "v1" | "v2";
-
 export interface EngineSessionProbeSession {
   id: string;
   title: string;
@@ -50,7 +48,6 @@ interface ProbeTransportResult {
 }
 
 interface SharedProbeOptions {
-  engine: EngineSessionProbeEngine;
   workspaceId: string;
 }
 
@@ -111,39 +108,37 @@ function partValues(value: Record<string, unknown>): unknown[] {
   return text === undefined ? [] : [{ type: "text", text }];
 }
 
-/** A v2 tool result: the text parts of its content, else its result, as the app's v2 adapter shows it. */
-function v2ToolOutput(state: Record<string, unknown>): string {
+/** A tool result: the text parts of its content, else its result, as the app's engine adapter shows it. */
+function toolOutput(state: Record<string, unknown>): string {
   const content = Array.isArray(state.content) ? state.content : [];
   const text = content.flatMap((item) => isRecord(item) && readString(item, "type") === "text" ? [readString(item, "text") ?? ""] : []);
   if (text.length > 0) return text.join("\n");
   return typeof state.result === "string" ? state.result : "";
 }
 
-function parsePart(value: unknown, engine: EngineSessionProbeEngine): EngineSessionProbePart | null {
+function parsePart(value: unknown): EngineSessionProbePart | null {
   if (!isRecord(value)) return null;
   const state = readRecord(value, "state") ?? {};
   const metadata = readRecord(state, "metadata");
   return {
     type: readString(value, "type") ?? "",
     text: readString(value, "text") ?? "",
-    tool: engine === "v2" ? readString(value, "name") ?? readString(value, "tool") ?? "" : readString(value, "tool") ?? "",
-    callId: engine === "v2"
-      ? readString(value, "id") ?? readString(value, "callID") ?? ""
-      : readString(value, "callID") ?? readString(value, "callId") ?? readString(value, "toolCallId") ?? "",
+    tool: readString(value, "name") ?? readString(value, "tool") ?? "",
+    callId: readString(value, "id") ?? readString(value, "callID") ?? "",
     status: readString(state, "status") ?? "",
     input: readRecord(state, "input") ?? readRecord(value, "input") ?? {},
-    output: readString(state, "output") ?? readString(metadata, "output") ?? readString(value, "output") ?? v2ToolOutput(state),
+    output: readString(state, "output") ?? readString(metadata, "output") ?? readString(value, "output") ?? toolOutput(state),
     error: readString(state, "error") ?? readString(readRecord(state, "error") ?? {}, "message") ?? "",
   };
 }
 
-function parseMessage(value: unknown, engine: EngineSessionProbeEngine): EngineSessionProbeMessage | null {
+function parseMessage(value: unknown): EngineSessionProbeMessage | null {
   if (!isRecord(value)) return null;
   const source = responseData(value);
   if (!isRecord(source)) return null;
   return {
     parts: partValues(source).flatMap((part) => {
-      const parsed = parsePart(part, engine);
+      const parsed = parsePart(part);
       return parsed ? [parsed] : [];
     }),
   };
@@ -250,8 +245,8 @@ function result<T>(response: ProbeTransportResult, data: T, valid = true): Engin
 }
 
 export function engineSessionProbe(options: EngineSessionProbeOptions) {
-  const mount = `/workspace/${encodeURIComponent(options.workspaceId)}/${options.engine === "v2" ? "opencode2" : "opencode"}`;
-  const sessionPath = options.engine === "v2" ? "/api/session" : "/session";
+  const mount = `/workspace/${encodeURIComponent(options.workspaceId)}/opencode2`;
+  const sessionPath = "/api/session";
 
   const get = async (sessionId: string): Promise<EngineSessionProbeResult<EngineSessionProbeSession | null>> => {
     const response = await request(options, `${mount}${sessionPath}/${encodeURIComponent(sessionId)}`);
@@ -268,7 +263,7 @@ export function engineSessionProbe(options: EngineSessionProbeOptions) {
       `${mount}${sessionPath}/${encodeURIComponent(sessionId)}/message?limit=${encodeURIComponent(String(limit))}`,
     );
     const parsed = responseItems(response.body).flatMap((message) => {
-      const item = parseMessage(message, options.engine);
+      const item = parseMessage(message);
       return item ? [item] : [];
     });
     return result(response, parsed);
@@ -279,19 +274,13 @@ export function engineSessionProbe(options: EngineSessionProbeOptions) {
     const responses = await Promise.all([
       request(options, `${mount}${sessionPath}/${encodedSessionId}`),
       request(options, `${mount}${sessionPath}/${encodedSessionId}/message?limit=50`),
-      ...(options.engine === "v1"
-        ? [
-            request(options, `${mount}${sessionPath}/${encodedSessionId}/todo`),
-            request(options, `${mount}${sessionPath}/status`),
-          ]
-        : []),
     ]);
     const sessionResponse = responses[0];
     const messagesResponse = responses[1];
     if (!sessionResponse || !messagesResponse) throw new Error("Engine session snapshot responses were incomplete.");
     const session = parseSession(sessionResponse.body);
     const parsedMessages = responseItems(messagesResponse.body).flatMap((message) => {
-      const item = parseMessage(message, options.engine);
+      const item = parseMessage(message);
       return item ? [item] : [];
     });
     const failed = responses.find((response) => response.status < 200 || response.status >= 300);
@@ -317,11 +306,11 @@ export function engineSessionProbe(options: EngineSessionProbeOptions) {
   ): Promise<EngineSessionProbeResult<EngineSessionProbeSession | null>> => {
     const createdResponse = await request(options, `${mount}${sessionPath}`, {
       method: "POST",
-      body: options.engine === "v2" ? { location: { directory } } : { title },
+      body: { location: { directory } },
       timeoutMs: 30_000,
     });
     const created = parseSession(createdResponse.body);
-    if (options.engine === "v1" || created === null || createdResponse.status < 200 || createdResponse.status >= 300) {
+    if (created === null || createdResponse.status < 200 || createdResponse.status >= 300) {
       return result(createdResponse, created, created !== null);
     }
     const renamedResponse = await request(
@@ -335,23 +324,14 @@ export function engineSessionProbe(options: EngineSessionProbeOptions) {
 
   const approvePendingPermissions = async (sessionId: string): Promise<number[]> => {
     const encodedSessionId = encodeURIComponent(sessionId);
-    const modern = await request(options, `${mount}/api/session/${encodedSessionId}/permission`);
-    let candidates = responseItems(modern.body).flatMap((value) => {
+    const pending = await request(options, `${mount}/api/session/${encodedSessionId}/permission`);
+    const ids = responseItems(pending.body).flatMap((value) => {
       const id = readString(value, "id");
-      return id ? [{ id, modern: true }] : [];
+      return id ? [id] : [];
     });
-    if (options.engine === "v1" && candidates.length === 0) {
-      const legacy = await request(options, `${mount}/permission`);
-      candidates = responseItems(legacy.body).flatMap((value) => {
-        const id = readString(value, "id");
-        return id && readString(value, "sessionID") === sessionId ? [{ id, modern: false }] : [];
-      });
-    }
     const statuses: number[] = [];
-    for (const candidate of candidates) {
-      const path = candidate.modern
-        ? `/api/session/${encodedSessionId}/permission/${encodeURIComponent(candidate.id)}/reply`
-        : `/permission/${encodeURIComponent(candidate.id)}/reply`;
+    for (const id of ids) {
+      const path = `/api/session/${encodedSessionId}/permission/${encodeURIComponent(id)}/reply`;
       const response = await request(options, `${mount}${path}`, {
         method: "POST",
         body: { reply: "once" },
