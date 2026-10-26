@@ -1,2 +1,4 @@
 /** Shared with the v2 bridge without importing the host's storage dependencies. */
 export const OPENWORK_CLOUD_UPLOADS_EXTENSION_ID = "openwork-cloud-uploads";
+/** The v2 engine permission a person answers before an agent's Drive upload runs. */
+export const DRIVE_UPLOAD_PERMISSION = "drive_upload_file";

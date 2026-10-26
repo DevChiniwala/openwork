@@ -6,14 +6,79 @@ import { openworkReadTransport, type OpenworkReadTransport } from "./opencode-pl
 import { createV2ReadAdapter, readV2SessionActivity } from "./opencode-v2-read-adapter.js";
 import { isRecord } from "./workspace-kv-store.js";
 import { createV2BrowserBridge } from "./opencode-v2-browser-bridge.js";
-import { OPENWORK_CLOUD_UPLOADS_EXTENSION_ID } from "./extensions/cloud-upload-constants.js";
+import { DRIVE_UPLOAD_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID } from "./extensions/cloud-upload-constants.js";
 import { SESSION_GROUP_COMMAND_IDS } from "./opencode-plugins/openwork-session-groups.js";
+import { loopbackFetch } from "./server-fetch.js";
 
 const requestSchema = z.object({
   name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload"]),
   input: z.unknown(),
   sessionId: z.string().max(256).optional(),
+  // The calling tool's place in its chat, where an upload approval is shown.
+  caller: z.object({
+    directory: z.string().min(1).max(4096), messageId: z.string().min(1).max(256),
+    callId: z.string().min(1).max(256), agent: z.string().min(1).max(256).optional(),
+  }).strict().optional(),
 });
+/** How long the person has to answer an upload approval. */
+const APPROVAL_WAIT_MS = 10 * 60_000;
+const createdPermission = z.object({ data: z.object({ id: z.string(), effect: z.string() }) });
+const repliedPermission = z.object({ type: z.literal("permission.replied"), data: z.object({ requestID: z.string(), reply: z.string() }) });
+
+export type EngineConnection = { url: string; username: string; password: string };
+export type EngineApproval = {
+  directory: string; sessionId: string; messageId: string; callId: string; agent?: string;
+  action: string; resources: string[]; metadata: Record<string, unknown>;
+};
+
+/**
+ * Asks the person in the calling chat through the engine's own permission
+ * prompt and returns only once they allow this request. A rule that would
+ * allow it without asking is refused, so no workspace or engine setting can
+ * pre-approve it, and nothing is saved for later requests.
+ */
+export async function askEngineApproval(engine: EngineConnection | undefined, approval: EngineApproval, signal: AbortSignal): Promise<void> {
+  if (!engine) throw new Error("OpenWork cannot ask for your approval right now, so nothing was uploaded.");
+  const location = `location[directory]=${encodeURIComponent(approval.directory)}`;
+  const authorization = `Basic ${Buffer.from(`${engine.username}:${engine.password}`).toString("base64")}`;
+  const watching = new AbortController();
+  const stop = AbortSignal.any([signal, watching.signal]);
+  try {
+    // Subscribe first so the answer cannot arrive unseen.
+    const events = await loopbackFetch(new URL(`/api/event?${location}`, engine.url), { headers: { authorization, accept: "text/event-stream" }, signal: stop });
+    if (!events.ok || !events.body) throw new Error("OpenWork could not ask for your approval, so nothing was uploaded.");
+    const response = await loopbackFetch(new URL(`/api/session/${encodeURIComponent(approval.sessionId)}/permission?${location}`, engine.url), {
+      method: "POST", headers: { authorization, "content-type": "application/json" }, signal: stop,
+      body: JSON.stringify({
+        action: approval.action, resources: approval.resources, save: [], metadata: approval.metadata,
+        source: { type: "tool", messageID: approval.messageId, id: approval.callId }, ...(approval.agent ? { agent: approval.agent } : {}),
+      }),
+    });
+    const created = createdPermission.safeParse(await response.json().catch(() => null));
+    if (!response.ok || !created.success) throw new Error("OpenWork could not ask for your approval, so nothing was uploaded.");
+    if (created.data.data.effect === "deny") throw new Error("Your permissions do not allow this upload, so nothing was uploaded.");
+    if (created.data.data.effect !== "ask") throw new Error("This upload was not shown to you for approval, so nothing was uploaded.");
+    const reader = events.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffered = "";
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) throw new Error("The approval closed before you answered, so nothing was uploaded.");
+      const frames = (buffered + chunk.value).split(/\r?\n\r?\n/);
+      buffered = frames.pop() ?? "";
+      for (const frame of frames) {
+        const data = frame.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("\n");
+        let event: unknown;
+        try { event = JSON.parse(data); } catch { continue; }
+        const replied = repliedPermission.safeParse(event);
+        if (!replied.success || replied.data.data.requestID !== created.data.data.id) continue;
+        if (replied.data.data.reply === "once" || replied.data.data.reply === "always") return;
+        throw new Error("You declined this upload, so nothing was uploaded.");
+      }
+    }
+  } finally {
+    watching.abort();
+  }
+}
 // The only commands this bridge runs: sidebar group changes, written through
 // the host's session-group routes and nothing else.
 const commandIds: readonly string[] = SESSION_GROUP_COMMAND_IDS;
@@ -44,7 +109,10 @@ function bridgeAffordances(value: unknown): unknown {
  * Build this host entry as one bundle: packaged desktops relocate engine plugin
  * files, and the shared factory and its request-local transport must use the
  * same AsyncLocalStorage instance rather than separately bundled copies. */
-export async function createV2ContextBridge(hostRequest: (path: string, init?: RequestInit) => Promise<unknown>) {
+export async function createV2ContextBridge(
+  hostRequest: (path: string, init?: RequestInit) => Promise<unknown>,
+  engine?: () => EngineConnection | undefined,
+) {
   const token = randomBytes(32).toString("base64url");
   const plugin = await OpenWorkExtensionsPreview();
   const server = await serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
@@ -54,8 +122,7 @@ export async function createV2ContextBridge(hostRequest: (path: string, init?: R
       const text = await request.text();
       if (text.length > 64_000) return new Response(null, { status: 413 });
       const call = requestSchema.parse(JSON.parse(text));
-      // Uploads share the host extension call's own transfer budget.
-      const deadline = AbortSignal.timeout(call.name === "openwork_drive_upload" ? 130_000 : 60_000);
+      let deadline = AbortSignal.timeout(60_000);
       const read = (path: string, init?: RequestInit) => {
         const signal = AbortSignal.any([request.signal, deadline, ...(init?.signal ? [init.signal] : [])]);
         signal.throwIfAborted();
@@ -76,10 +143,20 @@ export async function createV2ContextBridge(hostRequest: (path: string, init?: R
         return Response.json(await read("/experimental/connect/skills/read", { method: "POST", body: JSON.stringify(input) }));
       }
       // The Drive upload uses the same authorized-root file transport
-      // v1 reaches through extension.call, never arbitrary extension actions.
+      // v1 reaches through extension.call, never arbitrary extension actions,
+      // and only after the person allows this file in the calling chat.
       if (call.name === "openwork_drive_upload") {
+        const args = driveUploadSchema.parse(call.input);
+        if (!call.sessionId || !call.caller) throw new Error("This OpenWork engine cannot ask for your approval, so nothing was uploaded.");
+        await askEngineApproval(engine?.(), {
+          directory: call.caller.directory, sessionId: call.sessionId, messageId: call.caller.messageId, callId: call.caller.callId,
+          ...(call.caller.agent ? { agent: call.caller.agent } : {}), action: DRIVE_UPLOAD_PERMISSION, resources: [args.path],
+          metadata: { path: args.path, target: args.folderId ? `Google Drive folder ${args.folderId}` : "Google Drive", ...(args.connectionId ? { connectionId: args.connectionId } : {}) },
+        }, AbortSignal.any([request.signal, AbortSignal.timeout(APPROVAL_WAIT_MS)]));
+        // The transfer gets the host extension call's own budget once approved.
+        deadline = AbortSignal.timeout(130_000);
         return Response.json(await read("/experimental/extensions/call", { method: "POST", body: JSON.stringify({
-          extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: "drive_upload_file", args: driveUploadSchema.parse(call.input), context: {},
+          extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: "drive_upload_file", args, context: {},
         }) }));
       }
       const transport: OpenworkReadTransport = {

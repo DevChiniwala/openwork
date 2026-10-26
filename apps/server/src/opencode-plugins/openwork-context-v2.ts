@@ -14,16 +14,18 @@ type Tool = {
   description: string;
   input: Record<string, unknown>;
   options: { codemode: boolean };
-  execute(input: unknown, context: { signal: AbortSignal; sessionID: string }): Promise<z.infer<typeof browserResult>>;
+  execute(input: unknown, context: { signal: AbortSignal; sessionID: string; messageID?: string; id?: string; agent?: string }): Promise<z.infer<typeof browserResult>>;
 };
 type Context = CloudSkillContext & {
+  location?: { directory?: string };
   options: { url: string; token: string; browser?: { url: string; token: string } };
   tool: { transform(callback: (editor: { add(tool: Tool): void }) => void): Promise<{ dispose(): Promise<void> }> };
 };
 
-// Separate credentials authorize app reads, sidebar group changes and one Drive
-// file upload, and conversation-scoped browser and computer operations. Neither
-// grants arbitrary host APIs or other OpenWork app commands.
+// Separate credentials authorize app reads, sidebar group changes and Drive
+// file uploads the person approves, and conversation-scoped browser and
+// computer operations. Neither grants arbitrary host APIs or other OpenWork
+// app commands.
 export default {
   id: "openwork.context",
   async setup(context: Context) {
@@ -56,7 +58,7 @@ export default {
       }
       editor.add({
         name: "openwork_drive_upload",
-        description: "Upload one workspace file to the member's Google Drive through OpenWork Cloud, outside model context. Use this when the user asks to put a local file in Drive; it does not need a separate Google sign-in. Bytes, basename and MIME type are preserved without Office conversion. path is workspace-relative or an absolute path under an authorized workspace root. folderId selects a Drive parent folder; connectionId (google-workspace or emc_...) selects a Google account and never falls back to another. Returns the Drive file id. Never retry an unconfirmed upload automatically.",
+        description: "Upload one workspace file to the member's Google Drive through OpenWork Cloud, outside model context. Use this when the user asks to put a local file in Drive; it does not need a separate Google sign-in. Bytes, basename and MIME type are preserved without Office conversion. path is workspace-relative or an absolute path under an authorized workspace root. folderId selects a Drive parent folder; connectionId (google-workspace or emc_...) selects a Google account and never falls back to another. The person approves each upload in the chat first; if they decline, do not upload it another way. Returns the Drive file id. Never retry an unconfirmed upload automatically.",
         input: { type: "object", properties: {
           path: { type: "string" }, folderId: { type: "string" }, connectionId: { type: "string", pattern: "^(google-workspace|emc_[A-Za-z0-9]+)$" },
         }, required: ["path"], additionalProperties: false },
@@ -65,7 +67,10 @@ export default {
           const response = await fetch(context.options.url, {
             method: "POST", redirect: "error", signal: call.signal,
             headers: { Authorization: `Bearer ${context.options.token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "openwork_drive_upload", input }),
+            // The host asks the person in this tool call's chat before uploading.
+            body: JSON.stringify({ name: "openwork_drive_upload", input, sessionId: call.sessionID, ...(context.location?.directory && call.messageID && call.id ? {
+              caller: { directory: context.location.directory, messageId: call.messageID, callId: call.id, ...(call.agent ? { agent: call.agent } : {}) },
+            } : {}) }),
           });
           const text = await response.text();
           if (!response.ok) throw new Error(`Drive upload failed: ${text}`);
