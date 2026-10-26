@@ -16,7 +16,8 @@ import {
 } from "../../app/lib/den-session-events";
 import { evalRelaunchDesktopApp, readDesktopDistributionInfo } from "../../app/lib/desktop";
 import { outboundEgressAllowed } from "../../app/lib/enterprise-activation";
-import { isDesktopRuntime } from "../../app/lib/runtime-env";
+import { isDesktopRuntime, isElectronRuntime } from "../../app/lib/runtime-env";
+import { ComputerBridge } from "../domains/session/computer/computer-store";
 import { Button } from "../../components/ui/button";
 import { t } from "../../i18n";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
@@ -467,6 +468,8 @@ export function AppRoot() {
             <DenSigninGate>
               <OpenWorkWebAccessGate>
                 <CloudWorkspaceStatusProvider>
+                  {/* Settings unmounts the chat; computer use stays connected on every route. */}
+                  {isElectronRuntime() ? <ComputerBridge /> : null}
                   <Routes>
               <Route
                 path="/signin"

@@ -16,7 +16,9 @@ test("a person sets up computer use once in Settings, the chat header shows no c
     await probe.eventually(() => probe.dom("[data-session-header]"), { within: 60_000, until: (dom) => dom.elements.length === 1, label: "the chat header is on screen" });
     const controls = await probe.dom(headerComputerControls);
     expect(controls.elements).toHaveLength(0);
-    evidence.recordAssertionEvidence("No status in the chat", "With the rollout on, the chat header has no Computer button or status.", controls.elements.length === 0);
+    const browserButtons = await probe.dom('button[aria-label^="Browser"]');
+    expect(browserButtons.elements).toHaveLength(1);
+    evidence.recordAssertionEvidence("No status in the chat", "With computer use and the floating browser on, the chat header has no Computer button or status and one Browser button.", controls.elements.length === 0 && browserButtons.elements.length === 1);
     await user.screenshot();
   });
   await agent.run("settings.panel.open", { panel: "computer" });

@@ -132,7 +132,7 @@ export function ComputerUseView() {
       <LayoutStack>
         <LayoutSection>
           <LayoutSectionHeader>
-            <LayoutSectionTitle>Computer use</LayoutSectionTitle>
+            <LayoutSectionTitle>Not turned on</LayoutSectionTitle>
             <LayoutSectionDescription>Computer use isn't turned on in this app.</LayoutSectionDescription>
           </LayoutSectionHeader>
         </LayoutSection>
@@ -153,7 +153,7 @@ export function ComputerUseView() {
     <LayoutStack>
       <LayoutSection>
         <LayoutSectionHeader>
-          <LayoutSectionTitle>Computer use</LayoutSectionTitle>
+          <LayoutSectionTitle>Setup</LayoutSectionTitle>
           <LayoutSectionDescription>
             The agent uses apps on your computer when a task needs one. Set it up once here and every chat can use it. While it works, the chat shows a live view with Take over and Stop.
           </LayoutSectionDescription>
@@ -190,7 +190,12 @@ export function ComputerUseView() {
         <LayoutSectionItem>
           <LayoutSectionItemHeader>
             <LayoutSectionItemTitle>Status</LayoutSectionItemTitle>
-            <LayoutSectionItemDescription>{readError ? `Couldn't check this computer. ${readError}` : status?.detail ?? "Checking…"}</LayoutSectionItemDescription>
+            <LayoutSectionItemDescription>
+              {readError ? `Couldn't check this computer. ${readError}`
+                // The helper's own detail points at a setup screen; this page is that screen.
+                : showPermissions && status.readiness === "setup-required" ? "Turn on both macOS permissions below."
+                  : status?.detail ?? "Checking…"}
+            </LayoutSectionItemDescription>
             <LayoutSectionItemHeaderActions>
               <span
                 role="status"
