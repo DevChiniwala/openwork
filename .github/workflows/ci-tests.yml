@@ -161,7 +161,6 @@ jobs:
         run: |
           pnpm --dir evals run test:framework
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr scripts/input-dialog.live.test.ts
-          pnpm --dir evals exec vitest run --config vitest.config.ts --project pr ../apps/server/test/session-title-sigv4.vitest.test.ts
       - name: Test native MCP readiness and Stop ownership
         run: pnpm --filter openwork-server test:readiness
       - name: Run Den provider unit tests

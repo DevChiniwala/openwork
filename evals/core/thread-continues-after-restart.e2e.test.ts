@@ -50,8 +50,10 @@ for (const { title, mode } of cases) {
       if (!Array.isArray(value)) throw new Error("Expected engine messages");
       return value.map((entry: unknown) => {
         const message = record(entry);
-        const parts = message.content;
-        if (!Array.isArray(parts)) throw new Error("Expected message parts");
+        // OpenCode v2 keeps assistant output in `content` and a user turn's words in `text`.
+        const parts = Array.isArray(message.content) ? message.content
+          : typeof message.text === "string" ? [{ type: "text", text: message.text }] : null;
+        if (!parts) throw new Error("Expected message parts");
         return { id: String(message.id), role: String(message.type), parts: parts.map(record) };
       });
     };

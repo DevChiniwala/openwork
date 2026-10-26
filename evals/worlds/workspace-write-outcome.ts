@@ -42,7 +42,7 @@ export async function workspaceWriteOutcome(seed: Seed) {
   const sessionUrls: string[] = [];
   const sessionIds: string[] = [];
   for (const title of ["Report write failed", "Report saved"]) {
-    const response = await fetch(`${app.openworkUrl}${mount}/opencode2/api/session`, { method: "POST", headers, body: JSON.stringify({ title, location: { directory: workspace } }) });
+    const response = await fetch(`${app.openworkUrl}${mount}/opencode2/api/session`, { method: "POST", headers, body: JSON.stringify({ title, model: { providerID: "workspace-proof", id: "report" }, location: { directory: workspace } }) });
     if (!response.ok) throw new Error(`Arranging the report conversation failed: ${response.status}`);
     const created: unknown = await response.json();
     const session = z.union([z.object({ data: z.object({ id: z.string() }) }).transform(value => value.data), z.object({ id: z.string() })]).parse(created);
