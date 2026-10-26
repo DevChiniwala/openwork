@@ -158,7 +158,7 @@ pnpm dev:ui
 pnpm typecheck
 pnpm build
 pnpm build:ui
-pnpm test:e2e
+pnpm test:boot
 ```
 
 ## 故障排除
@@ -184,7 +184,7 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 openwork
 
 - 在進行更改之前，請查看 `AGENTS.md` 以及 `VISION.md`、`PRINCIPLES.md`、`PRODUCT.md` 和 `ARCHITECTURE.md` 以了解產品目標。
 - 在倉庫內工作之前，確保已安裝 Node.js、`pnpm`、Rust 工具鏈和 `opencode`。
-- 每次檢出後運行一次 `pnpm install`，然後在打開 PR 之前使用 `pnpm typecheck` 加上 `pnpm test:e2e`（或目標腳本子集）驗證您的更改。
+- 每次檢出後運行一次 `pnpm install`，然後在打開 PR 之前使用 `pnpm typecheck` 加上 `pnpm test:boot`（或目標腳本子集）驗證您的更改。
 - 按照 `AGENTS.md` 中描述的 `.opencode/skills/prd-conventions/SKILL.md` 約定，將新的 PRD 添加到 `packages/app/pr/<name>.md`。
 
 ## 面向團隊和企業

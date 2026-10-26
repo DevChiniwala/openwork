@@ -13,7 +13,7 @@ const overrides: Record<string, string | undefined> = {
   HOME: dir, XDG_CONFIG_HOME: join(dir, "config"), XDG_DATA_HOME: join(dir, "data"),
   XDG_CACHE_HOME: join(dir, "cache"), XDG_STATE_HOME: join(dir, "state"),
   OPENWORK_DATA_DIR: join(dir, "openwork"), OPENWORK_RUNTIME_DB: join(dir, "runtime.sqlite"),
-  OPENCODE_DB: join(dir, "v1.db"), OPENWORK_ENGINE_AUTO_UPGRADE: "0",
+  OPENCODE_DB: join(dir, "v1.db"),
   OPENWORK_WEB_ROOT: join(dir, "web"), OPENWORK_WEB_BOOTSTRAP_TOKEN: undefined,
   OPENWORK_CORS_ORIGINS: undefined, OPENWORK_ALLOWED_HOSTS: undefined,
 };

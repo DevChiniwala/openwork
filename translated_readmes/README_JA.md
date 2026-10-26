@@ -175,7 +175,7 @@ pnpm dev:ui
 pnpm typecheck
 pnpm build
 pnpm build:ui
-pnpm test:e2e
+pnpm test:boot
 ```
 
 ## トラブルシューティング
@@ -203,7 +203,7 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 openwork
 
 - 変更を行う前に、`AGENTS.md`、`VISION.md`、`PRINCIPLES.md`、`PRODUCT.md`、`ARCHITECTURE.md` を確認してプロダクトの目標を理解してください。
 - リポジトリ内で作業する前に、Node.js、`pnpm`、Rustツールチェーン、および `opencode` がインストールされていることを確認してください。
-- チェックアウトごとに `pnpm install` を実行し、PRを作成する前に `pnpm typecheck` と `pnpm test:e2e`（または対象のスクリプトサブセット）で変更を検証してください。
+- チェックアウトごとに `pnpm install` を実行し、PRを作成する前に `pnpm typecheck` と `pnpm test:boot`（または対象のスクリプトサブセット）で変更を検証してください。
 - PRを作成する際は `.github/pull_request_template.md` を使用し、実行したコマンド、結果、手動検証手順、およびエビデンスを含めてください。
 - CIが失敗した場合は、PRの本文でコード関連のリグレッションか外部/環境/認証のブロッカーかを分類してください。
 - 新しいPRDは `AGENTS.md` に記載されている `.opencode/skills/prd-conventions/SKILL.md` の規約に従い、`apps/app/pr/<name>.md` に追加してください。
