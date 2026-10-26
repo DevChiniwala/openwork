@@ -32,7 +32,8 @@
     "test:checkpoints": "tsx --test scripts/checkpoints.test.ts",
     "test:event-socket": "tsx --conditions=development --test scripts/event-socket.test.ts",
     "test:session-cells": "tsx --test scripts/session-cells.test.ts",
-    "test:member-files": "tsx --test scripts/member-files.test.ts"
+    "test:member-files": "tsx --test scripts/member-files.test.ts",
+    "member-files:e2e": "tsx --conditions=development --test scripts/member-files-e2e.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.0.12",
@@ -47,6 +48,7 @@
     "axios": "1.20.0"
   },
   "devDependencies": {
+    "@openwork/sandbox": "workspace:*",
     "@types/node": "^24.0.0",
     "esbuild": "0.25.12",
     "tsx": "^4.23.1",
