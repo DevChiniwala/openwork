@@ -25,6 +25,7 @@ import { readToolFile } from "./tool-files.js"
 import type { SessionComputer } from "./types.js"
 import type { CellsStore } from "./cells-store.js"
 import type { MemoryResolver } from "./memory.js"
+import { localMemberFileIndex, MemberFiles, type MemberFileIndex } from "./member-files.js"
 
 /**
  * How the host runs step-mode turns' steps (see steps.ts). Without it (Node), each step runs as soon as it is due, in
@@ -39,6 +40,8 @@ export type CellsHost = {
   cells?: CellsStore
   /** While true, nothing goes to the Den index from this cell (a moved chat waiting for its owner cell's handoff). */
   indexHeld?: () => boolean
+  /** Where My files' rows live: the owner's cell, for a chat in its own cell (cells.ts). Defaults to this database. */
+  memberFileIndex?: MemberFileIndex
 }
 
 /** Both hosts build the same runner, tools, file store and live events; only SQLite ownership differs. */
@@ -77,6 +80,10 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
   }
   const blobs = config.files.kind === "disk" ? diskBlobStore(config.files.directory) : config.files.kind === "s3" ? s3BlobStore(config.files) : null
   const files = blobs ? new SavedFiles(store, blobs, config.fileLimits) : undefined
+  // My files: rows here (Node, an owner cell) or in the owner's cell (a chat in its own cell); bytes in the same store.
+  const memberFiles = blobs
+    ? new MemberFiles(cellsHost.memberFileIndex ?? localMemberFileIndex(store.db, (fn) => store.transaction(fn)), blobs, config.memberFileLimits)
+    : undefined
   // Sealed history and large outputs (storage/): sealing is off unless HEADLESS_SEGMENTS=on; reading always works.
   const storage = new SessionStorage(store, blobs, { ...config.storage, contextCharBudget: config.limits.contextCharBudget }, errors)
   for (const job of storage.jobs()) background.register(job)
@@ -123,6 +130,7 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
     events,
     files,
     computer,
+    memberFiles,
     errors,
     workbotTelemetry: workbotTelemetryReporter(config),
     resume,
@@ -132,7 +140,7 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
   })
   // Step-mode turns that startup recovery left going continue from their next step (never throws).
   const steps = runner.recoverSteps()
-  const app = createApp({ store, runner, apiToken: config.apiToken, healthConfig: config, models: gatewayModelCatalog(config), modelProbe: createModelProbe(config, modelFetch), events, files, computer, errors, cells: cellsHost.cells, memory: cellsHost.memory, storage })
+  const app = createApp({ store, runner, apiToken: config.apiToken, healthConfig: config, models: gatewayModelCatalog(config), modelProbe: createModelProbe(config, modelFetch), events, files, computer, memberFiles, errors, cells: cellsHost.cells, memory: cellsHost.memory, storage })
   return {
     app,
     runner,

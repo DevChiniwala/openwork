@@ -70,8 +70,8 @@ export function migrateCells(db: SqlDriver) {
   `)
 }
 
-/** Tables of this module: they describe cells, never one conversation's content, so a move never copies them. */
-const CELLS_TABLES = new Set(["cells_meta", "owner_memory", "owner_directory", "session_forwards", "directory_outbox", "split_progress", "split_handoff"])
+/** Tables of this module (and My files, which belong to the owner): never one conversation's content, so a move never copies them. */
+const CELLS_TABLES = new Set(["cells_meta", "owner_memory", "member_files", "owner_directory", "session_forwards", "directory_outbox", "split_progress", "split_handoff"])
 /**
  * Not copied when a chat moves: its pending Den index update. The session cell queues a fresh one, numbered above
  * everything the owner cell sent, once the owner cell hands over (see Handoff).

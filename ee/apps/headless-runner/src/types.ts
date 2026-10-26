@@ -114,6 +114,12 @@ export const turnCredentialsSchema = z
 export type TurnCredentials = z.infer<typeof turnCredentialsSchema>
 
 /**
+ * What one computer call may use beyond the conversation: the owner's My files, mirrored at /files on the computer
+ * around the call (null when the conversation has none, which also turns an earlier mirror off).
+ */
+export type ComputerCallContext = { memberFiles: import("./member-files.js").MemberFilesAccess | null }
+
+/**
  * An optional Linux computer per conversation (`@openwork-ee/headless-computer`), loaded only when configured.
  * The runner offers its tools and prompt, and tells it when a conversation starts, goes quiet, or is deleted.
  */
@@ -124,12 +130,12 @@ export type SessionComputer = {
   /** The snapshot new computers boot from, for logs. */
   image: string
   desktopTools?: ToolSpec[]
-  desktopRun?(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>
+  desktopRun?(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal, context?: ComputerCallContext): Promise<ToolResult>
   /** Desktop failures may carry `desktopCode` (`desktop_outdated`, `desktop_unresponsive`), which the runner reports as its error code. */
   desktopViewer?(sessionId: string, input: { view: "browser" | "computer"; control: boolean; origin: string }): Promise<{ state: "paused" } | { state: "connected"; url: string; expiresAt: number; paused: boolean }>
   browserDemonstration?(sessionId: string, command: import("@openwork/types/browser-demonstration").DemonstrationCommand): Promise<import("@openwork/types/browser-demonstration").DemonstrationReply>
   desktopAction?(sessionId: string, action: "continue" | "pause" | "resume" | "rebuild"): Promise<{ ok: boolean }>
-  run(sessionId: string, name: string, input: Record<string, unknown>): Promise<ToolResult>
+  run(sessionId: string, name: string, input: Record<string, unknown>, context?: ComputerCallContext): Promise<ToolResult>
   known(sessionId: string): boolean
   prewarm(sessionId: string): void
   release(sessionId: string): void

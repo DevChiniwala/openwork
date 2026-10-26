@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { SqlDriver } from "./sql.js"
 import { migrateCells } from "./cells-store.js"
+import { migrateMemberFiles } from "./member-files.js"
 import {
   ackIndexUpdate,
   deferIndexUpdate,
@@ -56,6 +57,9 @@ const sessionOptions = z.object({
   autoTitle: z.boolean().optional(),
   memoryOf: z.string().optional(),
   memoryScope: z.literal("owner").optional(),
+  memberFiles: z.boolean().optional(),
+  agent: z.string().optional(),
+  background: z.boolean().optional(),
 })
 type SessionOptions = z.infer<typeof sessionOptions>
 const tableColumns = z.array(z.object({ name: z.string() }).loose())
@@ -116,6 +120,12 @@ export type Session = {
   memoryOf: string | null
   /** `owner`: memory/ is the owner's, shared by all their conversations (see memory.ts); replaces memoryOf. */
   memoryScope: "owner" | null
+  /** The owner's My files at /files (member-files.ts); needs an owner and the runner's file store. */
+  memberFiles: boolean
+  /** The agent this conversation acts as: its own folder is /files/agents/<agent>/. */
+  agent: string | null
+  /** Nobody waits on this conversation (an Automation, a proactive agent): its turns save only in their agent folder. */
+  background: boolean
   createdAt: number
   updatedAt: number
 }
@@ -136,6 +146,9 @@ export type SessionInput = {
   autoTitle?: boolean
   memoryOf?: string
   memoryScope?: "owner"
+  memberFiles?: boolean
+  agent?: string
+  background?: boolean
 }
 
 /** The settings part of a session, leaving out what the caller didn't set. */
@@ -151,6 +164,9 @@ function optionsOf(input: {
   autoTitle?: boolean
   memoryOf?: string | null
   memoryScope?: "owner" | null
+  memberFiles?: boolean
+  agent?: string | null
+  background?: boolean
 }): SessionOptions {
   return {
     ...(input.repeats ? { repeats: input.repeats } : {}),
@@ -164,6 +180,9 @@ function optionsOf(input: {
     ...(input.autoTitle !== undefined ? { autoTitle: input.autoTitle } : {}),
     ...(input.memoryOf ? { memoryOf: input.memoryOf } : {}),
     ...(input.memoryScope ? { memoryScope: input.memoryScope } : {}),
+    ...(input.memberFiles !== undefined ? { memberFiles: input.memberFiles } : {}),
+    ...(input.agent ? { agent: input.agent } : {}),
+    ...(input.background !== undefined ? { background: input.background } : {}),
   }
 }
 
@@ -185,6 +204,9 @@ function serializeOptions(options: SessionOptions) {
     // Owner-scoped memory replaces another conversation's: never both.
     ...(options.memoryOf && !options.memoryScope ? { memoryOf: options.memoryOf } : {}),
     ...(options.memoryScope ? { memoryScope: options.memoryScope } : {}),
+    ...(options.memberFiles ? { memberFiles: true } : {}),
+    ...(options.agent ? { agent: options.agent } : {}),
+    ...(options.background ? { background: true } : {}),
   }
   return Object.keys(ordered).length ? JSON.stringify(ordered) : null
 }
@@ -339,6 +361,8 @@ export class Store {
       { version: 2, name: "session-storage", up: storageSchema },
       // Session cells: owner directory, owner-scoped memory, forwarding rows, splits (cells-store.ts).
       { version: 3, name: "session-cells", up: migrateCells },
+      // My files: one space per member, outside every conversation (member-files.ts).
+      { version: 4, name: "member-files", up: migrateMemberFiles },
     ])
   }
 
@@ -549,6 +573,9 @@ export class Store {
       autoTitle: options.autoTitle ?? false,
       memoryOf: options.memoryScope ? null : options.memoryOf ?? null,
       memoryScope: options.memoryScope ?? null,
+      memberFiles: options.memberFiles ?? false,
+      agent: options.agent ?? null,
+      background: options.background ?? false,
       createdAt: value.created_at,
       updatedAt: value.updated_at,
     }

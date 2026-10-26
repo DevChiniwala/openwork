@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { z } from "zod"
 import type { BlobStore } from "./blobs.js"
 import { normalizePath } from "./files.js"
+import { memberPathOf, namesMemberFiles, shownPath, type MemberFilesAccess } from "./member-files.js"
 import type { SavedFile, Store } from "./store.js"
 import { formatBytes, readToolFile, type FileReading } from "./tool-files.js"
 import type { Attachment, ToolResult, ToolSpec } from "./types.js"
@@ -246,7 +247,7 @@ export const SAVED_FILE_TOOLS: ToolSpec[] = [
 
 const dateOf = (at: number) => new Date(at).toISOString().slice(0, 10)
 
-export async function runSavedFileTool(files: SavedFiles, store: Store, sessionId: string, name: string, input: Record<string, unknown>): Promise<ToolResult> {
+export async function runSavedFileTool(files: SavedFiles, store: Store, sessionId: string, name: string, input: Record<string, unknown>, member?: MemberFilesAccess | null): Promise<ToolResult> {
   if (name === "list_saved_files") {
     const list = files.list(sessionId)
     if (list.length === 0) return { output: "No files are kept in this conversation yet.", isError: false }
@@ -272,12 +273,21 @@ export async function runSavedFileTool(files: SavedFiles, store: Store, sessionI
   }
   if (name === "save_file") {
     const parsed = z.object({ path: z.string(), name: z.string().optional() }).safeParse(input)
-    const path = parsed.success ? normalizePath(parsed.data.path) : null
+    // With My files, a /files path hands that file over (a copy in this chat's Files); otherwise a scratch file.
+    const memberPath = member && parsed.success && namesMemberFiles(parsed.data.path) ? memberPathOf(parsed.data.path) : null
+    const path = parsed.success ? (memberPath ?? normalizePath(parsed.data.path)) : null
     if (!parsed.success || !path) return { output: "save_file needs the path of a file in your scratch workspace.", isError: true }
-    const content = store.readFile(sessionId, path)
-    if (content === null) return { output: `There is no scratch file at ${path}. Write it with write_file first.`, isError: true }
+    let bytes: Uint8Array<ArrayBuffer>
+    if (member && memberPath) {
+      const found = await member.read(memberPath)
+      if (!found) return { output: `There is no file at ${shownPath(memberPath)}.`, isError: true }
+      bytes = found.bytes
+    } else {
+      const content = store.readFile(sessionId, path)
+      if (content === null) return { output: `There is no scratch file at ${path}. Write it with write_file first.`, isError: true }
+      bytes = new Uint8Array(Buffer.from(content, "utf8"))
+    }
     const name = cleanFileName(parsed.data.name?.trim() || (path.split("/").pop() ?? path))
-    const bytes = new Uint8Array(Buffer.from(content, "utf8"))
     // Saving a file it already handed over again (same name) is a new version of that file, not a second copy.
     const earlier = files.list(sessionId).find((file) => file.source === "agent" && file.name === name)
     const revised = earlier ? await files.replace(sessionId, earlier.id, { bytes }) : null

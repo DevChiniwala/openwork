@@ -3,6 +3,8 @@ import type { ErrorReporter } from "./error-reporting.js"
 import { isWorkbotTurn, type WorkbotTurnFact } from "./workbot-telemetry.js"
 import type { SessionEvents } from "./events.js"
 import { FILE_TOOLS, FILE_TOOL_NAMES, isMemoryPath, normalizePath, runFileTool } from "./files.js"
+import { MEMBER_FILE_TOOLS, memberFilesPrompt, memberWriteTarget } from "./member-file-tools.js"
+import { MemberFilesAccess, MemberFilesUnavailableError, memberScopeFor, type MemberFiles } from "./member-files.js"
 import { CellsStore } from "./cells-store.js"
 import { localMemory, MemoryUnavailableError, type MemoryAccess, type MemoryResolver } from "./memory.js"
 import type { McpConnector, ToolSession } from "./mcp.js"
@@ -156,6 +158,8 @@ export type RunnerOptions = {
   files?: SavedFiles
   /** A Linux computer per conversation; without it the bash and look tools are not offered. */
   computer?: SessionComputer
+  /** Each member's My files (member-files.ts), for conversations that ask for them; needs the file store. */
+  memberFiles?: MemberFiles
   /** Turns that end `failed` are reported here (codes and ids only); without it, nothing is reported. */
   errors?: ErrorReporter
   /** Server-side adoption outcomes, even when no browser is watching. Never a turn dependency. */
@@ -267,6 +271,8 @@ type TurnSetup = {
   taskTools: boolean
   /** Where memory/ lives when it isn't this conversation's own (memory.ts). */
   memory: MemoryAccess | null
+  /** The owner's My files at /files, as far as this turn may use them; null when the conversation has none. */
+  member: MemberFilesAccess | null
   baseSystem: string
   toolSpecs: ToolSpec[]
 }
@@ -866,11 +872,16 @@ export class Runner {
     // it exists). Read once here, for every step of this run (once per step in step mode).
     const memory = session ? this.memory(session) : null
     const memoryFiles = memory ? await memory.list() : store.memoryFiles(sessionId)
+    // The owner's My files (memberFiles): a person's message saves anywhere, background and read-only runs only in
+    // their agent folder, a report nowhere (memberScopeFor).
+    const memberScope = session && this.options.memberFiles ? memberScopeFor(session, { kind, readOnly, messageId }) : null
+    const member = memberScope && this.options.memberFiles ? new MemberFilesAccess(this.options.memberFiles, memberScope) : null
     // Everything here stays the same from one turn to the next, so the provider's prompt cache keeps hitting.
     const baseSystem = [
       this.options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       files ? FILES_PROMPT : "",
       computer?.prompt ?? "",
+      member && memberScope ? memberFilesPrompt({ agent: session?.agent ?? null, writeRoot: memberScope.writeRoot, computer: Boolean(computer), desktop: Boolean(session?.desktop && computer?.desktopTools?.length) }) : "",
       session?.desktop && computer?.desktopTools?.length ? "Use desktop to work in the visible browser and native applications. The organization enabled this computer: use it directly when needed. If the person takes control, wait for them to return it before continuing desktop operations." : "",
       tools || kind === "report" ? "" : "No OpenWork connection is available in this conversation, so connected apps cannot be reached.",
       session?.instructions ?? "",
@@ -881,8 +892,12 @@ export class Runner {
     ]
       .filter(Boolean)
       .join("\n\n")
-    const toolSpecs = kind === "report" ? FILE_TOOLS.filter((tool) => READ_ONLY_LOCAL_TOOLS.has(tool.name)) : [...FILE_TOOLS.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name)), ...(files ? SAVED_FILE_TOOLS.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name)) : []), ...(computer?.tools ?? []), ...(session?.desktop ? computer?.desktopTools ?? [] : []), ...(reactions ? REACTION_TOOLS : []), ...(taskTools ? TASK_TOOLS : []), ...(session?.documentNavigation && kind === "message" ? [DOCUMENT_NAVIGATION_TOOL] : []), ...(tools?.tools ?? [])]
-    return { turn, session, repeatLimits, files, readOnly, computer, reactions, taskTools, memory, baseSystem, toolSpecs }
+    // With My files the same file tools also take /files paths; a read-only run that may save in its agent folder keeps
+    // the writing ones (runCall lets them through only for that folder).
+    const fileTools = member ? MEMBER_FILE_TOOLS : FILE_TOOLS
+    const memberWrites = member !== null && typeof memberScope?.writeRoot === "string"
+    const toolSpecs = kind === "report" ? fileTools.filter((tool) => READ_ONLY_LOCAL_TOOLS.has(tool.name)) : [...fileTools.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name) || memberWrites), ...(files ? SAVED_FILE_TOOLS.filter((tool) => !readOnly || READ_ONLY_LOCAL_TOOLS.has(tool.name)) : []), ...(computer?.tools ?? []), ...(session?.desktop ? computer?.desktopTools ?? [] : []), ...(reactions ? REACTION_TOOLS : []), ...(taskTools ? TASK_TOOLS : []), ...(session?.documentNavigation && kind === "message" ? [DOCUMENT_NAVIGATION_TOOL] : []), ...(tools?.tools ?? [])]
+    return { turn, session, repeatLimits, files, readOnly, computer, reactions, taskTools, memory, member, baseSystem, toolSpecs }
   }
 
   /** The current turn's files as the model sees them, read once (into `expanded`) and shown on every step. */
@@ -956,22 +971,28 @@ export class Runner {
     context: { sessionId: string; kind: JobKind; tools: ToolSession | null; signal: AbortSignal; held: HeldCredentials },
   ): Promise<ToolResult> {
     const { store } = this.options
-    const { readOnly, files, reactions, taskTools, turn, computer, memory } = setup
+    const { readOnly, files, reactions, taskTools, turn, computer, memory, member } = setup
     const { sessionId, kind, tools, signal } = context
+    // A read-only run may still save in its agent folder of My files; runMemberFileTool checks the folder.
+    const memberWrite = member !== null && kind !== "report" && memberWriteTarget(call.name, call.input) !== null
     return call.inputError
       ? { output: call.inputError, isError: true }
       : kind === "report" && !(FILE_TOOL_NAMES.has(call.name) && READ_ONLY_LOCAL_TOOLS.has(call.name))
         ? { output: "report_only_turn: Report delivery can only read scratch files. The person must request any further action.", isError: true }
-        : readOnly && (FILE_TOOL_NAMES.has(call.name) || SAVED_FILE_TOOL_NAMES.has(call.name) || TASK_TOOL_NAMES.has(call.name) || REACTION_TOOL_NAMES.has(call.name)) && !READ_ONLY_LOCAL_TOOLS.has(call.name)
+        : readOnly && !memberWrite && (FILE_TOOL_NAMES.has(call.name) || SAVED_FILE_TOOL_NAMES.has(call.name) || TASK_TOOL_NAMES.has(call.name) || REACTION_TOOL_NAMES.has(call.name)) && !READ_ONLY_LOCAL_TOOLS.has(call.name)
         ? { output: "read_only_turn: This turn can only read; changing files, starting work and reacting are unavailable.", isError: true }
         : call.name === DOCUMENT_NAVIGATION_TOOL.name
           ? setup.session?.documentNavigation && kind === "message"
             ? openDocument(call.input)
             : { output: "Opening documents is unavailable in this conversation.", isError: true }
         : FILE_TOOL_NAMES.has(call.name)
-        ? await runFileTool(store, sessionId, call.name, call.input, memory)
+        ? await runFileTool(store, sessionId, call.name, call.input, memory, member).catch((error: unknown) => {
+            // My files' rows live in the owner's cell; one that didn't answer leaves this call's outcome unknown.
+            if (error instanceof MemberFilesUnavailableError) return { output: "My files didn't respond, so this call's outcome is unknown. Check the file before repeating a change.", isError: true }
+            throw error
+          })
         : files && SAVED_FILE_TOOL_NAMES.has(call.name)
-          ? await runSavedFileTool(files, store, sessionId, call.name, call.input).catch((error: unknown) => ({
+          ? await runSavedFileTool(files, store, sessionId, call.name, call.input, member).catch((error: unknown) => ({
               output: `File tool failed: ${error instanceof Error ? error.message : "unknown error"}`,
               isError: true,
             }))
@@ -980,9 +1001,9 @@ export class Runner {
         : taskTools && turn && TASK_TOOL_NAMES.has(call.name)
           ? this.runTaskTool(turn, call.name, call.input, context.held)
         : call.name === "desktop" && store.getSession(sessionId)?.desktop && computer?.desktopRun
-          ? await computer.desktopRun(sessionId, call.input, signal).catch((error: unknown) => ({ output: error instanceof Error ? error.message : "Desktop unavailable", isError: true }))
+          ? await computer.desktopRun(sessionId, call.input, signal, { memberFiles: member }).catch((error: unknown) => ({ output: error instanceof Error ? error.message : "Desktop unavailable", isError: true }))
         : computer?.toolNames.has(call.name)
-          ? await computer.run(sessionId, call.name, call.input).catch((error: unknown) => ({
+          ? await computer.run(sessionId, call.name, call.input, { memberFiles: member }).catch((error: unknown) => ({
               output: `The computer didn't respond: ${error instanceof Error ? error.message : "unknown error"}. Its outcome is unknown; check before repeating it.`,
               isError: true,
             }))

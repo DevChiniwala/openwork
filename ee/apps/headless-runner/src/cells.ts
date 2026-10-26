@@ -2,6 +2,7 @@ import { z } from "zod"
 import type { BackgroundJob } from "./background.js"
 import { cellRow, directoryEntry, handoffSchema, type CellsStore, type DirectoryEntry } from "./cells-store.js"
 import { MemoryUnavailableError, type MemoryAccess, type MemoryResolver } from "./memory.js"
+import { MAX_MEMBER_PATH, MemberFilesUnavailableError, memberFileKind, memberFileSchema, memberSpace, memberStoragePrefix, type MemberFileIndex, type MemberFileLimits } from "./member-files.js"
 import type { Store } from "./store.js"
 
 /**
@@ -17,6 +18,7 @@ import type { Store } from "./store.js"
 export type InternalPath =
   | "/internal/owner-directory"
   | "/internal/memory"
+  | "/internal/member-files"
   | "/internal/import/begin"
   | "/internal/import/rows"
   | "/internal/import/commit"
@@ -25,6 +27,7 @@ export type InternalPath =
 export const INTERNAL_PATHS: ReadonlySet<string> = new Set<InternalPath>([
   "/internal/owner-directory",
   "/internal/memory",
+  "/internal/member-files",
   "/internal/import/begin",
   "/internal/import/rows",
   "/internal/import/commit",
@@ -71,6 +74,34 @@ const memoryRequest = z.discriminatedUnion("op", [
   z.object({ op: z.literal("write"), path: z.string().min(1).max(200), content: z.string() }).strict(),
   z.object({ op: z.literal("delete"), path: z.string().min(1).max(200) }).strict(),
 ])
+const memberLookup = z.union([z.object({ path: z.string().min(1).max(MAX_MEMBER_PATH) }).strict(), z.object({ id: z.string().regex(/^mf_[a-f0-9]{32}$/) }).strict()])
+const memberFilesRequest = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("list"), prefix: z.string().max(MAX_MEMBER_PATH).optional(), sessionId: z.string().max(200).optional() }).strict(),
+  z.object({ op: z.literal("get"), lookup: memberLookup }).strict(),
+  z.object({ op: z.literal("usage") }).strict(),
+  z
+    .object({
+      op: z.literal("commit"),
+      path: z.string().min(1).max(MAX_MEMBER_PATH),
+      size: z.number().int().min(0),
+      mediaType: z.string().min(1).max(200),
+      storageKey: z.string().min(1).max(200),
+      writer: z.object({ kind: memberFileKind, agent: z.string().max(40).nullable().optional(), messageId: z.string().max(200).nullable().optional(), url: z.string().max(2048).nullable().optional() }).strict(),
+      ifVersion: z.number().int().min(1).nullable().optional(),
+      limits: z.object({ maxFileBytes: z.number(), maxMemberBytes: z.number(), maxFiles: z.number() }).strict(),
+    })
+    .strict(),
+  z.object({ op: z.literal("remove"), lookup: memberLookup, ifVersion: z.number().int().min(1).optional() }).strict(),
+])
+const storedMemberFile = memberFileSchema.extend({ storageKey: z.string() })
+const memberFilesListed = z.object({ files: z.array(storedMemberFile) })
+const memberFileFound = z.object({ file: storedMemberFile.nullable() })
+const memberUsage = z.object({ bytes: z.number(), files: z.number() })
+const memberCommitted = z.union([
+  z.object({ ok: z.literal(true), file: storedMemberFile, replacedKey: z.string().nullable() }),
+  z.object({ ok: z.literal(false), code: z.enum(["invalid_path", "file_too_large", "files_full", "too_many_files", "conflict", "path_conflict", "not_allowed", "not_found"]), message: z.string() }),
+])
+const memberRemoved = z.union([z.object({ ok: z.literal(true), storageKey: z.string() }), z.object({ ok: z.literal(false), code: z.enum(["not_found", "conflict"]) })])
 const directoryRequest = z.object({ sessionId: z.string().min(1).max(200), version: z.number().int().min(1), entry: directoryEntry }).strict()
 const importStart = z.object({ owner: z.string().min(1).max(200), sessionId: z.string().min(1).max(200), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 const importRowsRequest = z.object({ owner: z.string().min(1).max(200), sessionId: z.string().min(1).max(200), table: z.string().regex(/^[a-z_][a-z0-9_]*$/), rows: z.array(cellRow).max(10_000) }).strict()
@@ -105,6 +136,10 @@ export class SessionCells {
       handedOver?: () => void
       /** Reports a failure that keeps repeating (codes and ids only). */
       report?: (code: string, error: unknown) => void
+      /** This cell's own My files rows, answered for its owner's chats in their own cells (`/internal/member-files`). */
+      memberFiles?: MemberFileIndex
+      /** This deployment's My files limits, enforced where the rows are. */
+      memberFileLimits?: MemberFileLimits
       /** Waits between import calls; tests and the e2e's kill-mid-split check slow it down. */
       pauseMs?: number
       now?: () => number
@@ -151,6 +186,28 @@ export class SessionCells {
       if (request.op === "read") return { status: 200, body: { content: cells.readOwnerMemory(self.owner, request.path) } }
       if (request.op === "write") return { status: 200, body: cells.writeOwnerMemory(self.owner, request.path, request.content) }
       return { status: 200, body: { deleted: cells.deleteOwnerMemory(self.owner, request.path) } }
+    }
+    if (path === "/internal/member-files") {
+      if (self.kind !== "owner" || !from.startsWith("session:")) return error(404, "not_found")
+      // As memory: only a chat of this owner's, and only this owner's space. The writer is the calling chat.
+      const caller = from.slice("session:".length)
+      if (!cells.directoryHas(self.owner, caller) && cells.forwardOf(caller)?.owner !== self.owner) return error(404, "not_found")
+      const parsed = memberFilesRequest.safeParse(body)
+      const index = this.options.memberFiles
+      if (!parsed.success || !index) return error(400, "invalid_request")
+      const request = parsed.data
+      const space = memberSpace(self.owner)
+      if (request.op === "list") return { status: 200, body: { files: await index.list(space, { ...(request.prefix ? { prefix: request.prefix } : {}), ...(request.sessionId ? { sessionId: request.sessionId } : {}) }) } }
+      if (request.op === "get") return { status: 200, body: { file: await index.get(space, request.lookup) } }
+      if (request.op === "usage") return { status: 200, body: await index.usage(space) }
+      if (request.op === "remove") return { status: 200, body: await index.remove(space, request.lookup, request.ifVersion) }
+      // A row may only point at this space's objects.
+      if (!request.storageKey.startsWith(memberStoragePrefix(space))) return error(400, "invalid_request")
+      const { op: _op, writer, ifVersion, ...commit } = request
+      return {
+        status: 200,
+        body: await index.commit(space, { ...commit, writer: { ...writer, sessionId: caller }, ...(ifVersion !== undefined ? { ifVersion } : {}), limits: this.options.memberFileLimits ?? request.limits }),
+      }
     }
     if (!path.startsWith("/internal/import/")) return error(404, "not_found")
     if (self.kind !== "session") return error(404, "not_found")
@@ -243,6 +300,65 @@ export class SessionCells {
       const owned = this.ownedSession()
       if (session.memoryScope !== "owner" || !owned || owned.sessionId !== session.id) return local(session)
       return this.remoteMemory(owned.owner)
+    }
+  }
+
+  // ------------------------------------------------------------------ My files from a session cell
+
+  /** In a session cell, its owner's My files are the owner cell's; any other space (none, normally) is `local`. */
+  memberFileIndex(local: MemberFileIndex): MemberFileIndex {
+    const route = (space: string) => {
+      const owned = this.ownedSession()
+      return owned && space === memberSpace(owned.owner) ? this.remoteMemberFiles(owned.owner) : local
+    }
+    return {
+      list: (space, listing) => route(space).list(space, listing),
+      get: (space, lookup) => route(space).get(space, lookup),
+      usage: (space) => route(space).usage(space),
+      commit: (space, commit) => route(space).commit(space, commit),
+      remove: (space, lookup, ifVersion) => route(space).remove(space, lookup, ifVersion),
+    }
+  }
+
+  private remoteMemberFiles(owner: string): MemberFileIndex {
+    const ask = async (body: z.infer<typeof memberFilesRequest>) => {
+      let last: unknown
+      let listed = false
+      for (const wait of [0, 250, 1_000]) {
+        if (wait) await new Promise((resolve) => setTimeout(resolve, wait))
+        try {
+          return await this.options.call(ownerCellName(owner), "/internal/member-files", body)
+        } catch (failure) {
+          last = failure
+          if (!listed && failure instanceof CellCallError && failure.status === 404) {
+            listed = true
+            await this.sendDirectory(true).catch(() => undefined)
+            continue
+          }
+          if (failure instanceof CellCallError && failure.status >= 400 && failure.status < 500) break
+        }
+      }
+      console.error("[headless-cells] owner files unavailable", { error: last instanceof Error ? last.message : "unknown" })
+      throw new MemberFilesUnavailableError()
+    }
+    return {
+      list: async (_space, listing = {}) => memberFilesListed.parse(await ask({ op: "list", ...(listing.prefix ? { prefix: listing.prefix } : {}), ...(listing.sessionId ? { sessionId: listing.sessionId } : {}) })).files,
+      get: async (_space, lookup) => memberFileFound.parse(await ask({ op: "get", lookup })).file,
+      usage: async () => memberUsage.parse(await ask({ op: "usage" })),
+      commit: async (_space, commit) =>
+        memberCommitted.parse(
+          await ask({
+            op: "commit",
+            path: commit.path,
+            size: commit.size,
+            mediaType: commit.mediaType,
+            storageKey: commit.storageKey,
+            writer: { kind: commit.writer.kind, agent: commit.writer.agent ?? null, messageId: commit.writer.messageId ?? null, url: commit.writer.url ?? null },
+            ...(commit.ifVersion !== undefined ? { ifVersion: commit.ifVersion } : {}),
+            limits: commit.limits,
+          }),
+        ),
+      remove: async (_space, lookup, ifVersion) => memberRemoved.parse(await ask({ op: "remove", lookup, ...(ifVersion !== undefined ? { ifVersion } : {}) })),
     }
   }
 
