@@ -53,11 +53,11 @@ async function fixture(pageBefore?: string | null) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const reads: { owner: string; token: string; signal: AbortSignal; window?: OpeningHistoryWindow; options?: { desktopTransport: "main" }; resolve: (value: OpenworkSessionHistory) => void }[] = [];
+  const reads: { owner: string; token: string; signal: AbortSignal; window?: OpeningHistoryWindow; resolve: (value: OpenworkSessionHistory) => void }[] = [];
   let current: ReturnType<typeof useOpeningSessionHistory> | undefined;
   function Harness({ owner, token }: { owner: string; token: string }) {
     const opening = useOpeningSessionHistory({ owner, authToken: token, sessionId: "ses_shared", snapshotQueryKey: key, transcriptQueryKey: transcriptKey,
-      readSnapshot: (signal, window, options) => new Promise(resolve => { reads.push({ owner, token, signal, window, options, resolve }); }),
+      readSnapshot: (signal, window) => new Promise(resolve => { reads.push({ owner, token, signal, window, resolve }); }),
       readLatest: async () => initial,
     });
     current = opening;
@@ -85,7 +85,7 @@ async function fixture(pageBefore?: string | null) {
     return current.refreshFullSnapshot;
   };
   const start = async (operation = refresh()) => {
-    const result = operation({ desktopTransport: "main" }).then(value => ({ ok: true, value }), error => ({ ok: false, error }));
+    const result = operation().then(value => ({ ok: true, value }), error => ({ ok: false, error }));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     return { result };
   };
@@ -127,7 +127,6 @@ for (const change of ["owner", "remove", "cancel", "unmount"]) {
     const view = await fixture();
     const pending = await view.start();
     expect(view.reads).toHaveLength(1);
-    expect(view.reads[0].options).toEqual({ desktopTransport: "main" });
     expect(view.reads[0].window).toBeUndefined();
     if (change === "owner") await view.render("owner-b", "token-b");
     if (change === "remove") view.client.removeQueries({ queryKey: view.key });
@@ -150,7 +149,6 @@ for (const before of [null, "saved-middle"]) {
     const position = view.historyState().pages.pageForAnchor("msg_assistant");
     const pending = await view.start();
     expect(view.reads).toHaveLength(2);
-    expect(view.reads[1].options).toEqual({ desktopTransport: "main" });
     expect(view.reads[1].window).toEqual({ limit: 24, ...(before === null ? {} : { before }) });
     await view.resolve(1, { ...history("Paged terminal output"), pagination: { limit: 24, nextCursor: "older", ...(before === null ? {} : { before }) } });
     expect((await pending.result).ok).toBe(true);
@@ -205,7 +203,6 @@ test("send revealLatest keeps paging semantics and opts only its bounded request
   const sending = view.historyState().readSendHistory({ revealLatest: true });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   expect(view.reads[1].window).toEqual({ limit: 24 });
-  expect(view.reads[1].options).toEqual({ desktopTransport: "main" });
   await view.resolve(1, { ...history("Latest turn"), pagination: { limit: 24, nextCursor: "bridge" } });
   expect(await sending).toHaveLength(1);
   expect(view.historyState().pages.hasNewer).toBe(false);

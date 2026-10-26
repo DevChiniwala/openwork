@@ -28,48 +28,6 @@ afterEach(() => {
   Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
 });
 
-test("archive opts finite loopback GET/PATCH into IPC with credentials and scope, without changing default or SSE routing", async () => {
-  const ipc: { command: string; args: unknown[] }[] = [];
-  const renderer: Request[] = [];
-  const raw: typeof fetch = async (input, init) => {
-    renderer.push(new Request(input, init));
-    return Response.json({ id: "ses_fixture" });
-  };
-  Object.defineProperty(globalThis, "fetch", { configurable: true, value: raw });
-  Object.defineProperty(globalThis, "window", { configurable: true, value: {
-    fetch: raw,
-    __OPENWORK_ELECTRON__: { invokeDesktop: async (command: string, ...args: unknown[]) => {
-      ipc.push({ command, args });
-      return { status: 200, statusText: "OK", headers: [["content-type", "application/json"]], body: JSON.stringify({ id: "ses_fixture" }) };
-    } },
-  } });
-  const base = "http://127.0.0.1:8788/workspace/ws_fixture/opencode";
-  const auth = { token: "fixture-only", mode: "openwork" } satisfies Parameters<typeof createClient>[2];
-  const client = createClient(base, "/fixture/a", auth, { desktopTransport: "main" });
-  const signal = new AbortController().signal;
-  await client.session.get({ sessionID: "ses_fixture", directory: "/fixture/a" }, { signal });
-  await client.session.update({ sessionID: "ses_fixture", directory: "/fixture/a", time: { archived: 123 } }, { signal });
-  expect(renderer).toHaveLength(0);
-  expect(ipc).toHaveLength(2);
-  expect(structuredClone(ipc[0])).toMatchObject({ command: "__fetch", args: [expect.stringContaining("/session/ses_fixture"), {
-    method: "GET", headers: { authorization: "Bearer fixture-only" }, transferId: expect.any(String),
-  }] });
-  expect(structuredClone(ipc[1])).toMatchObject({ command: "__fetch", args: [expect.stringContaining("/session/ses_fixture"), {
-    method: "PATCH", body: JSON.stringify({ time: { archived: 123 } }), transferId: expect.any(String),
-  }] });
-  for (const call of ipc) {
-    const url = call.args[0];
-    if (typeof url !== "string") throw new Error("Missing serialized SDK URL");
-    expect(new URL(url).searchParams.get("directory")).toBe("/fixture/a");
-  }
-  await createClient(base, "/fixture/a", auth).session.get({ sessionID: "ses_fixture" });
-  expect(renderer).toHaveLength(1);
-  const finite = async () => { throw new Error("SSE must not enter the buffering IPC transport"); };
-  await createDesktopFetch(auth, finite)(`${base}/event`, { headers: { Accept: "text/event-stream" } });
-  expect(renderer).toHaveLength(2);
-  expect(ipc).toHaveLength(2);
-});
-
 test.each(["once", "always", "reject"] satisfies Array<"once" | "always" | "reject">)("default permission %s reply uses main once with SDK body, auth and mounted scope", async (reply) => {
   const { ipc, renderer } = installPermissionTransport();
   for (const mount of ["", "/workspace/ws_fixture/opencode", "/proxy/w/ws_fixture/opencode"]) {
@@ -194,35 +152,15 @@ test("stream endpoints and effective SSE Accept headers stay native, unbuffered 
   expect(streams).toHaveLength(6);
 });
 
-test("web permission replies retain native fetch even with the explicit desktop-main option", async () => {
+test("web permission replies retain native fetch", async () => {
   const { ipc, renderer } = installPermissionTransport();
   Object.defineProperty(globalThis, "window", { configurable: true, value: undefined });
-  const client = createClient("http://127.0.0.1:8788", "/fixture/a", { mode: "openwork", token: "fixture-only" }, { desktopTransport: "main" });
+  const client = createClient("http://127.0.0.1:8788", "/fixture/a", { mode: "openwork", token: "fixture-only" });
   expect((await client.permission.reply({ requestID: "per_1", reply: "once" })).data).toBe(true);
   expect(renderer).toHaveLength(1);
   expect(renderer[0]?.headers.get("authorization")).toBe("Bearer fixture-only");
   expect(await renderer[0]?.json()).toEqual({ reply: "once" });
   expect(ipc).toHaveLength(0);
-});
-
-test("explicit main-client prompt admission remains unknown at 30 seconds without cancellation or replay", async () => {
-  jest.useFakeTimers();
-  const calls: string[] = [];
-  let rejectFetch: ((error: Error) => void) | undefined;
-  Object.defineProperty(globalThis, "window", { configurable: true, value: { __OPENWORK_ELECTRON__: {
-    invokeDesktop: (command: string, _url: string, init?: { transferId?: string }) => {
-      calls.push(command);
-      expect(init?.transferId).toBeUndefined();
-      return new Promise((_resolve, reject) => { rejectFetch = reject; });
-    },
-  } } });
-  const client = createClient("http://127.0.0.1:8788", undefined, undefined, { desktopTransport: "main" });
-  const pending = client.session.promptAsync({ sessionID: "ses_1", messageID: "msg_fixture", parts: [] }).catch((error: unknown) => error);
-  jest.advanceTimersByTime(30_000);
-  expect(await pending).toMatchObject({ name: "PromptAdmissionUnknownError", admission: "unknown", messageID: "msg_fixture" });
-  jest.advanceTimersByTime(60_000);
-  expect(calls).toEqual(["__fetch"]);
-  rejectFetch?.(new Error("fixture cleanup"));
 });
 
 test("Stop's transport timeout cancels the native IPC request, without giving prompt or command POSTs read cancellation", async () => {

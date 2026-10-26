@@ -1,498 +1,47 @@
 /** @jsxImportSource react */
 import { useEffect, useLayoutEffect, useRef, useState, type PropsWithChildren } from "react";
-import { create } from "zustand";
-import { ChevronRight, LoaderCircle, TriangleAlert } from "lucide-react";
+import { LoaderCircle, TriangleAlert } from "lucide-react";
 import {
   createOpenworkServerClient,
-  OpenworkServerError,
-  type EngineActivity,
   type EngineV2MigrationStatus,
   type EngineV2PreviewStatus,
   type OpenworkServerClient,
 } from "@/app/lib/openwork-server";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
-import { toast } from "@/components/ui/sonner";
 import { t } from "@/i18n";
-import { cn } from "@/lib/utils";
 import { resolveOpenworkConnection } from "./openwork-connection";
 
 /**
- * One home for switching chat engines and migrating v1 history (S6). The
- * command palette and Advanced settings only ask; this module checks what is
- * still running, asks for consent, and keeps a migration visible app-wide.
- * The upgrade starts in the background; manual migration and recovery keep
- * their dialogs and let the person choose to continue using OpenWork.
+ * Observes the host copying chats saved before OpenCode v2. The local server
+ * copies them on its own when it starts; this only shows that work, refreshes
+ * chat lists once it finishes, and offers "Try again" when it failed.
  */
 
-export type EngineMigrationClient = Pick<
-  OpenworkServerClient,
-  "getEngineV2PreviewStatus" | "getEngineActivity" | "switchOpencodeEngine" | "migrateOpencodeHistory"
->;
+/** Dispatched on `window` once earlier chats finished copying, so chat lists reload. */
+export const CHAT_HISTORY_IMPORTED_EVENT = "openwork-chat-history-imported";
 
-export type ChatEngine = "v1" | "v2";
+export type HistoryImportClient = Pick<OpenworkServerClient, "getEngineV2PreviewStatus" | "migrateOpencodeHistory">;
 
-/** `upgrade` copies chats and then switches to v2 on its own; `migrate` only copies. */
-export type EngineMigrationMode = "migrate" | "upgrade";
+export type HistoryImportView =
+  | { kind: "idle" }
+  | { kind: "copying"; migration: EngineV2MigrationStatus | null }
+  | { kind: "error"; migration: EngineV2MigrationStatus };
 
-type ConsentState = {
-  client: EngineMigrationClient;
-  mode: EngineMigrationMode;
-  /** Tasks the v1 engine is still running; copying them mid-turn needs an explicit choice. */
-  runningTasks: number;
-  submitting: boolean;
-  error: string | null;
-};
-
-type ProgressState = {
-  client: EngineMigrationClient;
-  migration: EngineV2MigrationStatus;
-  selected: ChatEngine;
-  view: "dialog" | "banner";
-  retrying: boolean;
-  /** Set when a retry was refused because v1 tasks are running. */
-  runningTasks: number;
-  /** Switch chats to v2 as soon as the copy completes (the upgrade flow). */
-  switchWhenDone: boolean;
-  /** The host controller, not the renderer, owns this migration and its engine switch. */
-  serverManaged?: boolean;
-};
-
-type SwitchPrompt = {
-  engine: ChatEngine;
-  from: ChatEngine;
-  runningTasks: number;
-  resolve: (confirmed: boolean) => void;
-};
-
-type EngineMigrationState = {
-  consent: ConsentState | null;
-  progress: ProgressState | null;
-  switchPrompt: SwitchPrompt | null;
-  switching: boolean;
-};
-
-const initialState: EngineMigrationState = { consent: null, progress: null, switchPrompt: null, switching: false };
-
-export const useEngineMigrationStore = create<EngineMigrationState>(() => initialState);
-
-export function resetEngineMigrationForTest() {
-  useEngineMigrationStore.setState(initialState);
-}
-
-export function selectedChatEngine(status: Pick<EngineV2PreviewStatus, "enabled" | "chatRouting">): ChatEngine {
-  return status.enabled && status.chatRouting ? "v2" : "v1";
-}
-
-function runningOn(activity: EngineActivity | null, engine: ChatEngine): number {
-  const count = activity ? (engine === "v1" ? activity.v1 : activity.v2) : null;
-  return count ? count.busySessions + count.waitingRequests : 0;
-}
-
-function messageOf(cause: unknown, fallback: string): string {
-  return cause instanceof Error && cause.message ? cause.message : fallback;
-}
-
-/** Running v1 tasks reported by a refused migration, or null for any other failure. */
-function refusedForRunningTasks(cause: unknown): number | null {
-  if (!(cause instanceof OpenworkServerError) || cause.code !== "engine_migration_active_sessions") return null;
-  const details = cause.details;
-  const count = (key: "busySessions" | "waitingRequests") => {
-    if (!details || typeof details !== "object" || !(key in details)) return 0;
-    const value: unknown = Reflect.get(details, key);
-    return typeof value === "number" && value > 0 ? value : 0;
-  };
-  return Math.max(1, count("busySessions") + count("waitingRequests"));
+export function historyImportView(status: Pick<EngineV2PreviewStatus, "historyImportPending" | "migration">): HistoryImportView {
+  const migration = status.migration ?? null;
+  if (status.historyImportPending === true || migration?.state === "running") return { kind: "copying", migration };
+  if (migration?.state === "error") return { kind: "error", migration };
+  return { kind: "idle" };
 }
 
 const formatCount = (value: number) => new Intl.NumberFormat().format(value);
 
-/** Chats dealt with so far: copied (whole or trimmed), already in v2, or left in v1. */
+/** Chats dealt with so far: copied (whole or trimmed), already copied, or left behind. */
 const handledCount = (migration: EngineV2MigrationStatus) =>
   migration.imported + migration.skipped + (migration.notCopied?.length ?? 0) + (migration.trimmed?.length ?? 0);
 
-/** The settings-row state line, e.g. "Migrated 2 chats; 1 already in v2." */
-export function engineMigrationMessage(migration: EngineV2MigrationStatus | undefined): string | undefined {
-  if (!migration) return undefined;
-  if (migration.state === "running") {
-    if (migration.phase === "starting" || migration.phase === "converting" || migration.total === 0) {
-      return t("engine_migration.settings_starting");
-    }
-    return t("engine_migration.settings_running", {
-      done: formatCount(handledCount(migration)),
-      total: formatCount(migration.total),
-    });
-  }
-  if (migration.state === "completed") return migratedSummary(migration);
-  if (migration.state === "error") return migration.error;
-  return undefined;
-}
-
-function migratedSummary(migration: EngineV2MigrationStatus) {
-  const summary = t("engine_migration.migrated_summary", {
-    count: migration.imported,
-    imported: formatCount(migration.imported),
-    skipped: formatCount(migration.skipped),
-  });
-  const left = migration.notCopied?.length ?? 0;
-  const trimmed = migration.trimmed?.length ?? 0;
-  return [
-    summary,
-    left ? t("engine_migration.not_copied", { count: left, left: formatCount(left) }) : "",
-    trimmed ? t("engine_migration.trimmed", { count: trimmed, trimmed: formatCount(trimmed) }) : "",
-  ].filter(Boolean).join(" ");
-}
-
-function updateConsent(client: EngineMigrationClient, patch: Partial<Omit<ConsentState, "client">>) {
-  useEngineMigrationStore.setState((state) =>
-    state.consent?.client === client ? { consent: { ...state.consent, ...patch } } : state);
-}
-
-function updateProgress(patch: Partial<ProgressState>) {
-  useEngineMigrationStore.setState((state) =>
-    state.progress ? { progress: { ...state.progress, ...patch } } : state);
-}
-
-/** Open the migration consent. A migration that is already running is shown instead. */
-export function requestEngineMigration(client: EngineMigrationClient, mode: EngineMigrationMode = "migrate") {
-  const { progress } = useEngineMigrationStore.getState();
-  if (progress?.migration.state === "running") {
-    showEngineMigrationProgress();
-    return;
-  }
-  useEngineMigrationStore.setState({ consent: { client, mode, runningTasks: 0, submitting: false, error: null } });
-  // The consent is usable immediately; the server refuses (409) a migration
-  // started before this check lands, which surfaces the same warning.
-  void client.getEngineActivity().then(
-    (activity) => updateConsent(client, { runningTasks: runningOn(activity, "v1") }),
-    () => {},
-  );
-}
-
-export function cancelEngineMigration() {
-  useEngineMigrationStore.setState((state) => (state.consent?.submitting ? state : { consent: null }));
-}
-
-function presentMigration(
-  client: EngineMigrationClient,
-  status: EngineV2PreviewStatus,
-  view: ProgressState["view"],
-  switchWhenDone = false,
-) {
-  const migration = status.migration;
-  if (!migration) return;
-  useEngineMigrationStore.setState((state) => ({
-    progress: {
-      client,
-      migration,
-      selected: selectedChatEngine(status),
-      view: switchWhenDone ? view : (state.progress?.view ?? view),
-      retrying: false,
-      runningTasks: 0,
-      switchWhenDone: switchWhenDone || state.progress?.switchWhenDone === true,
-    },
-  }));
-}
-
-export async function confirmEngineMigration() {
-  const consent = useEngineMigrationStore.getState().consent;
-  if (!consent || consent.submitting) return;
-  updateConsent(consent.client, { submitting: true, error: null });
-  try {
-    const status = await consent.client.migrateOpencodeHistory({ allowActiveSessions: consent.runningTasks > 0 });
-    useEngineMigrationStore.setState({ consent: null });
-    // Upgrade mode comes from a switch to v2 that first needs chats copied. Manual
-    // migrations and reload discovery retain their dialog and explicit engine-switch decision.
-    presentMigration(consent.client, status, consent.mode === "upgrade" ? "banner" : "dialog", consent.mode === "upgrade");
-  } catch (cause) {
-    const running = refusedForRunningTasks(cause);
-    updateConsent(consent.client, running === null
-      ? { submitting: false, error: messageOf(cause, t("engine_migration.start_failed")) }
-      : { submitting: false, runningTasks: running });
-  }
-}
-
-/** Status reads from any surface: present a running migration nobody is showing yet. */
-export function observeEngineMigration(client: EngineMigrationClient, status: EngineV2PreviewStatus) {
-  const migration = status.migration;
-  if (!migration) return;
-  const { progress } = useEngineMigrationStore.getState();
-  const serverManaged = status.forceUpgradePending === true
-    || status.engineForced === true || status.engineOrigin === "forced";
-  if (progress) {
-    updateProgress({
-      migration, selected: selectedChatEngine(status),
-      ...(serverManaged ? {
-        serverManaged: true, switchWhenDone: false,
-        ...(!progress.serverManaged ? { view: "banner" } : {}),
-      } : {}),
-    });
-    return;
-  }
-  if (migration.state === "running") {
-    presentMigration(client, status, serverManaged ? "banner" : "dialog");
-    if (serverManaged) updateProgress({ serverManaged: true, switchWhenDone: false });
-  }
-}
-
-export function continueEngineMigrationInBackground() {
-  updateProgress({ view: "banner" });
-}
-
-export function showEngineMigrationProgress() {
-  updateProgress({ view: "dialog" });
-}
-
-/** A running migration can only move to the background; a finished one is dismissed. */
-export function closeEngineMigrationProgress() {
-  useEngineMigrationStore.setState((state) => {
-    if (!state.progress) return state;
-    if (state.progress.migration.state === "running") return { progress: { ...state.progress, view: "banner" } };
-    return { progress: null };
-  });
-}
-
-export async function retryEngineMigration(allowActiveSessions = false) {
-  const progress = useEngineMigrationStore.getState().progress;
-  if (!progress || progress.retrying) return;
-  updateProgress({ retrying: true });
-  try {
-    const status = await progress.client.migrateOpencodeHistory({ allowActiveSessions });
-    updateProgress({
-      migration: status.migration ?? progress.migration,
-      selected: selectedChatEngine(status),
-      retrying: false,
-      runningTasks: 0,
-      view: "dialog",
-    });
-  } catch (cause) {
-    const running = refusedForRunningTasks(cause);
-    updateProgress(running === null
-      ? { retrying: false, migration: { ...progress.migration, error: messageOf(cause, t("engine_migration.start_failed")) } }
-      : { retrying: false, runningTasks: running });
-  }
-}
-
-/**
- * Switch chat routing after checking the engine being left. v1 tasks keep
- * running unseen after a switch to v2; switching to v1 stops the v2 sidecar.
- * Resolves with the new status, or null when cancelled or failed.
- */
-export async function requestEngineSwitch(
-  client: EngineMigrationClient,
-  engine: ChatEngine,
-  from: ChatEngine,
-): Promise<EngineV2PreviewStatus | null> {
-  const store = useEngineMigrationStore;
-  if (store.getState().switching || engine === from) return null;
-  store.setState({ switching: true });
-  try {
-    const activity = await client.getEngineActivity().catch(() => null);
-    const runningTasks = runningOn(activity, from);
-    if (runningTasks > 0) {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        store.setState({ switchPrompt: { engine, from, runningTasks, resolve } });
-      });
-      store.setState({ switchPrompt: null });
-      if (!confirmed) return null;
-    }
-    const next = await client.switchOpencodeEngine(engine);
-    window.dispatchEvent(new CustomEvent("openwork-engine-changed"));
-    updateProgress({ selected: selectedChatEngine(next) });
-    return next;
-  } catch (cause) {
-    // v1 chats not yet in v2 would stop opening: copy them first, then switch.
-    if (cause instanceof OpenworkServerError && cause.code === "engine_migration_required") {
-      requestEngineMigration(client, "upgrade");
-      return null;
-    }
-    toast.error(messageOf(cause, t("engine_migration.switch_failed")));
-    return null;
-  } finally {
-    store.setState({ switching: false });
-  }
-}
-
-export function resolveEngineSwitchPrompt(confirmed: boolean) {
-  useEngineMigrationStore.getState().switchPrompt?.resolve(confirmed);
-}
-
-function useElapsed(startedAt: string | undefined, running: boolean) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [running]);
-  const started = startedAt ? Date.parse(startedAt) : Number.NaN;
-  if (!Number.isFinite(started)) return null;
-  const seconds = Math.max(0, Math.floor((now - started) / 1_000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-function MigrationProgressBar(props: { migration: EngineV2MigrationStatus }) {
-  const { migration } = props;
-  const done = handledCount(migration);
-  const copying = migration.phase === "copying" || (migration.phase === undefined && done > 0);
-  const elapsed = useElapsed(migration.startedAt, migration.state === "running");
-  const value = copying && migration.total > 0 ? Math.min(100, Math.round((done / migration.total) * 100)) : null;
-  const label = copying && migration.total > 0
-    ? t("engine_migration.progress_copied", { done: formatCount(done), total: formatCount(migration.total) })
-    : migration.total > 0
-      ? t("engine_migration.progress_total", { count: migration.total, total: formatCount(migration.total) })
-      : "";
-  return (
-    <div className="grid gap-2">
-      <Progress
-        value={value}
-        aria-label={t("engine_migration.progress_title")}
-        className={cn(
-          "w-full",
-          value === null && "[&_[data-slot=progress-indicator]]:w-1/3 [&_[data-slot=progress-indicator]]:animate-progress-shimmer motion-reduce:[&_[data-slot=progress-indicator]]:animate-none",
-        )}
-      />
-      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground tabular-nums">
-        <span data-testid="engine-migration-count">{label}</span>
-        {elapsed ? <span>{elapsed}</span> : null}
-      </div>
-    </div>
-  );
-}
-
-function RunningTasksAlert(props: { count: number; body: string }) {
-  return (
-    <Alert variant="warning">
-      <TriangleAlert />
-      <AlertTitle>{t("engine_migration.running_tasks", { count: props.count })}</AlertTitle>
-      <AlertDescription>{props.body}</AlertDescription>
-    </Alert>
-  );
-}
-
-function MigrationConsentDialog(props: { consent: ConsentState }) {
-  const { consent } = props;
-  // Start on Cancel, not the disclosure: Enter should never start a migration by accident.
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const upgrade = consent.mode === "upgrade";
-  return (
-    <AlertDialog open onOpenChange={(open) => { if (!open) cancelEngineMigration(); }}>
-      <AlertDialogContent data-testid="engine-migration-consent" data-mode={consent.mode} initialFocus={cancelRef}>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{upgrade ? t("engine_migration.upgrade_consent_title") : t("engine_migration.consent_title")}</AlertDialogTitle>
-          <AlertDialogDescription>{upgrade ? t("engine_migration.upgrade_consent_body") : t("engine_migration.consent_body")}</AlertDialogDescription>
-        </AlertDialogHeader>
-        {consent.runningTasks > 0
-          ? <RunningTasksAlert count={consent.runningTasks} body={t("engine_migration.running_tasks_migrate")} />
-          : null}
-        {consent.error ? <Alert variant="destructive"><AlertDescription>{consent.error}</AlertDescription></Alert> : null}
-        <details className="group text-xs text-muted-foreground">
-          <summary className="flex cursor-pointer list-none items-center gap-1 select-none hover:text-foreground">
-            <ChevronRight className="size-3.5 transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none" />
-            {t("engine_migration.what_changes")}
-          </summary>
-          <ul className="mt-2 grid list-disc gap-1 ps-8">
-            <li>{t("engine_migration.change_permissions")}</li>
-            <li>{t("engine_migration.change_attachments")}</li>
-            <li>{t("engine_migration.change_sync")}</li>
-            <li>{t("engine_migration.change_plugins")}</li>
-            {upgrade ? null : <li>{t("engine_migration.change_engine")}</li>}
-          </ul>
-        </details>
-        <AlertDialogFooter>
-          <AlertDialogCancel ref={cancelRef} disabled={consent.submitting}>{t("common.cancel")}</AlertDialogCancel>
-          <Button
-            variant={consent.runningTasks > 0 ? "outline" : "default"}
-            disabled={consent.submitting}
-            onClick={() => void confirmEngineMigration()}
-          >
-            {consent.runningTasks > 0
-              ? t("engine_migration.migrate_anyway")
-              : upgrade ? t("engine_migration.upgrade") : t("engine_migration.migrate")}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-function MigrationProgressDialog(props: { progress: ProgressState }) {
-  const { progress } = props;
-  const { migration } = progress;
-  const running = migration.state === "running";
-  const switchToV2 = () => {
-    // Close first so a running-tasks prompt is the only dialog on screen.
-    useEngineMigrationStore.setState({ progress: null });
-    void requestEngineSwitch(progress.client, "v2", progress.selected);
-  };
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) closeEngineMigrationProgress(); }}>
-      <DialogContent showCloseButton={false} data-testid="engine-migration-progress" data-state-kind={migration.state}>
-        <DialogHeader>
-          <DialogTitle>
-            {running ? t("engine_migration.progress_title")
-              : migration.state === "completed" ? t("engine_migration.done_title")
-                : t("engine_migration.error_title")}
-          </DialogTitle>
-          <DialogDescription>
-            {running ? `${migration.resumed ? `${t("engine_migration.resumed_note")} ` : ""}${t("engine_migration.progress_note")}`
-              : migration.state === "completed" ? migratedSummary(migration)
-                : migration.error}
-          </DialogDescription>
-        </DialogHeader>
-        {running ? <MigrationProgressBar migration={migration} /> : null}
-        {migration.state === "completed" && migration.notCopied?.length ? (
-          <ul data-testid="engine-migration-not-copied" className="grid max-h-32 list-disc gap-1 overflow-y-auto ps-5 text-xs text-muted-foreground">
-            {migration.notCopied.map((chat) => <li key={chat.id} className="truncate">{chat.title || chat.id}</li>)}
-          </ul>
-        ) : null}
-        {migration.state === "error" && progress.runningTasks > 0
-          ? <RunningTasksAlert count={progress.runningTasks} body={t("engine_migration.running_tasks_retry")} />
-          : migration.state === "error" ? <p className="text-xs text-muted-foreground">{t("engine_migration.error_note")}</p> : null}
-        <DialogFooter>
-          {running ? (
-            <Button variant="outline" onClick={continueEngineMigrationInBackground}>
-              {t("engine_migration.continue_in_background")}
-            </Button>
-          ) : migration.state === "completed" ? (
-            progress.selected === "v1" ? (
-              <>
-                <Button variant="outline" onClick={closeEngineMigrationProgress}>{t("engine_migration.not_now")}</Button>
-                <Button onClick={switchToV2}>{t("engine_migration.switch_to_v2")}</Button>
-              </>
-            ) : (
-              <Button onClick={closeEngineMigrationProgress}>{t("engine_migration.done")}</Button>
-            )
-          ) : (
-            <>
-              <Button variant="outline" disabled={progress.retrying} onClick={closeEngineMigrationProgress}>{t("common.close")}</Button>
-              {progress.runningTasks > 0 ? (
-                <Button variant="outline" disabled={progress.retrying} onClick={() => void retryEngineMigration(true)}>
-                  {t("engine_migration.migrate_anyway")}
-                </Button>
-              ) : (
-                <Button disabled={progress.retrying} onClick={() => void retryEngineMigration()}>{t("engine_migration.try_again")}</Button>
-              )}
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** Both floating notices clear the actual chrome, including native offsets and taller route headers. */
+/** Floating notices clear the actual chrome, including native offsets and taller route headers. */
 function MigrationFloatingRegion(props: PropsWithChildren) {
   const regionRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -571,178 +120,158 @@ function MigrationFloatingRegion(props: PropsWithChildren) {
   );
 }
 
-function MigrationBanner(props: { progress: ProgressState }) {
-  const { migration } = props.progress;
-  const done = handledCount(migration);
-  const count = migration.phase === "copying" && migration.total > 0
-    ? t("engine_migration.progress_copied", { done: formatCount(done), total: formatCount(migration.total) })
+const noticeClassName = "pointer-events-auto flex max-w-xl items-center gap-3 rounded-2xl bg-popover px-4 py-3 text-popover-foreground shadow-[var(--dls-card-shadow)] ring-1 ring-foreground/5";
+
+export function HistoryImportBanner(props: { migration: EngineV2MigrationStatus | null }) {
+  const { migration } = props;
+  const count = migration && migration.phase === "copying" && migration.total > 0
+    ? t("engine_migration.progress_copied", { done: formatCount(handledCount(migration)), total: formatCount(migration.total) })
     : null;
   return (
     <MigrationFloatingRegion>
-      <div
-        role="status"
-        aria-live="polite"
-        data-testid="engine-migration-banner"
-        className="pointer-events-auto flex max-w-xl items-center gap-3 rounded-2xl bg-popover px-4 py-3 text-popover-foreground shadow-[var(--dls-card-shadow)] ring-1 ring-foreground/5"
-      >
+      <div role="status" aria-live="polite" data-testid="engine-migration-banner" className={noticeClassName}>
         <LoaderCircle className="size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{t("engine_migration.banner_title")}</p>
-          <p className="text-xs text-muted-foreground">{count ? `${count}. ` : ""}{t("engine_migration.banner_note")}</p>
+          <p className="text-sm font-medium">{t("engine_migration.copying_title")}</p>
+          <p className="text-xs text-muted-foreground">{count ? `${count}. ` : ""}{t("engine_migration.copying_note")}</p>
         </div>
-        <Button type="button" size="xs" variant="outline" onClick={showEngineMigrationProgress}>
-          {t("engine_migration.show_progress")}
+      </div>
+    </MigrationFloatingRegion>
+  );
+}
+
+export function HistoryImportErrorNotice(props: {
+  retrying: boolean;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <MigrationFloatingRegion>
+      <div role="alert" data-testid="engine-migration-error" className={noticeClassName}>
+        <TriangleAlert className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">{t("engine_migration.copy_error_title")}</p>
+          <p className="text-xs text-muted-foreground">{t("engine_migration.copy_error_note")}</p>
+        </div>
+        <Button type="button" size="xs" variant="ghost" disabled={props.retrying} onClick={props.onDismiss}>
+          {t("common.close")}
+        </Button>
+        <Button type="button" size="xs" variant="outline" disabled={props.retrying} onClick={props.onRetry}>
+          {t("engine_migration.try_again")}
         </Button>
       </div>
     </MigrationFloatingRegion>
   );
 }
 
-function EngineSwitchPrompt(props: { prompt: SwitchPrompt }) {
-  const { prompt } = props;
-  const leavingV2 = prompt.from === "v2";
-  return (
-    <AlertDialog open onOpenChange={(open) => { if (!open) resolveEngineSwitchPrompt(false); }}>
-      <AlertDialogContent data-testid="engine-switch-prompt">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t("engine_migration.switch_running_title", { count: prompt.runningTasks, engine: prompt.from })}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {leavingV2 ? t("engine_migration.switch_from_v2") : t("engine_migration.switch_from_v1")}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{t("engine_migration.keep_engine", { engine: prompt.from })}</AlertDialogCancel>
-          <Button variant={leavingV2 ? "destructive" : "default"} onClick={() => resolveEngineSwitchPrompt(true)}>
-            {leavingV2 ? t("engine_migration.stop_and_switch") : t("engine_migration.switch_anyway")}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
+const COPYING_POLL_MS = 1_000;
+const IDLE_POLL_MS = 30_000;
+const STARTUP_RETRY_MS = 2_000;
 
-/** Polls the running migration and finishes it quietly when it was sent to the background. */
-function useMigrationLifecycle(progress: ProgressState | null) {
-  const client = progress?.client;
-  const state = progress?.migration.state;
-  const view = progress?.view;
-  const serverManaged = progress?.serverManaged === true;
-  useEffect(() => {
-    if (!client || state !== "running") return;
-    let disposed = false;
-    const timer = window.setInterval(() => {
-      void client.getEngineV2PreviewStatus().then(
-        (status) => { if (!disposed) observeEngineMigration(client, status); },
-        () => {},
-      );
-    }, 1_000);
-    return () => { disposed = true; window.clearInterval(timer); };
-  }, [client, state]);
-  useEffect(() => {
-    // The upgrade flow switches on its own once every chat is copied. Chats left
-    // in v1 are shown first, with the usual choice to switch.
-    const current = useEngineMigrationStore.getState().progress;
-    if (!current || serverManaged || state !== "completed" || !current.switchWhenDone || current.migration.notCopied?.length) return;
-    useEngineMigrationStore.setState({ progress: null });
-    const switched = current.selected === "v2"
-      ? Promise.resolve(true)
-      : requestEngineSwitch(current.client, "v2", current.selected).then((next) => next !== null);
-    void switched.then((ok) => {
-      if (ok) toast.success(t("engine_migration.upgraded_title"), { description: migratedSummary(current.migration) });
-    });
-  }, [state, serverManaged]);
-  useEffect(() => {
-    const current = useEngineMigrationStore.getState().progress;
-    if (!current) return;
-    if (serverManaged) {
-      // Forced work stays nonblocking on failure too; retries and routing remain host-owned.
-      if (state === "completed" || state === "error") useEngineMigrationStore.setState({ progress: null });
-      return;
-    }
-    if (view !== "banner") return;
-    if (state === "error" || (state === "completed" && current.migration.notCopied?.length)) {
-      // A failure needs a decision (retry or leave it), and chats left in v1
-      // should be seen before switching, so bring the dialog back.
-      showEngineMigrationProgress();
-    } else if (state === "completed") {
-      useEngineMigrationStore.setState({ progress: null });
-      toast.success(t("engine_migration.done_title"), {
-        description: migratedSummary(current.migration),
-        ...(current.selected === "v1"
-          ? { action: { label: t("engine_migration.switch_to_v2"), onClick: () => void requestEngineSwitch(current.client, "v2", "v1") } }
-          : {}),
-      });
-    }
-  }, [state, view, serverManaged]);
+async function resolveHistoryImportClient(): Promise<HistoryImportClient | null> {
+  const connection = await resolveOpenworkConnection();
+  if (!connection.normalizedBaseUrl || !connection.resolvedToken) return null;
+  return createOpenworkServerClient({
+    baseUrl: connection.normalizedBaseUrl,
+    token: connection.resolvedToken,
+    hostToken: connection.resolvedHostToken,
+  });
 }
-
-/** Status reads at startup keep trying this long: the local server may still be starting. */
-const DISCOVERY_ATTEMPTS = 30;
-const DISCOVERY_RETRY_MS = 2_000;
 
 /**
- * A renderer reload mid-migration, a copy resumed after OpenWork restarted (or
- * another window starting one) is picked up once the first status read lands.
+ * Polls the host's import status: every second while copying, otherwise
+ * rarely (a restarted server may start copying again). The end of a copy
+ * dispatches {@link CHAT_HISTORY_IMPORTED_EVENT}.
  */
-function useRunningMigrationDiscovery(enabled: boolean) {
+export function useHistoryImportObserver(options: {
+  enabled: boolean;
+  resolveClient?: () => Promise<HistoryImportClient | null>;
+}) {
+  const { enabled } = options;
+  const resolveClient = options.resolveClient ?? resolveHistoryImportClient;
+  const resolveClientRef = useRef(resolveClient);
+  resolveClientRef.current = resolveClient;
+  const [view, setView] = useState<HistoryImportView>({ kind: "idle" });
+  const clientRef = useRef<HistoryImportClient | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const [pollNow, setPollNow] = useState(0);
+
   useEffect(() => {
-    if (!enabled || !isDesktopRuntime()) return;
+    if (!enabled) return;
     let cancelled = false;
     let timer: number | undefined;
-    let previousEngine: ChatEngine | null = null;
-    const attempt = async (remaining: number) => {
+    let wasCopying = false;
+    const poll = async () => {
+      let next: HistoryImportView | null = null;
       try {
-        const connection = await resolveOpenworkConnection();
+        const client = await resolveClientRef.current();
         if (cancelled) return;
-        if (connection.normalizedBaseUrl && connection.resolvedToken) {
-          const client = createOpenworkServerClient({
-            baseUrl: connection.normalizedBaseUrl,
-            token: connection.resolvedToken,
-            hostToken: connection.resolvedHostToken,
-          });
-          const status = await client.getEngineV2PreviewStatus();
-          if (cancelled) return;
-          // Observe only: startup, backups, idle checks, retries and switching
-          // belong to the host, not an organization feature query.
-          observeEngineMigration(client, status);
-          const engine = selectedChatEngine(status);
-          if ((previousEngine !== null && engine !== previousEngine)
-            || (previousEngine === null && status.engineForced)) {
-            window.dispatchEvent(new CustomEvent("openwork-engine-changed"));
-          }
-          previousEngine = engine;
-          if (status.forceUpgradePending || status.engineForced) {
-            timer = window.setTimeout(() => void attempt(DISCOVERY_ATTEMPTS), 1_000);
-          }
-          return;
-        }
+        clientRef.current = client;
+        if (client) next = historyImportView(await client.getEngineV2PreviewStatus());
       } catch {
-        // Engine controls report connection problems where they are used.
+        // The local server may be starting or restarting; try again shortly.
       }
-      if (!cancelled && remaining > 1) timer = window.setTimeout(() => void attempt(remaining - 1), DISCOVERY_RETRY_MS);
+      if (cancelled) return;
+      if (next) {
+        if (wasCopying && next.kind !== "copying") window.dispatchEvent(new CustomEvent(CHAT_HISTORY_IMPORTED_EVENT));
+        wasCopying = next.kind === "copying";
+        setView(next);
+      }
+      const delay = !next ? STARTUP_RETRY_MS : next.kind === "copying" ? COPYING_POLL_MS : IDLE_POLL_MS;
+      timer = window.setTimeout(() => void poll(), delay);
     };
-    void attempt(DISCOVERY_ATTEMPTS);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [enabled]);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [enabled, pollNow]);
+
+  const retry = async () => {
+    const client = clientRef.current;
+    if (!client || retrying) return;
+    setRetrying(true);
+    try {
+      setView(historyImportView(await client.migrateOpencodeHistory()));
+    } catch {
+      // The notice stays; the next status read reports the current state.
+    } finally {
+      setRetrying(false);
+      setPollNow((value) => value + 1);
+    }
+  };
+
+  const errorKey = view.kind === "error" ? `${view.migration.startedAt ?? ""}:${view.migration.error ?? ""}` : null;
+  return {
+    view,
+    retrying,
+    showError: view.kind === "error" && errorKey !== dismissedError,
+    retry,
+    dismissError: () => setDismissedError(errorKey),
+  };
 }
 
-export function EngineMigrationOverlay(props: { discoverRunningMigration?: boolean }) {
+export function EngineMigrationOverlay(props: {
+  discoverRunningMigration?: boolean;
+  resolveClient?: () => Promise<HistoryImportClient | null>;
+}) {
   const desktop = isDesktopRuntime();
-  const consent = useEngineMigrationStore((state) => state.consent);
-  const progress = useEngineMigrationStore((state) => state.progress);
-  const switchPrompt = useEngineMigrationStore((state) => state.switchPrompt);
-  useMigrationLifecycle(desktop ? progress : null);
-  // The local host owns automatic migration; Den availability and feature flags
-  // must never block it or switch an upgraded installation back to v1.
-  useRunningMigrationDiscovery(desktop && props.discoverRunningMigration !== false);
-  // Local-engine consent and progress never apply to the web runtime, even if the store is populated.
+  const observer = useHistoryImportObserver({
+    enabled: desktop && props.discoverRunningMigration !== false,
+    resolveClient: props.resolveClient,
+  });
   if (!desktop) return null;
-  return (
-    <>
-      {consent ? <MigrationConsentDialog consent={consent} /> : null}
-      {progress?.view === "dialog" ? <MigrationProgressDialog progress={progress} /> : null}
-      {progress?.view === "banner" && progress.migration.state === "running" ? <MigrationBanner progress={progress} /> : null}
-      {switchPrompt ? <EngineSwitchPrompt prompt={switchPrompt} /> : null}
-    </>
-  );
+  const { view } = observer;
+  if (view.kind === "copying") return <HistoryImportBanner migration={view.migration} />;
+  if (view.kind === "error" && observer.showError) {
+    return (
+      <HistoryImportErrorNotice
+        retrying={observer.retrying}
+        onRetry={() => void observer.retry()}
+        onDismiss={observer.dismissError}
+      />
+    );
+  }
+  return null;
 }

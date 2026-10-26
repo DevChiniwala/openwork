@@ -189,7 +189,6 @@ function describeEngine(info: EngineInfo | null) {
     lines: [
       t("settings.debug_base_url", { url: info?.baseUrl ?? "—" }),
       t("settings.debug_runtime", { runtime: info?.runtime ?? "—" }),
-      t("settings.diag_opencode_binary", { binary: formatOpencodeBinary(info) }),
       t("settings.debug_pid", { pid: info?.pid ? String(info.pid) : "—" }),
       t("settings.debug_hostname", { hostname: info?.hostname ?? "—" }),
       t("settings.debug_port", { port: info?.port ? String(info.port) : "—" }),
@@ -201,31 +200,12 @@ function describeEngine(info: EngineInfo | null) {
   };
 }
 
-function formatOpencodeBinary(info: EngineInfo | null) {
-  return formatBinaryWithSource(info?.opencodeBinPath, info?.opencodeBinSource);
-}
-
-function formatManagedOpencodeBinary(info: OpenworkServerInfo | null) {
-  return formatBinaryWithSource(
-    info?.managedOpencodeBinPath,
-    info?.managedOpencodeBinSource,
-  );
-}
-
-function formatBinaryWithSource(path: string | null | undefined, source: string | null | undefined) {
-  const binary = path?.trim();
-  if (!binary) return "—";
-  const sourceLabel = source?.trim();
-  return sourceLabel ? `${binary} (${sourceLabel})` : binary;
-}
-
 function describeOpenworkServer(info: OpenworkServerInfo | null) {
   const running = Boolean(info?.running);
   return {
     ...statusPill(running),
     lines: [
       t("settings.debug_base_url", { url: info?.baseUrl ?? "—" }),
-      t("settings.diag_opencode_binary", { binary: formatManagedOpencodeBinary(info) }),
       t("settings.debug_log_file", { path: info?.logFilePath ?? "—" }),
       t("settings.debug_pid", { pid: info?.pid ? String(info.pid) : "—" }),
     ],
