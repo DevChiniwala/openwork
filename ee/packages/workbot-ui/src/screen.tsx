@@ -236,11 +236,9 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   }, [preview, data]);
   const filesEnabled = data?.filesEnabled ?? false;
   const addFiles = uploads.add;
-  // The command palette (feature `workbotCommandPalette`). Off: no button, no shortcut, no extra requests.
-  const paletteOn = host.commandPalette === true;
-  const paletteChats = useWorkbotChats(paletteOn && navigation !== null);
+  const paletteChats = useWorkbotChats(navigation !== null);
   const paletteTasks = useMemo(() => (data?.turns ?? []).flatMap((turn) => turn.tasks), [data?.turns]);
-  const palette = paletteOn ? (
+  const palette = (
     <WorkbotCommandPalette
       name={data?.name ?? "Workbot"}
       tab={tab}
@@ -264,7 +262,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       homeHref={host.homeHref}
       connectionsHref={host.connectionsHref ?? null}
     />
-  ) : null;
+  );
   const dragging = useFileDrop(filesEnabled, addFiles);
 
   useEffect(() => {

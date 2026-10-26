@@ -551,8 +551,8 @@ const generatedArtifactViewsEnabled =
 const appMcpServersEnabled = parseBooleanFlag(optionalString(parsed.DEN_APP_MCP_SERVERS_ENABLED) ?? "true")
 
 // Automations are on by default. Organizations turn Desktop or Cloud
-// Automations off in their settings (organizationAutomationSettings). An
-// explicit DEN_AUTOMATIONS_ENABLED=false remains the operator's complete
+// Automations off in their organization settings. An explicit
+// DEN_AUTOMATIONS_ENABLED=false remains the operator's complete
 // shutdown unless a mixed-version deployment explicitly keeps the
 // compatibility runtime on. A disabled runtime always forces availability off.
 const automationsRuntimeEnabled = parseBooleanFlag(

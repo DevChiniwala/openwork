@@ -1,10 +1,8 @@
-/** Rollout-dependent visibility of Den API catalog operations to agents. Pure, so it is testable without a database. */
+/** Feature- and caller-dependent visibility of Den API catalog operations. Pure, so it is testable without a database. */
 export type CatalogAvailabilityContext = {
   generatedArtifactViewsEnabled: boolean
   /** Managed deployment planning, launch preparation and status: managed deployments enabled. */
   managedDeploymentsEnabled: boolean
-  /** Removing an organization connection on the user's explicit request: agent connection removal enabled. */
-  agentConnectionRemovalEnabled: boolean
   /**
    * What started these capability calls. Removal is offered only to a person's
    * own agent, never to saved Workflows, Automations or Apps that run unattended.
@@ -24,9 +22,10 @@ export function catalogOperationAvailableToCapabilities(
   if (operation.path === "/v1/managed-deployments" || operation.path.startsWith("/v1/managed-deployments/")) {
     return context.managedDeploymentsEnabled
   }
-  // Hidden until the organization has the rollout; the route also refuses while it is off.
+  // Removal preparation is available only to a person's agent, never unattended callers.
+  // The route still checks ownership/permissions and leaves deletion to the person's confirmation in Den.
   if (operation.path === AGENT_CONNECTION_REMOVAL_PATH) {
-    return context.agentConnectionRemovalEnabled && context.usageSource === "agent"
+    return context.usageSource === "agent"
   }
   if (context.generatedArtifactViewsEnabled) return true
   return operation.path !== "/v1/workflows/{configObjectId}/views"

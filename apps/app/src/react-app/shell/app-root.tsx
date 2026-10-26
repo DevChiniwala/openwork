@@ -183,7 +183,7 @@ function DenSigninGate({ children }: DenSigninGateProps) {
         // Desktop-initiated sign-in with the choice deliberately open: the org
         // chooser decides (and returns to the recorded route when it
         // finishes) — do not race it to /session. With an organization
-        // active, chat opens where sign-in started (`desktopSignInReturn`),
+        // active, chat opens where sign-in started,
         // otherwise on the session root.
         const route = resolvePostHandoffRoute({
           hasToken: Boolean(settings.authToken?.trim()),

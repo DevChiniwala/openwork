@@ -109,8 +109,7 @@ export interface EngineV2PreviewStatus {
   skippedProviderIds: string[];
   /**
    * Why each provider in `skippedProviderIds` is not on this engine, including
-   * providers connected on this computer that never reached the mirror. Only
-   * present while the `localProviderMirror` rollout is on.
+   * providers connected on this computer that never reached the mirror.
    */
   skippedProviders?: EngineV2SkippedProvider[];
   catalogModelIds: string[];
@@ -146,8 +145,6 @@ export interface EngineV2Preview {
   connection(): { url: string; username: string; password: string } | undefined;
   ensureWorkspaceReady(directory: string): Promise<void>;
   refreshProviders(): Promise<void>;
-  /** Mirror again when the `localProviderMirror` rollout changed since the last mirror, so turning it off applies without a restart. */
-  recheckLocalProviderMirror(): Promise<void>;
   setLiveProviderSync(enabled: boolean): Promise<void>;
   /**
    * Reconcile a folder's MCP connections with the engine: register new or
@@ -603,12 +600,6 @@ export async function resolveLiveProviderSyncForEngineStart(resolve?: () => Prom
   catch { return false; }
 }
 
-/** A rollout that cannot be read is off: the mirror keeps its older behavior. */
-export async function resolveLocalProviderMirror(resolve?: () => Promise<boolean>): Promise<boolean> {
-  try { return await resolve?.() === true; }
-  catch { return false; }
-}
-
 export function createEngineV2Preview(options: {
   config: ServerConfig;
   env?: Pick<EnvService, "list" | "onChange">;
@@ -617,8 +608,6 @@ export function createEngineV2Preview(options: {
   providerSession?: () => CloudProviderDenSession | null;
   /** Fresh Den resolution on every child start, independent of the cloud sync timer. */
   resolveLiveProviderSync?: () => Promise<boolean>;
-  /** The `localProviderMirror` rollout, read on every mirror. Missing, unreachable or signed out means off. */
-  resolveLocalProviderMirror?: () => Promise<boolean>;
   waits?: Partial<typeof ENGINE_V2_UPKEEP_WAITS>;
   /** Same running-task probe used by the interactive migration route; unknown is not idle. */
   autoUpgradeIdle?: () => Promise<boolean>;
@@ -676,9 +665,7 @@ export function createEngineV2Preview(options: {
   let binSource: EngineV2PreviewStatus["binSource"];
   let mirroredProviderIds: string[] = [];
   let skippedProviderIds: string[] = [];
-  let skippedProviders: EngineV2SkippedProvider[] | undefined;
-  // The `localProviderMirror` value the last mirror ran with.
-  let appliedLocalProviderMirror: boolean | undefined;
+  let skippedProviders: EngineV2SkippedProvider[] = [];
   let currentCatalogModelIds: string[] = [];
   let lastMirroredAt: string | undefined;
   let lastError: string | undefined;
@@ -869,7 +856,7 @@ export function createEngineV2Preview(options: {
       ...(binSource === undefined ? {} : { binSource }),
       mirroredProviderIds: [...mirroredProviderIds],
       skippedProviderIds: [...skippedProviderIds],
-      ...(skippedProviders === undefined ? {} : { skippedProviders: skippedProviders.map(provider => ({ ...provider })) }),
+      skippedProviders: skippedProviders.map(provider => ({ ...provider })),
       catalogModelIds: [...currentCatalogModelIds],
       ...(lastMirroredAt === undefined ? {} : { lastMirroredAt }),
       ...(lastError === undefined ? {} : { lastError }),
@@ -897,8 +884,6 @@ export function createEngineV2Preview(options: {
   }
 
   async function pushAndConfirmProviders(active: ManagedOpencodeV2Server, pushed: () => void, discovered: () => void): Promise<void> {
-    const mirrorLocal = await resolveLocalProviderMirror(options.resolveLocalProviderMirror);
-    appliedLocalProviderMirror = mirrorLocal;
     const globalRuntime = await readGlobalRuntimeOpencodeConfig(config);
     const configured = runtimeProviderMap(globalRuntime);
     // Same list v1 receives as `disabled_providers` (e.g. a disconnected
@@ -912,7 +897,7 @@ export function createEngineV2Preview(options: {
     const localKeys = allowsProvider
       ? new Map([...localAuth.apiKeys].filter(([id]) => allowsProvider(id)))
       : localAuth.apiKeys;
-    const local = await localProviderDefinitions(config, localAuth, configured, { normalize: mirrorLocal, allows: allowsProvider });
+    const local = await localProviderDefinitions(config, localAuth, configured, { allows: allowsProvider });
     const blockedConfigured = Object.keys(configured).filter(id => allowsProvider && !allowsProvider(id));
     const combinedProviders = { ...local.providers, ...Object.fromEntries(Object.entries(configured)
       .filter(([id]) => !allowsProvider || allowsProvider(id))) };
@@ -956,7 +941,7 @@ export function createEngineV2Preview(options: {
       mapped.skippedProviders,
     );
     skippedProviderIds = skipped.map(provider => provider.id);
-    skippedProviders = mirrorLocal ? skipped : undefined;
+    skippedProviders = skipped;
     lastMirroredAt = new Date().toISOString();
     pushed();
     // Re-check folders already in use now, so their next prompt pays nothing.
@@ -993,11 +978,6 @@ export function createEngineV2Preview(options: {
     scheduleMirror();
     await mirrorInFlight;
     if (mirrorError) throw new Error(mirrorError);
-  }
-
-  async function recheckLocalProviderMirror(): Promise<void> {
-    if (!running || !sidecar || appliedLocalProviderMirror === undefined) return;
-    if (await resolveLocalProviderMirror(options.resolveLocalProviderMirror) !== appliedLocalProviderMirror) scheduleMirror();
   }
 
   async function setLiveProviderSync(next: boolean): Promise<void> {
@@ -1486,5 +1466,5 @@ export function createEngineV2Preview(options: {
     } else if (enabled && !automaticHistoryCopy && engineOrigin !== "reverted" && !(autoUpgradeEnabled && !chatRouting && !chosenV1Manually())) void start().catch(recordStartError);
   }
   if (!options.deferStart) startWhenReady();
-  return { start: startWhenReady, setForcePolicy, migrateHistory, status, setEnabled, setChatRouting, requireV1HistoryCopied, describeUncopiedChat, connection, ensureWorkspaceReady, refreshProviders, recheckLocalProviderMirror, setLiveProviderSync, syncWorkspaceMcp, settleWorkspaceMcp, warmWorkspace, settleWorkspaceSkills, stop };
+  return { start: startWhenReady, setForcePolicy, migrateHistory, status, setEnabled, setChatRouting, requireV1HistoryCopied, describeUncopiedChat, connection, ensureWorkspaceReady, refreshProviders, setLiveProviderSync, syncWorkspaceMcp, settleWorkspaceMcp, warmWorkspace, settleWorkspaceSkills, stop };
 }

@@ -359,12 +359,12 @@ export function presentOpencodeSessionError(error: unknown, fallback = "Session 
   const gatewaySelection = safeStringify(error)?.includes("gateway_selection_required") === true;
   const gatewayUsage = parseGatewayUsageError(error);
   const openworkModelsLimit = gatewayUsage ? null : parseOpenWorkModelsLimitError(error);
-  const kind = gatewayAuth ? "gateway-auth-required" : gatewaySelection ? "gateway-selection-required" : sessionErrorKind(fields.name, fields.message, fields.code, fields.responseBody, fields.status);
+  const kind = gatewayAuth ? "gateway-auth-required" : gatewaySelection ? "gateway-selection-required" : openworkModelsLimit ? "generic" : sessionErrorKind(fields.name, fields.message, fields.code, fields.responseBody, fields.status);
   const fallbackTitle = normalizeSessionError(fields.message ?? defaultErrorMessage(fields.name, fallback));
   const credentialCopy = kind === "provider-credentials" ? providerCredentialCopy(fields) : null;
   return {
     kind,
-    title: credentialCopy?.title ?? errorTitle(kind, fallbackTitle),
+    title: openworkModelsLimit ? "Your workspace used its OpenWork Models allowance" : credentialCopy?.title ?? errorTitle(kind, fallbackTitle),
     description: credentialCopy?.description ?? errorDescription(kind, gatewayAuth),
     technicalDetails: kind === "gateway-selection-required" ? "Error code: gateway_selection_required\nStatus: 409" : gatewayAuth ? "Error code: openwork_auth_required\nStatus: 401" : technicalErrorDetails(error, fallback, fields),
     recoveryPrompt: errorRecoveryPrompt(kind),

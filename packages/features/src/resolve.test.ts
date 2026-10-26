@@ -125,6 +125,33 @@ test("retired GA locks cannot disable models, skills, permissions or team member
   assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
 })
 
+test("completed desktop, Workbot and organization rollouts ignore legacy opt-out locks", () => {
+  const retired = [
+    "localProviderMirror", "organizationAutomationSettings", "agentConnectionRemoval",
+    "workbotCommandPalette", "usageLimitUpgrade", "removeOpencodeZen",
+    "desktopSignInReturn", "claudeHistoryImport", "orgPrompts",
+  ]
+  for (const key of retired) {
+    assert.equal(featureKeySchema.safeParse(key).success, false, key)
+    assert.equal(Object.hasOwn(resolveFeatures(base), key), false, key)
+    assert.ok(RETIRED_FEATURE_KEYS.some((retiredKey) => retiredKey === key), key)
+  }
+  const parsed = parseFeatureEnvironment({
+    DEN_FEATURE_LOCAL_PROVIDER_MIRROR: "false",
+    DEN_FEATURE_ORGANIZATION_AUTOMATION_SETTINGS: "false",
+    DEN_FEATURE_AGENT_CONNECTION_REMOVAL: "false",
+    DEN_FEATURE_WORKBOT_COMMAND_PALETTE: "false",
+    DEN_FEATURE_USAGE_LIMIT_UPGRADE: "false",
+    DEN_FEATURE_REMOVE_OPENCODE_ZEN: "false",
+    DEN_FEATURE_DESKTOP_SIGN_IN_RETURN: "false",
+    DEN_FEATURE_CLAUDE_HISTORY_IMPORT: "false",
+    DEN_FEATURE_ORG_PROMPTS: "false",
+  })
+  assert.deepEqual(parsed.locks, {})
+  assert.equal(parsed.problems.length, retired.length)
+  assert.ok(parsed.problems.every((problem) => !problem.fatal && problem.message.includes("ignored")))
+})
+
 test("automatic v2 migration has no feature key and ignores legacy opt-out locks", () => {
   for (const key of ["engineV2Upgrade", "engineV2ForceUpgrade"]) {
     assert.equal(featureKeySchema.safeParse(key).success, false)

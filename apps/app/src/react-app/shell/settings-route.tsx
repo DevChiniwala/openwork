@@ -99,7 +99,6 @@ import { EffectivePermissionsPanel } from "@/react-app/domains/settings/panels/e
 import { SettingsStack } from "@/react-app/domains/settings/settings-section";
 import { AdvancedView } from "@/react-app/domains/settings/pages/advanced-view";
 import { ClaudeImportView } from "@/react-app/domains/settings/pages/claude-import-view";
-import { useDesktopFeature } from "@/react-app/domains/session/status/use-desktop-feature";
 import { AppearanceView } from "@/react-app/domains/settings/pages/appearance-view";
 import { KeyboardShortcutsView } from "@/react-app/domains/settings/pages/keyboard-shortcuts-view";
 import { CloudAccountView } from "@/react-app/domains/settings/pages/cloud-account-view";
@@ -452,7 +451,6 @@ export type SettingsSurfaceProps = {
 
 function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const navigate = useNavigate();
-  const claudeImportEnabled = useDesktopFeature("claudeHistoryImport");
   const toggleSidebar = useUiStateStore((state) => state.toggleSidebar);
   const location = useLocation();
   const params = useParams<{ workspaceId?: string }>();
@@ -2447,7 +2445,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           />
         );
       case "import":
-        return claudeImportEnabled ? (
+        return (
           <SettingsStack>
             <ClaudeImportView
               key={runtimeWorkspaceId ?? selectedWorkspaceId}
@@ -2456,7 +2454,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               onOpenSession={(sessionId) => navigate(workspaceSessionRoute(selectedWorkspaceId, sessionId))}
             />
           </SettingsStack>
-        ) : null;
+        );
       case "advanced":
         return (
           <SettingsStack>

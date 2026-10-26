@@ -62,7 +62,6 @@ import {
   SettingsPanelToolbarStatus,
 } from "./panel";
 import { SidebarDestination } from "../../session/sidebar/sidebar-destination";
-import { useDesktopFeature } from "../../session/status/use-desktop-feature";
 
 export function getSettingsTabIcon(tab: SettingsTab) {
   switch (tab) {
@@ -201,11 +200,8 @@ export function getSettingsTabDescription(tab: SettingsTab) {
   }
 }
 
-export function getWorkspaceSettingsTabs(options: { claudeImport?: boolean } = {}): SettingsTab[] {
-  const tabs: SettingsTab[] = ["preferences", "permissions", "extensions"];
-  if (options.claudeImport) tabs.push("import");
-  tabs.push("advanced");
-  return tabs;
+export function getWorkspaceSettingsTabs(): SettingsTab[] {
+  return ["preferences", "permissions", "extensions", "import", "advanced"];
 }
 
 export function getGlobalSettingsTabs(
@@ -269,12 +265,11 @@ export type SettingsNavGroups = {
 export function useSettingsNavGroups(developerMode: boolean): SettingsNavGroups {
   const platform = usePlatform();
   const checkRestriction = useCheckDesktopRestriction();
-  const claudeImport = useDesktopFeature("claudeHistoryImport");
   const allowed = (tabs: SettingsTab[]) =>
     tabs.filter((tab) => isSettingsTabAllowed({ tab, checkRestriction }));
   return {
     hub: allowed(["general"]),
-    workspace: allowed(getWorkspaceSettingsTabs({ claudeImport })),
+    workspace: allowed(getWorkspaceSettingsTabs()),
     global: allowed(getGlobalSettingsTabs(developerMode, platform.capabilities)),
     cloud: allowed(CLOUD_SETTINGS_TABS),
   };

@@ -1201,7 +1201,7 @@ export function SessionRoute() {
       if (starter) local.setPrefs((previous) => ({ ...previous, defaultModel: starter, modelVariant: null }));
     } catch {}
   }, [initialAutoAccess.isPending, initialAutoAccess.fetchStatus, initialAutoAccess.data, cloudProviderList, providerListQuery.data, loading, selectedSessionId, sessionsByWorkspaceId, workspaceSessionGroups, local, workspaceDefault]);
-  // OpenCode Zen removed (the `removeOpencodeZen` feature, or an enforced Zen
+  // OpenCode Zen is retired (using the existing Zen
   // policy): disable the provider in the engine on the screen everyone uses,
   // not only while Settings is open, and move a Zen default to a model the
   // person can actually use. Never re-enable Zen here; that races Disconnect.

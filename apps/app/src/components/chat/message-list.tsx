@@ -42,7 +42,7 @@ import { BackgroundTaskNotice, BackgroundTasksLabel, BackgroundTasksMessage, bac
 import { sessionBackgroundShells, useBackgroundShellStore, type BackgroundShell } from "@/react-app/domains/session/status/background-shell-store"
 import { messageAutoAccessWall } from "@/app/lib/inference-access"
 import { AutoAccessNotice } from "@/react-app/domains/cloud/auto-access-ui"
-import { OpenWorkModelsLimitCard, useUsageLimitUpgrade } from "@/react-app/domains/cloud/usage-limit-card"
+import { OpenWorkModelsLimitCard } from "@/react-app/domains/cloud/usage-limit-card"
 import type { OpenWorkModelsLimit } from "@/react-app/domains/cloud/usage-limit-state"
 import { rejectedRecoveryFromMessage } from "@/react-app/domains/session/sync/rejected-turn"
 import { replyModelLabel, replyModelProvider } from "@/react-app/domains/session/sync/reply-model"
@@ -1096,7 +1096,7 @@ const MessageComponent = React.memo(
           changeModel={presentation !== null && ["provider-access-denied", "provider-unavailable", "provider-unreachable", "model-unavailable", "rate-limited", "conversation-too-long", "attachment-unsupported"].includes(presentation.kind)}
         />
       )
-      if (presentation?.openworkModelsLimit) return <TranscriptOpenWorkModelsLimit limit={presentation.openworkModelsLimit} fallback={errorMessage} />
+      if (presentation?.openworkModelsLimit) return <TranscriptOpenWorkModelsLimit limit={presentation.openworkModelsLimit} />
       return errorMessage
     }
 
@@ -1128,10 +1128,9 @@ const MessageComponent = React.memo(
   }
 )
 
-/** The organization used its OpenWork Models allowance: one usage-limit card when `usageLimitUpgrade` is on. */
-function TranscriptOpenWorkModelsLimit({ limit, fallback }: { limit: OpenWorkModelsLimit; fallback: React.ReactNode }) {
+/** The organization used its OpenWork Models allowance: one usage-limit card. */
+function TranscriptOpenWorkModelsLimit({ limit }: { limit: OpenWorkModelsLimit }) {
   const { sessionId } = useMessageList()
-  if (!useUsageLimitUpgrade()) return fallback
   return <div className="mx-auto w-full max-w-3xl px-2 py-2 md:px-10"><OpenWorkModelsLimitCard limit={limit} sessionId={sessionId} /></div>
 }
 

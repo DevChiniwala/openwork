@@ -125,9 +125,9 @@ These individual operations are blocked even though their tags may otherwise be 
 The dashboard's `DELETE /v1/mcp-connections/{connectionId}` stays blocked
 (`Authentication`), so no agent request can delete a connection. Agents
 prepare one with `requestMcpConnectionRemoval`
-(`POST /v1/mcp-connections/{connectionId}/removal-request`), shown and
-accepted only with the `agentConnectionRemoval` feature and only to a
-person's own agent (`usageSource: "agent"`, see `catalog-availability.ts`).
+(`POST /v1/mcp-connections/{connectionId}/removal-request`), available to all
+organizations but offered only to a person's own agent, never unattended
+Workflows, Automations or Apps (`usageSource: "agent"`, see `catalog-availability.ts`).
 It checks the same permissions as the dashboard (`connections.delete`, or
 having added the connection), requires the connection's exact
 `expectedName` (409 `connection_name_mismatch`), and refuses a connection
