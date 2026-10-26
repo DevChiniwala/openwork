@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { organizationPlanStateSchema } from "./billing-plans.js"
+import { organizationPlanStateSchema } from "@openwork/types/den/billing-plans"
 
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const adminSubscriptionSummarySchema = z.object({
