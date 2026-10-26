@@ -71,25 +71,42 @@ Use only when Levels 1 and 2 cannot answer the question (data-dependent
 migrations, performance on real volume). Ask the person first and name the
 cost and the data involved.
 
-Requirements, all writes to PlanetScale's control plane (never to production
-data): `create_branch` on the database; for real data, `restore_backup` (or
-production backup restore) access and Data Branching enabled on the
-organization; a branch password to connect. The read-only PlanetScale MCP
-cannot do any of this; use `pscale` signed in by the person
-(`pscale auth login`, hand off for sign-in) or a scoped service token from
-Infisical (`get-env-var`). A restored branch costs as much as the production
-branch while it exists.
+Use the **Dry run on a copy of production data** workflow
+(`.github/workflows/prod-data-dry-run.yml`). It restores the latest production
+backup into a `dry-run-*` branch, runs one check, and deletes the branch when
+the job ends, also on failure or cancel. The PlanetScale MCP cannot do this
+(it has no branch or restore tools).
 
-Guards, all required:
+1. Write the check in `ee/apps/den-api/scripts/dry-run/<name>.ts` on your
+   branch, using `connect.ts` (`dryRunDb`, `report`, `fail`, `finish`). It may
+   import the PR's own code (for example a pure rule) and must print
+   **aggregates and pass/fail only**: this repository is public, so the job
+   log and summary are public. Start from `smoke.ts`.
+2. Push the branch, then run the workflow from GitHub Actions (or
+   `gh workflow run prod-data-dry-run.yml --ref <branch> -f check=<name>.ts`).
+   Keep `writable` off unless the check applies a migration.
+3. A required reviewer approves the run on the `prod-data-dry-run`
+   environment after reading the check. Approve only checks that print
+   aggregates.
+4. Read the summary. If a run is interrupted, run it again with
+   `cleanup_only` to delete leftover `dry-run-*` branches.
 
-- `pscale branch create <db> <short-lived-name> --restore <backup-id> --wait`,
-  and delete it when done (`pscale branch delete`); never promote it.
-- Run Den against it in a sandbox (Daytona), never against production
-  services: email delivery off, Stripe **test** keys or the fake Stripe lab,
-  no Slack, connector or webhook credentials, separate Redis.
-- The copy holds every member's email and encrypted credentials: do not
-  export, screenshot or paste its rows anywhere. Evidence from it is a yes/no
-  and counts in chat only.
+What the workflow needs (set once, by a person, never pasted in chat): on the
+`prod-data-dry-run` environment, a PlanetScale service token limited to the
+Den database with `read_branch`, `create_branch`, `delete_branch`,
+`restore_production_branch_backups` and `connect_branch` (never
+`connect_production_branch`) as `PLANETSCALE_DRY_RUN_TOKEN_ID` /
+`PLANETSCALE_DRY_RUN_TOKEN`, the database name as variable
+`PLANETSCALE_DRY_RUN_DATABASE`, and Data Branching enabled for the PlanetScale
+organization. A restored branch costs as much as the production branch while
+it exists.
+
+Guards the workflow already applies: manual runs only, a required reviewer,
+no secrets besides the branch connection (no email, Stripe, Slack, connector
+or model credentials), masked credentials, one run at a time, a 90 minute
+timeout, and branch deletion in an `always()` step. Never copy rows out of the
+branch, never screenshot it, and never point a full Den deployment with real
+integrations at it.
 
 ## Before merge and deploy
 

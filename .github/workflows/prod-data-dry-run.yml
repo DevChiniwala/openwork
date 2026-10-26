@@ -1,0 +1,179 @@
+name: Dry run on a copy of production data
+
+# Runs one check from ee/apps/den-api/scripts/dry-run against a short-lived PlanetScale
+# branch restored from the latest production backup, then deletes the branch.
+# See .opencode/skills/dry-run-a-risky-change (level 3) for when to use it.
+#
+# Safety:
+# - Manual only (workflow_dispatch: people with write access). Never runs on
+#   pull requests, pushes or forks.
+# - Every run waits for a required reviewer on the prod-data-dry-run
+#   environment, and that environment holds the only secrets this job sees.
+# - The check gets a database connection and nothing else: no email, Stripe,
+#   Slack, connector or model credentials.
+# - This repository is public, so its logs and step summaries are public.
+#   Checks print aggregates and pass/fail only, never rows, names, ids or
+#   emails. Review the check before approving the run.
+# - The branch (and its password) is deleted when the job ends, also when it
+#   fails or is cancelled. Use cleanup_only to remove leftovers.
+#
+# Needs, on the prod-data-dry-run environment:
+#   secrets PLANETSCALE_DRY_RUN_TOKEN_ID and PLANETSCALE_DRY_RUN_TOKEN: a
+#   service token limited to the Den database with read_branch, create_branch,
+#   delete_branch, restore_production_branch_backups and connect_branch (never
+#   connect_production_branch), and Data Branching enabled for the organization.
+#   variable PLANETSCALE_DRY_RUN_DATABASE: the Den database name.
+
+on:
+  workflow_dispatch:
+    inputs:
+      check:
+        description: "Check to run: a file name in ee/apps/den-api/scripts/dry-run (for example smoke.ts)"
+        required: true
+        default: smoke.ts
+      writable:
+        description: "Give the check a read-write password (only for migration checks)"
+        type: boolean
+        default: false
+      cleanup_only:
+        description: "Only delete leftover dry-run-* branches, run nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-data-dry-run
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Dry run
+    if: github.repository == 'different-ai/openwork'
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    timeout-minutes: 90
+    environment:
+      name: prod-data-dry-run
+      deployment: false
+    env:
+      PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_DRY_RUN_TOKEN_ID }}
+      PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_DRY_RUN_TOKEN }}
+      PLANETSCALE_ORG: ben-prologe
+      SOURCE_BRANCH: main
+      DATABASE: ${{ vars.PLANETSCALE_DRY_RUN_DATABASE }}
+      BRANCH: dry-run-${{ github.run_id }}-${{ github.run_attempt }}
+      CHECK: ${{ inputs.check }}
+    steps:
+      - name: Check inputs and secrets
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -z "$PLANETSCALE_SERVICE_TOKEN_ID" ] && missing="$missing PLANETSCALE_DRY_RUN_TOKEN_ID"
+          [ -z "$PLANETSCALE_SERVICE_TOKEN" ] && missing="$missing PLANETSCALE_DRY_RUN_TOKEN"
+          [ -z "$DATABASE" ] && missing="$missing PLANETSCALE_DRY_RUN_DATABASE"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing on the prod-data-dry-run environment:$missing"
+            exit 1
+          fi
+          if ! printf '%s' "$CHECK" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_-]*\.(ts|mjs)$'; then
+            echo "::error::check must be a file name in ee/apps/den-api/scripts/dry-run, such as smoke.ts"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pscale CLI
+        uses: planetscale/setup-pscale-action@v1
+
+      - name: Delete leftover dry-run branches
+        if: inputs.cleanup_only
+        run: |
+          set -euo pipefail
+          pscale branch list "$DATABASE" --org "$PLANETSCALE_ORG" --format json \
+            | jq -r '.[] | select(.name | startswith("dry-run-")) | .name' \
+            | while read -r name; do
+                echo "Deleting $name"
+                pscale branch delete "$DATABASE" "$name" --org "$PLANETSCALE_ORG" --force
+              done
+
+      - name: Check the check exists
+        if: ${{ !inputs.cleanup_only }}
+        run: |
+          set -euo pipefail
+          test -f "ee/apps/den-api/scripts/dry-run/$CHECK" || { echo "::error::ee/apps/den-api/scripts/dry-run/$CHECK not found on $GITHUB_REF_NAME"; exit 1; }
+
+      - name: Restore the latest production backup to a new branch
+        if: ${{ !inputs.cleanup_only }}
+        run: |
+          set -euo pipefail
+          backup="$(pscale backup list "$DATABASE" "$SOURCE_BRANCH" --org "$PLANETSCALE_ORG" --format json \
+            | jq -r '[.[] | select(.state == "success")] | sort_by(.created_at) | last | .id // empty')"
+          if [ -z "$backup" ]; then
+            echo "::error::No successful backup of $SOURCE_BRANCH to restore"
+            exit 1
+          fi
+          echo "Restoring the latest successful backup into $BRANCH"
+          pscale branch create "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" --restore "$backup" --wait > /dev/null
+
+      - name: Create a branch password
+        if: ${{ !inputs.cleanup_only }}
+        id: password
+        env:
+          ROLE: ${{ inputs.writable && 'readwriter' || 'reader' }}
+        run: |
+          set -euo pipefail
+          json="$(pscale password create "$DATABASE" "$BRANCH" "dry-run-${{ github.run_id }}" --org "$PLANETSCALE_ORG" --role "$ROLE" --format json)"
+          host="$(printf '%s' "$json" | jq -r '.access_host_url // .database_branch.access_host_url')"
+          username="$(printf '%s' "$json" | jq -r '.username')"
+          password="$(printf '%s' "$json" | jq -r '.plain_text')"
+          echo "::add-mask::$username"
+          echo "::add-mask::$password"
+          {
+            echo "DRY_RUN_DATABASE_HOST=$host"
+            echo "DRY_RUN_DATABASE_USERNAME=$username"
+            echo "DRY_RUN_DATABASE_PASSWORD=$password"
+          } >> "$GITHUB_ENV"
+          echo "Password created with role $ROLE"
+
+      - name: Setup Node
+        if: ${{ !inputs.cleanup_only }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.22.1
+
+      - name: Setup pnpm
+        if: ${{ !inputs.cleanup_only }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.4.0
+
+      - name: Install dependencies
+        if: ${{ !inputs.cleanup_only }}
+        run: pnpm install --frozen-lockfile --filter "@openwork-ee/den-api..."
+
+      - name: Run the check (aggregates only)
+        if: ${{ !inputs.cleanup_only }}
+        env:
+          # Make sure nothing in the check can reach production services.
+          NODE_ENV: test
+          DRY_RUN: "1"
+          DRY_RUN_DATABASE_NAME: ${{ vars.PLANETSCALE_DRY_RUN_DATABASE }}
+          DRY_RUN_WRITABLE: ${{ inputs.writable && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          pnpm --filter @openwork-ee/den-api exec tsx --conditions=development "scripts/dry-run/$CHECK" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete the branch
+        if: ${{ always() && !inputs.cleanup_only }}
+        run: |
+          set -euo pipefail
+          if pscale branch show "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" > /dev/null 2>&1; then
+            pscale branch delete "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" --force
+            echo "Deleted $BRANCH"
+          else
+            echo "No branch to delete"
+          fi
