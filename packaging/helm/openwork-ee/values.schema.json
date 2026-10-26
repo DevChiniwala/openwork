@@ -221,6 +221,16 @@
               ],
               "description": "Workbot: command palette: Members press Cmd+K or Ctrl+K, or the search button in Workbot's header, to search and jump to their chats, background tasks, pages and settings, or run an action, from the keyboard. Renders DEN_FEATURE_WORKBOT_COMMAND_PALETTE."
             },
+            "memberFiles": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: My files: Each member gets one My files space that Workbot's chats, its computer and its browser all use: browser downloads land in it, the agent reads and saves files there, and members list, preview, download and delete them from Workbot's Files panel. Renders DEN_FEATURE_MEMBER_FILES."
+            },
             "workbotIncludedModels": {
               "enum": [
                 "",

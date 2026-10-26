@@ -261,6 +261,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  memberFiles: {
+    label: "Workbot: My files",
+    description: "Each member gets one My files space that Workbot's chats, its computer and its browser all use: browser downloads land in it, the agent reads and saves files there, and members list, preview, download and delete them from Workbot's Files panel.",
+    category: "workbot",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/member-files/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",
