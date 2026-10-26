@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -116,22 +117,26 @@ function TreeProbe() {
   );
 }
 
-function ProductionTree({ children }: { children: ReactNode }) {
+function ProductionTree({ children, queryClient }: { children: ReactNode; queryClient: QueryClient }) {
   return (
-    <BootStateProvider>
-      <ServerProvider defaultUrl="http://127.0.0.1:4096">
-        <DenAuthProvider>
-          <EnterpriseAwareAppProviders>{children}</EnterpriseAwareAppProviders>
-        </DenAuthProvider>
-      </ServerProvider>
-    </BootStateProvider>
+    <QueryClientProvider client={queryClient}>
+      <BootStateProvider>
+        <ServerProvider defaultUrl="http://127.0.0.1:4096">
+          <DenAuthProvider>
+            <EnterpriseAwareAppProviders>{children}</EnterpriseAwareAppProviders>
+          </DenAuthProvider>
+        </ServerProvider>
+      </BootStateProvider>
+    </QueryClientProvider>
   );
 }
 
 describe("app boot", () => {
   let actEnvironment: unknown;
+  let queryClient: QueryClient;
 
   beforeEach(() => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     GlobalRegistrator.register({ url: "http://localhost:5173/" });
     actEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -139,6 +144,7 @@ describe("app boot", () => {
   });
 
   afterEach(async () => {
+    queryClient.clear();
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
     await GlobalRegistrator.unregister();
   });
@@ -148,11 +154,13 @@ describe("app boot", () => {
     let markup = "";
     expect(() => {
       markup = renderToStaticMarkup(
-        <DenAuthProvider>
-          <EnterpriseAwareAppProviders>
-            <UpdaterProbe />
-          </EnterpriseAwareAppProviders>
-        </DenAuthProvider>,
+        <QueryClientProvider client={queryClient}>
+          <DenAuthProvider>
+            <EnterpriseAwareAppProviders>
+              <UpdaterProbe />
+            </EnterpriseAwareAppProviders>
+          </DenAuthProvider>
+        </QueryClientProvider>,
       );
     }).not.toThrow();
     expect(markup).toContain("updater-context-ok");
@@ -167,7 +175,7 @@ describe("app boot", () => {
     try {
       await act(async () => {
         root.render(
-          <ProductionTree>
+          <ProductionTree queryClient={queryClient}>
             <UpdaterProbe />
             <TreeProbe />
           </ProductionTree>,
