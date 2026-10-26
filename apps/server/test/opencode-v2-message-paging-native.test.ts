@@ -26,7 +26,7 @@ test("semantic search pages real v2 histories of 150, 200, 201, 400 and 450 mess
     HOME: root, XDG_CONFIG_HOME: join(root, "config"), XDG_DATA_HOME: join(root, "data"),
     XDG_CACHE_HOME: join(root, "cache"), XDG_STATE_HOME: join(root, "state"),
     OPENWORK_RUNTIME_DB: join(root, "runtime.sqlite"), OPENWORK_OPENCODE2_BIN: binary,
-    OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_ENGINE_V2_CHAT: "1", OPENCODE_DISABLE_MODELS_FETCH: "true",
+    OPENCODE_DISABLE_MODELS_FETCH: "true",
   };
   const previous = new Map(Object.keys(overrides).map(key => [key, process.env[key]]));
   Object.assign(process.env, overrides);

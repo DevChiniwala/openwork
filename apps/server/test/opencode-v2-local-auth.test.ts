@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { before, test } from "node:test";
 import { mapRuntimeProvidersToV2Specs } from "../src/engine-v2-preview.js";
 import { renderOpencodeV2Config } from "../src/managed-opencode-v2.js";
 import { buildOpenworkRuntimeConfigObjectFromSnapshot } from "../src/openwork-runtime-config.js";
 import {
+  createLocalProviderCatalog,
   localProviderDefinitions,
   normalizeLocalProviderDefinition,
   readLocalProviderAuth,
+  writeLocalProviderAuth,
   type LocalProviderAuth,
+  type LocalProviderCatalog,
 } from "../src/opencode-v2-local-auth.js";
 import { organizationProviderGate } from "../src/organization-provider-gate.js";
 
@@ -23,30 +25,20 @@ const fixturePath = new URL("./fixtures/opencode-v1.18.30-provider.json", import
 const CATALOG_KEY = "sk-or-catalog-copy-must-not-be-used";
 const KEY = "sk-or-local-test-key";
 
-let engine: Server;
-let engineUrl = "";
 let providerReads = 0;
-const connection = () => ({ opencodeBaseUrl: engineUrl, opencodeUsername: "opencode", opencodePassword: "fixture-password" });
+let fixtureCatalog = new Map<string, unknown>();
+// The mirror reads built-in metadata from a catalog; this one serves the
+// recorded engine answer (Provider.Info entries are still translated).
+const catalog: LocalProviderCatalog = async () => {
+  providerReads += 1;
+  return fixtureCatalog;
+};
 
 before(async () => {
-  const body = await readFile(fixturePath, "utf8");
-  engine = createServer((request, response) => {
-    const expected = `Basic ${Buffer.from("opencode:fixture-password").toString("base64")}`;
-    if (request.url !== "/provider" || request.headers.authorization !== expected) {
-      response.writeHead(404).end();
-      return;
-    }
-    providerReads += 1;
-    response.writeHead(200, { "content-type": "application/json" }).end(body);
-  });
-  await new Promise<void>((resolve) => engine.listen(0, "127.0.0.1", resolve));
-  const address = engine.address();
-  if (!address || typeof address === "string") throw new Error("fixture engine did not bind");
-  engineUrl = `http://127.0.0.1:${address.port}`;
-});
-
-after(async () => {
-  await new Promise<void>((resolve) => engine.close(() => resolve()));
+  const value: unknown = JSON.parse(await readFile(fixturePath, "utf8"));
+  const all = value && typeof value === "object" && "all" in value && Array.isArray(value.all) ? value.all : [];
+  fixtureCatalog = new Map(all.flatMap((provider: unknown) =>
+    provider && typeof provider === "object" && "id" in provider && typeof provider.id === "string" ? [[provider.id, provider] as const] : []));
 });
 
 /** A nested value of a generated config, or undefined. */
@@ -65,7 +57,7 @@ const auth = (apiKeys: Record<string, string>, signIns: string[] = []): LocalPro
 });
 
 test("without a rollout or sign-in, the real v1.18.30 OpenRouter entry becomes one v2 provider with its models", async () => {
-  const local = await localProviderDefinitions(connection(), auth({ openrouter: KEY }), {});
+  const local = await localProviderDefinitions(catalog, auth({ openrouter: KEY }), {});
   const mapped = mapRuntimeProvidersToV2Specs(local.providers, new Map(), new Map([["openrouter", KEY]]));
 
   assert.deepEqual(local.skipped, []);
@@ -109,7 +101,7 @@ test("without a rollout or sign-in, the real v1.18.30 OpenRouter entry becomes o
 test("an organization that allows only its own providers mirrors none of the keys added on this computer", async () => {
   const allows = organizationProviderGate({ allowCustomProviders: false });
   const reads = providerReads;
-  const local = await localProviderDefinitions(connection(), auth({ openrouter: KEY, anthropic: "sk-ant-local" }, ["openai"]), {}, { allows });
+  const local = await localProviderDefinitions(catalog, auth({ openrouter: KEY, anthropic: "sk-ant-local" }, ["openai"]), {}, { allows });
 
   assert.deepEqual(local.providers, {});
   assert.deepEqual(local.skipped, [
@@ -137,7 +129,7 @@ test("the organization rule matches the providers v1 keeps in enabled_providers"
 });
 
 test("a ChatGPT-style sign-in is reported as skipped instead of disappearing", async () => {
-  const local = await localProviderDefinitions(connection(), auth({}, ["openai"]), {});
+  const local = await localProviderDefinitions(catalog, auth({}, ["openai"]), {});
 
   assert.deepEqual(local.providers, {});
   assert.deepEqual(local.skipped, [{ id: "openai", reason: "oauth" }]);
@@ -146,7 +138,7 @@ test("a ChatGPT-style sign-in is reported as skipped instead of disappearing", a
 
 test("providers without a usable v2 description are skipped with a reason", async () => {
   const keys = { google: "google-local", "github-copilot": "copilot-local", "not-in-catalog": "missing-local", anthropic: "sk-ant-local" };
-  const local = await localProviderDefinitions(connection(), auth(keys), {});
+  const local = await localProviderDefinitions(catalog, auth(keys), {});
   const mapped = mapRuntimeProvidersToV2Specs(local.providers, new Map(), new Map(Object.entries(keys)));
 
   // Mixed adapters in one provider, and a provider v1 does not describe.
@@ -161,7 +153,7 @@ test("providers without a usable v2 description are skipped with a reason", asyn
 
 test("organization providers and configured providers are never read from the v1 catalog", async () => {
   const reads = providerReads;
-  const local = await localProviderDefinitions(connection(), auth({ lpr_team: "managed", openwork: "managed", openrouter: KEY }), { openrouter: {} });
+  const local = await localProviderDefinitions(catalog, auth({ lpr_team: "managed", openwork: "managed", openrouter: KEY }), { openrouter: {} });
 
   assert.deepEqual(local, { providers: {}, skipped: [] });
   assert.equal(providerReads, reads);
@@ -200,13 +192,6 @@ test("a catalog endpoint off the adapter's own origin is not trusted", () => {
   assert.deepEqual(mapped.skippedProviders, [{ id: "openrouter", reason: "unsupported" }]);
 });
 
-test("local metadata reads retain engine authentication and propagate failures without credentials", async () => {
-  await assert.rejects(
-    localProviderDefinitions({ ...connection(), opencodePassword: "incorrect-secret" }, auth({ openrouter: KEY }), {}),
-    { message: "Could not read locally connected provider metadata" },
-  );
-});
-
 test("auth.json API keys and sign-ins are told apart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openwork-local-auth-"));
   try {
@@ -227,4 +212,43 @@ test("auth.json API keys and sign-ins are told apart", async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("API keys saved on this computer keep every other credential", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openwork-local-auth-write-"));
+  const path = join(directory, "opencode", "auth.json");
+  try {
+    await writeLocalProviderAuth("openrouter", { type: "api", key: KEY }, path);
+    await writeFile(path, JSON.stringify({ ...JSON.parse(await readFile(path, "utf8")), openai: { type: "oauth", refresh: "kept" } }));
+    await writeLocalProviderAuth("anthropic", { type: "api", key: "sk-ant-local" }, path);
+    await writeLocalProviderAuth("openrouter", null, path);
+    assert.deepEqual(JSON.parse(await readFile(path, "utf8")), {
+      openai: { type: "oauth", refresh: "kept" },
+      anthropic: { type: "api", key: "sk-ant-local" },
+    });
+    const read = await readLocalProviderAuth(path);
+    assert.deepEqual([...read.apiKeys], [["anthropic", "sk-ant-local"]]);
+    await assert.rejects(writeLocalProviderAuth("lpr_team", { type: "api", key: "x" }, path), /organization/);
+    await writeFile(path, "not json");
+    await assert.rejects(writeLocalProviderAuth("anthropic", null, path), /could not read/i);
+    assert.equal(await readFile(path, "utf8"), "not json", "an unreadable file is never replaced");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("the provider catalog comes from the model catalog and falls back to its saved copy offline", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openwork-local-catalog-"));
+  const cachePath = join(directory, "models-catalog.json");
+  const body = JSON.stringify({ openrouter: { id: "openrouter", name: "OpenRouter", npm: "@openrouter/ai-sdk-provider", env: ["OPENROUTER_API_KEY"], models: {} } });
+  const requested: string[] = [];
+  try {
+    const online = createLocalProviderCatalog({ cachePath, env: { OPENCODE_MODELS_URL: "https://models.example.test/", XDG_CACHE_HOME: join(directory, "cache") },
+      fetch: async (url) => { requested.push(String(url)); return new Response(body); } });
+    assert.deepEqual([...(await online()).keys()], ["openrouter"]);
+    assert.deepEqual(requested, ["https://models.example.test/api.json"]);
+    const offline = createLocalProviderCatalog({ cachePath, env: { OPENCODE_MODELS_URL: "https://models.example.test/", XDG_CACHE_HOME: join(directory, "cache") },
+      fetch: async () => { throw new Error("offline"); } });
+    assert.deepEqual([...(await offline()).keys()], ["openrouter"]);
+    const empty = createLocalProviderCatalog({ cachePath: join(directory, "missing.json"), env: { OPENCODE_DISABLE_MODELS_FETCH: "1", HOME: directory, XDG_CACHE_HOME: join(directory, "cache") } });
+    assert.equal((await empty()).size, 0);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

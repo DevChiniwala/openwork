@@ -10,7 +10,6 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const [launcher, expectedVersion] = process.argv.slice(2);
 if (!launcher || !expectedVersion) {
@@ -132,27 +131,21 @@ try {
   const workspaceId = JSON.parse(workspaces.text).items?.[0]?.id;
   if (!workspaceId) fail("no workspace was created for the working directory");
 
-  const config = await request(
-    `${base}/workspace/${workspaceId}/opencode/config`,
+  const info = await request(
+    `${base}/workspace/${workspaceId}/opencode2/api/info`,
     { headers: auth },
     FIRST_ENGINE_REQUEST_TIMEOUT_MS,
   );
-  if (config.status !== 200) fail(`engine config returned ${config.status}`);
-  log(`engine set the folder up in ${config.durationMs} ms`);
-  const plugins = JSON.parse(config.text).plugin ?? [];
-  const missing = plugins.filter((entry) => {
-    const spec = String(entry);
-    return spec.startsWith("file:") && !existsSync(fileURLToPath(spec));
-  });
-  if (plugins.length === 0 || missing.length > 0) fail(`engine plugins missing: ${JSON.stringify(missing.length ? missing : plugins)}`);
-  log(`engine loaded ${plugins.length} plugins from the package`);
+  if (info.status !== 200) fail(`engine info returned ${info.status}`);
+  log(`OpenCode v2 answered in ${info.durationMs} ms`);
 
-  const created = await request(`${base}/workspace/${workspaceId}/opencode/session`, {
+  const created = await request(`${base}/workspace/${workspaceId}/opencode2/api/session`, {
     method: "POST",
     headers: { ...auth, "content-type": "application/json" },
     body: JSON.stringify({ title: "npm release smoke" }),
   });
-  if (created.status !== 200 || !JSON.parse(created.text).id) fail(`session create returned ${created.status}: ${created.text}`);
+  const session = created.status === 200 ? JSON.parse(created.text) : null;
+  if (!session?.data?.id && !session?.id) fail(`session create returned ${created.status}: ${created.text}`);
   log("session created through the engine");
   log("passed");
 } finally {

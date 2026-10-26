@@ -146,11 +146,10 @@ export async function readClaudeCodeSessions(directory: string, configDir: strin
   return conversations;
 }
 
-/** The running native engine, or undefined while chats still use v1. */
+/** The running native engine, or undefined while OpenCode v2 is not running. */
 export function createNativeClaudeImportEngine(
-  preview: { status(): { chatRouting?: boolean }; connection(): { url: string; username: string; password: string } | undefined; ensureWorkspaceReady(directory: string): Promise<void> },
+  preview: { connection(): { url: string; username: string; password: string } | undefined; ensureWorkspaceReady(directory: string): Promise<void> },
 ): ClaudeImportEngine | undefined {
-  if (!preview.status().chatRouting) return undefined;
   const connection = preview.connection();
   if (!connection) return undefined;
   const authorization = `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`;

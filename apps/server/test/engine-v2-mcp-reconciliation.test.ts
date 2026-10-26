@@ -46,7 +46,6 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
     XDG_CACHE_HOME: join(root, "cache"),
     OPENWORK_RUNTIME_DB: join(root, "runtime.sqlite"),
     OPENWORK_OPENCODE2_BIN: binary,
-    OPENWORK_ENGINE_V2_PREVIEW: "sidecar",
   };
   const previous = new Map(Object.keys(environment).map(key => [key, process.env[key]]));
   Object.assign(process.env, environment);
@@ -62,7 +61,7 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
     await mkdir(environment.XDG_CONFIG_HOME);
     await writeFile(binary, fakeEngine, { mode: 0o700 });
     await writeGlobalRuntimeOpencodeConfig(config, () => ({ mcp: { "openwork-cloud": remote, generic: remote } }));
-    await preview.setEnabled(true);
+    preview.start();
     const deadline = Date.now() + 10_000;
     while (!preview.status().running && !preview.status().lastError && Date.now() < deadline) {
       await new Promise(resolve => setTimeout(resolve, 20));

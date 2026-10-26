@@ -49,7 +49,6 @@ import {
   type McpConfigCollision,
   type McpInventoryInspection,
 } from "./mcp.js";
-import { resolveWorkspaceOpencodeConnection } from "./opencode-connection.js";
 import { buildOpenworkRuntimeConfigObjectFromSnapshot } from "./openwork-runtime-config.js";
 import {
   ENGINE_GLOBAL_RUNTIME_CONFIG_ID,
@@ -1247,15 +1246,19 @@ export async function runAgentContextDiagnostics(input: {
   const startedMs = now();
   const startedAt = new Date(startedMs).toISOString();
   const runId = uuid();
-  const engineConfigured = Boolean(resolveWorkspaceOpencodeConnection(input.config, input.workspace).baseUrl?.trim());
+  // OpenCode v2 is always this server's own engine, so the workspace runtime is
+  // configured. Its effective config/agents are only observable through an
+  // injected reader; without one the inspection reports "not-configured".
+  const engineConfigured = true;
+  const engineInspectionConfigured = Boolean(input.dependencies?.inspectEffectiveEngine);
 
   let effectiveEngine: EffectiveEngineSnapshot | null = null;
   let engineApiReadPerformed = false;
-  let engineInspectionStatus: "observed" | "not-configured" | "not-supplied" | "invalid" | "unavailable" = engineConfigured
+  let engineInspectionStatus: "observed" | "not-configured" | "not-supplied" | "invalid" | "unavailable" = engineInspectionConfigured
     ? "not-supplied"
     : "not-configured";
   const engineInspectionStarted = now();
-  if (engineConfigured && input.workspace.workspaceType === "local" && input.dependencies?.inspectEffectiveEngine) {
+  if (input.workspace.workspaceType === "local" && input.dependencies?.inspectEffectiveEngine) {
     engineApiReadPerformed = true;
     const timeoutSignal = AbortSignal.timeout(10_000);
     const signal = input.dependencies.signal

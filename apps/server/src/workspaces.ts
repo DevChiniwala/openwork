@@ -1,11 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
-import type { ServerConfig, WorkspaceConfig, WorkspaceInfo } from "./types.js";
-
-/** Prefer the bootstrap snapshot: managed startup later fills these same URL fields. */
-export function hasExternalOpencode(config: Pick<ServerConfig, "externalOpencode" | "opencodeBaseUrl"> & Partial<Pick<ServerConfig, "workspaces">>): boolean {
-  return config.externalOpencode ?? Boolean(config.opencodeBaseUrl || config.workspaces?.some((workspace) => workspace.baseUrl));
-}
+import type { WorkspaceConfig, WorkspaceInfo } from "./types.js";
 
 function workspaceIdForKey(key: string): string {
   const hash = createHash("sha256").update(key).digest("hex");
@@ -60,15 +55,6 @@ export function findManagedEngineWorkspace(workspaces: WorkspaceInfo[]): Workspa
 }
 
 /**
- * Whether a server that manages its own engine should start it. A local
- * workspace needs it, and so does a member with no workspace yet (providers
- * must load right after sign-in).
- */
-export function shouldStartManagedEngine(workspaces: WorkspaceInfo[]): boolean {
-  return workspaces.length === 0 || findManagedEngineWorkspace(workspaces) !== undefined;
-}
-
-/**
  * Identity of the engine root the managed engine runs in when no workspace
  * scopes a request. It is not a registered workspace: it only names the
  * process cwd so engine-wide maintenance (reload, provider credentials) has a
@@ -84,18 +70,4 @@ export function managedEngineRootWorkspace(cwd: string): WorkspaceInfo {
     preset: "starter",
     workspaceType: "local",
   };
-}
-
-/**
- * Directory the managed engine starts in. A signed-in member may have no
- * workspace yet; the engine still needs a cwd, so fall back to a scratch
- * folder under runtime storage rather than refusing to start. The desktop
- * passes its own scratch directory explicitly.
- */
-export function resolveManagedEngineCwd(input: {
-  explicit?: string | null;
-  workspace?: WorkspaceInfo | null;
-  fallbackDir: string;
-}): string {
-  return input.explicit?.trim() || input.workspace?.path.trim() || input.fallbackDir;
 }
