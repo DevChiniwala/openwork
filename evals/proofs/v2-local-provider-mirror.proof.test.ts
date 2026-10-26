@@ -15,7 +15,7 @@ test("an owner's OpenRouter and Anthropic keys reach the new engine's model pick
 
   /** Open the chat's model picker and search it; opening it also asks the desktop to refresh providers. */
   async function searchPicker(query: string) {
-    await user.navigate(world.sessionUrl);
+    await user.navigate(world.composerUrl);
     await user.see("composer", { editable: true, timeoutMs: WITHIN });
     await user.click("Change model");
     await user.see({ testId: "composer-model-picker" });

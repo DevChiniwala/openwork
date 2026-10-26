@@ -22,7 +22,8 @@ export async function v2LocalProviderMirror(seed: Seed) {
   const hostToken = randomUUID();
   const { app, workspace } = await signedInAppWeb(seed, {
     den, webPort, name: "v2-local-provider-mirror", workspacePath, engine: "v2", headless: true,
-    env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken },
+    // Exercise the real policy sync without waiting its production five-minute interval.
+    env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken, OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "1000" },
   });
   const organizationId = await seededOrganizationId(seed, den.admin);
   if (!organizationId) throw new Error("Could not resolve the seeded organization");
@@ -73,13 +74,14 @@ export async function v2LocalProviderMirror(seed: Seed) {
     if (saved.status >= 300) throw new Error(`Seeding the ChatGPT sign-in failed: HTTP ${saved.status}`);
   };
 
-  const session = await seed.session(app, { title: "Pick a model" });
+  // This proof connects its first provider through Settings. Do not create a
+  // chat during setup: a fresh workspace has no usable model until that action.
   return {
-    app, den, workspace, session, allowPersonalProviders, signInWithChatGpt,
+    app, den, workspace, allowPersonalProviders, signInWithChatGpt,
     organizationName: "Acme",
     openRouterKey: "sk-or-v1-synthetic-not-a-real-key",
     anthropicKey: "sk-ant-synthetic-not-a-real-key",
     settingsUrl: `${app.webUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/settings/ai`,
-    sessionUrl: `${app.webUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/session/${encodeURIComponent(session.sessionId)}`,
+    composerUrl: `${app.webUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/session`,
   };
 }
