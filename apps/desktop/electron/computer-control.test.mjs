@@ -235,6 +235,24 @@ test("VMs stay hidden until the resolved rollout enables them, then run without 
   assert.equal((await f.control.snapshot({ sessionId: "chat" })).placement, "local");
 });
 
+test("Settings reads this computer without a chat and picks the computer every chat uses", async (t) => {
+  const f = fixture({ remote: true, authority: async () => true });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  const before = await f.control.status();
+  assert.equal(before.targetId, "local");
+  assert.equal(before.readiness, "ready");
+  assert.deepEqual(before.targets.map((target) => target.id), ["local"]);
+  await assert.rejects(f.control.chooseComputer({ targetId: "vm" }), /listed computers/);
+  await f.control.setRemoteEnabled(true);
+  await f.control.choose({ sessionId: "earlier-chat", targetId: "local" });
+  assert.equal((await f.control.chooseComputer({ targetId: "vm" })).targetId, "vm");
+  assert.equal((await f.control.snapshot({ sessionId: "earlier-chat" })).targetId, "vm");
+  assert.equal((await f.control.snapshot({ sessionId: "new-chat" })).targetId, "vm");
+  await f.control.setRemoteEnabled(false);
+  assert.equal((await f.control.status()).targetId, "local");
+});
+
 test("a revoked VM rollout blocks the next tool before connecting", async (t) => {
   let authorized = true;
   const f = fixture({ remote: true, authority: async () => authorized });

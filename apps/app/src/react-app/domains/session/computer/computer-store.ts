@@ -8,19 +8,14 @@ import { isActiveWorkSessionStatus } from "../sidebar/utils"
 type ComputerStore = {
   /** Chats whose agent is waiting for computer use: setup or the person's allowance. */
   requests: Record<string, ComputerRequest>
-  /** The chat whose setup checklist is open, from the header or an in-chat card. */
-  setupSessionId: string | null
   /** Bumped when the person presses Continue in a chat's Computer view. */
   continued: Record<string, number>
   setRequest: (sessionId: string, request: ComputerRequest | null) => void
-  openSetup: (sessionId: string) => void
-  closeSetup: () => void
   markContinued: (sessionId: string) => void
 }
 
 export const useComputerStore = create<ComputerStore>((set) => ({
   requests: {},
-  setupSessionId: null,
   continued: {},
   setRequest: (sessionId, request) => set((state) => {
     const requests = { ...state.requests }
@@ -28,8 +23,6 @@ export const useComputerStore = create<ComputerStore>((set) => ({
     else delete requests[sessionId]
     return { requests }
   }),
-  openSetup: (sessionId) => set({ setupSessionId: sessionId }),
-  closeSetup: () => set({ setupSessionId: null }),
   markContinued: (sessionId) => set((state) => ({ continued: { ...state.continued, [sessionId]: (state.continued[sessionId] ?? 0) + 1 } })),
 }))
 
