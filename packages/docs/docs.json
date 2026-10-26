@@ -180,6 +180,7 @@
             "pages": [
               "ai-gateway/counting-usage",
               "ai-gateway/token-costs",
+              "ai-gateway/limits",
               "start-here/do-work-with-it/what-uses-tokens"
             ]
           }
