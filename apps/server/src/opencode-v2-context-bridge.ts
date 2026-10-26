@@ -7,21 +7,30 @@ import { createV2ReadAdapter, readV2SessionActivity } from "./opencode-v2-read-a
 import { isRecord } from "./workspace-kv-store.js";
 import { createV2BrowserBridge } from "./opencode-v2-browser-bridge.js";
 import { DRIVE_UPLOAD_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID } from "./extensions/cloud-upload-constants.js";
+import { createDriveFileTools, DRIVE_FILE_ACTIONS, type DriveFileAction } from "./opencode-plugins/drive-file-tools.js";
 import { SESSION_GROUP_COMMAND_IDS } from "./opencode-plugins/openwork-session-groups.js";
 import { loopbackFetch } from "./server-fetch.js";
 
 const requestSchema = z.object({
-  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload"]),
+  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", ...DRIVE_FILE_ACTIONS]),
   input: z.unknown(),
   sessionId: z.string().max(256).optional(),
-  // The calling tool's place in its chat, where an upload approval is shown.
+  // The calling tool's place in its chat, where a Drive approval is shown.
   caller: z.object({
     directory: z.string().min(1).max(4096), messageId: z.string().min(1).max(256),
     callId: z.string().min(1).max(256), agent: z.string().min(1).max(256).optional(),
   }).strict().optional(),
 });
-/** How long the person has to answer an upload approval. */
+/** How long the person has to answer a Drive approval. */
 const APPROVAL_WAIT_MS = 10 * 60_000;
+/** A pull or push waits on the Desktop confirmation and whole-file transfers, as in v1. */
+const DRIVE_FILE_CALL_MS = 15 * 60_000;
+/** Refusal wording for the Drive file tools that ask the person first. */
+const DRIVE_FILE_REFUSALS: Partial<Record<DriveFileAction, { subject: string; nothing: string }>> = {
+  drive_pull_file: { subject: "replacing this local copy", nothing: "nothing was changed" },
+  drive_push_file: { subject: "saving this file", nothing: "nothing was uploaded" },
+};
+const isDriveFileAction = (name: string): name is DriveFileAction => (DRIVE_FILE_ACTIONS as readonly string[]).includes(name);
 const createdPermission = z.object({ data: z.object({ id: z.string(), effect: z.string() }) });
 const repliedPermission = z.object({ type: z.literal("permission.replied"), data: z.object({ requestID: z.string(), reply: z.string() }) });
 
@@ -29,6 +38,8 @@ export type EngineConnection = { url: string; username: string; password: string
 export type EngineApproval = {
   directory: string; sessionId: string; messageId: string; callId: string; agent?: string;
   action: string; resources: string[]; metadata: Record<string, unknown>;
+  /** How refusals name the request ("this upload") and what did not happen ("nothing was uploaded"). */
+  subject: string; nothing: string;
 };
 
 /**
@@ -38,7 +49,8 @@ export type EngineApproval = {
  * pre-approve it, and nothing is saved for later requests.
  */
 export async function askEngineApproval(engine: EngineConnection | undefined, approval: EngineApproval, signal: AbortSignal): Promise<void> {
-  if (!engine) throw new Error("OpenWork cannot ask for your approval right now, so nothing was uploaded.");
+  const { subject, nothing } = approval;
+  if (!engine) throw new Error(`OpenWork cannot ask for your approval right now, so ${nothing}.`);
   const location = `location[directory]=${encodeURIComponent(approval.directory)}`;
   const authorization = `Basic ${Buffer.from(`${engine.username}:${engine.password}`).toString("base64")}`;
   const watching = new AbortController();
@@ -46,7 +58,7 @@ export async function askEngineApproval(engine: EngineConnection | undefined, ap
   try {
     // Subscribe first so the answer cannot arrive unseen.
     const events = await loopbackFetch(new URL(`/api/event?${location}`, engine.url), { headers: { authorization, accept: "text/event-stream" }, signal: stop });
-    if (!events.ok || !events.body) throw new Error("OpenWork could not ask for your approval, so nothing was uploaded.");
+    if (!events.ok || !events.body) throw new Error(`OpenWork could not ask for your approval, so ${nothing}.`);
     const response = await loopbackFetch(new URL(`/api/session/${encodeURIComponent(approval.sessionId)}/permission?${location}`, engine.url), {
       method: "POST", headers: { authorization, "content-type": "application/json" }, signal: stop,
       body: JSON.stringify({
@@ -55,14 +67,14 @@ export async function askEngineApproval(engine: EngineConnection | undefined, ap
       }),
     });
     const created = createdPermission.safeParse(await response.json().catch(() => null));
-    if (!response.ok || !created.success) throw new Error("OpenWork could not ask for your approval, so nothing was uploaded.");
-    if (created.data.data.effect === "deny") throw new Error("Your permissions do not allow this upload, so nothing was uploaded.");
-    if (created.data.data.effect !== "ask") throw new Error("This upload was not shown to you for approval, so nothing was uploaded.");
+    if (!response.ok || !created.success) throw new Error(`OpenWork could not ask for your approval, so ${nothing}.`);
+    if (created.data.data.effect === "deny") throw new Error(`Your permissions do not allow ${subject}, so ${nothing}.`);
+    if (created.data.data.effect !== "ask") throw new Error(`${subject[0]?.toUpperCase()}${subject.slice(1)} was not shown to you for approval, so ${nothing}.`);
     const reader = events.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffered = "";
     for (;;) {
       const chunk = await reader.read();
-      if (chunk.done) throw new Error("The approval closed before you answered, so nothing was uploaded.");
+      if (chunk.done) throw new Error(`The approval closed before you answered, so ${nothing}.`);
       const frames = (buffered + chunk.value).split(/\r?\n\r?\n/);
       buffered = frames.pop() ?? "";
       for (const frame of frames) {
@@ -72,7 +84,7 @@ export async function askEngineApproval(engine: EngineConnection | undefined, ap
         const replied = repliedPermission.safeParse(event);
         if (!replied.success || replied.data.data.requestID !== created.data.data.id) continue;
         if (replied.data.data.reply === "once" || replied.data.data.reply === "always") return;
-        throw new Error("You declined this upload, so nothing was uploaded.");
+        throw new Error(`You declined ${subject}, so ${nothing}.`);
       }
     }
   } finally {
@@ -152,12 +164,34 @@ export async function createV2ContextBridge(
           directory: call.caller.directory, sessionId: call.sessionId, messageId: call.caller.messageId, callId: call.caller.callId,
           ...(call.caller.agent ? { agent: call.caller.agent } : {}), action: DRIVE_UPLOAD_PERMISSION, resources: [args.path],
           metadata: { path: args.path, target: args.folderId ? `Google Drive folder ${args.folderId}` : "Google Drive", ...(args.connectionId ? { connectionId: args.connectionId } : {}) },
+          subject: "this upload", nothing: "nothing was uploaded",
         }, AbortSignal.any([request.signal, AbortSignal.timeout(APPROVAL_WAIT_MS)]));
         // The transfer gets the host extension call's own budget once approved.
         deadline = AbortSignal.timeout(130_000);
         return Response.json(await read("/experimental/extensions/call", { method: "POST", body: JSON.stringify({
           extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: "drive_upload_file", args, context: {},
         }) }));
+      }
+      // Pull, status and push run the v1 tools themselves: the same argument
+      // checks and the same writes that ask first, answered in the calling chat.
+      // The host's Drive file route still has Desktop confirm every transfer.
+      if (isDriveFileAction(call.name)) {
+        const { sessionId, caller } = call;
+        const tools = createDriveFileTools((action, args) => {
+          deadline = AbortSignal.timeout(DRIVE_FILE_CALL_MS);
+          return read("/experimental/drive-files/call", { method: "POST", body: JSON.stringify({
+            action, args, context: { ...(sessionId ? { sessionId } : {}), ...(caller ? { directory: caller.directory, messageId: caller.messageId } : {}) },
+          }) });
+        });
+        const refusal = DRIVE_FILE_REFUSALS[call.name] ?? { subject: "this Drive change", nothing: "nothing was changed" };
+        const ask = async ({ permission, patterns, metadata }: { permission: string; patterns: string[]; metadata: Record<string, unknown> }) => {
+          if (!sessionId || !caller) throw new Error(`This OpenWork engine cannot ask for your approval, so ${refusal.nothing}.`);
+          await askEngineApproval(engine?.(), {
+            directory: caller.directory, sessionId, messageId: caller.messageId, callId: caller.callId, ...(caller.agent ? { agent: caller.agent } : {}),
+            action: permission, resources: patterns, metadata, ...refusal,
+          }, AbortSignal.any([request.signal, AbortSignal.timeout(APPROVAL_WAIT_MS)]));
+        };
+        return new Response(await tools[call.name].execute(call.input, { ask }), { headers: { "Content-Type": "application/json" } });
       }
       const transport: OpenworkReadTransport = {
         engine: "v2",

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { registerCloudSkillDiscovery, type CloudSkillContext } from "./openwork-cloud-skills-v2.js";
 import { server as browserTools } from "./openwork-chrome-devtools.js";
 import { server as computerTools } from "./openwork-computer-use.js";
+import { DRIVE_FILE_TOOLS } from "./drive-file-tools.js";
 
 const browserResult = z.object({
   content: z.array(z.union([z.object({ type: z.literal("text"), text: z.string() }),
@@ -9,12 +10,13 @@ const browserResult = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+type ToolCall = { signal: AbortSignal; sessionID: string; messageID?: string; id?: string; agent?: string };
 type Tool = {
   name: string;
   description: string;
   input: Record<string, unknown>;
   options: { codemode: boolean };
-  execute(input: unknown, context: { signal: AbortSignal; sessionID: string; messageID?: string; id?: string; agent?: string }): Promise<z.infer<typeof browserResult>>;
+  execute(input: unknown, context: ToolCall): Promise<z.infer<typeof browserResult>>;
 };
 type Context = CloudSkillContext & {
   location?: { directory?: string };
@@ -23,12 +25,25 @@ type Context = CloudSkillContext & {
 };
 
 // Separate credentials authorize app reads, sidebar group changes and Drive
-// file uploads the person approves, and conversation-scoped browser and
+// file transfers the person approves, and conversation-scoped browser and
 // computer operations. Neither grants arbitrary host APIs or other OpenWork
 // app commands.
 export default {
   id: "openwork.context",
   async setup(context: Context) {
+    // The host asks the person in this tool call's chat before a Drive change.
+    const driveCall = async (name: string, input: unknown, call: ToolCall, failure: string) => {
+      const response = await fetch(context.options.url, {
+        method: "POST", redirect: "error", signal: call.signal,
+        headers: { Authorization: `Bearer ${context.options.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, input, sessionId: call.sessionID, ...(context.location?.directory && call.messageID && call.id ? {
+          caller: { directory: context.location.directory, messageId: call.messageID, callId: call.id, ...(call.agent ? { agent: call.agent } : {}) },
+        } : {}) }),
+      });
+      const text = await response.text();
+      if (!response.ok) throw new Error(`${failure}: ${text}`);
+      return { content: [{ type: "text" as const, text }] };
+    };
     const browser = context.options.browser;
     const browserDefinitions = browser ? { tool: { ...(await browserTools()).tool, ...(await computerTools()).tool } } : undefined;
     const registration = await context.tool.transform(editor => {
@@ -63,20 +78,15 @@ export default {
           path: { type: "string" }, folderId: { type: "string" }, connectionId: { type: "string", pattern: "^(google-workspace|emc_[A-Za-z0-9]+)$" },
         }, required: ["path"], additionalProperties: false },
         options: { codemode: false },
-        async execute(input, call) {
-          const response = await fetch(context.options.url, {
-            method: "POST", redirect: "error", signal: call.signal,
-            headers: { Authorization: `Bearer ${context.options.token}`, "Content-Type": "application/json" },
-            // The host asks the person in this tool call's chat before uploading.
-            body: JSON.stringify({ name: "openwork_drive_upload", input, sessionId: call.sessionID, ...(context.location?.directory && call.messageID && call.id ? {
-              caller: { directory: context.location.directory, messageId: call.messageID, callId: call.id, ...(call.agent ? { agent: call.agent } : {}) },
-            } : {}) }),
-          });
-          const text = await response.text();
-          if (!response.ok) throw new Error(`Drive upload failed: ${text}`);
-          return { content: [{ type: "text", text }] };
-        },
+        execute: (input, call) => driveCall("openwork_drive_upload", input, call, "Drive upload failed"),
       });
+      for (const [name, tool] of Object.entries(DRIVE_FILE_TOOLS)) {
+        editor.add({
+          name, description: tool.description, input: z.toJSONSchema(tool.args),
+          options: { codemode: false },
+          execute: (input, call) => driveCall(name, input, call, `${name} failed`),
+        });
+      }
       if (browser && browserDefinitions) for (const [name, definition] of Object.entries(browserDefinitions.tool)) {
         editor.add({
           name, description: definition.description,

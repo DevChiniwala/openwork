@@ -317,10 +317,11 @@ export function renderOpencodeV2Config(input: {
   ];
   // The engine applies the last matching rule, so the managed execution
   // denials come last: an agent permission exception never lifts them. The
-  // engine allows unlisted actions, so the context tools' Drive upload is
-  // listed as ask: its bridge uploads only after the person allows it.
+  // engine allows unlisted actions, so the context tools' Drive writes are
+  // listed as ask: their bridge runs them only after the person allows it.
+  const driveWrites = [DRIVE_UPLOAD_PERMISSION, "drive_pull_file", "drive_push_file"];
   const permissions: EngineV2PermissionRule[] = [
-    ...(input.contextTools && input.contextPluginDirectory ? [{ action: DRIVE_UPLOAD_PERMISSION, resource: "*", effect: "ask" as const }] : []),
+    ...(input.contextTools && input.contextPluginDirectory ? driveWrites.map(action => ({ action, resource: "*", effect: "ask" as const })) : []),
     ...agentPermissionEngineV2Rules(input.agentPermissionRules ?? []), ...(input.permissions ?? []),
   ];
   return {
