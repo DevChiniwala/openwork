@@ -102,6 +102,7 @@ const alwaysProxyPathPrefixes = [
   "/opencode/",
   "/w/",
   "/runtime/",
+  "/runtime-config/",
   "/experimental/",
   "/voice/",
 ]

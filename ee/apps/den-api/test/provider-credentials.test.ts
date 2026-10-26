@@ -99,7 +99,7 @@ async function materializationFixture() {
         writes.push({ method, path, body: typeof init?.body === "string" ? init.body : null })
         return Response.json({})
       }
-      if (path === "/opencode/config") {
+      if (path === "/runtime-config/providers") {
         configReads++
         if (configReads === 1) return config.promise
         if (failReadback) return new Response("readback failed", { status: 500 })
