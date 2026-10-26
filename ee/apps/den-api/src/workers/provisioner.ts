@@ -255,10 +255,9 @@ async function provisionWorkerOnRender(
   const openworkServerPackage = env.render.workerOpenworkVersion?.trim()
     ? `openwork-server@${env.render.workerOpenworkVersion.trim()}`
     : "openwork-server"
-  const buildCommand = [
-    `npm install -g ${shellQuote(openworkServerPackage)}`,
-    "node ./scripts/install-opencode.mjs",
-  ].join(" && ")
+  // openwork-server resolves its OpenCode v2 engine itself: the pinned,
+  // integrity-checked artifact it downloads and verifies on first start.
+  const buildCommand = `npm install -g ${shellQuote(openworkServerPackage)}`
   const startScript = `
 set -u
 mkdir -p /tmp/workspace
@@ -270,7 +269,7 @@ fi
 attempt=0
 while [ "$attempt" -lt 3 ]; do
   attempt=$((attempt + 1))
-  if OPENWORK_MANAGE_OPENCODE=1 OPENWORK_OPENCODE_BIN=./bin/opencode OPENWORK_EXTENSIONS_PLUGIN_DIR="$plugin_dir" openwork-server --workspace /tmp/workspace --host 0.0.0.0 --port "\${PORT:-10000}" --cors '*' --approval manual --verbose; then
+  if OPENWORK_EXTENSIONS_PLUGIN_DIR="$plugin_dir" openwork-server --workspace /tmp/workspace --host 0.0.0.0 --port "\${PORT:-10000}" --cors '*' --approval manual --verbose; then
     exit 0
   fi
   status=$?

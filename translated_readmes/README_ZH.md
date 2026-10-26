@@ -108,9 +108,7 @@ pnpm dev:ui
 
 ### Arch 用户：
 
-```bash
-curl -fsSL https://opencode.ai/install | bash -s -- --version "$(node -e "const fs=require('fs'); const parsed=JSON.parse(fs.readFileSync('constants.json','utf8')); process.stdout.write(String(parsed.opencodeVersion||'').trim().replace(/^v/,''));")" --no-modify-path
-```
+无需单独安装 OpenCode：OpenWork 服务器会获取 `constants.json` 中固定版本的 OpenCode v2，校验其完整性后再运行。
 
 ## 架构（高级）
 

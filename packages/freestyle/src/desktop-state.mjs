@@ -103,7 +103,8 @@ export async function observeDesktop({ nonce, expectedWorkspacePath }, loadProdu
     flags.nativeWorkspaceMatches = Array.isArray(registry?.items) && registry.items.length === 1
       && nativeWorkspace.workspaceType === "local" && nativeWorkspace.path === expectedWorkspacePath && nativeWorkspace.preset === "starter"
       && nativeWorkspace.name === "OpenWork Chat"
-      && nativeWorkspace.id === workspace?.id && localUrl(nativeWorkspace.baseUrl) && localUrl(nativeWorkspace.opencode?.baseUrl)
+      // OpenCode v2 runs inside the server: a local workspace has no engine URL of its own.
+      && nativeWorkspace.id === workspace?.id && [nativeWorkspace.baseUrl, nativeWorkspace.opencode?.baseUrl].every((url) => url === undefined || localUrl(url))
       && !nativeWorkspace.openworkHostUrl && !nativeWorkspace.openworkToken;
     flags.noNativeCloudSession = cloud?.hasSession === false;
     flags.noProvisionedModel = record(providers?.provider) && emptyMap(providers.provider)
@@ -111,9 +112,10 @@ export async function observeDesktop({ nonce, expectedWorkspacePath }, loadProdu
     if (!flags.nativeWorkspaceMatches) return flags;
     const prefix = `/workspace/${encodeURIComponent(nativeWorkspace.id)}`;
     const [config, runtime, sessions] = await Promise.all([
-      get(`${prefix}/config`), get(`${prefix}/runtime-config`), get(`${prefix}/opencode/session?limit=1`),
+      get(`${prefix}/config`), get(`${prefix}/runtime-config`), get(`${prefix}/opencode2/api/session?limit=1`),
     ]);
-    flags.noNativeConversations = Array.isArray(sessions) && sessions.length === 0;
+    const sessionRows = Array.isArray(sessions) ? sessions : sessions?.data;
+    flags.noNativeConversations = Array.isArray(sessionRows) && sessionRows.length === 0;
     const configs = [config?.opencode, runtime?.runtime, runtime?.effectiveRuntime,
       runtime?.sources?.projectOpencode?.config, runtime?.sources?.globalOpencode?.config];
     flags.noProvisionedModel = flags.noProvisionedModel && configs.every((entry) => record(entry) && emptyMap(entry.provider) && ordinaryModel(entry.model) && ordinaryModel(entry.small_model));

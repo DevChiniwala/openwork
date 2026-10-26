@@ -125,8 +125,9 @@ pnpm dev:ui
 
 ```bash
 sudo pacman -S --needed webkit2gtk-4.1
-curl -fsSL https://opencode.ai/install | bash -s -- --version "$(node -e "const fs=require('fs'); const parsed=JSON.parse(fs.readFileSync('constants.json','utf8')); process.stdout.write(String(parsed.opencodeVersion||'').trim().replace(/^v/,''));")" --no-modify-path
 ```
+
+OpenCodeを別途インストールする必要はありません。OpenWorkサーバーが `constants.json` で固定されたOpenCode v2を取得し、整合性を検証してから実行します。
 
 ## アーキテクチャ（概要）
 

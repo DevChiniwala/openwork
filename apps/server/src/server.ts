@@ -145,7 +145,7 @@ export {
 } from "./routes/files.js";
 
 const SERVER_VERSION = pkg.version;
-const OPENCODE_VERSION = constants.opencodeVersion.trim().replace(/^v/, "");
+const OPENCODE_VERSION = constants.opencodeV2Version.trim().replace(/^v/, "");
 
 let desktopCloudSyncQueue: Promise<void> = Promise.resolve();
 const agentDiagnosticsLastRunByServer = new WeakMap<ServerConfig, Map<string, number>>();
