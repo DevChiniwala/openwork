@@ -34,11 +34,32 @@
 
 export type FeatureDeployment = "cloud" | "self_hosted"
 
+/**
+ * Groups for /admin, in the order they are shown. Pick the one a platform
+ * admin would look under; add a group only when none fits.
+ */
+export const FEATURE_CATEGORIES = {
+  billing: { label: "Plans, billing and usage", description: "Plans, checkout, grants and what people see when an allowance runs out." },
+  models: { label: "Models and providers", description: "Which models people can pick and how providers stay in sync." },
+  connect: { label: "Connect and integrations", description: "Connected services, their tools and MCP servers." },
+  computerUse: { label: "Computer use and browser", description: "Agents using apps, browsers and remote computers." },
+  workbot: { label: "Workbot", description: "Documents, the workspace assistant and navigation in Workbot." },
+  automations: { label: "Automations", description: "Scheduled work and where it shows up." },
+  administration: { label: "Administration and security", description: "Organization controls, deployments and how Den stores sign-ins." },
+  experience: { label: "Onboarding and everyday use", description: "Getting set up, signing in, dictation, imports and Apps." },
+} as const satisfies Record<string, { label: string; description: string }>
+
+export type FeatureCategory = keyof typeof FEATURE_CATEGORIES
+
 export type FeatureDefinition = {
   /** Short name shown to platform admins and operators. */
   label: string
   /** One sentence: what a person gets, in words they see in the product. */
   description: string
+  /** Group the feature is listed under in /admin. */
+  category: FeatureCategory
+  /** Day the flag was first added to this registry, e.g. "2026-10-26". Never changes. */
+  added: `${number}-${number}-${number}`
   /** Year and month the entry was added or last changed, e.g. "2026-10". */
   since: `${number}-${number}`
   /**
@@ -77,6 +98,8 @@ export const FEATURES = defineFeatures({
   mcpAppLibraries: {
     label: "Apps: built-in libraries",
     description: "Apps built in OpenWork can use icons, charts, animation, 3D and SVG drawing from pinned libraries bundled into each App, with no remote scripts or network access.",
+    category: "experience",
+    added: "2026-10-23",
     since: "2026-10",
     author: "reachjalil",
     docs: "docs/features/mcp-app-libraries/README.md",
@@ -86,6 +109,8 @@ export const FEATURES = defineFeatures({
   administratorRecovery: {
     label: "Deploy-time administrator recovery",
     description: "Run a one-time, operator-selected Admin-team permission repair at deployment; disabling stops future repairs, not existing grants.",
+    category: "administration",
+    added: "2026-10-23",
     since: "2026-10",
     author: "yomgui",
     deployments: everywhere,
@@ -94,6 +119,8 @@ export const FEATURES = defineFeatures({
   nativeDictation: {
     label: "Native dictation",
     description: "Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition.",
+    category: "experience",
+    added: "2026-10-20",
     since: "2026-10",
     author: "reachjalil",
     docs: "docs/native-dictation.md",
@@ -103,6 +130,8 @@ export const FEATURES = defineFeatures({
   organizationGrants: {
     label: "Organization control panel and grants",
     description: "Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration.",
+    category: "billing",
+    added: "2026-10-20",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -111,6 +140,8 @@ export const FEATURES = defineFeatures({
   sandboxOrgs: {
     label: "Sandbox organizations",
     description: "Platform admins create try-it-out organizations from /admin with fictional workplace connectors, included models and a shareable join link that expires.",
+    category: "administration",
+    added: "2026-10-23",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: ["cloud"],
@@ -119,6 +150,8 @@ export const FEATURES = defineFeatures({
   organizationAutomationSettings: {
     label: "Automations: organization settings",
     description: "Organization admins turn Desktop Automations and Cloud Automations on or off for their organization. Cloud Automations need the deployment's headless runner.",
+    category: "automations",
+    added: "2026-10-23",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -127,6 +160,8 @@ export const FEATURES = defineFeatures({
   connectionMcpServers: {
     label: "Connect: an MCP server for each connection",
     description: "Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools.",
+    category: "connect",
+    added: "2026-10-21",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -135,6 +170,8 @@ export const FEATURES = defineFeatures({
   localProviderMirror: {
     label: "OpenCode v2: providers added on this computer",
     description: "API keys people add on their computer, such as OpenRouter, OpenAI or Anthropic, show in the chat model picker on the new engine. AI Providers says when the organization manages providers or a sign-in is not available on the new engine yet.",
+    category: "models",
+    added: "2026-10-24",
     since: "2026-10",
     author: "benjaminshafii",
     docs: "docs/features/local-provider-mirror/README.md",
@@ -144,6 +181,8 @@ export const FEATURES = defineFeatures({
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",
+    category: "models",
+    added: "2026-10-17",
     since: "2026-10",
     author: "benjaminshafii",
     docs: "docs/live-provider-sync.md",
@@ -153,6 +192,8 @@ export const FEATURES = defineFeatures({
   agentConnectionRemoval: {
     label: "Agents remove connections",
     description: "People allowed to remove a connection can ask their agent to prepare removing it, then confirm the removal in OpenWork.",
+    category: "connect",
+    added: "2026-10-21",
     since: "2026-10",
     author: "OmarMcAdam",
     deployments: everywhere,
@@ -161,6 +202,8 @@ export const FEATURES = defineFeatures({
   managedDeployments: {
     label: "Managed deployments",
     description: "Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments.",
+    category: "administration",
+    added: "2026-10-08",
     since: "2026-10",
     author: "benjaminshafii",
     docs: "docs/managed-deployments.md",
@@ -170,6 +213,8 @@ export const FEATURES = defineFeatures({
   enterprisePlan: {
     label: "Enterprise plan billing",
     description: "Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page.",
+    category: "billing",
+    added: "2026-10-22",
     since: "2026-10",
     author: "OmarMcAdam",
     deployments: ["cloud"],
@@ -178,6 +223,8 @@ export const FEATURES = defineFeatures({
   workbotDocuments: {
     label: "Workbot Documents",
     description: "Members browse recent Google Drive files and folders in Workbot, open documents in tabs, and save supported text and spreadsheet edits to Drive.",
+    category: "workbot",
+    added: "2026-10-16",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -186,6 +233,8 @@ export const FEATURES = defineFeatures({
   workbotDocumentEditing: {
     label: "Workbot Documents: editing",
     description: "Members choose Edit from a document preview. Full Office editing starts their Cloud workspace only when requested. Requires Workbot Documents.",
+    category: "workbot",
+    added: "2026-10-20",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -194,6 +243,8 @@ export const FEATURES = defineFeatures({
   workbotWorkspaceAssistant: {
     label: "Workbot: workspace assistant",
     description: "Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document.",
+    category: "workbot",
+    added: "2026-10-16",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -202,6 +253,8 @@ export const FEATURES = defineFeatures({
   workbotCommandPalette: {
     label: "Workbot: command palette",
     description: "Members press Cmd+K or Ctrl+K, or the search button in Workbot's header, to search and jump to their chats, background tasks, pages and settings, or run an action, from the keyboard.",
+    category: "workbot",
+    added: "2026-10-24",
     since: "2026-10",
     author: "benjaminshafii",
     docs: "docs/features/workbot-command-palette/README.md",
@@ -211,6 +264,8 @@ export const FEATURES = defineFeatures({
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",
+    category: "billing",
+    added: "2026-10-22",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -219,6 +274,8 @@ export const FEATURES = defineFeatures({
   workbotUsageRecovery: {
     label: "Workbot: usage limits and upgrades",
     description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",
+    category: "billing",
+    added: "2026-10-21",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -227,6 +284,8 @@ export const FEATURES = defineFeatures({
   usageLimitUpgrade: {
     label: "Usage limits: one limit card with an upgrade",
     description: "When free Auto, OpenWork Models or an AI Gateway budget runs out in the desktop app, one card says what ran out, when it resets and that the message is saved, with the upgrade or request that fits the person’s role and a way to keep working with another model.",
+    category: "billing",
+    added: "2026-10-22",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -235,6 +294,8 @@ export const FEATURES = defineFeatures({
   automationCalendar: {
     label: "Calendar: desktop app",
     description: "Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar.",
+    category: "automations",
+    added: "2026-10-07",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -243,6 +304,8 @@ export const FEATURES = defineFeatures({
   removeOpencodeZen: {
     label: "Remove OpenCode Zen models",
     description: "Desktop and OpenWork Web stop offering free OpenCode Zen models such as Big Pickle: they leave the model list, are disabled in the engine, and new chats and Automations start on the organization's models or Auto instead.",
+    category: "models",
+    added: "2026-10-21",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -251,6 +314,8 @@ export const FEATURES = defineFeatures({
   computerUse: {
     label: "Computer use",
     description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
+    category: "computerUse",
+    added: "2026-10-20",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -260,6 +325,8 @@ export const FEATURES = defineFeatures({
   browserDemonstrations: {
     label: "Workbot: teach browser tasks",
     description: "Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.",
+    category: "computerUse",
+    added: "2026-10-21",
     since: "2026-10",
     author: "reachjalil",
     docs: "docs/computer-use/browser-demonstrations.md",
@@ -270,6 +337,8 @@ export const FEATURES = defineFeatures({
   browserLiveView: {
     label: "Workbot: browser live view",
     description: "Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.",
+    category: "computerUse",
+    added: "2026-10-22",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -279,6 +348,8 @@ export const FEATURES = defineFeatures({
   browserFloatingView: {
     label: "Desktop: floating and full-screen browser",
     description: "The built-in browser can float as a small live card over the chat, sit beside it, or fill the window, with a Browser button in the chat header that shows when it needs the person.",
+    category: "computerUse",
+    added: "2026-10-20",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -288,6 +359,8 @@ export const FEATURES = defineFeatures({
   remoteComputers: {
     label: "Desktop: computer use on remote computers",
     description: "Use a Linux cloud computer with its browser and desktop in OpenWork Web, or connect a VM from Desktop. Configured and conversation-owned desktops open directly when enabled, including follow-ups and internal session renewal. Take over and Stop stay available.",
+    category: "computerUse",
+    added: "2026-10-20",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -296,6 +369,8 @@ export const FEATURES = defineFeatures({
   remoteSessionSubagents: {
     label: "Desktop: tasks on other computers as sub-agents",
     description: "A task the agent starts on the cloud or another computer shows in the chat like a sub-agent: whether it is working, needs an answer or finished, and its conversation, which people can open, follow up on and stop.",
+    category: "computerUse",
+    added: "2026-10-15",
     since: "2026-10",
     author: "reachjalil",
     docs: "docs/session-offloading-architecture.md",
@@ -305,6 +380,8 @@ export const FEATURES = defineFeatures({
   desktopSignInReturn: {
     label: "Desktop: sign-in returns you to the same task",
     description: "Signing in from a conversation keeps it and its draft on screen while the browser finishes, then returns to that same conversation with the draft and model intact.",
+    category: "experience",
+    added: "2026-10-22",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -313,6 +390,8 @@ export const FEATURES = defineFeatures({
   claudeHistoryImport: {
     label: "Desktop: import Claude conversations",
     description: "Settings has an Import page that brings conversations from a Claude data export and Claude Code sessions saved on this computer into the workspace as regular OpenWork chats.",
+    category: "experience",
+    added: "2026-10-23",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -321,6 +400,8 @@ export const FEATURES = defineFeatures({
   activationChecklist: {
     label: "Get set up checklist",
     description: "After their first answer, people see a Get set up checklist in Desktop and Workbot: invite a teammate, use a skill, add a model provider, share one on AI Gateway and connect an app, each checked off once it works.",
+    category: "experience",
+    added: "2026-10-22",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: everywhere,
@@ -329,6 +410,8 @@ export const FEATURES = defineFeatures({
   connectStandardTools: {
     label: "Connect: standard tools",
     description: "Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.",
+    category: "connect",
+    added: "2026-10-21",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,
@@ -337,6 +420,8 @@ export const FEATURES = defineFeatures({
   teamPlan: {
     label: "Team plan checkout",
     description: "Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.",
+    category: "billing",
+    added: "2026-10-22",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: ["cloud"],
@@ -345,6 +430,8 @@ export const FEATURES = defineFeatures({
   selfServeEnterprise: {
     label: "Self-serve Enterprise",
     description: "Owners can buy Enterprise by card at the planned per-person price.",
+    category: "billing",
+    added: "2026-10-22",
     since: "2026-10",
     author: "benjaminshafii",
     deployments: ["cloud"],
@@ -353,6 +440,8 @@ export const FEATURES = defineFeatures({
   orgPrompts: {
     label: "Prompts",
     description: "Admins write a system prompt for everyone and for each team on the team's Prompts tab. Desktops add the prompts that apply to a member to every agent's instructions: Everyone's first, then each team's by team name. Turning this off stops desktops adding them at their next sync; saved prompts are kept.",
+    category: "administration",
+    added: "2026-10-23",
     since: "2026-10",
     author: "OmarMcAdam",
     deployments: everywhere,
@@ -361,6 +450,8 @@ export const FEATURES = defineFeatures({
   sessionTokenHashing: {
     label: "Hashed sign-in sessions",
     description: "Den keeps only a one-way hash of each sign-in session token, so a copy of the database cannot sign anyone in. New sessions are stored hashed and older ones convert the next time they are used; turn on only once every Den replica runs a release that reads both forms.",
+    category: "administration",
+    added: "2026-10-23",
     since: "2026-10",
     author: "reachjalil",
     deployments: everywhere,

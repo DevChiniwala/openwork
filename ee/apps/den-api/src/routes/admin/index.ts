@@ -55,13 +55,18 @@ import { appLogger } from "../../observability/logger.js"
 import {
   describeFeatures,
   readFeatureRollouts,
+  readLatestFeatureChanges,
   readOrganizationFeatureOverrides,
   readOrganizationFeatureOverridesForMany,
+  type FeatureChange,
   type FeatureOverrideChanges,
 } from "@openwork-ee/den-db/organization-features"
+import { adminFeatureChangeSchema, serializeFeatureChange } from "./feature-changes.js"
 import { registerAdminMemberFeatureRoutes } from "./member-features.js"
 import { organizationFeatureEnabled, updateFeatureRollout, updateOrganizationFeatureOverrides } from "../../features.js"
 import {
+  FEATURE_CATEGORIES,
+  FEATURE_CATEGORY_KEYS,
   FEATURE_KEYS,
   featureAvailableOn,
   featureDefinition,
@@ -69,6 +74,7 @@ import {
   featureKeySchema,
   featureRollout,
   mapFeatures,
+  type FeatureCategory,
   type FeatureKey,
   type FeatureOverrides,
   type FeatureRollouts,
@@ -216,6 +222,9 @@ const adminFeatureStateSchema = z.object({
   lock: z.boolean().nullable(),
   override: z.boolean().nullable(),
   overrideApplies: z.boolean(),
+  lastChange: adminFeatureChangeSchema.nullable().optional().meta({
+    description: "Latest change that could affect this organization (its override or the deployment-wide state). Returned when one organization is read or saved; omitted from organization lists.",
+  }),
 })
 
 const adminFeatureStatesSchema = z.object(mapFeatures(() => adminFeatureStateSchema)).meta({
@@ -226,6 +235,9 @@ const adminFeatureSchema = z.object({
   key: featureKeySchema,
   label: z.string(),
   description: z.string(),
+  category: z.enum(FEATURE_CATEGORY_KEYS as [FeatureCategory, ...FeatureCategory[]]).meta({ description: "Group the feature is listed under in /admin." }),
+  categoryLabel: z.string(),
+  added: z.string().meta({ description: "Day the flag was added to the registry (YYYY-MM-DD)." }),
   since: z.string(),
   author: z.string().meta({ description: "GitHub handle of the person who owns the feature." }),
   docs: z.string().nullable().meta({ description: "Repo path of the feature's internal doc, or null when it has none." }),
@@ -236,6 +248,7 @@ const adminFeatureSchema = z.object({
   enabled: z.boolean(),
   killed: z.boolean(),
   lock: z.boolean().nullable(),
+  lastChange: adminFeatureChangeSchema.nullable().meta({ description: "Latest deployment-wide change (on or off for everyone, kill switch), or null when it was never changed in /admin." }),
 }).meta({ ref: "AdminFeature" })
 
 const updateFeatureRolloutSchema = z.object({
@@ -409,10 +422,11 @@ function describeOrganization(rollouts: FeatureRollouts, overrides: FeatureOverr
   return describeFeatures({ rollouts, overrides, environment: env.features })
 }
 
-function readAdminFeatureStates(described: DescribedFeatures): z.infer<typeof adminFeatureStatesSchema> {
+function readAdminFeatureStates(described: DescribedFeatures, changes?: Partial<Record<FeatureKey, FeatureChange>>): z.infer<typeof adminFeatureStatesSchema> {
   return mapFeatures((key) => {
     const { enabled, source, everyone, killed, lock, override, overrideApplies } = described[key]
-    return { enabled, source, everyone, killed, lock, override, overrideApplies }
+    const state = { enabled, source, everyone, killed, lock, override, overrideApplies }
+    return changes ? { ...state, lastChange: serializeFeatureChange(changes[key]) } : state
   })
 }
 
@@ -420,13 +434,16 @@ function readAdminVisibleOrganizationCapabilities(described: DescribedFeatures):
   return { ...mapFeatures((key) => described[key].enabled), gatewayDashboard: true }
 }
 
-function readAdminFeature(key: FeatureKey, rollouts: FeatureRollouts): z.infer<typeof adminFeatureSchema> {
+function readAdminFeature(key: FeatureKey, rollouts: FeatureRollouts, changes: Partial<Record<FeatureKey, FeatureChange>>): z.infer<typeof adminFeatureSchema> {
   const definition = featureDefinition(key)
   const { enabled, killed } = featureRollout(key, rollouts)
   return {
     key,
     label: definition.label,
     description: definition.description,
+    category: definition.category,
+    categoryLabel: FEATURE_CATEGORIES[definition.category].label,
+    added: definition.added,
     since: definition.since,
     author: definition.author,
     docs: definition.docs ?? null,
@@ -437,6 +454,7 @@ function readAdminFeature(key: FeatureKey, rollouts: FeatureRollouts): z.infer<t
     enabled,
     killed,
     lock: env.features.locks[key] ?? null,
+    lastChange: serializeFeatureChange(changes[key]),
   }
 }
 
@@ -2302,9 +2320,13 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         return c.json({ error: "not_found", message: "Organization not found." }, 404)
       }
 
-      const [overrides, rollouts] = await Promise.all([readOrganizationFeatureOverrides(db, organization.id), readFeatureRollouts(db)])
+      const [overrides, rollouts, changes] = await Promise.all([
+        readOrganizationFeatureOverrides(db, organization.id),
+        readFeatureRollouts(db),
+        readLatestFeatureChanges(db, { organizationId: organization.id }),
+      ])
       const described = describeOrganization(rollouts, overrides)
-      return c.json({ capabilities: readAdminVisibleOrganizationCapabilities(described), featureStates: readAdminFeatureStates(described) })
+      return c.json({ capabilities: readAdminVisibleOrganizationCapabilities(described), featureStates: readAdminFeatureStates(described, changes) })
     },
   )
 
@@ -2360,9 +2382,10 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         setByUserId: c.get("user")?.id ?? null,
       })
 
-      const described = describeOrganization(await readFeatureRollouts(db), overrides)
+      const [rollouts, latestChanges] = await Promise.all([readFeatureRollouts(db), readLatestFeatureChanges(db, { organizationId })])
+      const described = describeOrganization(rollouts, overrides)
 
-      return c.json({ ok: true, organization: { id: organizationId }, capabilities: readAdminVisibleOrganizationCapabilities(described), featureStates: readAdminFeatureStates(described) })
+      return c.json({ ok: true, organization: { id: organizationId }, capabilities: readAdminVisibleOrganizationCapabilities(described), featureStates: readAdminFeatureStates(described, latestChanges) })
     },
   )
 
@@ -2379,8 +2402,8 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
     }),
     adminRoute(),
     async (c) => {
-      const rollouts = await readFeatureRollouts(db)
-      return c.json({ deployment: env.features.deployment, features: FEATURE_KEYS.map((key) => readAdminFeature(key, rollouts)) })
+      const [rollouts, changes] = await Promise.all([readFeatureRollouts(db), readLatestFeatureChanges(db)])
+      return c.json({ deployment: env.features.deployment, features: FEATURE_KEYS.map((key) => readAdminFeature(key, rollouts, changes)) })
     },
   )
 
@@ -2418,7 +2441,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
         defaultEnabled: featureDefinition(key.data).default,
         updatedByUserId: c.get("user")?.id ?? null,
       })
-      return c.json({ ok: true, feature: readAdminFeature(key.data, rollouts) })
+      return c.json({ ok: true, feature: readAdminFeature(key.data, rollouts, await readLatestFeatureChanges(db)) })
     },
   )
 

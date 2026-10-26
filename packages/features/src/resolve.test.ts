@@ -1,9 +1,11 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
+  FEATURE_CATEGORIES,
   FEATURE_KEYS,
   FEATURES,
   FEATURE_DOCS_BASE_URL,
+  featuresByCategory,
   featureDocsUrl,
   featureKeySchema,
   featureLockEnvName,
@@ -24,6 +26,23 @@ test("without stored state, every feature follows its registry default", () => {
     assert.equal(resolved.source, "everyone")
     assert.equal(resolved.overrideApplies, true)
   }
+})
+
+test("every feature has a known category and the day it was added", () => {
+  for (const key of FEATURE_KEYS) {
+    const { category, added, since } = FEATURES[key]
+    assert.ok(Object.hasOwn(FEATURE_CATEGORIES, category), key)
+    assert.match(added, /^\d{4}-\d{2}-\d{2}$/, key)
+    assert.ok(!Number.isNaN(Date.parse(`${added}T00:00:00Z`)), key)
+    assert.ok(added.slice(0, 7) <= since, `${key} was added after its since month`)
+  }
+})
+
+test("features by category keeps category order and lists every feature once", () => {
+  const groups = featuresByCategory()
+  assert.deepEqual(groups.map((group) => group.category), Object.keys(FEATURE_CATEGORIES).filter((category) => groups.some((group) => group.category === category)))
+  assert.deepEqual(groups.flatMap((group) => group.keys).sort(), [...FEATURE_KEYS].sort())
+  assert.ok(groups.every((group) => group.keys.length > 0))
 })
 
 test("every feature names its author, and docs link to internal docs in the repo", () => {

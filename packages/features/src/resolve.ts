@@ -14,7 +14,9 @@
 
 import { z } from "zod"
 import {
+  FEATURE_CATEGORIES,
   FEATURES,
+  type FeatureCategory,
   type FeatureDefinition,
   type FeatureDeployment,
   type FeatureKey,
@@ -75,8 +77,25 @@ export function isFeatureKey(value: string): value is FeatureKey {
 
 export const FEATURE_KEYS: readonly FeatureKey[] = Object.keys(FEATURES).filter(isFeatureKey)
 
+function isFeatureCategory(value: string): value is FeatureCategory {
+  return Object.hasOwn(FEATURE_CATEGORIES, value)
+}
+
+/** Category keys in the order /admin shows them. */
+export const FEATURE_CATEGORY_KEYS: readonly FeatureCategory[] = Object.keys(FEATURE_CATEGORIES).filter(isFeatureCategory)
+
 export function featureDefinition(key: FeatureKey): FeatureDefinition {
   return FEATURES[key]
+}
+
+/** The given keys (every feature by default) grouped in FEATURE_CATEGORIES order; empty groups are left out. */
+export function featuresByCategory(keys: readonly FeatureKey[] = FEATURE_KEYS): Array<{ category: FeatureCategory; keys: FeatureKey[] }> {
+  const groups: Array<{ category: FeatureCategory; keys: FeatureKey[] }> = []
+  for (const category of FEATURE_CATEGORY_KEYS) {
+    const inCategory = keys.filter((key) => featureDefinition(key).category === category)
+    if (inCategory.length > 0) groups.push({ category, keys: inCategory })
+  }
+  return groups
 }
 
 /** Internal docs are read in the open-source repo, on the default branch. */

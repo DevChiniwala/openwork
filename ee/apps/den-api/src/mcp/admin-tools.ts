@@ -530,6 +530,7 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
           organizationId,
           changes: { [capability]: enabled },
           source: "platform",
+          setByUserId: requireAdmin().userId,
         }))
         return {
           ok: true,
@@ -561,6 +562,8 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
             return {
               key,
               label: definition.label,
+              category: definition.category,
+              added: definition.added,
               author: definition.author,
               docsUrl: featureDocsUrl(key),
               deployments: definition.deployments,
@@ -590,7 +593,7 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
         if (!featureAvailableOn(feature, env.features.deployment)) throw new Error(`${feature} is not part of this deployment.`)
         // Deployment-wide: no organization's data changes, so platform evidence only.
         const rollouts = await runPlatformAdminPlatformAction("feature.rollout.set", requireAdmin(), { type: "feature", id: feature }, () =>
-          updateFeatureRollout({ key: feature, enabled, killed, defaultEnabled: featureDefinition(feature).default }))
+          updateFeatureRollout({ key: feature, enabled, killed, defaultEnabled: featureDefinition(feature).default, updatedByUserId: requireAdmin().userId }))
         return { ok: true, feature, ...featureRollout(feature, rollouts) }
       }),
   )
