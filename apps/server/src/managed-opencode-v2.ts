@@ -6,6 +6,7 @@ import type { OrganizationMcpServers } from "./organization-mcp-names.js";
 import { nativeModelVariants } from "@openwork/types/cloud-model-fast";
 import { gatewayBase } from "./gateway-quota.js";
 import { openworkAgentPermissionsV2PluginPath, openworkContextV2PluginPath, openworkGatewayQuotaV2PluginPath, openworkMcpResultsV2PluginPath, openworkMcpReadinessV2PluginPath, openworkProviderFiltersV2PluginPath, openworkProviderSyncV2PluginPath, openworkVisibleReasoningV2PluginPath } from "./openwork-extensions-plugin-path.js";
+import { DRIVE_UPLOAD_PERMISSION } from "./extensions/cloud-upload-constants.js";
 import { pathToFileURL } from "node:url";
 // Parallel v2 lane prototype: provider injection is a watched-config write. This module
 // deliberately has no reload/dispose call, unlike managed-opencode.ts and server.ts reloadOpencodeEngine.
@@ -315,8 +316,13 @@ export function renderOpencodeV2Config(input: {
     }] : []),
   ];
   // The engine applies the last matching rule, so the managed execution
-  // denials come last: an agent permission exception never lifts them.
-  const permissions: EngineV2PermissionRule[] = [...agentPermissionEngineV2Rules(input.agentPermissionRules ?? []), ...(input.permissions ?? [])];
+  // denials come last: an agent permission exception never lifts them. The
+  // engine allows unlisted actions, so the context tools' Drive upload is
+  // listed as ask: its bridge uploads only after the person allows it.
+  const permissions: EngineV2PermissionRule[] = [
+    ...(input.contextTools && input.contextPluginDirectory ? [{ action: DRIVE_UPLOAD_PERMISSION, resource: "*", effect: "ask" as const }] : []),
+    ...agentPermissionEngineV2Rules(input.agentPermissionRules ?? []), ...(input.permissions ?? []),
+  ];
   return {
     $schema: "https://opencode.ai/config.json",
     providers: providerConfig,
