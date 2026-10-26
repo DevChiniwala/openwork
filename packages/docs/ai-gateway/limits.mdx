@@ -4,3 +4,85 @@ description: "How AI Gateway caps usage so your organization stays within budget
 ---
 
 AI Gateway lets your organization set limits on how much its members can use AI models. This page explains which limits exist, how they are counted, and what members see when they reach one.
+
+Limits keep your organization's AI spend predictable. Instead of finding out at the end of the month that a few heavy users or a runaway automation used most of the budget, you decide ahead of time how much each person can spend in a day, week or month. You can give more room to the people who need it, keep everyone else on a sensible default, and choose whether reaching a limit stops work or just raises a flag. Because every request goes through AI Gateway, limits apply the same way whichever app or model a member uses.
+
+## How limits work
+
+A limit is an amount of money, in US dollars, that a member can spend on AI models in a period of time. Spend is the estimated cost of each request, worked out as described in [Token Costs](/ai-gateway/token-costs).
+
+### Time windows
+
+Each limit can have a daily, weekly and monthly amount. Turn on whichever periods you need, for example $20 a day and $200 a month. Each period is counted separately, and a member must stay under all of them.
+
+Periods follow the calendar and reset at 05:00 UTC:
+
+| Period | Resets |
+| --- | --- |
+| Daily | Every day at 05:00 UTC |
+| Weekly | Every Monday at 05:00 UTC |
+| Monthly | On the 1st of each month at 05:00 UTC |
+
+Every member's spend is counted from the start of each period, even before you create any limits. When you add a limit partway through a month, spend from earlier in that month already counts toward it.
+
+<Note>
+AI Gateway checks a member's spend before each request starts. Requests already running when the member reaches the limit are allowed to finish, so spend can go slightly over a limit.
+</Note>
+
+### When someone reaches a limit
+
+You choose what happens when a member reaches a limit:
+
+- **Pause their models.** Requests through AI Gateway stop working until the period resets or you give them more.
+- **Pause their models, but let them ask for more.** Requests stop, and the member can ask for 25% more. The request appears in **Limits** for an admin to approve or deny. Approving adds 25% of the limit's amount for the rest of the period; it does not clear what they have already spent or change when the period resets. A member can ask again once they use up the extra amount.
+- **Only warn.** Requests keep working, and the limit shows as over so you can follow up.
+
+## Applying limits
+
+A limit can apply to:
+
+- **Everyone.** Every current member of the organization, and anyone who joins later.
+- **Teams.** Every member of the teams you choose.
+- **People.** Specific members you choose.
+
+Each member's spend is counted on its own. An Everyone limit of $50 a month means each member can spend $50, not that the whole organization shares $50.
+
+### When a member has more than one limit
+
+A member can be covered by several limits at once, for example an Everyone limit and a limit for each of their teams. When that happens, **the highest limit applies**, and the lower limits are ignored. This is worked out for each period separately.
+
+#### Example
+
+John is a member of the Design and Engineering teams. The organization has these monthly limits:
+
+| Limit | Applies to | Monthly amount |
+| --- | --- | --- |
+| Default | Everyone | $50 |
+| Design | Design team | $100 |
+| Engineering | Engineering team | $200 |
+
+All three limits cover John. The highest is Engineering's, so **John can spend $200 a month**. The Everyone and Design limits do not add to it, and they do not lower it.
+
+If the Everyone limit also had a daily amount of $10, and neither team limit had a daily amount, John would also be limited to $10 a day. A period that only one of his limits sets still applies to him.
+
+## Advanced: per-provider limits
+
+By default, a limit counts spend across every AI provider your organization uses. You can also create a limit for one provider, such as Amazon Bedrock or a custom provider your organization added.
+
+A per-provider limit replaces the default limits for that provider only:
+
+- When a member has a limit for a provider, their spend on that provider counts **only** toward that provider's limit. It does not count toward their default limit.
+- Spend on providers without their own limit keeps counting toward the member's default limit.
+- If a member has more than one limit for the same provider, the highest one applies, the same as for default limits.
+- A provider limit only sets the periods it includes. If the default limit has a daily amount and the provider limit only has a monthly one, that provider has no daily limit for the member.
+
+#### Example
+
+John's default limit is $200 a month, from the example above. The organization also has a limit of $300 a month for Provider A, applied to the Engineering team. There is no limit for Provider B.
+
+| John uses | Spend counts toward | John can spend |
+| --- | --- | --- |
+| Provider A | The Provider A limit only | $300 a month on Provider A |
+| Provider B | His default limit | $200 a month across Provider B and any other provider without its own limit |
+
+If John spends $300 on Provider A this month, he can still spend his full $200 on Provider B. If he uses up his $200 default limit, he can keep using Provider A until he reaches $300 there.
