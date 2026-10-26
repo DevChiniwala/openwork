@@ -1499,9 +1499,9 @@ export async function getOrgBillingSummary(input: {
     joined: peopleCounts.joined,
     invited: peopleCounts.invited,
     freeSeatCount: seatCounts.free,
-    trial: organizationPlan?.source === "trial" && organizationPlan.trial
-      ? { seats: organizationPlan.trial.seats, endsAt: organizationPlan.trial.endsAt }
-      : null,
+    ...(organizationPlan?.source === "trial" && organizationPlan.trial
+      ? { trial: { seats: organizationPlan.trial.seats, endsAt: organizationPlan.trial.endsAt } }
+      : {}),
   }
   const hasActiveSubscription = Boolean(row && ACTIVE_STATUSES.has(row.status))
   const hasActiveSeatSubscription = Boolean(seatRow && ACTIVE_STATUSES.has(seatRow.status))
