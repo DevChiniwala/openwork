@@ -12,7 +12,8 @@ name: Dry run on a copy of production data
 # - The PlanetScale token reaches only the steps that call pscale. The check
 #   gets a branch connection and nothing else: no email, Stripe, Slack,
 #   connector or model credentials.
-# - Every action is pinned to a full commit SHA.
+# - Every action is pinned to a full commit SHA, and dependencies are
+#   installed before any database credential exists.
 # - This repository is public, so its logs and step summaries are public.
 #   Checks print aggregates and pass/fail only, never rows, names, ids or
 #   emails. Review the check before approving the run.
@@ -91,6 +92,24 @@ jobs:
         with:
           persist-credentials: false
 
+      # Install before any database credential exists, so dependency lifecycle
+      # scripts never see the branch password or the PlanetScale token.
+      - name: Setup Node
+        if: ${{ !inputs.cleanup_only }}
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.22.1
+
+      - name: Setup pnpm
+        if: ${{ !inputs.cleanup_only }}
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.4.0
+
+      - name: Install dependencies
+        if: ${{ !inputs.cleanup_only }}
+        run: pnpm install --frozen-lockfile --filter "@openwork-ee/den-api..."
+
       - name: Setup pscale CLI
         uses: planetscale/setup-pscale-action@b6a50ee45b4b24944e1d8de6e57b3a5f6476a1af # v1
 
@@ -151,22 +170,6 @@ jobs:
             echo "DRY_RUN_DATABASE_PASSWORD=$password"
           } >> "$GITHUB_ENV"
           echo "Password created with role $ROLE"
-
-      - name: Setup Node
-        if: ${{ !inputs.cleanup_only }}
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24.22.1
-
-      - name: Setup pnpm
-        if: ${{ !inputs.cleanup_only }}
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 11.4.0
-
-      - name: Install dependencies
-        if: ${{ !inputs.cleanup_only }}
-        run: pnpm install --frozen-lockfile --filter "@openwork-ee/den-api..."
 
       - name: Run the check (aggregates only)
         if: ${{ !inputs.cleanup_only }}
