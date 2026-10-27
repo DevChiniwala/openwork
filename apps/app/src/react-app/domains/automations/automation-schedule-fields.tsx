@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useOrgFeature } from "@/react-app/domains/cloud/use-org-feature"
 
 const WEEKDAYS = [
@@ -42,8 +43,35 @@ const meetingMinutesLabel = (minutes: number, edge: "start" | "end") => minutes 
   : `${minutes} min ${edge === "start" ? "before it starts" : "after it ends"}`
 
 const INTERVAL_HOURS = [1, 2, 3, 4, 6, 8, 12] as const
-const SELECT_CLASS = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
 const hourLabel = (hour: number) => `${String(hour).padStart(2, "0")}:00`
+
+/** One schedule choice on the shared Select, labelled by the field's <Label htmlFor>. */
+function ScheduleSelect<T extends string | number>(props: {
+  id: string
+  value: T
+  items: readonly { value: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <Select
+      value={props.value}
+      items={props.items}
+      onValueChange={(value) => {
+        const match = props.items.find((item) => item.value === value)
+        if (match) props.onChange(match.value)
+      }}
+    >
+      <SelectTrigger id={props.id} className="w-full rounded-lg">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {props.items.map((item) => <SelectItem key={String(item.value)} value={item.value}>{item.label}</SelectItem>)}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+}
 
 /**
  * Frequency, time, days and time zone of an Automation schedule. Shared by the
@@ -94,53 +122,45 @@ export function AutomationScheduleFields(props: {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={id("frequency")}>Schedule</Label>
-          <select
+          <ScheduleSelect
             id={id("frequency")}
-            className={SELECT_CLASS}
             value={schedule.kind}
-            onChange={(event) => {
-              const kind = event.currentTarget.value
-              if (kind === "once" || kind === "daily" || kind === "weekly" || kind === "interval" || kind === "calendar") changeScheduleKind(kind)
-            }}
-          >
-            <option value="once">Once</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            {intervalOffered ? <option value="interval">Every few hours</option> : null}
-            {meetingsOffered ? <option value="calendar">Around my meetings</option> : null}
-          </select>
+            items={[
+              { value: "once", label: "Once" },
+              { value: "daily", label: "Daily" },
+              { value: "weekly", label: "Weekly" },
+              ...(intervalOffered ? [{ value: "interval" as const, label: "Every few hours" }] : []),
+              ...(meetingsOffered ? [{ value: "calendar" as const, label: "Around my meetings" }] : []),
+            ]}
+            onChange={changeScheduleKind}
+          />
         </div>
         {schedule.kind === "calendar" ? (
           <div className="space-y-2">
             <Label htmlFor={id("meeting-moment")}>Runs</Label>
-            <select
+            <ScheduleSelect
               id={id("meeting-moment")}
-              className={SELECT_CLASS}
               value={`${schedule.edge}:${Math.abs(schedule.offsetMinutes)}`}
-              onChange={(event) => {
-                const [edge, minutes] = event.currentTarget.value.split(":")
+              items={(["start", "end"] as const).flatMap((edge) => [...new Set([...MEETING_MINUTES, ...(schedule.edge === edge ? [Math.abs(schedule.offsetMinutes)] : [])])]
+                .sort((left, right) => left - right)
+                .map((minutes) => ({ value: `${edge}:${minutes}`, label: meetingMinutesLabel(minutes, edge) })))}
+              onChange={(value) => {
+                const [edge, minutes] = value.split(":")
                 if (edge !== "start" && edge !== "end") return
                 props.onChange({ ...schedule, edge, offsetMinutes: edge === "start" ? -Number(minutes) : Number(minutes) })
               }}
-            >
-              {(["start", "end"] as const).flatMap((edge) => [...new Set([...MEETING_MINUTES, ...(schedule.edge === edge ? [Math.abs(schedule.offsetMinutes)] : [])])]
-                .sort((left, right) => left - right)
-                .map((minutes) => <option key={`${edge}:${minutes}`} value={`${edge}:${minutes}`}>{meetingMinutesLabel(minutes, edge)}</option>))}
-            </select>
+            />
           </div>
         ) : schedule.kind === "interval" ? (
           <div className="space-y-2">
             <Label htmlFor={id("every-hours")}>Every</Label>
-            <select
+            <ScheduleSelect
               id={id("every-hours")}
-              className={SELECT_CLASS}
               value={schedule.everyHours}
-              onChange={(event) => props.onChange({ ...schedule, everyHours: Number(event.currentTarget.value) })}
-            >
-              {[...new Set([...INTERVAL_HOURS, schedule.everyHours])].sort((left, right) => left - right).map((hours) => (
-                <option key={hours} value={hours}>{hours === 1 ? "1 hour" : `${hours} hours`}</option>
-              ))}
-            </select>
+              items={[...new Set([...INTERVAL_HOURS, schedule.everyHours])].sort((left, right) => left - right)
+                .map((hours) => ({ value: hours, label: hours === 1 ? "1 hour" : `${hours} hours` }))}
+              onChange={(everyHours) => props.onChange({ ...schedule, everyHours })}
+            />
           </div>
         ) : schedule.kind === "once" ? (
           <div className="space-y-2">
@@ -172,30 +192,22 @@ export function AutomationScheduleFields(props: {
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor={id("window-start")}>From</Label>
-            <select
+            <ScheduleSelect
               id={id("window-start")}
-              className={SELECT_CLASS}
               value={schedule.startHour}
-              onChange={(event) => {
-                const startHour = Number(event.currentTarget.value)
-                props.onChange({ ...schedule, startHour, endHour: Math.max(schedule.endHour, startHour + 1) })
-              }}
-            >
-              {Array.from({ length: 24 }, (_, hour) => <option key={hour} value={hour}>{hourLabel(hour)}</option>)}
-            </select>
+              items={Array.from({ length: 24 }, (_, hour) => ({ value: hour, label: hourLabel(hour) }))}
+              onChange={(startHour) => props.onChange({ ...schedule, startHour, endHour: Math.max(schedule.endHour, startHour + 1) })}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor={id("window-end")}>Until</Label>
-            <select
+            <ScheduleSelect
               id={id("window-end")}
-              className={SELECT_CLASS}
               value={schedule.endHour}
-              onChange={(event) => props.onChange({ ...schedule, endHour: Number(event.currentTarget.value) })}
-            >
-              {Array.from({ length: 24 - schedule.startHour }, (_, index) => schedule.startHour + index + 1).map((hour) => (
-                <option key={hour} value={hour}>{hour === 24 ? "End of day" : hourLabel(hour)}</option>
-              ))}
-            </select>
+              items={Array.from({ length: 24 - schedule.startHour }, (_, index) => schedule.startHour + index + 1)
+                .map((hour) => ({ value: hour, label: hour === 24 ? "End of day" : hourLabel(hour) }))}
+              onChange={(endHour) => props.onChange({ ...schedule, endHour })}
+            />
           </div>
         </div>
       ) : null}
