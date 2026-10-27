@@ -511,12 +511,12 @@ export function BrowserPanelContent({
             <Tooltip>
               <TooltipTrigger
                 render={(
-                  <Button variant="ghost" size="icon-sm" aria-label="Float browser" data-testid="browser-mode-float" onClick={() => presentation.onPresent("floating")}>
+                  <Button variant="ghost" size="icon-sm" aria-label="Pop out browser" data-testid="browser-mode-float" onClick={() => presentation.onPresent("floating")}>
                     <PictureInPicture2 />
                   </Button>
                 )}
               />
-              <TooltipContent>Float over chat</TooltipContent>
+              <TooltipContent>Pop out into its own window</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
