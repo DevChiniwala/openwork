@@ -71,10 +71,12 @@ export function workbotContextForModel(value: WorkbotViewContext): WorkbotViewCo
     ...(context.selected ? { selected: { ...context.selected, title: context.selected.kind === "meeting" ? "Selected meeting" : "Selected automation" } } : {}) }
 }
 
-/** Document and calendar references run with read-only credentials. A browser page is Workbot's own computer,
- * so a message sent while watching it keeps the tools that act on it. */
-export function workbotContextReadOnly(context?: WorkbotViewContext) {
-  return context !== undefined && context.kind !== "browser"
+/** Document and calendar references run with read-only credentials. A browser page is Workbot's own computer, so a
+ * message sent while watching it keeps the computer, but its connected-app token is read-scoped: what a page says
+ * can't get Workbot to change the member's apps. */
+export function workbotContextAccess(context?: WorkbotViewContext): { readOnly?: true; mcpReadOnly?: true } {
+  if (!context) return {}
+  return context.kind === "browser" ? { mcpReadOnly: true } : { readOnly: true }
 }
 
 /** The person's command is separate from the fixed-shape, read-only resource reference. */
