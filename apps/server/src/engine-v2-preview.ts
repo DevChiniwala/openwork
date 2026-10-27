@@ -151,9 +151,11 @@ export interface EngineV2Preview {
    * changed ones, remove revoked ones, and restart failed ones after a back-off.
    * Healthy and starting connections are left alone. `reconnect` names are
    * restarted now, without the back-off, when they are not healthy.
+   * The call rejects only for the connections it names (`reconnect`, or
+   * `servers` to check them without a restart); with neither, for any.
    * Background upkeep: prompts never wait on it.
    */
-  syncWorkspaceMcp(workspaceId: string, directory: string, options?: { reconnect?: string[] }): Promise<void>;
+  syncWorkspaceMcp(workspaceId: string, directory: string, options?: { reconnect?: string[]; servers?: string[] }): Promise<void>;
   /** Explicit mutations join the native client's executable MCP registry. */
   settleWorkspaceMcp(workspaceId: string, directory: string, server: string): Promise<void>;
   /** Start a folder's upkeep in the background the first time it is seen. Never waits or throws. */
@@ -589,9 +591,22 @@ interface McpLocation {
   /** Last rejected registration or restart per name, for the back-off. */
   attempts: Map<string, { fingerprint: string; at: number }>;
   /** The latest run; the next one starts after it. */
-  tail?: Promise<void>;
+  tail?: Promise<McpFailures>;
   /** A run that has not started yet; later triggers join it. */
-  queued?: { promise: Promise<void>; reconnect: Set<string> };
+  queued?: { promise: Promise<McpFailures>; reconnect: Set<string> };
+}
+
+/** One run's failure message per connection name. */
+type McpFailures = ReadonlyMap<string, string>;
+
+/**
+ * A run serves every caller that joined it. Each one hears only about the
+ * connections it named, so one broken server never fails another's request;
+ * background upkeep names none and hears about all of them.
+ */
+async function rejectMcpFailures(run: Promise<McpFailures>, names?: readonly string[]): Promise<void> {
+  const failures = [...await run].filter(([name]) => !names || names.includes(name));
+  if (failures.length) throw new Error(failures.map(([name, message]) => `${name}: ${message}`).join("; "));
 }
 
 /** Live MCP status per name for one location, or undefined when unknown. */
@@ -718,7 +733,8 @@ export function createEngineV2Preview(options: {
     });
   }
 
-  function syncWorkspaceMcp(workspaceId: string, directory: string, options: { reconnect?: string[] } = {}): Promise<void> {
+  function syncWorkspaceMcp(workspaceId: string, directory: string, options: { reconnect?: string[]; servers?: string[] } = {}): Promise<void> {
+    const named = options.servers ?? options.reconnect;
     let location = mcpLocations.get(directory);
     if (!location) {
       location = { workspaceId, applied: new Map(), attempts: new Map() };
@@ -730,7 +746,7 @@ export function createEngineV2Preview(options: {
     // burst coalesces and never reuses a snapshot taken before a change.
     if (location.queued) {
       for (const name of options.reconnect ?? []) location.queued.reconnect.add(name);
-      return location.queued.promise;
+      return rejectMcpFailures(location.queued.promise, named);
     }
     const owner = location;
     const reconnect = new Set(options.reconnect);
@@ -740,10 +756,10 @@ export function createEngineV2Preview(options: {
     });
     owner.queued = { promise, reconnect };
     owner.tail = promise;
-    return promise;
+    return rejectMcpFailures(promise, named);
   }
 
-  async function reconcileWorkspaceMcp(directory: string, location: McpLocation, reconnect: ReadonlySet<string>): Promise<void> {
+  async function reconcileWorkspaceMcp(directory: string, location: McpLocation, reconnect: ReadonlySet<string>): Promise<McpFailures> {
     const active = sidecar;
     if (!active) throw new Error("OpenCode v2 is not running");
     const effective = await readEffectiveRuntimeOpencodeConfig(config, location.workspaceId);
@@ -771,7 +787,6 @@ export function createEngineV2Preview(options: {
       const attempt = attempts.get(name);
       return !reconnect.has(name) && attempt?.fingerprint === fingerprint && Date.now() - attempt.at < waits.mcpRetryMs;
     };
-    const failures: string[] = [];
     const remove = async (name: string) => {
       const result = await active.fetchJson(`/api/experimental/mcp/${encodeURIComponent(name)}`, { method: "DELETE", directory, timeoutMs: 15_000 });
       if (result.status !== 204 && result.status !== 404) throw new Error(`OpenCode v2 MCP removal failed (${result.status})`);
@@ -799,15 +814,15 @@ export function createEngineV2Preview(options: {
       const result = await active.fetchJson(`/api/experimental/mcp/${encodeURIComponent(name)}/connect`, { method: "POST", directory, timeoutMs: 30_000 });
       if (result.status !== 204) warn(`MCP ${name}: reconnect failed (${result.status})`);
     };
-    const tasks: Array<Promise<void>> = [];
+    const tasks: Array<[string, Promise<void>]> = [];
     // Only registrations owned by this mirror are removed. A changed config is
     // removed before it is registered again, so a failed replacement cannot
     // leave an old credential or revoked tool active.
     for (const name of applied.keys()) {
       const wanted = desired.get(name);
-      if (!wanted) tasks.push(remove(name));
+      if (!wanted) tasks.push([name, remove(name)]);
       else if (wanted.fingerprint !== applied.get(name) && !backedOff(name, wanted.fingerprint)) {
-        tasks.push(remove(name).then(() => register(name, wanted.config, wanted.fingerprint)));
+        tasks.push([name, remove(name).then(() => register(name, wanted.config, wanted.fingerprint))]);
       }
     }
     for (const [name, { config: mcpConfig, fingerprint }] of desired) {
@@ -815,27 +830,31 @@ export function createEngineV2Preview(options: {
       if (applied.has(name) && applied.get(name) !== fingerprint) continue;
       if (!applied.has(name) || (live && status === undefined)) {
         // New, or the engine lost it (an identical PUT to a live entry is a no-op).
-        if (!backedOff(name, fingerprint)) tasks.push(register(name, mcpConfig, fingerprint));
+        if (!backedOff(name, fingerprint)) tasks.push([name, register(name, mcpConfig, fingerprint)]);
         continue;
       }
       // Connected and starting connections are left alone. `disabled` is only
       // ever set by an OpenWork repair, and needs_auth is retried only on request.
       const unhealthy = status === "failed" || status === "disabled" || (status === "needs_auth" && reconnect.has(name));
       if (status === "connected") attempts.delete(name);
-      else if (unhealthy && !backedOff(name, fingerprint)) tasks.push(restart(name, fingerprint));
-    }
-    for (const result of await Promise.allSettled(tasks)) {
-      if (result.status === "rejected") failures.push(errorMessage(result.reason));
+      else if (unhealthy && !backedOff(name, fingerprint)) tasks.push([name, restart(name, fingerprint)]);
     }
     // A failed run keeps its record as is: only successful registrations are
     // recorded, and the live status check catches anything unhealthy.
-    if (failures.length) throw new Error(failures.join("; "));
+    const failures = new Map<string, string>();
+    const results = await Promise.allSettled(tasks.map(([, task]) => task));
+    results.forEach((result, index) => {
+      if (result.status === "rejected") failures.set(tasks[index][0], errorMessage(result.reason));
+    });
+    return failures;
   }
 
   async function settleWorkspaceMcp(workspaceId: string, directory: string, server: string): Promise<void> {
-    if (!enabled) return;
+    // While v1 serves chats, or v2 is not up, the saved config is the whole
+    // change: v2 reads each folder's connections from it when it opens the folder.
+    if (!sidecar || !chatRouting) return;
     await ensureWorkspaceReady(directory);
-    await syncWorkspaceMcp(workspaceId, directory);
+    await syncWorkspaceMcp(workspaceId, directory, { servers: [server] });
     if (!enabled) return;
     const active = sidecar;
     if (!active) throw new ApiError(503, "mcp_tools_not_ready", "This connection is saved, but its tools are not ready yet. Retry.");
