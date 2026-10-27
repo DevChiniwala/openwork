@@ -62,10 +62,7 @@ export class UpgradeLab {
   private forward: ChildProcess | undefined
   private branchBuilt = false
   private ip = 1
-  readonly engine: "mysql" | "mariadb"
-  constructor(engine: "mysql" | "mariadb") {
-    this.engine = engine
-  }
+  constructor(readonly engine: "mysql" | "mariadb") {}
   sql(statement: string) {
     return run("podman", ["exec", "-i", "exp-o2-db", this.engine === "mysql" ? "mysql" : "mariadb", "-uroot", "--batch", "exp_o2"], statement)
   }

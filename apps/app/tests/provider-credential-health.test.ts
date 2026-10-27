@@ -139,12 +139,12 @@ for (const providerId of ["openrouter", "ipr_fixture"]) test(`native lifecycle u
   } finally { dispose(); }
 });
 
-test("idle and legacy message events do not replace native execution credential verification", () => {
-  const sync = { workspaceId: workspace, baseUrl: "http://127.0.0.1:9/w/fixture/opencode2", openworkToken: "synthetic-local-token" };
+test("v1 idle without a completed assistant response is not credential verification", () => {
+  const sync = { workspaceId: workspace, baseUrl: "http://127.0.0.1:9/w/fixture/opencode", openworkToken: "synthetic-local-token" };
   spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ data: [] }));
   useSessionActivityStore.setState({ recordsByWorkspaceId: {} });
   const dispose = __createWorkspaceSessionSyncForTest(sync);
-  const sessionID = "session-legacy-event-fixture";
+  const sessionID = "session-v1-fixture";
   try {
     __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "busy" } } });
     __applySessionSyncEventForTest(sync, { type: "message.updated", properties: { info: { id: "message-fixture", sessionID, role: "assistant", providerID: provider } } });
@@ -154,9 +154,6 @@ test("idle and legacy message events do not replace native execution credential 
     __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "busy" } } });
     __applySessionSyncEventForTest(sync, { type: "message.updated", properties: { info: { id: "message-success", sessionID, role: "assistant", providerID: provider, time: { created: now, completed: 200 } } } });
     __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "idle" } } });
-    expect(health()).toBe("unverified");
-    __applySessionSyncEventForTest(sync, { type: "session.execution.started", properties: { sessionID, timestamp: now, model: { providerID: provider, id: "ok" } } });
-    __applySessionSyncEventForTest(sync, { type: "session.execution.succeeded", properties: { sessionID } });
     expect(health()).toBe("verified");
   } finally { dispose(); }
 });

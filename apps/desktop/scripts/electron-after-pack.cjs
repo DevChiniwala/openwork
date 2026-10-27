@@ -7,6 +7,7 @@ const { Arch } = require("electron-builder");
 const computerUseHelperAppName = "OpenWork Computer Use.app";
 
 const sidecarBases = [
+  "opencode",
   "opencode2",
 ];
 

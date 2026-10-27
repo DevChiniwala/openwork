@@ -165,10 +165,12 @@ export async function reconcilePolicyDisabledProviders(
   for (const providerId of initialPlan.toDisable) {
     if (disabledProviderIds.includes(providerId)) continue;
     const result = await updateManagedDisabledProviders({
+      opencodeClient: input.opencodeClient,
       openworkClient: input.openworkClient,
       workspaceId: input.workspaceId,
       workspaceType: input.workspaceType,
       disabledProviders: addProviderId(disabledProviderIds, providerId),
+      removeFallbackKeyWhenEmpty: true,
       markReloadRequired: input.markReloadRequired,
     });
     disabledProviderIds = result.disabledProviders;
@@ -185,10 +187,12 @@ export async function reconcilePolicyDisabledProviders(
       continue;
     }
     const result = await updateManagedDisabledProviders({
+      opencodeClient: input.opencodeClient,
       openworkClient: input.openworkClient,
       workspaceId: input.workspaceId,
       workspaceType: input.workspaceType,
       disabledProviders: removeProviderId(disabledProviderIds, providerId),
+      removeFallbackKeyWhenEmpty: true,
       markReloadRequired: input.markReloadRequired,
     });
     disabledProviderIds = result.disabledProviders;

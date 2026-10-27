@@ -1,5 +1,6 @@
 // Reasoning state that must survive between requests of one Auto turn
-// (Claude thinking blocks, Gemini thought signatures, Bedrock reasoning),
+// (Claude thinking blocks, Gemini thought signatures, Bedrock reasoning,
+// OpenAI encrypted reasoning items),
 // keyed by the tool call id the client echoes back. Shared by every gateway
 // instance through the database (auto_router_reasoning, encrypted), with a
 // small in-memory front so the common same-instance case skips a read.
@@ -9,7 +10,7 @@ import { isDenTypeId } from "@openwork-ee/utils/typeid"
 import { isJsonObject, type JsonObject } from "./chat.js"
 
 /** What one provider needs to continue after a tool call. */
-export type ReasoningPayload = { kind: "anthropic" | "bedrock" | "google"; blocks: JsonObject[] }
+export type ReasoningPayload = { kind: "anthropic" | "bedrock" | "google" | "openai"; blocks: JsonObject[] }
 
 export type ReasoningStore = {
   /** Every remembered payload for these tool call ids, by id. */
@@ -24,7 +25,7 @@ const MEMORY_LIMIT = 5_000
 const TOOL_CALL_ID = /^[A-Za-z0-9_.:-]{1,191}$/
 
 function parsePayload(value: unknown): ReasoningPayload | null {
-  if (!isJsonObject(value) || (value.kind !== "anthropic" && value.kind !== "bedrock" && value.kind !== "google") || !Array.isArray(value.blocks)) return null
+  if (!isJsonObject(value) || (value.kind !== "anthropic" && value.kind !== "bedrock" && value.kind !== "google" && value.kind !== "openai") || !Array.isArray(value.blocks)) return null
   return { kind: value.kind, blocks: value.blocks.filter(isJsonObject) }
 }
 

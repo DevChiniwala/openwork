@@ -5,6 +5,7 @@ export type * from "./desktop-types";
 export type {
   EngineInfo,
   OpenworkServerInfo,
+  EngineDoctorResult,
   WorkspaceInfo,
   WorkspaceList,
   WorkspaceExportSummary,
@@ -719,6 +720,7 @@ const {
   readOpencodeConfig,
   writeOpencodeConfig,
   resetOpenworkState,
+  opencodeMcpAuth,
 } = desktopBridge;
 
 export {
@@ -760,4 +762,5 @@ export {
   readOpencodeConfig,
   writeOpencodeConfig,
   resetOpenworkState,
+  opencodeMcpAuth,
 };

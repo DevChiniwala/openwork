@@ -33,24 +33,22 @@ for (const [platform, arch, triple] of targets) {
   test(`${platform}/${arch}: packaging ships one canonical copy and target metadata`, (t) => {
     const { root, directory } = fixture(t, platform);
     const payloads = [Buffer.alloc(123, 1), Buffer.alloc(456, 2)];
-    for (const [index, base] of ["opencode2"].entries()) {
+    for (const [index, base] of ["opencode", "opencode2"].entries()) {
       writeFileSync(path.join(directory, `${base}-${triple}${ext}`), payloads[index]);
       writeFileSync(path.join(directory, `${base}${ext}`), "stale alias");
       writeFileSync(path.join(directory, `${base}-foreign${ext}`), "foreign");
     }
-    // A pre-v2 engine an older checkout staged is never shipped.
-    writeFileSync(path.join(directory, `opencode-${triple}${ext}`), "retired engine");
-    writeFileSync(path.join(directory, `opencode${ext}`), "retired engine");
     writeFileSync(path.join(directory, `versions.json-${triple}`), '{"target":"correct"}');
     writeFileSync(path.join(directory, "versions.json"), '{"target":"stale"}');
     canonicalizeSidecars({ appOutDir: root, electronPlatformName: platform, arch: Arch[arch] });
-    assert.deepEqual(readdirSync(directory).sort(), [`opencode2${ext}`, "versions.json"].sort());
-    for (const [index, base] of ["opencode2"].entries()) {
+    assert.deepEqual(readdirSync(directory).sort(), [`opencode${ext}`, `opencode2${ext}`, "versions.json"].sort());
+    for (const [index, base] of ["opencode", "opencode2"].entries()) {
       assert.deepEqual(readFileSync(path.join(directory, `${base}${ext}`)), payloads[index]);
       assert.equal(statSync(path.join(directory, `${base}${ext}`)).size, payloads[index].length);
     }
     assert.equal(readFileSync(path.join(directory, "versions.json"), "utf8"), '{"target":"correct"}');
     assert.deepEqual(bundledEngineEnv([directory], { required: true, platform, arch }), {
+      OPENWORK_OPENCODE_BIN: path.join(directory, `opencode${ext}`),
       OPENWORK_OPENCODE2_BIN: path.join(directory, `opencode2${ext}`),
     });
   });
@@ -58,13 +56,13 @@ for (const [platform, arch, triple] of targets) {
   test(`${platform}/${arch}: resolution supports canonical, legacy-only, and both layouts`, (t) => {
     const { directory } = fixture(t, platform);
     const options = { required: true, platform, arch };
-    assert.throws(() => bundledEngineEnv([directory], options), /Missing packaged engine opencode2\. Checked:/);
+    assert.throws(() => bundledEngineEnv([directory], options), /Missing packaged engine opencode\. Checked:/);
     assert.deepEqual(bundledEngineEnv([directory], { platform, arch }), {});
-    writeFileSync(path.join(directory, `opencode2-${triple}${ext}`), "legacy");
-    // A leftover pre-v2 binary is ignored rather than handed to the server.
-    writeFileSync(path.join(directory, `opencode${ext}`), "retired engine");
-    assert.deepEqual(bundledEngineEnv([directory], options), { OPENWORK_OPENCODE2_BIN: path.join(directory, `opencode2-${triple}${ext}`) });
-    writeFileSync(path.join(directory, `opencode2${ext}`), "canonical");
+    for (const base of ["opencode", "opencode2"]) {
+      writeFileSync(path.join(directory, `${base}-${triple}${ext}`), "legacy");
+    }
+    assert.equal(bundledEngineEnv([directory], options).OPENWORK_OPENCODE2_BIN, path.join(directory, `opencode2-${triple}${ext}`));
+    for (const base of ["opencode", "opencode2"]) writeFileSync(path.join(directory, `${base}${ext}`), "canonical");
     assert.equal(bundledEngineEnv([directory], options).OPENWORK_OPENCODE2_BIN, path.join(directory, `opencode2${ext}`));
     rmSync(path.join(directory, `opencode2${ext}`));
     rmSync(path.join(directory, `opencode2-${triple}${ext}`));
@@ -75,7 +73,10 @@ for (const [platform, arch, triple] of targets) {
   test(`${platform}/${arch}: packaging fails rather than shipping missing engines or metadata`, (t) => {
     const { root, directory } = fixture(t, platform);
     const context = { appOutDir: root, electronPlatformName: platform, arch };
+    assert.throws(() => canonicalizeSidecars(context), /Missing packaged sidecar for target: opencode-/);
+    writeFileSync(path.join(directory, `opencode-${triple}${ext}`), "v1");
     assert.throws(() => canonicalizeSidecars(context), /Missing packaged sidecar for target: opencode2-/);
+    writeFileSync(path.join(directory, `opencode-${triple}${ext}`), "v1");
     writeFileSync(path.join(directory, `opencode2-${triple}${ext}`), "v2");
     assert.throws(() => canonicalizeSidecars(context), /Missing packaged sidecar metadata/);
     rmSync(directory, { recursive: true });

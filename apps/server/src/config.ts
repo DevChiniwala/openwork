@@ -1,7 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { openworkServerConfigPath } from "@openwork/paths";
 import type { ApprovalMode, ApprovalConfig, ServerConfig, WorkspaceConfig, LogFormat } from "./types.js";
-import { buildWorkspaceInfos } from "./workspaces.js";
+import { buildWorkspaceInfos, hasExternalOpencode } from "./workspaces.js";
 import { parseList, readJsonFile, shortId } from "./utils.js";
 
 export interface CliArgs {
@@ -12,6 +12,10 @@ export interface CliArgs {
   hostToken?: string;
   approvalMode?: ApprovalMode;
   approvalTimeoutMs?: number;
+  opencodeBaseUrl?: string;
+  opencodeDirectory?: string;
+  opencodeUsername?: string;
+  opencodePassword?: string;
   workspaces: string[];
   corsOrigins?: string[];
   allowedHosts?: string[];
@@ -40,6 +44,10 @@ interface FileConfig {
   allowedHosts?: string[];
   authorizedRoots?: string[];
   readOnly?: boolean;
+  opencodeBaseUrl?: string;
+  opencodeDirectory?: string;
+  opencodeUsername?: string;
+  opencodePassword?: string;
   logFormat?: LogFormat;
   logRequests?: boolean;
 }
@@ -146,6 +154,26 @@ export function parseCliArgs(argv: string[]): CliArgs {
       index += 1;
       continue;
     }
+    if (value === "--opencode-base-url") {
+      args.opencodeBaseUrl = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--opencode-directory") {
+      args.opencodeDirectory = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--opencode-username") {
+      args.opencodeUsername = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (value === "--opencode-password") {
+      args.opencodePassword = argv[index + 1];
+      index += 1;
+      continue;
+    }
     if (value === "--workspace") {
       const path = argv[index + 1];
       if (path) args.workspaces.push(path);
@@ -190,6 +218,10 @@ export function printHelp(): void {
     "  --host-token <token>     Host approval token",
     "  --approval <mode>        manual | auto",
     "  --approval-timeout <ms>  Approval timeout",
+    "  --opencode-base-url <url> OpenCode base URL to share",
+    "  --opencode-directory <path> OpenCode workspace directory to share",
+    "  --opencode-username <user> OpenCode server username",
+    "  --opencode-password <pass> OpenCode server password",
     "  --workspace <path>       Workspace root (repeatable)",
     "  --cors <origins>          Comma-separated origins or *",
     "  --allowed-hosts <names>  Comma-separated extra host names to answer (e.g. behind a proxy) or *",
@@ -220,6 +252,30 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
       : envWorkspaces.length > 0
         ? envWorkspaces.map((path) => ({ path }))
         : fileConfig.workspaces ?? [];
+
+  const envOpencodeBaseUrl = process.env.OPENWORK_OPENCODE_BASE_URL;
+  const envOpencodeDirectory = process.env.OPENWORK_OPENCODE_DIRECTORY;
+  const envOpencodeUsername = process.env.OPENWORK_OPENCODE_USERNAME;
+  const envOpencodePassword = process.env.OPENWORK_OPENCODE_PASSWORD;
+  const opencodeBaseUrl = cli.opencodeBaseUrl ?? envOpencodeBaseUrl ?? fileConfig.opencodeBaseUrl;
+  const opencodeDirectory = cli.opencodeDirectory ?? envOpencodeDirectory ?? fileConfig.opencodeDirectory;
+  const opencodeUsername = cli.opencodeUsername ?? envOpencodeUsername ?? fileConfig.opencodeUsername;
+  const opencodePassword = cli.opencodePassword ?? envOpencodePassword ?? fileConfig.opencodePassword;
+
+  if (workspaceConfigs.length > 0 && (opencodeBaseUrl || opencodeDirectory || opencodeUsername || opencodePassword)) {
+    const allowDirectoryOverride = workspaceConfigs.length === 1 && opencodeDirectory;
+    workspaceConfigs = workspaceConfigs.map((workspace, index) => {
+      const nextDirectory =
+        workspace.directory ?? (allowDirectoryOverride && index === 0 ? opencodeDirectory : undefined);
+      return {
+        ...workspace,
+        baseUrl: workspace.baseUrl ?? opencodeBaseUrl,
+        directory: nextDirectory,
+        opencodeUsername: workspace.opencodeUsername ?? opencodeUsername,
+        opencodePassword: workspace.opencodePassword ?? opencodePassword,
+      };
+    });
+  }
 
   const workspaces = buildWorkspaceInfos(workspaceConfigs, configDir);
 
@@ -300,6 +356,13 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
     token,
     hostToken,
     configPath,
+    opencodeBaseUrl,
+    // Capture caller-supplied connections before CLI/embedded managed startup
+    // fills both the global and workspace URLs with its own local engine.
+    externalOpencode: hasExternalOpencode({ opencodeBaseUrl, workspaces }),
+    opencodeDirectory,
+    opencodeUsername,
+    opencodePassword,
     approval,
     corsOrigins,
     ...(allowedHosts ? { allowedHosts } : {}),
@@ -311,5 +374,7 @@ export async function resolveServerConfig(cli: CliArgs): Promise<ServerConfig> {
     hostTokenSource,
     logFormat,
     logRequests,
+    ...(process.env.OPENWORK_FRESH_INSTALL_ENGINE === "v2" ? { freshInstallEngine: "v2" } : {}),
+    engineAutoUpgrade: process.env.OPENWORK_ENGINE_AUTO_UPGRADE !== "0",
   };
 }

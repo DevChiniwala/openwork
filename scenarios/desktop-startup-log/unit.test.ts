@@ -8,6 +8,7 @@ import { performance } from "node:perf_hooks";
 import { test } from "@openwork/testkit";
 import { createStartupLog, startupPhase, withStartupPhase } from "../../apps/desktop/electron/startup-log.mjs";
 import { startupPhase as serverStartupPhase, startupPhaseSync } from "../../apps/server/src/startup-phase.js";
+import { extractArchive } from "../../apps/server/src/selfhost-web.js";
 import { composeDiagnosticsBundleJson } from "../../apps/app/src/app/lib/diagnostics-bundle";
 
 function lab() { return mkdtempSync(join(tmpdir(), "exp-spl-unit-")); }
@@ -66,12 +67,10 @@ test("async extraction lasting over three seconds keeps its phase open without r
   let ticks = 0;
   const heartbeat = setInterval(() => { ticks += 1; }, 25);
   try {
-    // A real child process does the slow work off-thread and the phase ends
-    // on its close event, not in the artificial busy-wait above.
-    await serverStartupPhase("plugin-deps.extract", () => new Promise<void>((resolve, reject) => {
-      const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 3100)"], { cwd: directory, stdio: "ignore" });
-      child.once("error", reject);
-      child.once("close", (code) => code === 0 ? resolve() : reject(new Error(`child exited with ${String(code)}`)));
+    await serverStartupPhase("plugin-deps.extract", () => extractArchive("fixture.tgz", "fixture.tgz", directory, {
+      // Exercise the real Promise/close-event extractor with a real child;
+      // its slow work belongs off-thread, not in the artificial busy-wait above.
+      spawnImpl: (_command, _args, options) => spawn(process.execPath, ["-e", "setTimeout(() => {}, 3100)"], options),
     }));
     const rows = records(log.filePath);
     const start = rows.find((row) => row.event === "start" && row.phase === "plugin-deps.extract");

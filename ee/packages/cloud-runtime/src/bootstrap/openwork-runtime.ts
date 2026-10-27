@@ -142,11 +142,11 @@ function checkpointLastFlushMarkerPath(config: OpenWorkCheckpointConfig) {
 }
 
 function checkpointEnvironmentScript(config: OpenWorkCheckpointConfig) {
-  // The pre-v2 engine kept its sessions in a SQLite database under its own
-  // data dir (opencode.db), on the container overlay rather than a volume.
-  // Keep checkpointing it: the server copies that earlier history into
-  // OpenCode v2, so a recycle onto a new snapshot must not lose it. Resolved
-  // from $HOME in-shell so it tracks the image instead of a hardcoded /root.
+  // The engine keeps its sessions in a SQLite database under its own data dir
+  // (opencode.db), which lives on the container overlay rather than a volume.
+  // It was missing from the checkpoint, so every recycle onto a new snapshot
+  // started the user from scratch. Resolved from $HOME in-shell so it tracks
+  // the image instead of a hardcoded /root.
   return `ENGINE_STATE_PATH=\${OPENWORK_ENGINE_STATE_PATH:-\$HOME/.local/share/opencode}
 OPENWORK_STATE_MANIFEST="${checkpointStateManifest(config)} \$ENGINE_STATE_PATH"
 CHECKPOINT_DIR=${shellQuote(checkpointDirectory(config))}
@@ -241,7 +241,7 @@ export function renderRestoreMarkerExistsCommand(config: Pick<OpenWorkCheckpoint
 export function renderOpenWorkBootstrapScript(config: OpenWorkBootstrapConfig) {
   const verifyRuntimeStep = [
     `if ! command -v openwork-server >/dev/null 2>&1; then echo 'openwork-server binary missing from ${config.imageDescription}; ${config.rebuildHint}' >&2; exit 1; fi`,
-    `if [ ! -x /usr/local/bin/opencode2 ]; then echo 'opencode2 binary missing from ${config.imageDescription}; ${config.rebuildHint}' >&2; exit 1; fi`,
+    `if ! command -v opencode >/dev/null 2>&1; then echo 'opencode binary missing from ${config.imageDescription}; ${config.rebuildHint}' >&2; exit 1; fi`,
   ].join("; ")
   const desktopEnvironment = config.cloudComputerDisplay ? [
     `DISPLAY=${shellQuote(config.cloudComputerDisplay)} `,
@@ -260,12 +260,24 @@ export function renderOpenWorkBootstrapScript(config: OpenWorkBootstrapConfig) {
     shellQuote(config.clientToken),
     " OPENWORK_HOST_TOKEN=",
     shellQuote(config.hostToken),
-    // The server runs OpenCode v2 itself. Pin the baked binary on wake too:
-    // the instance must never fall back to downloading an engine at runtime.
+    " OPENWORK_MANAGE_OPENCODE=",
+    shellQuote("1"),
+    " OPENWORK_OPENCODE_BIN=",
+    shellQuote("/usr/local/bin/opencode"),
+    // Pin this on wake too: older snapshots must not fall back to downloading
+    // an engine at runtime.
     " OPENWORK_OPENCODE2_BIN=",
     shellQuote("/usr/local/bin/opencode2"),
+    // Keep positive policy signals for older server images. Current servers
+    // migrate automatically; neither organization nor member overrides opt out.
+    " OPENWORK_ENGINE_FORCE_POLICY=",
+    shellQuote("1"),
+    " OPENWORK_ENGINE_AUTO_UPGRADE=",
+    shellQuote("1"),
     " OPENWORK_RUNTIME_SURFACE=",
     shellQuote("web"),
+    " OPENWORK_FRESH_INSTALL_ENGINE=",
+    shellQuote("v2"),
     " OPENWORK_WEB_ROOT=",
     shellQuote("/opt/openwork/web"),
     // The instance still serves its own SPA copy for direct/debug access, but

@@ -42,7 +42,7 @@ import { verifySandbox } from "./workshop-fleet.ts";
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WORKSPACE = "/home/daytona/workshop/workspace";
 const PHASES = ["base", "clones", "signin", "cleanup", "all"] as const;
-const APP_ENV = { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER };
+const APP_ENV = { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER };
 const TASK_PROMPT = "Read-only check. Using the connected workshop Outlook tool only (at most 2 tool calls, no shell, change nothing), find the latest Northwind pilot email and reply in under 50 words with its exact subject and whether the pilot is production-ready.";
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

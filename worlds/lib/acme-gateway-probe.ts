@@ -17,7 +17,7 @@ export async function probeAcmeGateway(world: AcmeWebWorld) {
   const workspaces = await request("/workspaces");
   const workspace = record(workspaces) && Array.isArray(workspaces.items) ? workspaces.items.find(record) : undefined;
   if (typeof workspace?.id !== "string") throw new Error("Acme probe workspace missing.");
-  const engine = `/workspace/${encodeURIComponent(workspace.id)}/opencode2/api`;
+  const engine = `/workspace/${encodeURIComponent(workspace.id)}/opencode`;
   const runtime = await request("/runtime-config/providers", "GET", undefined, host);
   const provider = record(runtime) && record(runtime.provider) ? runtime.provider[world.model.providerId] : undefined;
   const models = record(provider) && record(provider.models) ? provider.models : {};
@@ -25,24 +25,17 @@ export async function probeAcmeGateway(world: AcmeWebWorld) {
   if (!record(model) || model.name !== world.model.modelName) throw new Error("Gateway model title did not materialize in OpenCode.");
   const serialized = JSON.stringify(runtime);
   if (serialized.includes(world.upstream.key)) throw new Error("Upstream credential leaked into runtime configuration.");
-  const created = await request(`${engine}/session`, "POST", {
-    title: "Acme Gateway verification",
-    ...(typeof workspace.path === "string" ? { location: { directory: workspace.path } } : {}),
-  });
-  const session = record(created) && record(created.data) ? created.data : created;
+  const session = await request(`${engine}/session`, "POST", { title: "Acme Gateway verification" });
   if (!record(session) || typeof session.id !== "string") throw new Error("Acme probe session missing.");
-  const sessionId = session.id;
   const start = world.upstream.requests.length;
-  await request(`${engine}/session/${sessionId}/model`, "POST", { model: { providerID: world.model.providerId, id: world.model.modelId } });
-  await request(`${engine}/session/${sessionId}/prompt`, "POST", { text: "Verify the Acme AI Gateway." });
-  let transcript = "";
-  for (const deadline = Date.now() + 90_000; Date.now() < deadline;) {
-    transcript = JSON.stringify(await request(`${engine}/session/${sessionId}/message`));
-    if (transcript.includes(ACME_REPLY) || transcript.includes('"outcome":"failed"')) break;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  if (!transcript.includes(ACME_REPLY)) throw new Error("Acme probe did not receive the expected reply.");
+  const result = await request(`${engine}/session/${session.id}/message`, "POST", {
+    model: { providerID: world.model.providerId, modelID: world.model.modelId },
+    parts: [{ type: "text", text: "Verify the Acme AI Gateway." }],
+  });
+  const parts = record(result) && Array.isArray(result.parts) ? result.parts.filter(record) : [];
+  if (record(result) && record(result.info) && result.info.error) throw new Error("Acme probe inference returned an error.");
+  if (!parts.some((part) => part.type === "text" && part.text === ACME_REPLY)) throw new Error("Acme probe did not receive the expected reply.");
   const requests = world.upstream.requests.slice(start);
   if (!requests.some((entry) => entry.authenticated && entry.model === ACME_MODEL)) throw new Error("Gateway did not translate the model alias and authenticate upstream.");
-  return { sessionId, reply: ACME_REPLY, upstreamRequests: requests.length, modelName: world.model.modelName };
+  return { sessionId: session.id, reply: ACME_REPLY, upstreamRequests: requests.length, modelName: world.model.modelName };
 }

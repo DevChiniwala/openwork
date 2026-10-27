@@ -89,7 +89,7 @@ export async function runWorkshopProof(aId: string, bId: string, output: string)
     }, { timeoutMs: 360_000, label: "completed paid workshop turn" });
     const reply = await waitForAssistantReply(desktop, { timeoutMs: 5_000 });
     assert.ok(reply.text);
-    const messages = await engineSessionProbe({ surface: desktop, workspaceId: app.workspaceId }).messages(sessionId);
+    const messages = await engineSessionProbe({ surface: desktop, workspaceId: app.workspaceId, engine: "v2" }).messages(sessionId);
     assert.ok(messages.ok, "Completed engine messages unavailable");
     lastParts = messages.data.flatMap((message) => message.parts);
     const completedTools = lastParts.filter((part) => part.type === "tool" && part.status === "completed" && !part.error).map((part) => ({ tool: part.tool, output: part.output }));

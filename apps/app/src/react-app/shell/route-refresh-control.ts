@@ -33,7 +33,7 @@ export type RouteRefreshLifecycle = {
 
 export type RouteWorkspaceLoadCoalescer = {
   /**
-   * Share a workspace's active chain only within the same endpoint.
+   * Share a workspace's active chain only within the same engine/endpoint.
    * A changed scope starts immediately and makes the old chain stale.
    */
   run(workspaceId: string, scope: string, load: (isCurrent: () => boolean) => Promise<void>): Promise<void>;
@@ -169,7 +169,7 @@ export async function mapRouteWorkspaceLoads<T, R>(
  * Keeping ownership until the promise settles prevents route, settings, and
  * visibility refreshes from starting overlapping retries for the same
  * workspace while still allowing different workspaces to load concurrently.
- * Changed endpoints must not wait for an obsolete, possibly hung read.
+ * Changed engines/endpoints must not wait for an obsolete, possibly hung read.
  */
 export function createRouteWorkspaceLoadCoalescer(): RouteWorkspaceLoadCoalescer {
   const current = new Map<string, { scope: string; promise: Promise<void> | null }>();
@@ -196,12 +196,13 @@ export function createRouteWorkspaceLoadCoalescer(): RouteWorkspaceLoadCoalescer
   };
 }
 
-/** The identity of a workspace's session inventory; null without an endpoint. */
+/** Unknown local routing is not v1. */
 export function routeWorkspaceSessionLoadScope(
   workspace: RouteWorkspace,
   endpoint: ResolvedWorkspaceEndpoint | null,
+  engineV2ChatRouting: boolean | undefined,
 ): string | null {
-  if (!endpoint) return null;
+  if (!endpoint || engineV2ChatRouting === undefined) return null;
   return JSON.stringify([
     workspace.workspaceType,
     workspace.path,
@@ -210,6 +211,7 @@ export function routeWorkspaceSessionLoadScope(
     endpoint.mountedBaseUrl,
     endpoint.opencodeBaseUrl,
     endpoint.token,
+    engineV2ChatRouting,
   ]);
 }
 

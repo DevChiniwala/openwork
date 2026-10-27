@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { engineInfo } from "@/app/lib/desktop";
+import { isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
 import type { EngineInfo } from "@/app/lib/desktop-types";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import type { OpenworkServerClient } from "@/app/lib/openwork-server";
@@ -114,6 +115,7 @@ export function useEngineReload(input: UseEngineReloadInput) {
     return reloadCoordinator.registerWorkspaceReloadControls({
       workspaceId,
       applyLiveChanges: async () => {
+        if (!isOpencodeV2BaseUrl(opencodeBaseUrl)) return false;
         await refreshProviderListQueries(getReactQueryClient()).catch(() => undefined);
         return true;
       },
@@ -122,7 +124,7 @@ export function useEngineReload(input: UseEngineReloadInput) {
       activeSessions: () => activeReloadBlockingSessions,
       allowsBusyReload: () => engineRolloverAvailable,
     });
-  }, [activeReloadBlockingSessions, client, engineRolloverAvailable, reloadCoordinator, reloadWorkspaceEngineFromUi, workspaceId]);
+  }, [activeReloadBlockingSessions, client, engineRolloverAvailable, opencodeBaseUrl, reloadCoordinator, reloadWorkspaceEngineFromUi, workspaceId]);
 
   useEffect(() => {
     if (!reloadCoordinator.canReloadWorkspaceEngine) return;
@@ -164,9 +166,10 @@ export function useEngineReload(input: UseEngineReloadInput) {
         // agent while the session page is open.
         if (currentCursor === undefined || currentCursor === null) return;
         for (const event of response.items ?? []) {
-          // The engine watches these changes in the running location. Refresh
-          // the visible catalog without scheduling an engine reload.
-          if (event.reason === "skills" || event.reason === "mcp" || event.reason === "config") {
+          // V2 watches these changes in the running location. Refresh the
+          // visible catalog without scheduling the legacy engine disposal.
+          if (isOpencodeV2BaseUrl(opencodeBaseUrl)
+            && (event.reason === "skills" || event.reason === "mcp" || event.reason === "config")) {
             // Native provider/model events drive live sync; the 3s reload-event poll
             // must not become a second provider refresh loop.
             if (shouldRefreshProvidersForReloadEvent(liveProviderSync)) await refreshProviderListQueries(getReactQueryClient());
@@ -186,7 +189,7 @@ export function useEngineReload(input: UseEngineReloadInput) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [client, endpointForWorkspace, liveProviderSync, reloadCoordinator, workspace, workspaceId]);
+  }, [client, endpointForWorkspace, liveProviderSync, opencodeBaseUrl, reloadCoordinator, workspace, workspaceId]);
 
   useEffect(() => {
     if (!isDesktopRuntime()) return;

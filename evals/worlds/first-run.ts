@@ -2,8 +2,9 @@ import { browserScript, listTargets } from "@openwork/cdp";
 import { createServer } from "node:http";
 import { chmod, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveEvalEngine } from "@openwork/env";
 import { SkipError } from "@openwork/env";
-import type { Place, Seed } from "@openwork/env";
+import type { EvalEngine, Place, Seed } from "@openwork/env";
 import { evalIn, go, waitFor as waitForBehavior } from "@openwork/behaviors";
 import { allocateFreePort } from "@openwork/cdp";
 import { checkedExec, chrome, daytonaSandbox, defaultDaytonaExec, deleteSandboxes, desktop, localHost, provisionDesktopSandbox } from "@openwork/hosts";
@@ -69,28 +70,65 @@ export async function appSmokeWorld(seed: Seed) {
           crash: /Something went wrong|Cannot find module|Maximum update depth exceeded/.test(document.body.innerText) };
       }, { awaitPromise: true });
     },
-    /** The engine serving the packaged default chat workspace, as it reports itself. */
-    async packagedEngineInfo(): Promise<{ version: string }> {
-      const info: unknown = await evalIn(app, async () => {
+    async packagedToolIds() {
+      return evalIn(app, async () => {
         const workspaces = await window.__OPENWORK_ELECTRON__.invokeDesktop("workspaceBootstrap");
         const workspace = workspaces.workspaces.find((entry) => entry.id === workspaces.selectedId);
         if (workspaces.workspaces.length !== 1 || !workspace?.path?.endsWith("OpenWork Chat")) {
           throw new Error("Packaged startup did not select its default chat workspace.");
         }
-        const server = await window.__OPENWORK_ELECTRON__.invokeDesktop("openworkServerInfo");
-        const headers = { Authorization: "Bearer " + server.ownerToken, "Content-Type": "application/json" };
-        const response = await fetch(server.baseUrl + "/workspace/" + workspace.id + "/opencode2/api/info", {
+        const info = await window.__OPENWORK_ELECTRON__.invokeDesktop("openworkServerInfo");
+        const headers = { Authorization: "Bearer " + info.ownerToken, "Content-Type": "application/json" };
+        const tools = await fetch(info.baseUrl + "/workspace/" + workspace.id + "/opencode/experimental/tool/ids", {
           headers, signal: AbortSignal.timeout(30000),
         });
-        if (!response.ok) throw new Error("Engine info failed: " + response.status);
-        return response.json();
+        if (!tools.ok) throw new Error("Engine tool discovery failed: " + tools.status);
+        return tools.json();
       }, { awaitPromise: true, timeoutMs: 60_000 });
-      const version = isRecord(info) ? info.version : undefined;
-      if (typeof version !== "string") throw new Error("The engine did not report its version.");
-      return { version };
     },
     async [Symbol.asyncDispose]() { await app[Symbol.asyncDispose](); },
   };
+}
+
+export async function localFirstRunWorld(seed: Seed) {
+  const prompt = "Create a short welcome checklist for this OpenWork workspace. Use exactly three bullets and mention one thing I can do next.";
+  const reply = "Your workspace is ready. You can draft a document next.";
+  const den = await seed.den({
+    provision: false,
+    mocks: { starter: seed.mock({ agentWorkloads: [{ promptMarker: prompt, finalReply: reply, steps: [] }] }) },
+  });
+  const mock = den.mocks.starter;
+  // Only replace the provider transport. Do not seed a workspace, session,
+  // sign-in, onboarding preference, or selected model: the app must supply them.
+  const app = await seed.desktop({
+    name: "first-run-local",
+    signIn: false,
+    env: {
+      DAYTONA_SECRETS_ENV: "/tmp/openwork-first-run-no-secrets",
+      OPENWORK_DESKTOP_DISTRIBUTION: "public",
+      OPENWORK_EVAL_MODEL: "",
+      VITE_DISABLE_OPENWORK_MODELS: "0",
+      OPENCODE_CONFIG: "",
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({
+        enabled_providers: ["opencode"],
+        small_model: "opencode/big-pickle",
+        provider: {
+          opencode: {
+            npm: "@ai-sdk/openai-compatible",
+            options: { baseURL: `${mock.url}/v1`, apiKey: "sk-eval-fixture" },
+            whitelist: ["big-pickle"],
+            models: {
+              "big-pickle": {
+                name: "Big Pickle",
+                provider: { npm: "@ai-sdk/openai-compatible", api: `${mock.url}/v1` },
+              },
+            },
+          },
+        },
+      }),
+    },
+  });
+  return { app, mock, prompt, reply };
 }
 
 /**
@@ -115,13 +153,14 @@ export async function sessionWorld(seed: Seed) {
 /**
  * A workspace with a mock model and NO session: the person lands on the
  * sessionless New task route and the first Run task must create the session
- * and deliver the prompt through the engine.
+ * and deliver the prompt through whichever engine (v1 or v2) is selected.
  */
-export async function sessionlessFirstSendWorld(seed: Seed) {
-  return sessionlessFirstSend(seed, { mobileLayout: false });
+export async function sessionlessFirstSendWorld(seed: Seed, options: { engine?: EvalEngine } = {}) {
+  return sessionlessFirstSend(seed, { ...options, mobileLayout: false });
 }
 
-async function sessionlessFirstSend(seed: Seed, options: { mobileLayout: boolean }) {
+async function sessionlessFirstSend(seed: Seed, options: { engine?: EvalEngine; mobileLayout: boolean }) {
+  const engine = options.engine ?? resolveEvalEngine();
   const providerId = "first-send-mock";
   const modelId = "first-send-model";
   const nonce = `${Date.now().toString(36)}-${process.pid}`;
@@ -139,7 +178,7 @@ async function sessionlessFirstSend(seed: Seed, options: { mobileLayout: boolean
     ],
   });
   const workspacePath = seed.tmpPath("sessionless-first-send");
-  const app = await seed.appWeb({ name: "sessionless-first-send", workspacePath, headless: true, mocks: { agent: mockBoot } });
+  const app = await seed.appWeb({ name: "sessionless-first-send", workspacePath, engine, headless: true, mocks: { agent: mockBoot } });
   const mock = app.mocks.agent;
   if (!mock) throw new Error("Missing first-send model witness");
   const workspace = await seed.workspace(app, workspacePath);
@@ -153,7 +192,7 @@ async function sessionlessFirstSend(seed: Seed, options: { mobileLayout: boolean
         models: { [modelId]: { name: "First send model" } },
       },
     },
-  });
+  }, engine);
   await waitForBehavior(app, browserScript((startedAt) => performance.timeOrigin !== startedAt
     && Boolean(window.__openworkControl), [documentStartedAt]), {
     timeoutMs: 60_000, label: "provider-configured replacement document mounted",
@@ -163,11 +202,12 @@ async function sessionlessFirstSend(seed: Seed, options: { mobileLayout: boolean
     app,
     workspace,
     workspacePath,
+    engine,
     prompt,
     reply,
     followupPrompt,
     followupReply,
-    transition: (evidenceDirectory: string) => sessionlessTransition(seed, app, workspace.workspaceId, evidenceDirectory),
+    transition: (evidenceDirectory: string) => sessionlessTransition(seed, app, workspace.workspaceId, engine, evidenceDirectory),
     route: () => seed.evalIn(app, () => location.hash || `#${location.pathname}`),
     recovery: () => seed.evalIn(app, () => {
       const restore = [...document.querySelectorAll<HTMLButtonElement>("button")]
@@ -188,16 +228,18 @@ async function sessionlessFirstSend(seed: Seed, options: { mobileLayout: boolean
       return { status: response.status, body };
     }, [path]), { awaitPromise: true, timeoutMs: 20_000 }),
     sessionlessRoute: `#/workspace/${workspace.workspaceId}/session`,
-    /** Engine-native message list for one session. */
-    messagesPath: (sessionId: string) => `${mount}/opencode2/api/session/${encodeURIComponent(sessionId)}/message`,
-    /** Engine-native session list. */
-    sessionsPath: `${mount}/opencode2/api/session`,
+    /** Engine-native message list for one session, on the selected engine's mount. */
+    messagesPath: (sessionId: string) => engine === "v2"
+      ? `${mount}/opencode2/api/session/${encodeURIComponent(sessionId)}/message`
+      : `${mount}/opencode/session/${encodeURIComponent(sessionId)}/message`,
+    /** Engine-native session list on the selected engine's mount. */
+    sessionsPath: engine === "v2" ? `${mount}/opencode2/api/session` : `${mount}/opencode/session?limit=100`,
     openNewTask: () => go(app, `/workspace/${workspace.workspaceId}/session`),
   };
 }
 
-export async function mobileChatInteractionWorld(seed: Seed) {
-  return sessionlessFirstSend(seed, { mobileLayout: true });
+export async function mobileChatInteractionWorld(seed: Seed, options: { engine?: EvalEngine } = {}) {
+  return sessionlessFirstSend(seed, { ...options, mobileLayout: true });
 }
 
 export async function parentChildPermissionWorld(seed: Seed) {
@@ -220,9 +262,10 @@ export async function parentChildPermissionWorld(seed: Seed) {
 
 export async function parentChildHeldToolWorld(seed: Seed, { place }: { place: Place }) {
   if (place.kind !== "local") throw new SkipError("The held MCP response witness needs local placement (--local).");
+  const engine = resolveEvalEngine();
   const providerId = "descendant-mock";
   const modelId = "descendant-model";
-  const delegationTool = "subagent";
+  const delegationTool = engine === "v2" ? "subagent" : "task";
   const toolName = "descendant_hold";
   const marker = `descendant-${Date.now()}-${process.pid}`;
   const prompt = "Delegate preparing an isolated investigation, then confirm it is ready.";
@@ -239,7 +282,7 @@ export async function parentChildHeldToolWorld(seed: Seed, { place }: { place: P
     agentWorkloads: [
       { promptMarker: prompt, latestUserTurn: true, finalReply: reply, steps: [{ tool: delegationTool, arguments: {
         description: "Prepare isolated investigation", prompt: childPrompt,
-        agent: "general", background: false,
+        ...(engine === "v2" ? { agent: "general", background: false } : { subagent_type: "general" }),
       } }] },
       { promptMarker: childPrompt, latestUserTurn: true, finalReply: "Investigation prepared.", steps: [] },
       { promptMarker: followup, latestUserTurn: true, finalReply: toolReply, finalReplyFrom: "last-tool-text",
@@ -290,13 +333,14 @@ export async function parentChildHeldToolWorld(seed: Seed, { place }: { place: P
       options: { baseURL: `${mock.url}/v1`, apiKey: "sk-descendant-fixture" },
       models: { [modelId]: { name: "Descendant model" } },
     } },
-  });
+  }, engine);
   const session = await seed.session(app, { title: "Idle parent with delegated work" });
   const resources = setup.move();
   return {
-    app, workspace, session, delegationTool, toolName, marker, prompt, followup, reply, toolReply, mock,
-    mount: `/workspace/${encodeURIComponent(workspace.workspaceId)}/opencode2/api`,
-    promptBody: { text: followup },
+    app, workspace, session, engine, delegationTool, toolName, marker, prompt, followup, reply, toolReply, mock,
+    mount: `/workspace/${encodeURIComponent(workspace.workspaceId)}/${engine === "v2" ? "opencode2/api" : "opencode"}`,
+    promptBody: engine === "v2" ? { text: followup }
+      : { model: { providerID: providerId, modelID: modelId }, parts: [{ type: "text", text: followup }] },
     heldTool: () => ({ ...state }), release,
     [Symbol.asyncDispose]: () => resources.disposeAsync(),
   };
@@ -307,7 +351,8 @@ export async function scopedPermissionRefreshWorld(seed: Seed) {
   const sessions = await seed.sessions(base.app, Array.from({ length: 8 }, (_, index) => `Permission scope ${index}`));
   const [unrelated, selected] = sessions;
   if (!unrelated || !selected) throw new Error("Permission scope sessions were not created");
-  const prefix = `/workspace/${encodeURIComponent(base.workspace.workspaceId)}/opencode2`;
+  const engine = resolveEvalEngine();
+  const prefix = `/workspace/${encodeURIComponent(base.workspace.workspaceId)}/${engine === "v2" ? "opencode2" : "opencode"}`;
   const debuggerUrl = base.app.client.webSocketDebuggerUrl;
   if (!debuggerUrl) throw new Error("Permission witness needs the app's CDP endpoint");
   const socket = new WebSocket(debuggerUrl);
@@ -379,7 +424,7 @@ export async function scopedPermissionRefreshWorld(seed: Seed) {
       }).catch(() => undefined);
     }, [`${prefix}/api/session/${encodeURIComponent(unrelated.sessionId)}/permission?scope-calibration=1`]), { awaitPromise: true });
     return {
-      ...base, selected, unrelated,
+      ...base, selected, unrelated, engine,
       permissionReads() {
         if (failure) throw failure;
         return reads.map((read) => ({ sessionId: read.sessionId, calibration: read.calibration, held: read.held, completed: finished.has(read.networkId) }));

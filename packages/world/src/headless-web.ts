@@ -48,7 +48,7 @@ export interface HeadlessWebLaunchOptions {
   rotateTokens?: boolean;
   env?: NodeJS.ProcessEnv;
   browserHostSuffix?: string;
-  /** @deprecated OpenCode v2 is the only engine; accepted and ignored. */
+  /** Run the server on OpenCode v2 alone; no v1 engine process is started. */
   v2Only?: boolean;
 }
 
@@ -162,10 +162,10 @@ async function probeOk(url: string): Promise<boolean> {
   return (await probe(url)).ok;
 }
 
-/** The server answers /health before its OpenCode v2 engine runs, so also wait for the engine. */
-async function probeServer(manifest: HeadlessRuntimeManifest): Promise<ProbeResult> {
+/** A v2-only server answers /health before its engine runs, so also wait for the engine. */
+async function probeServer(manifest: HeadlessRuntimeManifest, v2Only: boolean): Promise<ProbeResult> {
   const health = await probe(manifest.healthUrl);
-  if (!health.ok) return health;
+  if (!health.ok || !v2Only) return health;
   try {
     const response = await fetch(new URL("/experimental/engine-v2-preview/status", manifest.openworkUrl), {
       headers: { Authorization: `Bearer ${manifest.token}` },
@@ -351,9 +351,9 @@ export function resolveHeadlessWorldRuntimePaths(
 
 /**
  * Engine data for an `isolated` world. Only the sessions database moves: the
- * server copies earlier chats from the pre-v2 database at OPENCODE_DB (default
- * ~/.local/share/opencode/opencode.db, shared with the installed desktop app),
- * so without this the world would read and copy the person's history. Provider
+ * default engine otherwise opens the same ~/.local/share/opencode/opencode.db
+ * as the installed desktop app, so both processes contend for one SQLite
+ * writer and the world's sessions land in the person's history. Provider
  * credentials and the engine log stay where they are so the world keeps
  * working with the person's configured providers. An explicit OPENCODE_DB wins,
  * except inside a coding agent's shell (OPENCODE=1): there it is the agent
@@ -666,12 +666,13 @@ function hostLoad(): string {
 async function waitForHealthy(
   manifest: HeadlessRuntimeManifest,
   processes: { server: ChildProcess; web: ChildProcess },
+  v2Only: boolean,
 ): Promise<void> {
   const deadline = Date.now() + HEALTH_TIMEOUT_MS;
   let server: ProbeResult = { ok: false, detail: "not probed" };
   let web: ProbeResult = { ok: false, detail: "not probed" };
   while (Date.now() < deadline) {
-    [server, web] = await Promise.all([probeServer(manifest), probe(manifest.webUrl)]);
+    [server, web] = await Promise.all([probeServer(manifest, v2Only), probe(manifest.webUrl)]);
     if (server.ok && web.ok) return;
     await delay(500);
   }
@@ -888,6 +889,10 @@ export async function launchHeadlessWeb(options: HeadlessWebLaunchOptions): Prom
     OPENWORK_TOKEN: resolvedTokens.token,
     OPENWORK_HOST_TOKEN: resolvedTokens.hostToken,
     OPENWORK_SERVER_CONFIG: serverConfigPath,
+    ...(options.v2Only
+      ? { OPENWORK_MANAGE_OPENCODE: "0", OPENWORK_ENGINE_V2_PREVIEW: "1" }
+      : { OPENWORK_MANAGE_OPENCODE: "1" }),
+    OPENWORK_OPENCODE_BIN: env.OPENWORK_OPENCODE_BIN ?? "opencode",
   };
   const pnpmExecPath = env.npm_execpath?.trim();
   const pnpmCommand = pnpmExecPath ? env.npm_node_execpath?.trim() || "node" : "pnpm";
@@ -946,7 +951,7 @@ export async function launchHeadlessWeb(options: HeadlessWebLaunchOptions): Prom
       waitForSpawn(serverProcess, "openwork-server"),
     ]);
     await writeRuntimeManifest(manifest);
-    await waitForHealthy(manifest, { server: serverProcess, web: webProcess });
+    await waitForHealthy(manifest, { server: serverProcess, web: webProcess }, options.v2Only === true);
     const supervised = await ensureRuntimeSupervisor(manifest, repoRoot, env);
     manifest = supervised.manifest;
     acquiredManifest = manifest;

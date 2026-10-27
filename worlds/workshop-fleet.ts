@@ -237,7 +237,7 @@ async function provePilot(surface: Surface, browser: Surface, workspaceId: strin
   const calls = parseSessionToolCalls(transcript);
   if (!record(transcript) || typeof transcript.sessionId !== "string" || !Array.isArray(transcript.messages)) throw new Error("Pilot transcript unavailable.");
   const finalReply = await waitForAssistantReply(surface, { timeoutMs: 5_000 });
-  const messages = await engineSessionProbe({ surface, workspaceId }).messages(transcript.sessionId);
+  const messages = await engineSessionProbe({ surface, workspaceId, engine: "v2" }).messages(transcript.sessionId);
   if (!messages.ok) throw new Error("Pilot completed engine messages unavailable.");
   const parts = messages.data.flatMap((message) => message.parts);
   const audit = (await readWorkshopAudit(browser)).filter(({ service, entry }) => Number(entry.sequence) > (cursor.get(service) ?? 0));
@@ -425,7 +425,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       check();
       seatPhase = `${key} desktop boot and member sign-in`; phase = seatPhase;
       const desktop = stack.use(await app({ den, place, host, as: key, enterpriseActivated: true,
-        workspacePath: "/home/daytona/workshop/workspace", env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER } }));
+        workspacePath: "/home/daytona/workshop/workspace", env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER } }));
       diagnosticSurface = desktop;
       await linkWorkshopRuntime(desktop, member, setup.orgId, desktop.workspaceId);
       // Sign-in booted this renderer before the owned server's member broker

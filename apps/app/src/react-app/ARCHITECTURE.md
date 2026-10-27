@@ -83,12 +83,12 @@ src/index.react.tsx                       React entry
   kernel, shell, and connections.
 - Feature state tightly coupled to one domain lives inside that domain
   (`domains/session/sync/`, `domains/settings/state/`).
-- OpenCode v2 is the only engine: chats, sessions, models and settings use
-  `createClientV2` on the workspace's `/opencode2` mount
-  (`ResolvedWorkspaceEndpoint.opencodeBaseUrl`). The OpenWork host copies
-  chats saved before v2 on its own when it starts. `shell/engine-migration.tsx`
-  only observes that copy: it shows non-blocking progress, reloads chat lists
-  when it finishes, and offers Try again when it failed.
+- Automatic v1-to-v2 history migration belongs to the OpenWork host. It runs
+  by default with backups and idle checks, independently of Den features or
+  sign-in. `shell/engine-migration.tsx` only observes host status, displays
+  non-blocking progress, and refreshes routing after a host-owned switch;
+  manual migration/switch requests retain their explicit user confirmation.
+  Legacy Den policy values cannot disable migration or revert the host.
 
 ## Active workspace and session
 
@@ -186,5 +186,5 @@ an observable assertion there whenever a row changes.
 
 ## Testing
 
-- Unit/component: `bun test tests/<file>` from `apps/app`; `pnpm test:boot` boots the app shell.
+- Smoke/e2e: `pnpm test:e2e` and `scripts/*.mjs` (health, sessions, events).
 - UI E2E tests: `pnpm evals:e2e` from the repo root drives the real app.

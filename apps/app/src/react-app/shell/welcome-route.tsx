@@ -13,8 +13,7 @@ import {
 } from "../../app/lib/desktop";
 import { isDesktopRuntime } from "../../app/utils";
 import { canCreateWorkspaces } from "../../app/lib/workspace-creation-policy";
-import { unwrap } from "../../app/lib/opencode";
-import { createClientV2 } from "../../app/lib/opencode-v2-adapter";
+import { createClient, unwrap } from "../../app/lib/opencode";
 import { useLocal } from "../kernel/local-provider";
 import { usePlatform } from "../kernel/platform";
 import { WelcomePage } from "../domains/onboarding/welcome-page";
@@ -218,10 +217,10 @@ export function WelcomeRoute() {
         if (targetWorkspaceId && sessionBaseUrl && sessionToken) {
           try {
             const workspacePath = targetWorkspace?.path?.trim() || folder;
-            const session = unwrap(await createClientV2(
-              `${(buildOpenworkWorkspaceBaseUrl(sessionBaseUrl, targetWorkspaceId) ?? sessionBaseUrl).replace(/\/+$/, "")}/opencode2`,
+            const session = unwrap(await createClient(
+              `${(buildOpenworkWorkspaceBaseUrl(sessionBaseUrl, targetWorkspaceId) ?? sessionBaseUrl).replace(/\/+$/, "")}/opencode`,
               workspacePath || undefined,
-              { token: sessionToken },
+              { token: sessionToken, mode: "openwork" },
             ).session.create({ directory: workspacePath || undefined }));
             targetSessionId = session.id;
             captureAnalyticsEvent("task_created", { source: "onboarding", workspace_type: "local" });

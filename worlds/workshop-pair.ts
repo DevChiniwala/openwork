@@ -288,7 +288,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         });
         const desktop = await seatStage("desktop-signed-in", async () => {
           const surface = stack.use(await app({ den, place, host, as: key, enterpriseActivated: true, workspacePath: "/home/daytona/workshop/workspace",
-            env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER, TZ: options.timezone } }));
+            env: { VITE_DISABLE_OPENWORK_MODELS: "0", OPENWORK_ENGINE_V2_PREVIEW: "1", OPENWORK_AUTOMATION_RUNNER: "on", BROWSER: WORKSHOP_BROWSER_LAUNCHER, TZ: options.timezone } }));
           diagnostic = surface;
           return surface;
         });

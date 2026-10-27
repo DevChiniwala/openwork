@@ -369,7 +369,7 @@ export async function startCloudRuntimeWitness() {
         })));
       }
       // The isolated organization has no model providers to materialize.
-      if (route === "/runtime-config/providers") return json(response, 200, { provider: {} });
+      if (route === "/opencode/config") return json(response, 200, {});
     }
     unexpected.push(`${method} ${path}`);
     json(response, 404, { message: `Unimplemented witness route: ${method} ${path}` });

@@ -23,23 +23,23 @@ const bootstrap: OpenWorkBootstrapConfig = {
   rebuildHint: "rebuild the test image",
 }
 
-function assertOpencodeV2Only(script: string) {
-  // The server runs the baked OpenCode v2; the image must carry it.
-  assert.match(script, /OPENWORK_OPENCODE2_BIN='\/usr\/local\/bin\/opencode2'/)
-  assert.match(script, /opencode2 binary missing from test image/)
-  // The retired engine and its rollout switches are never configured.
-  assert.doesNotMatch(script, /OPENWORK_(?:OPENCODE_BIN|MANAGE_OPENCODE|ENGINE_FORCE_POLICY|ENGINE_AUTO_UPGRADE|FRESH_INSTALL_ENGINE|ENGINE_V2_PREVIEW)=/)
-  assert.doesNotMatch(script, /command -v opencode /)
-  // The pre-v2 engine's history stays checkpointed so the server can copy it.
-  assert.match(script, /\.local\/share\/opencode/)
+function assertAutomaticMigration(script: string) {
+  // Positive signals keep older server images compatible without a rollout.
+  assert.match(script, /OPENWORK_ENGINE_FORCE_POLICY='1'/)
+  assert.match(script, /OPENWORK_ENGINE_AUTO_UPGRADE='1'/)
+  assert.match(script, /OPENWORK_FRESH_INSTALL_ENGINE='v2'/)
+  assert.doesNotMatch(script, /OPENWORK_ENGINE_AUTO_UPGRADE='0'/)
+  // The server, not the shell, owns safe transitions and persisted engine state.
+  assert.doesNotMatch(script, /OPENWORK_(?:ENGINE|FRESH_INSTALL_ENGINE)='v1'/)
 }
 
-test("bootstrap runs only OpenCode v2, ignoring stale rollout configuration", () => {
+test("bootstrap always migrates to v2, ignoring stale rollout configuration", () => {
   for (const legacy of [{}, { engineV2ForceUpgrade: false }, { engineV2ForceUpgrade: true }]) {
     const script = renderOpenWorkBootstrapScript({ ...bootstrap, ...legacy })
-    assertOpencodeV2Only(script)
+    assertAutomaticMigration(script)
+    assert.match(script, /OPENWORK_OPENCODE2_BIN='\/usr\/local\/bin\/opencode2'/)
     assert.match(script, /OPENWORK_RUNTIME_SURFACE='web'/)
-    assert.ok(script.indexOf("hydrate_checkpoint\nattempt=0") < script.indexOf("OPENWORK_OPENCODE2_BIN="))
+    assert.ok(script.indexOf("hydrate_checkpoint\nattempt=0") < script.indexOf("OPENWORK_ENGINE_AUTO_UPGRADE="))
     // Bootstrap never directly removes or rewrites restored engine state.
     assert.doesNotMatch(script, /engine-v2-preview\.json|engine\.json/)
   }
@@ -83,7 +83,7 @@ const provisionInput = {
   activityToken: bootstrap.activityHeartbeat.token,
 }
 
-test("fresh launches, wakes, and restored image replacements always run only v2", async () => {
+test("fresh launches, wakes, and restored image replacements always migrate to v2", async () => {
   const scripts: string[] = []
   const image = { id: "test-image", version: "old-image" }
   const provider = createFakeProvider({
@@ -103,32 +103,32 @@ test("fresh launches, wakes, and restored image replacements always run only v2"
   })
 
   await runtime.provision(provisionInput)
-  assertOpencodeV2Only(scripts.at(-1) ?? "")
+  assertAutomaticMigration(scripts.at(-1) ?? "")
 
   await runtime.stop(provisionInput.workerId)
   await runtime.wake(provisionInput)
-  assertOpencodeV2Only(scripts.at(-1) ?? "")
+  assertAutomaticMigration(scripts.at(-1) ?? "")
 
-  // A checkpoint restored onto a replacement image still runs only v2, even if
-  // the checkpoint was created before v2 became the only engine.
+  // A checkpoint restored onto a replacement image still migrates automatically,
+  // even if the checkpoint was created before migration became standard.
   await runtime.stop(provisionInput.workerId)
   store.imageVersions.set(provisionInput.workerId, image.version)
   image.version = "new-image"
   provider.fake.writeVolumeFile("shared", `workers/${provisionInput.workerId}/data/checkpoints/ckpt-1.tar`)
   await runtime.wake(provisionInput)
-  assertOpencodeV2Only(scripts.at(-1) ?? "")
+  assertAutomaticMigration(scripts.at(-1) ?? "")
   assert.equal(provider.fake.count("create"), 2)
   assert.equal(provider.fake.count("destroy"), 1)
 
   await runtime.stop(provisionInput.workerId)
   store.imageVersions.set(provisionInput.workerId, runtime.currentImageVersion())
   await runtime.wake(provisionInput)
-  assertOpencodeV2Only(scripts.at(-1) ?? "")
+  assertAutomaticMigration(scripts.at(-1) ?? "")
 
-  // Another restart must not restore the retired engine.
+  // Another restart must not restore a legacy opt-out or v1 default.
   await runtime.stop(provisionInput.workerId)
   await runtime.wake(provisionInput)
-  assertOpencodeV2Only(scripts.at(-1) ?? "")
+  assertAutomaticMigration(scripts.at(-1) ?? "")
   assert.equal(scripts.length, 5)
 })
 

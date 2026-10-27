@@ -14,11 +14,13 @@ function job(name: string, output: string, prompt: string, started: string, wake
 /**
  * A signed-in member whose agent starts commands with the generally available
  * shell tool's `background: true`.
- * Each command is a real process that
+ * Background commands only exist on OpenCode v2, so the app runs on v2
+ * whatever engine the lane defaults to. Each command is a real process that
  * waits until the world releases it; when it ends, the engine wakes the agent
  * with its output and the model replies.
  */
 export async function backgroundTasksShimmer(seed: Seed) {
+  const engine = "v2";
   const dir = seed.tmpPath("background-tasks-shimmer");
   await mkdir(join(dir, "scripts"), { recursive: true });
   await mkdir(join(dir, ".release"), { recursive: true });
@@ -50,7 +52,7 @@ export async function backgroundTasksShimmer(seed: Seed) {
     // The engine wakes the agent with the command's output once it ends.
     { promptMarker: item.output, latestUserTurn: true, finalReply: item.wake, steps: [] },
   ]) });
-  const app = await seed.appWeb({ name: "background-tasks-shimmer", workspacePath, webPort, den: den.ref, mocks: { agent: mock } });
+  const app = await seed.appWeb({ name: "background-tasks-shimmer", workspacePath, webPort, den: den.ref, engine, mocks: { agent: mock } });
   const witness = app.mocks.agent;
   if (!witness) throw new Error("Missing background shell model witness");
   await seed.signIn(app, den.admin, "Background tasks member");
@@ -61,7 +63,7 @@ export async function backgroundTasksShimmer(seed: Seed) {
       options: { baseURL: `${witness.url}/v1`, apiKey: "sk-background-shell-fixture" },
       models: { [modelId]: { name: "Background shell model" } },
     } },
-  });
+  }, engine);
   const session = await seed.session(app, { title: "Background tasks" });
 
   return {

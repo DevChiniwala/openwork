@@ -60,7 +60,7 @@ export async function providerCredentialStatus(seed: Seed) {
     const token = randomUUID();
     const hostToken = randomUUID();
     const app = await seed.appWeb({
-      den: { apiUrl: origin, webUrl: origin }, name: "provider-credential-status", workspacePath, headless: true,
+      den: { apiUrl: origin, webUrl: origin }, name: "provider-credential-status", workspacePath, engine: "v2", headless: true,
       env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken, OPENWORK_DISABLE_FREE_INFERENCE: "1" },
     });
     const workspace = await seed.workspace(app, workspacePath);

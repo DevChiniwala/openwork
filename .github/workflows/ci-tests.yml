@@ -17,6 +17,9 @@ concurrency:
   group: openwork-tests-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  OPENCODE_GITHUB_REPO: ${{ vars.OPENCODE_GITHUB_REPO || 'anomalyco/opencode' }}
+
 permissions:
   contents: read
   pull-requests: read
@@ -124,7 +127,7 @@ jobs:
       - name: Test fork authorization and free screening policy
         run: node --test .github/scripts/contributor-pr.test.mjs .github/scripts/contributor-screen.test.mjs .github/scripts/warden-check.test.mjs .github/scripts/warden-report.test.mjs .github/scripts/warden-fast.test.mjs .github/scripts/setup-browser.test.mjs
       - name: Test on-demand PR proof review builds and CI timing
-        run: node --test .github/scripts/pr-proof-review-build.test.mjs .github/scripts/pr-proof-selection.test.mjs .github/scripts/ci-time-to-green.test.mjs
+        run: node --test .github/scripts/pr-proof-review-build.test.mjs .github/scripts/pr-proof-selection.test.mjs .github/scripts/ci-time-to-green.test.mjs evals/scripts/engine-parity-binaries.test.mjs evals/scripts/run-parity-proof.test.mjs
       - name: Test desktop and cloud computer access and interruption
         run: |
           pnpm --filter @openwork/computer-use build
@@ -141,10 +144,16 @@ jobs:
         run: node --test scripts/ci/codeql-config.test.mjs scripts/ci/check-codeql-results.test.mjs
       - name: Test packaged smoke engine diagnosis and kept logs
         run: |
-          node --test apps/desktop/test/engine-diagnosis.test.mjs apps/desktop/test/sidecar-layout.test.mjs apps/desktop/scripts/electron-after-sign.test.cjs apps/server/test/inference-node-export.test.mjs
+          bun test apps/server/test/opencode-plugin-deps.test.ts
+          node --test apps/desktop/test/engine-diagnosis.test.mjs apps/server/scripts/build-opencode-plugin-deps.test.mjs apps/desktop/scripts/electron-after-sign.test.cjs apps/server/test/inference-node-export.test.mjs
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr packages/hosts/src/local-surface-log.test.ts
+      - name: Test the OpenCode engine new installs start on
+        run: |
+          node --test apps/desktop/test/fresh-install-engine.test.mjs
+          pnpm --filter openwork-server test:fresh-install-engine
+          bun test apps/server/test/engine-auto-upgrade-boot.test.ts apps/server/test/engine-auto-upgrade.test.ts apps/server/test/engine-auto-upgrade-safety.test.ts
       - name: Test providers reaching OpenCode v2 and the organization's provider rule
-        run: bun test apps/server/test/engine-v2-provider-mapping.test.ts apps/server/test/opencode-v2-local-auth.test.ts apps/server/test/engine-v2-upkeep-warning.test.ts
+        run: bun test apps/server/test/engine-v2-provider-mapping.test.ts apps/server/test/opencode-v2-local-auth.test.ts
       - name: Test the self-hosted web UI stays on its own origin
         run: bun --conditions=development test apps/server/test/web-ui-origin.test.ts
       - name: Test OneDrive and SharePoint pulls and saves
@@ -163,8 +172,10 @@ jobs:
         run: |
           pnpm --dir evals run test:framework
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr scripts/input-dialog.live.test.ts
+          pnpm --dir evals exec vitest run --config vitest.config.ts --project pr ../apps/server/test/session-title-sigv4.vitest.test.ts
       - name: Test native MCP readiness and Stop ownership
         run: pnpm --filter openwork-server test:readiness
+      # Uses the pinned OpenCode that Setup tests put on PATH.
       - name: Run Den provider unit tests
         run: |
           pnpm --filter @openwork-ee/utils test
@@ -322,7 +333,7 @@ jobs:
             ~/.cache/electron
             ~/.cache/electron-builder
             apps/desktop/resources/sidecars
-          key: ${{ runner.os }}-${{ runner.arch }}-desktop-smoke-${{ hashFiles('constants.json', 'pnpm-lock.yaml', 'apps/desktop/scripts/prepare-sidecar.mjs', 'apps/desktop/scripts/prepare-opencode-v2.mjs', 'apps/server/src/opencode-v2-artifacts.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-desktop-smoke-${{ hashFiles('constants.json', 'pnpm-lock.yaml', 'apps/desktop/scripts/prepare-sidecar.mjs') }}
       - name: Setup tests
         id: setup
         uses: ./.github/actions/setup-tests
@@ -392,6 +403,9 @@ jobs:
       - name: Run all PR specs
         if: (success() || failure()) && steps.lane.outcome == 'success'
         run: pnpm --dir evals exec vitest run --config vitest.config.ts --project pr --no-file-parallelism
+      - name: Run engine smoke tests
+        if: (success() || failure()) && steps.setup.outcome == 'success'
+        run: pnpm test:e2e
       - name: Build server plugins
         if: (success() || failure()) && steps.setup.outcome == 'success'
         run: pnpm --filter openwork-server build
@@ -417,7 +431,7 @@ jobs:
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
             apps/desktop/resources/sidecars
-          key: ${{ runner.os }}-${{ runner.arch }}-desktop-smoke-${{ hashFiles('constants.json', 'pnpm-lock.yaml', 'apps/desktop/scripts/prepare-sidecar.mjs', 'apps/desktop/scripts/prepare-opencode-v2.mjs', 'apps/server/src/opencode-v2-artifacts.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-desktop-smoke-${{ hashFiles('constants.json', 'pnpm-lock.yaml', 'apps/desktop/scripts/prepare-sidecar.mjs') }}
       - name: Setup tests
         uses: ./.github/actions/setup-tests
       # Test source resolution differs from packaged Node plugin resolution.

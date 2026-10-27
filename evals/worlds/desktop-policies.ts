@@ -1,4 +1,4 @@
-import { faultProxy, mcpMock } from "@openwork/env";
+import { faultProxy, mcpMock, resolveEvalEngine } from "@openwork/env";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { engineSessionProbe } from "@openwork/behaviors";
@@ -13,6 +13,7 @@ import { bootServer, stopChild } from "./openwork-server-cli.ts";
  * Wrappers affect only this fixture's captured PATH, never a personal engine. */
 export async function policyTransportRollback(seed: Seed) {
   await using setup = new AsyncDisposableStack();
+  const engine = resolveEvalEngine();
   const root = seed.tmpPath("policy-transport-rollback");
   const bin = join(root, "bin");
   const workspacePath = join(root, "workspace");
@@ -59,7 +60,7 @@ export async function policyTransportRollback(seed: Seed) {
   if (!address || typeof address === "string") throw new Error("Policy fault did not bind");
   const faultUrl = `http://127.0.0.1:${address.port}`;
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-  for (const name of ["opencode2"]) {
+  for (const name of ["opencode", "opencode2"]) {
     const real = execFileSync("which", [name], { encoding: "utf8" }).trim();
     await writeFile(join(bin, name), `#!/bin/sh
 if [ "$1" = "serve" ]; then
@@ -85,7 +86,7 @@ exec ${quote(real)} "$@"
       mocks: { witness: seed.mock({ isolatedProcessEnv: true, agentWorkloads: [{
         promptMarker: marker, finalReply: "The requested file was copied successfully.", steps: [
           { tool: "read", arguments: { filePath: join(workspacePath, input), path: join(workspacePath, input) } },
-          { tool: "shell", arguments: { command, description: "Copy the read witness" } },
+          { tool: engine === "v2" ? "shell" : "bash", arguments: { command, description: "Copy the read witness" } },
         ],
       }] }) },
     });
@@ -103,18 +104,18 @@ exec ${quote(real)} "$@"
       options: { baseURL: `${app.mocks.witness!.url}/v1`, apiKey: "fixture-only" },
       models: { [modelId]: { name: "Policy rollback model", tool_call: true } },
     } },
-  });
+  }, engine);
   const session = await seed.session(app, { title: "Copy a local file during policy outage" });
   const token = await seed.evalIn(app, () => localStorage.getItem("openwork.server.token"));
   if (typeof token !== "string" || !token) throw new Error("Missing isolated app-web token");
-  const native = engineSessionProbe({ serverUrl: app.openworkUrl, token, workspaceId: workspace.workspaceId });
+  const native = engineSessionProbe({ engine, serverUrl: app.openworkUrl, token, workspaceId: workspace.workspaceId });
   const owned = setup.move();
   return {
-    app, marker, session, content, command,
+    app, engine, marker, session, content, command,
     native: () => native.snapshot(session.sessionId),
     approve: () => native.approvePendingPermissions(session.sessionId),
     output: () => readFile(join(workspacePath, output), "utf8"),
-    faultReceipt: () => readFile(join(root, "opencode2-fault.txt"), "utf8"),
+    faultReceipt: () => readFile(join(root, `${engine === "v2" ? "opencode2" : "opencode"}-fault.txt`), "utf8"),
     checkFault: async () => {
       const response = await fetch(`${faultUrl}/managed-policy/evaluate`, { method: "POST" });
       return { status: response.status, message: await response.text() };
@@ -182,7 +183,7 @@ export async function defaultPolicyEditorAndMemberDesktop(seed: Seed) {
  * The admin starts at Team Access and Jordan starts in a real desktop. */
 export async function teamAccess(seed: Seed) {
   const nonce = `team-policy-${Date.now()}`;
-  const shellTool = "shell";
+  const shellTool = process.env.OPENWORK_EVAL_ENGINE === "v2" ? "shell" : "bash";
   const commandProofs = ["restricted", "control"].map((member) => ({
     marker: `${nonce}-${member}`, file: `${nonce}-${member}.txt`, reply: `${nonce}-${member}-finished`,
     command: `printf '${nonce}' > '${nonce}-${member}.txt'`,
@@ -375,6 +376,7 @@ export async function managedPolicyRecovery(seed: Seed) {
     XDG_CACHE_HOME: join(home, ".cache"),
     XDG_STATE_HOME: join(home, ".local", "state"),
     OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "3600000",
+    OPENWORK_MANAGE_OPENCODE: "0",
   }, token, workspace, () => {});
   try {
     const baseUrl = await booted.listening;

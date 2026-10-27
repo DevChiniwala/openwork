@@ -96,7 +96,7 @@ export async function orgPromptsDesktop(seed: Seed) {
   const hostToken = randomUUID();
   const { app, workspace } = await signedInAppWeb(seed, {
     name: "org-prompts", den, webPort, as: "riley", headless: true,
-    workspacePath: seed.tmpPath("org-prompts"),
+    workspacePath: seed.tmpPath("org-prompts"), engine: "v2",
     env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken, OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "600000" },
   });
   const mount = `/workspace/${workspace.workspaceId}`;

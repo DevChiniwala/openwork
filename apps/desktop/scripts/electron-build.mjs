@@ -65,6 +65,9 @@ run(pnpmCmd, ["--filter", "@openwork/free-auto", "build"], repoRoot);
 if (!process.argv.includes("--server-built")) {
   run(pnpmCmd, ["--filter", "openwork-server", "build"], repoRoot);
 }
+// Resolve the pinned v1 engine's plugin dependencies at build time. Fresh
+// desktops unpack this install instead of requiring npm access to open a folder.
+run(nodeCmd, [resolve(repoRoot, "apps/server/scripts/build-opencode-plugin-deps.mjs")], repoRoot);
 // automation-runner.mjs imports @openwork/headless-threads through its
 // published "default" export (dist/index.js); build it so plain-node
 // consumers resolve it in packaged layouts.

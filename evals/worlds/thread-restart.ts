@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { evalIn, quitDesktop, readComposerState } from "@openwork/behaviors";
 import { addInitScript, browserScript } from "@openwork/cdp";
 import type { Surface } from "@openwork/cdp";
-import { mcpMock } from "@openwork/env";
+import { mcpMock, resolveEvalEngine } from "@openwork/env";
 import type { MockHandle, Place, Seed } from "@openwork/env";
 import { desktop as launchDesktop } from "@openwork/hosts";
 import type { DesktopHandle } from "@openwork/hosts";
@@ -104,11 +104,12 @@ export async function assertWitnessModel(app: Surface): Promise<void> {
 
 export async function restartedThreadWorld(seed: Seed, ctx: { place: Place }) {
   if (ctx.place.kind !== "local") throw new Error("This world kills and relaunches the desktop process group on the host running it; run it on the local lane.");
+  const engine = resolveEvalEngine();
   const prompts = restartedThreadPrompts;
   const workloads: MockAgentWorkload[] = [
     {
       promptMarker: prompts.interrupted, latestUserTurn: true, finalReply: prompts.interruptedReply,
-      steps: [{ tool: "shell", arguments: {
+      steps: [{ tool: engine === "v2" ? "shell" : "bash", arguments: {
         command: "sleep 120", description: "Wait for the report input", timeout: 180_000,
       } }],
     },
@@ -118,8 +119,9 @@ export async function restartedThreadWorld(seed: Seed, ctx: { place: Place }) {
   // Booted directly so the witness outlives the desktop it serves.
   const mock: MockHandle = (await mcpMock({ agentWorkloads: workloads }).boot(ctx.place)).handle;
   // This signed-out continuity world has no Den. Keep deployment-policy reads
-  // on the fixture-owned origin too, so hosted Den settings cannot change the
-  // run. Reuse these origins after relaunch as well.
+  // on the fixture-owned origin too: hosted Den can otherwise force v2 while
+  // this world is explicitly exercising v1. Unavailable local features apply no
+  // force policy. Reuse these origins after relaunch as well.
   // Native desktop bootstrap overrides Vite's defaults, so pin both to the
   // same local origin instead of only changing the renderer build settings.
   const bootstrapPath = seed.tmpPath("thread-restart-bootstrap.json");
@@ -164,7 +166,7 @@ export async function restartedThreadWorld(seed: Seed, ctx: { place: Place }) {
   if (!session) throw new Error(`Session creation did not settle: ${lastSessionError instanceof Error ? lastSessionError.message : String(lastSessionError)}`);
   let restarted: DesktopHandle | null = null;
   return {
-    mock, workspace, workspacePath, session, prompts, modelName: restartedThreadModelName,
+    engine, mock, workspace, workspacePath, session, prompts, modelName: restartedThreadModelName,
     get app(): Surface { return app; },
     /**
      * Take the whole desktop away — `kill` is a crash or force quit (SIGKILL to

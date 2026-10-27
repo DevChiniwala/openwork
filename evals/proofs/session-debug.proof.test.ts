@@ -137,8 +137,8 @@ test("a developer inspects resources, providers and app diagnostics with or with
     await user.click({ role: "button", label: "Copy provider details" });
     const diagnostics = await copied(text => text.includes('"inspectedProvider": "debug-secondary"'));
     expect(diagnostics).toContain('"inspectedProvider": "debug-secondary"');
-    expect(diagnostics).toContain('"Thread model": "debug-primary / primary-model"');
-    evidence.recordAssertionEvidence("Provider inspection is read-only and response evidence never crosses provider identities", inspected, diagnostics.includes('"Thread model": "debug-primary / primary-model"') && !inspected.includes("Response observed"));
+    expect(diagnostics).toContain('"Thread model": "opencode / big-pickle"');
+    evidence.recordAssertionEvidence("Provider inspection is read-only and response evidence never crosses provider identities", inspected, diagnostics.includes('"Thread model": "opencode / big-pickle"') && !inspected.includes("Response observed"));
     await user.screenshot();
   });
 
@@ -151,7 +151,7 @@ test("a developer inspects resources, providers and app diagnostics with or with
     const diagnostics = await copied(text => text.includes(world.otherSession.sessionId));
     expect(diagnostics).toContain(world.otherSession.sessionId);
     expect(diagnostics).not.toContain(world.session.sessionId);
-    expect(diagnostics).toContain('"inspectedProvider": "debug-primary"');
+    expect(diagnostics).toContain('"inspectedProvider": "opencode"');
     await user.click({ role: "button", label: "Copy thread" });
     const transcript = await copied(text => text === "");
     expect(transcript).not.toContain(world.prompt);
@@ -161,7 +161,7 @@ test("a developer inspects resources, providers and app diagnostics with or with
   });
 
   await step("with no thread selected, the same rail button shows app, workspace and provider diagnostics", async () => {
-    await user.click({ role: "button", label: "New session" });
+    await user.click({ role: "button", label: "New task" });
     await user.see("composer");
     await reopen();
     const overview = await probe.eventually(() => panelText("session-debug-panel"), {
