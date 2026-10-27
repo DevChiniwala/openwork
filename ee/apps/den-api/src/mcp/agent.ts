@@ -100,6 +100,7 @@ import {
   registerConnectMcpServerIndex,
   selectConnectMcpServerIndexConnections,
   supportsConnectMcpAppHost,
+  supportsConnectNativeSkills,
 } from "./connect-mcp-server-index.js"
 import { registerAgentSkillTools } from "./skill-created-app.js"
 import { registerAgentSkillCatalogTools, standardSkillMarkdown, type RemoteSkillSource } from "./skill-tools.js"
@@ -743,13 +744,16 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       execute: executeCapabilityTool,
     })
     const advertisesInstructions = method === "initialize" || method === "server/discover"
+    // OpenWork's v2 engine already lists these skills natively when Den serves
+    // native delivery; listing them again here sends the model to get_skill too.
+    const listsSkillsNatively = nativeSkills && supportsConnectNativeSkills(c.req.header(CONNECT_MCP_APP_HOST_CAPABILITY_HEADER))
     const server = createAgentMcpServer({
       appServers: appServersEnabled,
       toolView,
       toolShapes,
       remoteSessionStatus: Boolean(memberIdentity && organizationFeatures.remoteSessionSubagents),
       skillsExtension,
-      skillIndex: skillsExtension && advertisesInstructions ? skillIndexInstructions(await loadRemoteSkills()) : undefined,
+      skillIndex: skillsExtension && advertisesInstructions && !listsSkillsNatively ? skillIndexInstructions(await loadRemoteSkills()) : undefined,
     })
     if (skillsExtension) registerSkillsExtension(server, loadResolvedSkills)
     registerAgentConnectionActionApp(server, { organizationId: principal.organizationId, member: memberIdentity })
