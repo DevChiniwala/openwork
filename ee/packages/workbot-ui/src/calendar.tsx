@@ -396,7 +396,7 @@ function ScheduleFields({ draft, setDraft }: { draft: AutomationSchedule; setDra
     <>
       {draft.kind === "once" ? (
         <p className="text-[13px] text-[#687076]">This runs once, {formatInstant(draft.at, draft.timezone)}. Change it to repeat:</p>
-      ) : draft.kind === "interval" ? (
+      ) : draft.kind === "interval" || draft.kind === "calendar" ? (
         <p className="text-[13px] text-[#687076]">This runs {describeSchedule(draft, draft.timezone, "en-US").toLowerCase()}. Change it to run at one time:</p>
       ) : null}
       <div className="flex rounded-lg bg-[#F1F3F5] p-0.5" role="radiogroup" aria-label="Repeats">

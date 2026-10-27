@@ -21,6 +21,13 @@ invited besides rooms. `rule.withExternalAttendees` keeps only meetings with
 someone from another email domain; `rule.titleIncludes` matches the title,
 ignoring case.
 
+In the desktop Automation editor it is **Around my meetings**: when it runs
+(before a meeting starts or after it ends) and whether only meetings with
+people outside the organization count. Agents create one with
+`createCloudAutomation`, or propose one with `automation.propose`.
+
+![The Automation editor with Around my meetings, 5 min after it ends](./around-my-meetings.png)
+
 ## How it runs
 
 - `calendar` is a schedule kind, so a revision always has exactly one reason
@@ -53,6 +60,10 @@ back. New calendar triggers are refused with
 `400 automation_calendar_trigger_disabled`.
 
 ## What to watch
+
+Proof: `evals/proofs/automation-schedule-triggers.proof.test.ts`; rules and the
+calendar source: `ee/apps/den-api/test/api/automation-calendar-triggers.api.test.ts`;
+which meetings and when: `packages/automations/src/calendar-trigger.test.ts`.
 
 Logs from `automation_calendar_triggers` (read failures per owner), runs whose
 `scheduledFor` follows meetings, and Automations needing attention with

@@ -2,6 +2,7 @@
 import type { AutomationSchedule } from "@openwork/types/automations"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useOrgFeature } from "@/react-app/domains/cloud/use-org-feature"
@@ -30,10 +31,15 @@ function toLocalDateTime(value: number) {
 }
 
 function timeForSchedule(schedule: AutomationSchedule) {
-  if (schedule.kind === "once") return { hour: 9, minute: 0 }
+  if (schedule.kind === "once" || schedule.kind === "calendar") return { hour: 9, minute: 0 }
   if (schedule.kind === "interval") return { hour: schedule.startHour, minute: 0 }
   return { hour: schedule.hour, minute: schedule.minute }
 }
+
+const MEETING_MINUTES = [0, 5, 10, 15, 30, 60] as const
+const meetingMinutesLabel = (minutes: number, edge: "start" | "end") => minutes === 0
+  ? edge === "start" ? "When it starts" : "When it ends"
+  : `${minutes} min ${edge === "start" ? "before it starts" : "after it ends"}`
 
 const INTERVAL_HOURS = [1, 2, 3, 4, 6, 8, 12] as const
 const SELECT_CLASS = "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
@@ -55,6 +61,7 @@ export function AutomationScheduleFields(props: {
   const time = timeForSchedule(schedule)
   // An Automation that already repeats every few hours keeps the choice even if the feature is turned off.
   const intervalOffered = useOrgFeature("automationIntervalSchedules") || schedule.kind === "interval"
+  const meetingsOffered = useOrgFeature("automationCalendarTriggers") || schedule.kind === "calendar"
 
   const changeScheduleKind = (kind: AutomationSchedule["kind"]) => {
     const timezone = schedule.timezone
@@ -62,6 +69,7 @@ export function AutomationScheduleFields(props: {
     if (kind === "once") return props.onChange({ kind, timezone, at: tomorrowAtNine() })
     if (kind === "daily") return props.onChange({ kind, timezone, hour: time.hour, minute: time.minute })
     if (kind === "interval") return props.onChange({ kind, timezone, everyHours: 3, daysOfWeek: days, startHour: 9, endHour: 18 })
+    if (kind === "calendar") return props.onChange({ kind, timezone, edge: "end", offsetMinutes: 5, rule: { withExternalAttendees: false } })
     props.onChange({ kind, timezone, daysOfWeek: days, hour: time.hour, minute: time.minute })
   }
 
@@ -92,16 +100,35 @@ export function AutomationScheduleFields(props: {
             value={schedule.kind}
             onChange={(event) => {
               const kind = event.currentTarget.value
-              if (kind === "once" || kind === "daily" || kind === "weekly" || kind === "interval") changeScheduleKind(kind)
+              if (kind === "once" || kind === "daily" || kind === "weekly" || kind === "interval" || kind === "calendar") changeScheduleKind(kind)
             }}
           >
             <option value="once">Once</option>
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>
             {intervalOffered ? <option value="interval">Every few hours</option> : null}
+            {meetingsOffered ? <option value="calendar">Around my meetings</option> : null}
           </select>
         </div>
-        {schedule.kind === "interval" ? (
+        {schedule.kind === "calendar" ? (
+          <div className="space-y-2">
+            <Label htmlFor={id("meeting-moment")}>Runs</Label>
+            <select
+              id={id("meeting-moment")}
+              className={SELECT_CLASS}
+              value={`${schedule.edge}:${Math.abs(schedule.offsetMinutes)}`}
+              onChange={(event) => {
+                const [edge, minutes] = event.currentTarget.value.split(":")
+                if (edge !== "start" && edge !== "end") return
+                props.onChange({ ...schedule, edge, offsetMinutes: edge === "start" ? -Number(minutes) : Number(minutes) })
+              }}
+            >
+              {(["start", "end"] as const).flatMap((edge) => [...new Set([...MEETING_MINUTES, ...(schedule.edge === edge ? [Math.abs(schedule.offsetMinutes)] : [])])]
+                .sort((left, right) => left - right)
+                .map((minutes) => <option key={`${edge}:${minutes}`} value={`${edge}:${minutes}`}>{meetingMinutesLabel(minutes, edge)}</option>))}
+            </select>
+          </div>
+        ) : schedule.kind === "interval" ? (
           <div className="space-y-2">
             <Label htmlFor={id("every-hours")}>Every</Label>
             <select
@@ -170,6 +197,20 @@ export function AutomationScheduleFields(props: {
               ))}
             </select>
           </div>
+        </div>
+      ) : null}
+
+      {schedule.kind === "calendar" ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={id("meeting-external")}
+              checked={schedule.rule.withExternalAttendees}
+              onCheckedChange={(checked) => props.onChange({ ...schedule, rule: { ...schedule.rule, withExternalAttendees: checked } })}
+            />
+            <Label htmlFor={id("meeting-external")}>Only meetings with people outside my organization</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">Uses meetings you accepted on your Google Calendar. Runs in OpenWork Cloud.</p>
         </div>
       ) : null}
 

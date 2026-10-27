@@ -1,11 +1,11 @@
 import { expect } from "vitest";
 import { spec } from "@openwork/testkit";
-import { automationIntervalSchedulesWorld } from "../worlds/automation-interval-schedules.ts";
+import { automationScheduleTriggersWorld } from "../worlds/automation-schedule-triggers.ts";
 
-const test = spec.world(automationIntervalSchedulesWorld, { timeout: 600_000, resources: { surfaces: ["appWeb"], services: ["den"] } });
+const test = spec.world(automationScheduleTriggersWorld, { timeout: 600_000, resources: { surfaces: ["appWeb"], services: ["den"] } });
 const WITHIN = 60_000;
 
-test("a member schedules an Automation every few hours once their organization has it", async ({ world, user, probe, step, evidence }) => {
+test("a member schedules an Automation every few hours, or around their meetings, once their organization has each", async ({ world, user, probe, step, evidence }) => {
   const scheduleChoices = async () => (await probe.dom("#automation-frequency option")).elements.map((element) => element.text.trim());
   async function openNewAutomation() {
     await user.see({ text: "What do you need done?" }, { timeoutMs: WITHIN });
@@ -38,6 +38,21 @@ test("a member schedules an Automation every few hours once their organization h
     const values = fields.elements.map((element) => element.text.trim());
     evidence.recordAssertionEvidence("Every 3 hours from 09:00 until 18:00 is the starting choice", `${choices.join(", ")} → ${values.join(", ")}`, values.join(",") === "3 hours,09:00,18:00");
     expect(values).toEqual(["3 hours", "09:00", "18:00"]);
+    await user.screenshot();
+  });
+
+  await step("after: with meeting triggers on, the member picks Around my meetings, 5 minutes after each ends", async () => {
+    await world.turnOnCalendarTriggers();
+    await user.reload();
+    await openNewAutomation();
+    const choices = await probe.eventually(scheduleChoices, { within: WITHIN, label: "the Schedule menu offers Around my meetings", until: (values) => values.includes("Around my meetings") });
+    await user.click({ text: "Schedule" });
+    await user.press("a");
+    await user.see({ label: "Runs" }, { timeoutMs: WITHIN });
+    await user.see({ label: "Only meetings with people outside my organization" });
+    const moment = (await probe.dom("#automation-meeting-moment option:checked")).elements.map((element) => element.text.trim());
+    evidence.recordAssertionEvidence("5 minutes after each meeting ends is the starting choice", `${choices.join(", ")} → ${moment.join(", ")}`, moment.join(",") === "5 min after it ends");
+    expect(moment).toEqual(["5 min after it ends"]);
     await user.screenshot();
   });
 });

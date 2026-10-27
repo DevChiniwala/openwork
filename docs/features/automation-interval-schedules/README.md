@@ -53,5 +53,5 @@ organization.") until the feature is back. New interval schedules are refused.
 ## What to watch
 
 Skipped runs with that message, and `automation_interval_schedule_disabled`
-answers. Proof: `evals/proofs/automation-interval-schedules.proof.test.ts`;
+answers. Proof: `evals/proofs/automation-schedule-triggers.proof.test.ts`;
 rules: `ee/apps/den-api/test/api/automation-interval-schedules.api.test.ts`.

@@ -63,6 +63,7 @@ export function OpenWorkAutomationProposalTool({ part }: { part: DynamicToolUIPa
   const denAuth = useDenAuth()
   const automationsEnabled = useAutomationDeploymentEnabled()
   const intervalSchedules = useOrgFeatureState("automationIntervalSchedules")
+  const calendarTriggers = useOrgFeatureState("automationCalendarTriggers")
   const placement = automationCreationPlacement()
   const workspaceContext = useWorkspaceMaybe()
   const [created, setCreated] = useState<string | null>(null)
@@ -119,7 +120,11 @@ export function OpenWorkAutomationProposalTool({ part }: { part: DynamicToolUIPa
         ? "Model availability could not be checked. Try again before creating this Automation."
         : proposal.schedule.kind === "interval" && intervalSchedules.resolved && !intervalSchedules.enabled
           ? "Every-few-hours schedules are not on for your organization yet. Ask for a daily or weekly schedule instead."
-          : null
+          : proposal.schedule.kind === "calendar" && calendarTriggers.resolved && !calendarTriggers.enabled
+            ? "Automations that run around meetings are not on for your organization yet. Ask for a clock schedule instead."
+            : proposal.schedule.kind === "calendar" && placement !== "cloud"
+              ? "Automations that run around meetings run in OpenWork Cloud, which this desktop does not create. Create it from OpenWork Web or Cloud Chat."
+              : null
 
   const create = async () => {
     if (!automationsEnabled || blocker || !resolved || resolved.resolution === "unavailable") return
