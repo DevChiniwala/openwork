@@ -57,6 +57,9 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
   };
   const remote = { type: "remote", url: "https://connect.example.test/mcp/agent", oauth: false,
     headers: { Authorization: "Bearer synthetic-test-token" } };
+  // Connect alone is told that the v2 engine lists organization skills natively.
+  const connect = (value: typeof remote) => ({ ...value, protocol: "auto",
+    headers: { ...value.headers, "x-openwork-mcp-client-capabilities": "native-skills-v1" } });
   const preview = createEngineV2Preview({ config, deferStart: true });
   try {
     await mkdir(environment.XDG_CONFIG_HOME);
@@ -81,7 +84,7 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
     // Independent registrations may be read from the runtime store in either
     // order. Assert both complete payloads, without prescribing their order.
     assert.deepEqual(new Set(await mutations()), new Set([
-      { method: "PUT", name: "openwork-cloud", config: { ...remote, protocol: "auto" } },
+      { method: "PUT", name: "openwork-cloud", config: connect(remote) },
       { method: "PUT", name: "generic", config: remote },
     ]));
     await preview.syncWorkspaceMcp("workspace", directory);
@@ -95,7 +98,7 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
     await preview.syncWorkspaceMcp("workspace", directory);
     assert.deepEqual((await mutations()).slice(2), [
       { method: "DELETE", name: "openwork-cloud" },
-      { method: "PUT", name: "openwork-cloud", config: { ...rotated, protocol: "auto" } },
+      { method: "PUT", name: "openwork-cloud", config: connect(rotated) },
     ], "mapped credential changes replace Connect, while unsupported generic fields do not change its fingerprint");
   } finally {
     await preview.stop();
