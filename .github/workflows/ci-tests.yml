@@ -186,7 +186,7 @@ jobs:
       - name: Run Den API security tests
         run: |
           pnpm --filter @openwork-ee/den-api build:workspace-dependencies
-          pnpm dev:den:mysql
+          pnpm ci:den:mysql
           pnpm --filter @openwork-ee/den-api test:api
       - name: Check sandbox contracts and adapters (no cloud resources)
         run: |
@@ -394,7 +394,7 @@ jobs:
           pnpm --filter @openwork/types build
           pnpm --filter @openwork-ee/den-db build
           pnpm --filter @openwork/email build
-          pnpm dev:den:mysql
+          pnpm ci:den:mysql
           pnpm --filter @openwork/desktop prepare:sidecar
       # One file at a time: every local Den boot resets den-web's shared .next/dev
       # build directory, so parallel Den specs crash each other's Den web.
