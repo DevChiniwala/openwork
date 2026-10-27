@@ -824,6 +824,9 @@ static class OpenWorkComputerUse {
     if (context.Refocused >= 2 || Belongs(context.Target, Native.GetForegroundWindow())) return;
     context.Refocused++;
     TakeGap();
+    // Typing during that wait already stops the step: stop before the raise, so
+    // the front stays with the person instead of moving under their keys.
+    Interrupted(context);
     Remember(context.Target, Native.GetForegroundWindow());
     Foreground(context.Target.Hwnd);
     WaitUntil(delegate { return Belongs(context.Target, Native.GetForegroundWindow()); }, 500);
