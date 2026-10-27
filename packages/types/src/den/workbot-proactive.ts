@@ -141,6 +141,117 @@ export const workbotProactiveHealthSchema = z.object({
 })
 export type WorkbotProactiveHealth = z.infer<typeof workbotProactiveHealthSchema>
 
+// ---- My agent in the Library (`workbotAgentLibrary`) ----------------------------------------------------------------
+
+/** What a member tells their agent in their own words. Plain text the agent reads as the person's wishes. */
+export const AGENT_PREFERENCE_FIELDS = ["always", "never", "when", "how"] as const
+export type AgentPreferenceField = (typeof AGENT_PREFERENCE_FIELDS)[number]
+export const AGENT_PREFERENCE_MAX = 400
+
+export const AGENT_PREFERENCE_COPY: Record<AgentPreferenceField, { label: string; placeholder: string }> = {
+  always: { label: "Always tell me about", placeholder: "Anything from the finance team" },
+  never: { label: "Never tell me about", placeholder: "Newsletters and automated alerts" },
+  when: { label: "When", placeholder: "Between 12 and 2, only urgent things" },
+  how: { label: "How", placeholder: "One line per item, most urgent first" },
+}
+
+const preferenceText = z.string().max(AGENT_PREFERENCE_MAX)
+export const agentPreferencesSchema = z.object({ always: preferenceText, never: preferenceText, when: preferenceText, how: preferenceText })
+export type AgentPreferences = z.infer<typeof agentPreferencesSchema>
+export const EMPTY_AGENT_PREFERENCES: AgentPreferences = { always: "", never: "", when: "", how: "" }
+
+/** Whole hours in the member's calendar time zone: from `startHour` until `endHour`. */
+export const agentHourWindowSchema = z
+  .object({ startHour: z.number().int().min(0).max(23), endHour: z.number().int().min(1).max(24) })
+  .refine(hoursInOrder, hoursMessage)
+export type AgentHourWindow = z.infer<typeof agentHourWindowSchema>
+
+/** Everything a member's change can touch: their words, their narrower limits, and each responsibility's mute. */
+export const AGENT_CHANGE_FIELDS = [...AGENT_PREFERENCE_FIELDS, "hours", "dailyCap", "quietWindow", ...AGENT_RESPONSIBILITIES] as const
+export type AgentChangeField = (typeof AGENT_CHANGE_FIELDS)[number]
+export const agentChangeFieldSchema = z.enum(AGENT_CHANGE_FIELDS)
+/** Where a change came from: something the member said in chat (through Connect), or the Library page. */
+export const AGENT_CHANGE_SOURCES = ["chat", "page"] as const
+export type AgentChangeSource = (typeof AGENT_CHANGE_SOURCES)[number]
+
+/** One change, as the member sees it: what, in a few words, where from and when. */
+export const memberAgentChangeSchema = z.object({
+  id: z.string(),
+  field: agentChangeFieldSchema,
+  /** "When: “Between 12 and 2, only urgent things.”", "Stopped calendar changes". */
+  summary: z.string(),
+  source: z.enum(AGENT_CHANGE_SOURCES),
+  at: z.iso.datetime(),
+  /** Reverted with Undo. */
+  undone: z.boolean(),
+})
+export type MemberAgentChange = z.infer<typeof memberAgentChangeSchema>
+
+/** What came of one check. */
+export const AGENT_CHECK_OUTCOMES = ["sent", "quiet", "waited", "failed"] as const
+export type AgentCheckOutcome = (typeof AGENT_CHECK_OUTCOMES)[number]
+/** Why, as a code; each check also carries the sentence the member reads. */
+export const AGENT_CHECK_REASONS = [
+  "sent",
+  "nothing_new",
+  "already_told",
+  "unreadable_reply",
+  "daily_limit",
+  "nothing_to_check",
+  "outside_hours",
+  "quiet_window",
+  "snoozed",
+  "google_disconnected",
+  "slack_app_not_installed",
+  "member_not_linked",
+  "no_destination",
+  "send_failed",
+  "agent_unavailable",
+] as const
+export type AgentCheckReason = (typeof AGENT_CHECK_REASONS)[number]
+/** What started the check. */
+export const AGENT_CHECK_KINDS = ["morning", "scheduled", "calendar"] as const
+export type AgentCheckKind = (typeof AGENT_CHECK_KINDS)[number]
+/** What the member can do about a check that failed. */
+export const AGENT_CHECK_FIXES = ["reconnect_google", "link_slack", "ask_admin"] as const
+export type AgentCheckFix = (typeof AGENT_CHECK_FIXES)[number]
+
+export const memberAgentCheckSchema = z.object({
+  id: z.string(),
+  at: z.iso.datetime(),
+  kind: z.enum(AGENT_CHECK_KINDS),
+  outcome: z.enum(AGENT_CHECK_OUTCOMES),
+  reason: z.enum(AGENT_CHECK_REASONS),
+  /** The short form for a row: "Stayed quiet", "Sent you a message about calendar changes". */
+  headline: z.string(),
+  /** One sentence: "Stayed quiet: nothing new." */
+  summary: z.string(),
+  /** What it was about (sent or held). */
+  responsibilities: z.array(agentResponsibilitySchema),
+  /** The DM it sent, in Slack. */
+  slackUrl: z.string().nullable(),
+  fix: z.enum(AGENT_CHECK_FIXES).nullable(),
+})
+export type MemberAgentCheck = z.infer<typeof memberAgentCheckSchema>
+
+/** `GET /v1/me/agent/checks`: the member's checks, newest first. */
+export const memberAgentChecksSchema = z.object({ days: z.number().int().min(1), checks: z.array(memberAgentCheckSchema) })
+export type MemberAgentChecks = z.infer<typeof memberAgentChecksSchema>
+
+/** The limits the agent follows for this member: the member's narrower choices inside the organization's. */
+export const memberAgentLimitsSchema = z.object({
+  workingDays: z.enum(["weekdays", "everyday"]),
+  startHour: z.number().int(),
+  endHour: z.number().int(),
+  dailyCap: z.number().int(),
+  /** Inside these hours only messages the agent marks urgent go out. */
+  quietWindow: agentHourWindowSchema.nullable(),
+  /** The organization's limits (Manage › Workbot); a member can only narrow them. */
+  admin: z.object({ startHour: z.number().int(), endHour: z.number().int(), dailyCap: z.number().int() }),
+  narrowed: z.object({ hours: z.boolean(), dailyCap: z.boolean() }),
+})
+export type MemberAgentLimits = z.infer<typeof memberAgentLimitsSchema>
+
 /** `GET /v1/me/agent`: a member's own agent, in their words. */
 export const memberAgentViewSchema = z.object({
   /** Turned on for the organization (and the feature is on for this member). */
@@ -165,8 +276,25 @@ export const memberAgentViewSchema = z.object({
   }).nullable(),
   workingHours: z.object({ workingDays: z.enum(["weekdays", "everyday"]), startHour: z.number(), endHour: z.number(), dailyCap: z.number() }),
   nextCheckAt: z.iso.datetime().nullable(),
+  // With `workbotAgentLibrary` on:
+  /** The member's calendar time zone, from the agent's last look. */
+  timeZone: z.string().optional(),
+  /** The most recent check, or null before the first. */
+  lastCheck: memberAgentCheckSchema.nullable().optional(),
+  /** Today's checks (the member's day), newest first. */
+  todayChecks: z.array(memberAgentCheckSchema).optional(),
+  /** Messages sent today; the limit is `limits.dailyCap`. */
+  sentToday: z.number().int().min(0).optional(),
+  preferences: agentPreferencesSchema.optional(),
+  limits: memberAgentLimitsSchema.optional(),
+  /** The member's recent changes, newest first: where each came from, and whether it was undone. */
+  changes: z.array(memberAgentChangeSchema).optional(),
+  /** The member's agent in the Library. */
+  link: z.string().optional(),
 })
 export type MemberAgentView = z.infer<typeof memberAgentViewSchema>
+
+const preferenceInputText = z.string().trim().max(AGENT_PREFERENCE_MAX)
 
 /** `PUT /v1/me/agent`: "stop telling me about calendar changes", "snooze until tomorrow", "turn it off". */
 export const memberAgentInputSchema = z
@@ -176,9 +304,32 @@ export const memberAgentInputSchema = z
     snooze: z.enum(["tomorrow"]).nullable().optional(),
     mute: z.array(agentResponsibilitySchema).max(AGENT_RESPONSIBILITIES.length).optional(),
     unmute: z.array(agentResponsibilitySchema).max(AGENT_RESPONSIBILITIES.length).optional(),
+    // With `workbotAgentLibrary` on:
+    /** The member's own words; an empty string clears one. */
+    preferences: z.object({ always: preferenceInputText, never: preferenceInputText, when: preferenceInputText, how: preferenceInputText }).partial().strict().optional(),
+    /** Narrower working hours inside the organization's; null goes back to the organization's. */
+    hours: agentHourWindowSchema.nullable().optional(),
+    /** A lower daily limit than the organization's; null goes back to the organization's. */
+    dailyCap: z.number().int().min(1).max(10).nullable().optional(),
+    /** Hours inside the working day when only urgent messages go out; null removes it. */
+    quietWindow: agentHourWindowSchema.nullable().optional(),
+    /** `last` reverts the member's last save (every field it changed); a change id reverts that one change. */
+    undo: z.string().trim().min(1).max(64).optional(),
   })
   .strict()
 export type MemberAgentInput = z.infer<typeof memberAgentInputSchema>
+
+/** `PUT /v1/me/agent` with `workbotAgentLibrary` on: the agent after the change, and exactly what was saved. */
+export const memberAgentSavedSchema = memberAgentViewSchema.extend({
+  saved: z.object({
+    /** One line per field changed, in plain words. Empty when nothing changed. */
+    changes: z.array(z.string()),
+    /** The reply to give in chat, as is: what was saved, "Reply \"undo\" to revert." and the link. */
+    reply: z.string(),
+    link: z.string(),
+  }).optional(),
+})
+export type MemberAgentSaved = z.infer<typeof memberAgentSavedSchema>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
