@@ -11,6 +11,8 @@ export {
   assertAutomationTimezone,
   automationOccurrences,
   automationOccurrencesInRange,
+  formatAutomationSchedule,
+  formatAutomationWeekdays,
   nextAutomationOccurrence,
   previewAutomationSchedule,
   recoverableAutomationOccurrence,

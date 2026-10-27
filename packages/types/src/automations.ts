@@ -23,6 +23,34 @@ export type AutomationRunStatus = z.infer<typeof automationRunStatusSchema>
 export const automationRunTriggerSchema = z.enum(["scheduled", "recovery", "manual"]).meta({ ref: "AutomationRunTrigger" })
 export type AutomationRunTrigger = z.infer<typeof automationRunTriggerSchema>
 
+const daysOfWeekSchema = z.array(z.number().int().min(0).max(6)).min(1).max(7)
+  .transform((days) => [...new Set(days)].sort((left, right) => left - right))
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6]
+
+/** Shortest gap between two runs of an interval schedule, in hours. */
+export const AUTOMATION_INTERVAL_MIN_HOURS = 1
+export const AUTOMATION_INTERVAL_MAX_HOURS = 24
+
+/**
+ * Every `everyHours` hours on the hour, counted from `startHour` each listed
+ * day and stopping before `endHour`, in the schedule's own zone. A window of
+ * 9 to 18 every 3 hours runs at 9:00, 12:00 and 15:00. Parsing always fills
+ * the days and the window, so stored schedules carry every field.
+ */
+export const automationIntervalScheduleSchema = z.object({
+  kind: z.literal("interval"),
+  timezone: timezoneSchema,
+  everyHours: z.number().int().min(AUTOMATION_INTERVAL_MIN_HOURS).max(AUTOMATION_INTERVAL_MAX_HOURS),
+  daysOfWeek: daysOfWeekSchema.default(EVERY_DAY),
+  /** First hour of the window, 0–23. Defaults to midnight. */
+  startHour: z.number().int().min(0).max(23).default(0),
+  /** Hour the window closes, 1–24, after `startHour`. Defaults to the end of the day. */
+  endHour: z.number().int().min(1).max(24).default(24),
+}).refine((schedule) => schedule.endHour > schedule.startHour, {
+  message: "endHour must be after startHour",
+  path: ["endHour"],
+})
+
 export const automationScheduleSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("once"), timezone: timezoneSchema, at: timestampSchema }),
   z.object({
@@ -34,13 +62,56 @@ export const automationScheduleSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("weekly"),
     timezone: timezoneSchema,
-    daysOfWeek: z.array(z.number().int().min(0).max(6)).min(1).max(7)
-      .transform((days) => [...new Set(days)].sort((left, right) => left - right)),
+    daysOfWeek: daysOfWeekSchema,
     hour: z.number().int().min(0).max(23),
     minute: z.number().int().min(0).max(59),
   }),
+  automationIntervalScheduleSchema,
 ])
 export type AutomationSchedule = z.infer<typeof automationScheduleSchema>
+export type AutomationScheduleKind = AutomationSchedule["kind"]
+export type AutomationIntervalSchedule = Extract<AutomationSchedule, { kind: "interval" }>
+
+export const AUTOMATION_SCHEDULE_KINDS = ["once", "daily", "weekly", "interval"] as const satisfies readonly AutomationScheduleKind[]
+
+/**
+ * The schedule kinds released desktops can read. They parse `schedule`
+ * strictly (the Calendar throws on any other kind), so Den leaves Automations
+ * with newer kinds out of what it returns to them.
+ */
+export const AUTOMATION_LEGACY_SCHEDULE_KINDS = ["once", "daily", "weekly"] as const satisfies readonly AutomationScheduleKind[]
+
+/**
+ * A desktop names the schedule kinds it can read on every Automation request,
+ * comma separated. First-party desktops have sent the model-attention header
+ * since August 2026; one that sends it without this header is a released
+ * desktop that reads only the legacy kinds.
+ */
+export const AUTOMATION_SCHEDULE_KINDS_HEADER = "x-openwork-automation-schedule-kinds" as const
+
+function isAutomationScheduleKind(value: string): value is AutomationScheduleKind {
+  return AUTOMATION_SCHEDULE_KINDS.some((kind) => kind === value)
+}
+
+/**
+ * The schedule kinds a caller can read, or null when it reads them all.
+ * Only first-party desktops are ever narrowed: everyone else (Den web, agents,
+ * API clients) is told every kind.
+ */
+export function readableAutomationScheduleKinds(input: {
+  scheduleKindsHeader: string | null | undefined
+  firstPartyDesktop: boolean
+}): ReadonlySet<AutomationScheduleKind> | null {
+  if (input.scheduleKindsHeader === undefined || input.scheduleKindsHeader === null) {
+    return input.firstPartyDesktop ? new Set(AUTOMATION_LEGACY_SCHEDULE_KINDS) : null
+  }
+  const kinds = new Set<AutomationScheduleKind>(AUTOMATION_LEGACY_SCHEDULE_KINDS)
+  for (const value of input.scheduleKindsHeader.split(",")) {
+    const kind = value.trim()
+    if (isAutomationScheduleKind(kind)) kinds.add(kind)
+  }
+  return kinds
+}
 
 /**
  * `variant` is the model's reasoning/thinking level, the same value the
