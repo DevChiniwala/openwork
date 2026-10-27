@@ -58,20 +58,13 @@ const END = "\n[End OpenWork visible context]\n\n"
 
 const mimeType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/
 
-/** A page's address without its query or fragment, as the browser tool reports it, since those can carry tokens. */
-function pageAddress(value: string) {
-  try {
-    const url = new URL(value)
-    return url.protocol === "https:" || url.protocol === "http:" ? `${url.origin}${url.pathname}` : url.protocol === "about:" ? `about:${url.pathname}` : url.protocol
-  } catch { return "" }
-}
-
-/** Identifiers and typed view coordinates reach the model. An open document or browser tab also keeps its title (and
- * a document its well-formed MIME type), JSON-quoted as data, so the model knows what the person is looking at; folder
- * names, search text and calendar titles stay out of the prompt. */
+/** Identifiers and typed view coordinates reach the model. An open document also keeps its title and a
+ * well-formed MIME type, JSON-quoted as data, so the model knows what the person is looking at; folder names,
+ * search text, calendar titles and a browser tab's address and title stay out of the prompt. A page writes its own
+ * title and address, and a browser turn can act, so the model gets the tab's id and reads the page with its tools. */
 export function workbotContextForModel(value: WorkbotViewContext): WorkbotViewContext {
   const context = workbotViewContextSchema.parse(value)
-  if (context.kind === "browser") return { kind: context.kind, tabId: context.tabId, url: pageAddress(context.url), title: context.title }
+  if (context.kind === "browser") return { kind: context.kind, tabId: context.tabId, url: "", title: "Current tab" }
   if (context.kind === "document") return { kind: context.kind, provider: context.provider, fileId: context.fileId, title: context.title, mimeType: mimeType.test(context.mimeType) ? context.mimeType : "application/octet-stream", unsaved: context.unsaved }
   if (context.kind === "documents") return { kind: context.kind, view: context.view, folderId: context.folderId, folderName: "Current folder", query: "" }
   return { kind: context.kind, view: context.view, start: context.start, end: context.end,
@@ -110,7 +103,7 @@ export function googleDriveFileId(href: string): string | null {
 }
 
 export function workbotContextLabel(context: WorkbotViewContext) {
-  if (context.kind === "browser") return context.title || pageAddress(context.url) || "Browser tab"
+  if (context.kind === "browser") return context.title || context.url || "Browser tab"
   if (context.kind === "document") return context.title
   if (context.kind === "documents") return context.query ? `Search in ${context.folderName}` : context.folderName
   return context.selected?.title ?? `${context.view[0]?.toUpperCase()}${context.view.slice(1)} calendar`
