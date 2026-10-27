@@ -102,13 +102,13 @@ server.on("upgrade", (request, socket, head) => {
   const [, transport, token] = /^\/(vnc|screencast)\/([A-Za-z0-9_-]{43})$/.exec(path) ?? [];
   const ticket = tickets.consume(token, request.headers.origin);
   if (!ticket || Date.now() >= until || sockets.size >= 4) return socket.destroy();
-  // The screencast only watches the browser; taking control still goes through VNC.
-  if (transport === "screencast" && (ticket.view !== "browser" || ticket.control)) return socket.destroy();
+  // The screencast shows only the browser; with control it also takes the person's input for the page.
+  if (transport === "screencast" && ticket.view !== "browser") return socket.destroy();
   websocket.handleUpgrade(request, socket, head, ws => {
     if (ticket.generation !== tickets.generation || Date.now() >= until) return ws.terminate();
     if (transport === "screencast") {
       const deadline = setTimeout(() => ws.close(1000, "Renew viewer access"), 60_000);
-      const stop = streamBrowser(ws, { onClose: () => { clearTimeout(deadline); sockets.delete(ws); transports.delete(ws); ws.close(); } });
+      const stop = streamBrowser(ws, { control: ticket.control, onClose: () => { clearTimeout(deadline); sockets.delete(ws); transports.delete(ws); ws.close(); } });
       sockets.add(ws);
       transports.set(ws, { destroy: stop });
       return;

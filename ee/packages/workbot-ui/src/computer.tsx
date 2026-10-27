@@ -2,14 +2,13 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { ExternalLink, Globe, Maximize2, Monitor, Pause, Play, RotateCw, Wrench } from "lucide-react";
+import { ExternalLink, Globe, Lock, Maximize2, Monitor, Pause, Play, RotateCw, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { WorkbotTeaching } from "./teaching";
 import { ScreencastViewer, type ScreencastPage } from "./screencast";
 import { errorMessage, workbotHost } from "./host";
-import type { WorkbotPage } from "./data";
 
 const viewerSchema = z.union([z.object({ state: z.literal("paused") }), z.object({ state: z.literal("connected"), url: z.string().url(), expiresAt: z.number(), paused: z.boolean() })]);
 const button = "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-[var(--wb-text)] hover:bg-[var(--wb-chip)] disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]";
@@ -21,13 +20,7 @@ function viewFromLocation(): ComputerView {
   return typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/computer" ? "computer" : "browser";
 }
 
-/** A page Workbot opened has its own link, /browser/<id>: the Browser view with that page picked out. */
-function pageFromLocation(): string | null {
-  if (typeof window === "undefined") return null;
-  return /^\/browser\/([a-z0-9]{1,16})\/?$/.exec(window.location.pathname)?.[1] ?? null;
-}
-
-/** Opens a page Workbot opened, in its Browser view, without reloading Workbot. */
+/** Opens a page Workbot opened, in its Browser view (/browser/<id>), without reloading Workbot. */
 export function openBrowserPage(id: string) {
   window.history.pushState(null, "", `/browser/${id}${window.location.search}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -37,7 +30,7 @@ export function openBrowserPage(id: string) {
  * Both views belong to the main conversation's computer. noVNC carries pixels and native input; with the browser live
  * view on, watching the browser streams the page itself instead.
  */
-export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, pages = [] }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean; /** The pages Workbot opened in this conversation, oldest first. */ pages?: WorkbotPage[] }) {
+export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean }) {
   const host = workbotHost();
   const [teaching, setTeaching] = useState<BrowserTeachingContext>();
   const teachingChange = useCallback((context: BrowserTeachingContext | undefined) => { setTeaching(context); onTeachingChange?.(context); }, [onTeachingChange]);
@@ -45,14 +38,13 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
   const screen = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const [view, setViewState] = useState<ComputerView>(viewFromLocation);
-  const [page, setPage] = useState(pageFromLocation);
   const setView = (next: ComputerView) => {
     if (next === view) return;
     window.history.pushState(null, "", `/${next}${window.location.search}`);
-    setViewState(next); setPage(null);
+    setViewState(next);
   };
   useEffect(() => {
-    const sync = () => { if (/^\/(browser(\/[a-z0-9]{1,16})?|computer)\/?$/.test(window.location.pathname)) { setViewState(viewFromLocation()); setPage(pageFromLocation()); } };
+    const sync = () => { if (/^\/(browser(\/[a-z0-9]{1,16})?|computer)\/?$/.test(window.location.pathname)) setViewState(viewFromLocation()); };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
@@ -66,6 +58,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
   const [changing, setChanging] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [livePage, setLivePage] = useState<ScreencastPage | null>(null);
+  const [stream, setStream] = useState<ScreencastViewer | null>(null);
   const identity = host.identity ? `${host.identity.organizationId}:${host.identity.principalId}` : "";
   const away = useAway(30_000) && !recording;
 
@@ -73,7 +66,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
     const target = screen.current;
     // Nobody watching a hidden tab, so stop streaming until it is shown again.
     if (!target || paused || away) return;
-    setError(null); setConnected(false); setReconnecting(false); setLivePage(null);
+    setError(null); setConnected(false); setReconnecting(false); setLivePage(null); setStream(null);
     return connectDesktopViewer(target, host, { view, control, screencast: host.browserLiveView === true }, {
       paused: () => setPaused(true),
       agentPaused: setAgentPaused,
@@ -81,6 +74,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
       reconnecting: () => { setConnected(false); setReconnecting(true); },
       failed: (message) => { setConnected(false); setError(message); },
       page: setLivePage,
+      stream: setStream,
     });
   }, [host, identity, view, control, paused, away, revision]);
 
@@ -113,8 +107,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
         <button type="button" className={button} aria-label="Full screen" onClick={() => void container.current?.requestFullscreen().catch(() => setError("Full screen isn't available in this browser."))}><Maximize2 size={14} aria-hidden /></button>
       </div>
     </div>
-    {view === "browser" && pages.length > 0 ? <BrowserPages pages={pages} selected={page} /> : null}
-    {view === "browser" && livePage && !paused && !error ? <LiveAddress page={livePage} /> : null}
+    {view === "browser" && livePage && !paused && !error ? <BrowserFrame page={livePage} stream={stream} /> : null}
     {canTeach && host.browserDemonstrations === true && <div hidden={view !== "browser"} style={{ display: view === "browser" ? undefined : "none" }}><WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? async text => { if (!await action("continue")) throw new Error("Return browser control to Workbot before starting the run. Your inputs are still here."); await onRun(text); } : undefined} /></div>}
     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#f5f6f7]">
       <div ref={screen} className={`relative h-full w-full ${paused || error ? "hidden" : ""}`} aria-label={`${view === "browser" ? "Browser" : "Computer"} live view`} />
@@ -142,13 +135,15 @@ type ViewerEvents = {
   failed(message: string): void;
   /** The address and title of the tab the screencast shows. noVNC shows the browser's own toolbar instead. */
   page?(page: ScreencastPage): void;
+  /** The live page stream, which can switch and close tabs; null while noVNC or nothing is on screen. */
+  stream?(stream: ScreencastViewer | null): void;
 };
 
 /**
  * Streams one view of the member's computer into `target`, renewing the connection before the computer closes it and
- * reconnecting a few times when it drops. Returns the function that closes it. With `screencast`, watching the browser
- * uses the computer's page stream; a computer whose image predates it refuses the stream, and the view falls back to
- * noVNC.
+ * reconnecting a few times when it drops. Returns the function that closes it. With `screencast`, the browser view
+ * uses the computer's page stream, for watching and for control; a computer whose image predates it refuses the stream,
+ * and the view falls back to noVNC.
  */
 export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeof workbotHost>, options: { view: ComputerView; control: boolean; screencast?: boolean }, events: ViewerEvents) {
   const { view, control } = options;
@@ -183,7 +178,7 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
       if (session.state === "paused") { events.paused(); return; }
       events.agentPaused(session.paused);
       // The computer issues one ticket for watching the browser; its page stream and VNC accept it at sibling paths.
-      const streamUrl = options.screencast && view === "browser" && !control && !screencastRefused && /\/vnc\/[A-Za-z0-9_-]{43}$/.test(session.url)
+      const streamUrl = options.screencast && view === "browser" && !screencastRefused && /\/vnc\/[A-Za-z0-9_-]{43}$/.test(session.url)
         ? session.url.replace(/\/vnc\/([A-Za-z0-9_-]{43})$/, "/screencast/$1") : null;
       const RFB = streamUrl ? null : (await import("@novnc/novnc")).default;
       if (disposed) return;
@@ -202,7 +197,7 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
         rfb.compressionLevel = 6;
         candidate = rfb;
       } else {
-        const stream = new ScreencastViewer(layer, streamUrl!);
+        const stream = new ScreencastViewer(layer, streamUrl!, { control });
         stream.addEventListener("page", (event) => { if (!disposed && client === stream) events.page?.((event as CustomEvent<ScreencastPage>).detail); });
         candidate = stream;
       }
@@ -217,8 +212,11 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
           if (disposed || next !== candidate) return;
           layer.style.visibility = "visible";
           const previous = client;
+          // With control, the keyboard goes to the page: on taking control, and across each renewal.
+          if (control && candidate instanceof ScreencastViewer && (!previous || target.contains(document.activeElement))) candidate.focus();
           client = candidate; next = null;
           previous?.disconnect();
+          events.stream?.(candidate instanceof ScreencastViewer ? candidate : null);
           if (candidate instanceof ScreencastViewer && candidate.page) events.page?.(candidate.page);
           failures = 0; events.connected();
           // The computer closes each connection after a minute and renewal goes through
@@ -241,6 +239,7 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
         if (disposed || !live) return;
         client = null;
         clearTimeout(renewal);
+        events.stream?.(null);
         events.reconnecting();
         failures++;
         if (failures > 3) { events.failed("Connection lost. Reconnect to continue."); return; }
@@ -257,30 +256,62 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
   return () => { disposed = true; controller.abort(); clearTimeout(retry); clearTimeout(renewal); next?.disconnect(); client?.disconnect(); target.replaceChildren(); };
 }
 
-/** The page stream has no browser toolbar, so show which page is on screen: its address, with the title on hover. */
-function LiveAddress({ page }: { page: ScreencastPage }) {
-  let address = page.url;
-  try { const url = new URL(page.url); address = url.protocol === "http:" || url.protocol === "https:" ? `${url.host}${url.pathname === "/" ? "" : url.pathname}` : page.url; } catch {}
-  return <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--wb-hairline)] px-3 py-1.5 text-[12px] text-[var(--wb-muted)] sm:px-6" title={page.title || page.url} aria-label="Page on screen">
-    <Globe size={12} aria-hidden className="shrink-0" /><span className="truncate">{address}</span>
-  </div>;
+/** A tab's or page's address without the scheme, the way Chrome shows it. */
+function shortAddress(href: string) {
+  try { const url = new URL(href); return url.protocol === "http:" || url.protocol === "https:" ? `${url.host}${url.pathname === "/" ? "" : url.pathname}${url.search}` : href; } catch { return href; }
 }
 
 /**
- * The pages Workbot opened in this conversation, newest first, each with its own link (/browser/<id>). The picked one
- * also links to the site itself. The live view shows whichever tab the browser has in front.
+ * The page stream shows the page alone, so Workbot draws the browser around it the way Chrome does: the open tabs,
+ * with the one on screen in front, and the address bar for that page. Clicking a tab brings it to the front on the
+ * computer and its × closes it (never the last one, which would quit the browser). A computer built before tabs were
+ * streamed shows just the front tab, without those controls.
  */
-function BrowserPages({ pages, selected }: { pages: WorkbotPage[]; selected: string | null }) {
-  const ordered = [...pages].reverse();
-  const picked = ordered.find((entry) => entry.id === selected) ?? null;
-  return <nav aria-label="Pages Workbot opened" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--wb-hairline)] px-3 py-1.5 sm:px-6">
-    {ordered.map((entry) => <a key={entry.id} href={`/browser/${entry.id}${window.location.search}`} aria-current={entry.id === selected ? "page" : undefined} title={entry.url}
-      onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; event.preventDefault(); openBrowserPage(entry.id); }}
-      className={`inline-flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-[var(--wb-text)] hover:bg-[var(--wb-chip)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)] ${entry.id === selected ? "bg-[var(--wb-chip)] font-medium" : ""}`}>
-      <Globe size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" /><span className="truncate">{entry.title}</span>
-    </a>)}
-    {picked ? <a href={picked.url} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-[var(--wb-text)] hover:bg-[var(--wb-chip)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">Open site<ExternalLink size={12} aria-hidden /></a> : null}
-  </nav>;
+function BrowserFrame({ page, stream }: { page: ScreencastPage; stream: ScreencastViewer | null }) {
+  const live = Boolean(page.tabs?.length && page.id);
+  const tabs = live ? page.tabs! : [{ id: "front", url: page.url, title: page.title }];
+  // The tab just clicked shows in front at once; the computer confirms it within a second.
+  const [picked, setPicked] = useState<{ id: string; over: string | undefined } | null>(null);
+  useEffect(() => {
+    if (!picked) return;
+    const timer = setTimeout(() => setPicked(null), 3_000);
+    return () => clearTimeout(timer);
+  }, [picked]);
+  const frontId = picked && picked.over === page.id ? picked.id : page.id;
+  const front = tabs.find((tab) => tab.id === frontId) ?? tabs[0];
+  const shown = front.id === page.id || !live ? page : front;
+  const controls = live && stream !== null;
+  const secure = shown.url.startsWith("https://");
+  return <div className="shrink-0 bg-[var(--wb-bubble)]">
+    <div role="tablist" aria-label="Browser tabs" className="flex items-end gap-px overflow-hidden px-2 pt-1.5 sm:px-4">
+      {tabs.map((tab, index) => {
+        const active = tab === front;
+        const title = tab.title || shortAddress(tab.url) || "New Tab";
+        // Like Chrome, a thin divider separates two background tabs, not a background tab from the front one.
+        const divider = index > 0 && !active && tabs[index - 1] !== front;
+        return <div key={tab.id} className={`group relative flex h-8 min-w-0 max-w-[15rem] flex-1 basis-[15rem] items-center rounded-t-lg text-[12px] ${active ? "bg-[var(--wb-surface)] text-[var(--wb-text)]" : "text-[var(--wb-muted)] hover:bg-[var(--wb-chip)]/70"}`}>
+          {divider ? <span className="absolute left-0 top-2 h-4 w-px -translate-x-px bg-[var(--wb-ring)] group-hover:opacity-0" aria-hidden /> : null}
+          <button type="button" role="tab" aria-selected={active} disabled={!controls} title={tab.title ? `${tab.title}\n${tab.url}` : tab.url}
+            onClick={() => { if (active || !stream) return; setPicked({ id: tab.id, over: page.id }); stream.tab("activate", tab.id); }}
+            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-t-lg pl-3 pr-1 text-left disabled:cursor-default focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">
+            <Globe size={14} aria-hidden className="shrink-0" />
+            <span className="truncate">{title}</span>
+          </button>
+          {controls && tabs.length > 1 ? <button type="button" aria-label={`Close ${title}`} onClick={() => stream!.tab("close", tab.id)}
+            className={`mr-1.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--wb-muted)] hover:bg-[var(--wb-bubble)] hover:text-[var(--wb-text)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)] ${active ? "" : "opacity-0 group-hover:opacity-100"}`}>
+            <X size={12} aria-hidden />
+          </button> : null}
+        </div>;
+      })}
+    </div>
+    <div className="flex items-center gap-2 border-b border-[var(--wb-hairline)] bg-[var(--wb-surface)] px-2 py-1.5 sm:px-4">
+      <div className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-full bg-[var(--wb-chip)] px-3 text-[12px] text-[var(--wb-text)]" aria-label="Address" title={shown.url}>
+        {secure ? <Lock size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" /> : <Globe size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" />}
+        <span className="truncate">{shortAddress(shown.url)}</span>
+      </div>
+      {/^https?:\/\//.test(shown.url) ? <a href={shown.url} target="_blank" rel="noopener noreferrer" aria-label="Open this page in a new tab" className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--wb-muted)] hover:bg-[var(--wb-chip)] hover:text-[var(--wb-text)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"><ExternalLink size={14} aria-hidden /></a> : null}
+    </div>
+  </div>;
 }
 
 /**
