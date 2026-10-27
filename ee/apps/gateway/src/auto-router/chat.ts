@@ -86,6 +86,8 @@ export type AutoRouteInfo = {
   model: string
   thinking: AutoRouterThinkingLevel
   reason: string
+  /** The model's display name from the organization's catalog, for example `Claude Haiku 5.5`. */
+  name?: string
 }
 
 const encoder = new TextEncoder()

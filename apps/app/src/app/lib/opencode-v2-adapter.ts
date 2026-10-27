@@ -19,6 +19,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 
 import { createClient, createDesktopFetch, type FieldsResult } from "./opencode";
+import { AUTO_ROUTER_SESSION_ROUTES_KEY, autoRouterReplyRoutes } from "@openwork/types/den/auto-router";
 import type { OpenworkSessionHistory } from "./openwork-server";
 import { isDesktopRuntime } from "./runtime-env";
 import type { McpStatusMap, OpencodeEvent } from "../types";
@@ -181,6 +182,9 @@ type SessionUpdateParameters = SessionParameters & {
   title?: string;
   time?: { archived?: number };
 };
+
+/** The app's event for a session's recorded Auto routing decisions (`properties: { sessionID, routes }`). */
+export const AUTO_ROUTES_EVENT = "openwork.auto-routes.updated";
 
 export const V2_SESSION_ARCHIVE_UNAVAILABLE = "Archiving and unarchiving are not available in the OpenCode v2 preview.";
 
@@ -504,7 +508,9 @@ function mapV2Session(value: unknown, directory: string | undefined, eventCreate
     } : {}),
     ...(revertMessageID ? { revert: { messageID: revertMessageID } } : {}),
   };
-  return mapped;
+  // Auto replies' routing decisions ride along for the chat's "answered by" label.
+  const autoRoutes = autoRouterReplyRoutes(readRecord(source, "metadata")?.[AUTO_ROUTER_SESSION_ROUTES_KEY]);
+  return autoRoutes.length ? Object.assign(mapped, { [AUTO_ROUTER_SESSION_ROUTES_KEY]: autoRoutes }) : mapped;
 }
 
 function messageRole(value: Record<string, unknown>): V2MessageRole {
@@ -1870,6 +1876,12 @@ export function translateV2Event(
       type: "session.created",
       properties: { info },
     }];
+  }
+
+  if (type === "session.metadata.updated") {
+    // Only the Auto Router's routing decisions are read from host metadata.
+    const routes = autoRouterReplyRoutes(readRecord(properties, "metadata")?.[AUTO_ROUTER_SESSION_ROUTES_KEY]);
+    return sessionID ? [{ type: AUTO_ROUTES_EVENT, properties: { sessionID, routes } }] : null;
   }
 
   if (type === "session.renamed") {

@@ -7,6 +7,7 @@
 import { createGatewayModelAlias } from "@openwork-ee/utils/gateway-routing"
 import {
   AUTO_ROUTER_RESPONSE_MODEL_HEADER,
+  AUTO_ROUTER_RESPONSE_MODEL_NAME_HEADER,
   AUTO_ROUTER_RESPONSE_PROVIDER_HEADER,
   AUTO_ROUTER_RESPONSE_REASON_HEADER,
   AUTO_ROUTER_RESPONSE_THINKING_HEADER,
@@ -138,13 +139,14 @@ function forwardedHeaders(request: Request, extra: Record<string, string>) {
   return headers
 }
 
-function withRouteHeaders(response: Response, route: AutoRouteInfo, body: BodyInit | null, contentType?: string) {
+export function withRouteHeaders(response: Response, route: AutoRouteInfo, body: BodyInit | null, contentType?: string) {
   const headers = new Headers(response.headers)
   headers.delete("content-length")
   headers.set(AUTO_ROUTER_RESPONSE_PROVIDER_HEADER, route.provider)
   headers.set(AUTO_ROUTER_RESPONSE_MODEL_HEADER, route.model)
   headers.set(AUTO_ROUTER_RESPONSE_THINKING_HEADER, route.thinking)
   headers.set(AUTO_ROUTER_RESPONSE_REASON_HEADER, route.reason)
+  if (route.name) headers.set(AUTO_ROUTER_RESPONSE_MODEL_NAME_HEADER, encodeURIComponent(route.name))
   if (contentType) headers.set("content-type", contentType)
   return new Response(body, { status: response.status, statusText: response.statusText, headers })
 }
@@ -207,6 +209,7 @@ export async function handleAutoRequest(input: {
     model: chosen.row.model.model_id,
     thinking: decision.thinkingLevel,
     reason: decision.reason,
+    name: chosen.modelName,
   }
   const reasoning = await dependencies.reasoningStore.recall(identity.organizationId, chatToolCallIds(body))
   const translated = chosen.translator.toUpstream({

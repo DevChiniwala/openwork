@@ -28,6 +28,48 @@ export const AUTO_ROUTER_RESPONSE_MODEL_HEADER = "x-openwork-auto-model"
 export const AUTO_ROUTER_RESPONSE_PROVIDER_HEADER = "x-openwork-auto-provider"
 export const AUTO_ROUTER_RESPONSE_THINKING_HEADER = "x-openwork-auto-thinking"
 export const AUTO_ROUTER_RESPONSE_REASON_HEADER = "x-openwork-auto-reason"
+/** The routed model's display name, URI-encoded so any name fits in a header. */
+export const AUTO_ROUTER_RESPONSE_MODEL_NAME_HEADER = "x-openwork-auto-model-name"
+
+/**
+ * The desktop records each Auto turn's routing decision in the OpenCode
+ * session's metadata under this key, so the chat can say which model answered.
+ */
+export const AUTO_ROUTER_SESSION_ROUTES_KEY = "openworkAutoRoutes"
+/** Most routing decisions kept per session; older ones are dropped first. */
+export const AUTO_ROUTER_SESSION_ROUTES_MAX = 50
+
+/** One routing decision: when the gateway's response arrived and the model it chose. */
+export type AutoRouterReplyRoute = {
+  /** Milliseconds since the epoch, on the engine's clock. */
+  at: number
+  /** Catalog provider family, for example `anthropic`. */
+  provider: string
+  /** Catalog model id, for example `claude-haiku-5-5`. */
+  model: string
+  /** Display name, for example `Claude Haiku 5.5`, when the gateway sent one. */
+  name?: string
+  thinking: string
+}
+
+/** Reads recorded routing decisions, oldest first, dropping malformed entries. */
+export function autoRouterReplyRoutes(value: unknown): AutoRouterReplyRoute[] {
+  if (!Array.isArray(value)) return []
+  const routes: AutoRouterReplyRoute[] = []
+  for (const item of value) {
+    if (!isRecord(item)) continue
+    const { at, provider, model, name, thinking } = item
+    if (typeof at !== "number" || !Number.isFinite(at) || typeof model !== "string" || !model) continue
+    routes.push({
+      at,
+      provider: typeof provider === "string" ? provider : "",
+      model,
+      ...(typeof name === "string" && name.trim() ? { name: name.trim() } : {}),
+      thinking: typeof thinking === "string" ? thinking : "default",
+    })
+  }
+  return routes.sort((a, b) => a.at - b.at)
+}
 
 /**
  * Thinking levels, in display order. `default` sends no reasoning setting, so

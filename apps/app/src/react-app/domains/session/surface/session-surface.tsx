@@ -26,6 +26,7 @@ import { createDenClient, readDenSettings } from "@/app/lib/den";
 import { denSettingsChangedEvent } from "@/app/lib/den-session-events";
 import { hasMovedRejectedTurn, rejectedTurnOwner, useRejectedTurns, useSessionDraftState } from "@/react-app/domains/session/sync/draft-store";
 import { mergeRejectedTurns, retainRejectedTurn } from "@/react-app/domains/session/sync/rejected-turn";
+import { autoRoutesFromSession, useAutoRouteStore } from "@/react-app/domains/session/sync/auto-route-store";
 import type {
   OpenworkServerClient,
   OpenworkSessionHistory,
@@ -1356,6 +1357,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const fullSnapshot = snapshotOwnerMatches && snapshotQuery.data?.session.id === props.sessionId ? snapshotQuery.data : null;
   const hasFullHistory = snapshotOwnerMatches && openingHistory.complete;
   const currentSnapshot = fullSnapshot ?? openingHistory.snapshot;
+  // Auto replies recorded before this view opened name their model too.
+  const snapshotSession = currentSnapshot?.session;
+  useEffect(() => {
+    if (snapshotSession?.id === props.sessionId) useAutoRouteStore.getState().publish(props.sessionId, autoRoutesFromSession(snapshotSession));
+  }, [snapshotSession, props.sessionId]);
   const archived = Boolean(props.archived || currentSnapshot?.session.time.archived);
   const archiveStateKnown = props.archived !== undefined || currentSnapshot !== null;
   const inspectorOpencodeBaseUrl = useMemo(() => {

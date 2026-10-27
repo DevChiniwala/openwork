@@ -33,6 +33,13 @@ least one of its models, get **Auto** as the first option in the desktop model
 picker. The free starter model that used to be labelled Auto is now
 **OpenWork Free**.
 
+![Auto first in the desktop model picker](auto-router-picker.png)
+
+Each Auto reply says which model answered it, with its thinking level, below
+the reply (for example "Claude Haiku 5.5 · High").
+
+![An Auto reply naming the model that answered](auto-router-answered-by.png)
+
 ## How a request is routed
 
 1. The desktop registers Auto as an OpenAI-compatible provider pointing at the
@@ -86,14 +93,42 @@ provider, as it does under each `IPR_…` name for the others.
 Every Auto response carries it:
 
 - Headers `x-openwork-auto-provider`, `x-openwork-auto-model`,
-  `x-openwork-auto-thinking` and `x-openwork-auto-reason`
-  (`jev`, `turn` or `fallback`).
+  `x-openwork-auto-thinking`, `x-openwork-auto-reason`
+  (`jev`, `turn` or `fallback`) and `x-openwork-auto-model-name` (the
+  model's display name from the organization's catalog, URI-encoded).
 - The first streamed chunk (or the JSON body) has
-  `openwork_route: { provider, model, thinking, reason }`, and Anthropic
+  `openwork_route: { provider, model, thinking, reason, name }`, and Anthropic
   responses use the real model id as the chunk `model`.
 - The gateway request log records the real provider, model and usage.
 
-The desktop does not show this yet.
+The desktop shows it under each Auto reply, beside the provider's logo, as
+"<model name> · <thinking>" (no thinking part for `default`). Opaque
+`ipr_…`/`gwm_…` ids are never shown; without a name the catalog model id is.
+
+How it gets there (OpenCode v2 does not record which model an
+OpenAI-compatible provider really used):
+
+1. The OpenWork server registers the `openwork.auto-route` engine plugin
+   (`apps/server/src/opencode-plugins/openwork-auto-route-v2.ts`). It hooks
+   `http.response` for the `openwork-auto` provider only, and only main-loop
+   requests (not titles or compaction), reads the headers above and appends
+   `{ at, provider, model, name, thinking }` to the session's metadata under
+   `openworkAutoRoutes` (the latest 50). Session metadata is durable engine
+   state, so it survives restarts and reloads. A failed write never fails the
+   reply.
+2. The app reads it from the session (`GET /session/:id`) and from the live
+   `session.metadata.updated` event (`apps/app/src/app/lib/opencode-v2-adapter.ts`),
+   into `useAutoRouteStore`.
+3. Each Auto reply takes the latest decision recorded between its start and
+   its completion (`autoRouteForReply` in
+   `apps/app/src/react-app/domains/session/sync/reply-model.ts`), so every
+   reply, including earlier ones and retried requests, gets its own model.
+   Without one (an older gateway, or the classic engine) the footer keeps
+   saying "Auto".
+
+Nothing is recorded when the organization has no Auto Router: the plugin only
+reads `openwork-auto` responses, and desktops only have that provider while
+the feature is on.
 
 ## Proof
 
@@ -101,7 +136,11 @@ The desktop does not show this yet.
 web against a deterministic Anthropic upstream: the admin enables the router and
 saves a route in the UI, then a chat request for `openwork-auto` with the
 member's Gateway key is answered by that model (with real Jev when
-`TYPESAFE_API_KEY` is set). Run it with `pnpm evals:e2e auto-router --local`.
+`TYPESAFE_API_KEY` is set). A second test signs the app (headless Chrome, v2
+engine) in to the same kind of Den and gateway: the member picks Auto (first in
+the picker), asks a question, gets the upstream's reply, and sees which model
+answered it, before and after reloading the chat. Run them with
+`pnpm evals:e2e auto-router --local`.
 
 ## Operating it
 

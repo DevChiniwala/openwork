@@ -15,7 +15,9 @@ import { trackTaskCompleted, trackTaskFailed } from "@/app/lib/den-telemetry";
 import { noteActivationRunCompleted } from "../../cloud/activation/use-activation";
 import { observeModelsTaskEvent } from "@/app/lib/models-task-analytics";
 import { unwrap } from "@/app/lib/opencode";
-import { createClientV2 } from "@/app/lib/opencode-v2-adapter";
+import { AUTO_ROUTES_EVENT, createClientV2 } from "@/app/lib/opencode-v2-adapter";
+import { useAutoRouteStore } from "./auto-route-store";
+import { autoRouterReplyRoutes } from "@openwork/types/den/auto-router";
 import { perfNow, recordPerfLog } from "@/app/lib/perf-log";
 import { isGeneratedSessionTitle } from "@/app/lib/session-title";
 import { normalizeEvent } from "@/app/utils";
@@ -1236,6 +1238,16 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
       discoverTaskSessions(entry, session.id);
     }
     for (const listener of entry.sessionCreatedListeners.keys()) listener(session);
+    return;
+  }
+
+  if (event.type === AUTO_ROUTES_EVENT) {
+    // Auto replies' routing decisions; any session, tracked or not, so a
+    // background chat shows them once opened.
+    const props = event.properties;
+    if (!props || typeof props !== "object") return;
+    const sessionId = Reflect.get(props, "sessionID");
+    if (typeof sessionId === "string") useAutoRouteStore.getState().publish(sessionId, autoRouterReplyRoutes(Reflect.get(props, "routes")));
     return;
   }
 
