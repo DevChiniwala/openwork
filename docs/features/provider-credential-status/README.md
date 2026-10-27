@@ -33,6 +33,10 @@ with native OpenCode v2 and a loopback-only fault provider. No paid or real
 provider keys are used, and the fault server records credential labels rather
 than Authorization values.
 
+### Saved but not verified
+
+![AI Providers shows Not checked yet for a newly saved synthetic key](./unverified.png)
+
 ## Evidence and lifetime
 
 Only outcomes and credential-change revisions are persisted locally, scoped

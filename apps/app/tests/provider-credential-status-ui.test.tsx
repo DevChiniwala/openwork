@@ -104,3 +104,24 @@ test("local rejected key recovery is scoped to this runtime workspace and flag",
     else delete initialState.entries[key];
   }
 });
+
+test("organization rejection directs the member to an admin rather than a personal key editor", () => {
+  const initialState = useProviderCredentialHealth.getInitialState();
+  const key = credentialHealthKey("workspace-test", "ipr_fixture");
+  const previous = initialState.entries[key];
+  initialState.entries[key] = { status: "rejected", revision: 0 };
+  try {
+    const markup = renderToStaticMarkup(<AiSettingsView {...localView}
+      signedIn organizationName="Acme"
+      connectedProviders={[{ id: "ipr_fixture", name: "Team provider" }]}
+      gatewayProviderIds={new Set(["ipr_fixture"])}
+    />);
+    expect(markup).toContain("Key not accepted");
+    expect(markup).toContain("Contact your admin");
+    expect(markup).not.toContain("Replace key");
+    expect(markup).not.toContain("Ready to use");
+  } finally {
+    if (previous) initialState.entries[key] = previous;
+    else delete initialState.entries[key];
+  }
+});

@@ -21,10 +21,12 @@ test("a person sees a rejected personal provider key, replaces it, and earns Rea
   async function send(prompt: string) {
     await user.navigate(world.composerUrl);
     await user.see("composer", { editable: true, timeoutMs: WITHIN });
-    await user.click("Change model");
-    await user.see({ testId: "composer-model-picker" });
-    await user.type({ label: "Search all models" }, "Credential proof model");
-    await user.click({ testId: `model-option-${world.providerId}-${world.modelId}` });
+    // This isolated workspace has exactly one available model. Confirm the
+    // selected model through the visible picker trigger before sending.
+    const selection = await probe.eventually(async () => (await probe.dom('button[aria-label="Change model"]')).elements.map(element => element.text).join(" "), {
+      within: WITHIN, label: "the local fault model is selected", until: value => value.includes("Credential proof model"),
+    });
+    expect(selection).toContain("Credential proof model");
     await user.type("composer", prompt);
     await user.click("Run task");
   }

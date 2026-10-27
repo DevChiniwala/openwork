@@ -1296,7 +1296,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         }
         const workspaceId = options.runtimeWorkspaceId();
         if (workspaceId) for (const provider of providers) {
-          useProviderCredentialHealth.getState().configure(workspaceId, getCloudManagedProviderId(provider), provider.updatedAt ?? "unknown");
+          useProviderCredentialHealth.getState().configure(workspaceId, getCloudManagedProviderId(provider), JSON.stringify([settings.baseUrl, orgId, provider.updatedAt]));
         }
         setStateField("cloudOrgProviders", providers);
         cloudOrgProvidersLoadKey = loadKey;

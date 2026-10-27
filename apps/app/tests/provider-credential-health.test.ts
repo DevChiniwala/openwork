@@ -134,3 +134,22 @@ for (const providerId of ["openrouter", "ipr_fixture"]) test(`native lifecycle u
     expect(useProviderCredentialHealth.getState().entries[credentialHealthKey(workspace, "unrelated")]).toBeUndefined();
   } finally { dispose(); }
 });
+
+test("v1 idle without a completed assistant response is not credential verification", () => {
+  const sync = { workspaceId: workspace, baseUrl: "http://127.0.0.1:9/w/fixture/opencode", openworkToken: "synthetic-local-token" };
+  spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ data: [] }));
+  useSessionActivityStore.setState({ recordsByWorkspaceId: {} });
+  const dispose = __createWorkspaceSessionSyncForTest(sync);
+  const sessionID = "session-v1-fixture";
+  try {
+    __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "busy" } } });
+    __applySessionSyncEventForTest(sync, { type: "message.updated", properties: { info: { id: "message-fixture", sessionID, role: "assistant", providerID: provider } } });
+    __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "idle" } } });
+    expect(health()).toBe("unverified");
+    now++;
+    __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "busy" } } });
+    __applySessionSyncEventForTest(sync, { type: "message.updated", properties: { info: { id: "message-success", sessionID, role: "assistant", providerID: provider, time: { completed: 200 } } } });
+    __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "idle" } } });
+    expect(health()).toBe("verified");
+  } finally { dispose(); }
+});
