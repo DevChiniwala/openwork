@@ -21,6 +21,7 @@ import {
   uploadWorkbotFile,
   type LiveText,
   type WorkbotAttachment,
+  type WorkbotPart,
   type WorkbotStep,
   type WorkbotPage,
   type WorkbotTask,
@@ -1494,40 +1495,12 @@ function useHeld<T>(value: T, key: string, minMs: number): T {
 const UPDATE_HOLD_MS = 1_600;
 
 /**
- * Work done between two things Workbot said, where it happened: its computer as a card (the little person at work,
- * what it is doing, how long), or one quiet line for apps alone ("Using Gmail", then "Used Gmail"). `live` while
- * nothing has been said after it yet, so a card doesn't blink between two commands (DESIGN C3, T1, V6).
+ * Work in connected apps between two things Workbot said, as one quiet line ("Using Gmail", then "Used Gmail"), `live`
+ * while nothing has been said after it yet (DESIGN C3, T1). Work on its computer is a card of its own (computerWork).
  */
-function StepsSegment({ steps, live, onSwitch }: { steps: WorkbotStep[]; live: boolean; /** Asks Workbot to change how it works (show the screen, or carry on in the background); only while it answers. */ onSwitch?: (text: string) => void }) {
-  const used = usedApps(steps, null);
-  if (used.length === 0) return null;
-  const others = used.filter((app) => !app.computer);
-  // The browser, its screen and its background commands are separate cards, in the order Workbot first used them; the
-  // one it is on now is live. Commands run alongside work on the screen keep that screen's live view up, so a person
-  // watching a scene or page change never loses it between two changes.
-  const computerSteps = steps.filter((step) => step.icon === "computer");
-  const surfaces = [...new Set(computerSteps.map(surfaceOf))];
-  const current = computerSteps.length > 0 ? surfaceOf(computerSteps[computerSteps.length - 1]!) : null;
-  const screen = [...computerSteps].reverse().map(surfaceOf).find((surface) => surface !== "background") ?? null;
-  if (surfaces.length > 0) {
-    return (
-      <div className="flex flex-col gap-2 py-1 pl-1">
-        {surfaces.map((surface) => (
-          <SurfaceCard
-            key={surface}
-            surface={surface}
-            steps={steps.filter((step) => step.icon === "computer" && surfaceOf(step) === surface)}
-            live={live && (surface === current || surface === screen)}
-            others={surface === current ? others : []}
-            switchTo={!live || !onSwitch ? null
-              : surface === screen ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: onSwitch }
-              : surface === "background" && screen === null ? { label: "Show me", text: "Show me what you're doing on screen.", send: onSwitch }
-              : null}
-          />
-        ))}
-      </div>
-    );
-  }
+function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) {
+  const others = usedApps(steps, null).filter((app) => !app.computer);
+  if (others.length === 0) return null;
   const label = `${live ? "Using" : "Used"} ${joinNames(others.map((app) => app.name))}`;
   return (
     <p
@@ -1554,6 +1527,52 @@ function surfaceOf(step: WorkbotStep): ComputerSurface {
   return step.surface === "browser" ? "browser" : step.background ? "background" : "computer";
 }
 
+/** The other way of working, offered on a live card: one tap sends it as a follow-up. */
+type SwitchTo = { label: string; text: string; send(text: string): void };
+
+/**
+ * Workbot's computer work in one reply, as one card per kind of work (its browser, its screen, its background
+ * commands), however often it stops to say what it is doing. While it works, the cards it is using go below its latest
+ * words: the one it is on now, and the screen it was last on, whose live view stays up for the rest of the reply.
+ * The others stay where that work last happened.
+ */
+function computerWork(parts: WorkbotPart[], { working, starting, lastIsLive }: { working: boolean; starting: LiveText["working"] | null; lastIsLive: boolean }) {
+  const cards = new Map<ComputerSurface, { steps: WorkbotStep[]; last: number }>();
+  let screen: ComputerSurface | null = null;
+  let current: ComputerSurface | null = null;
+  for (const [index, part] of parts.entries()) {
+    if (part.kind !== "steps") continue;
+    for (const step of part.steps) {
+      if (step.icon !== "computer") continue;
+      const surface = surfaceOf(step);
+      const card = cards.get(surface) ?? { steps: [], last: index };
+      card.steps.push(step);
+      card.last = index;
+      cards.set(surface, card);
+      if (surface !== "background") screen = surface;
+      if (lastIsLive && index === parts.length - 1) current = surface;
+    }
+  }
+  if (working && starting) {
+    // A step starting before it is stored: commands in the background, or the screen it was last on.
+    const surface: ComputerSurface = starting.background ? "background" : screen ?? "computer";
+    if (!cards.has(surface)) {
+      cards.set(surface, { steps: [{ label: "Using my computer", icon: "computer", status: "running", app: null, startedAt: null, finishedAt: null, updates: [], ...(starting.background ? { background: true as const } : {}) }], last: parts.length });
+    }
+    current = surface;
+    if (surface !== "background") screen = surface;
+  }
+  const watch = working ? screen : null;
+  const live = new Set<ComputerSurface>();
+  if (working && current) live.add(current);
+  if (watch) live.add(watch);
+  const placed = new Map<number, ComputerSurface[]>();
+  for (const [surface, card] of cards) if (!live.has(surface)) placed.set(card.last, [...(placed.get(card.last) ?? []), surface]);
+  // Below its latest words: background work first, then the screen it is watched on.
+  const trailing = [...live].sort((a, b) => Number(a === watch) - Number(b === watch));
+  return { cards, live, watch, placed, trailing };
+}
+
 /** Opens the full view of Workbot's browser or computer, without reloading Workbot. */
 function openSurface(surface: Exclude<ComputerSurface, "background">) {
   window.history.pushState(null, "", `/${surface}${window.location.search}`);
@@ -1566,7 +1585,7 @@ function openSurface(surface: Exclude<ComputerSurface, "background">) {
  * background (running Blender from the command line) have no screen to watch, so their card never connects one. The
  * browser card links the pages it opened.
  */
-function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; /** The other way of working, offered while it works: one tap sends it as a follow-up. */ switchTo?: { label: string; text: string; send(text: string): void } | null }) {
+function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; switchTo?: SwitchTo | null }) {
   const [asked, setAsked] = useState(false);
   const updates = steps.flatMap((step) => step.updates);
   const latest = updates.at(-1) ?? null;
@@ -1665,17 +1684,10 @@ function replyProgress(turn: WorkbotTurn, live: LiveText | null) {
   // Live text is trimmed like the stored text, so a finished bubble carries on instead of starting over.
   const liveText = withoutNextLine((current?.text ?? "").trimStart());
   const last = turn.parts.at(-1);
-  // Its computer starting before the step is stored: the card shows right away, after what it just said. Starting the
-  // other mode (commands beside work on the screen, or the screen after background work) adds that mode's card at once
-  // and keeps the computer work before it live, so a live view the person is watching stays up.
+  // Its computer starting before the step is stored: its card shows right away, after what it just said.
   const starting = working && !turn.greeting && current?.working?.on === "computer" ? current.working : null;
-  const computerBefore = last?.kind === "steps" ? last.steps.filter((step) => step.icon === "computer") : [];
-  const startingStep: WorkbotStep | null = starting && !computerBefore.some((step) => (step.background === true) === (starting.background === true))
-    ? { label: "Using my computer", icon: "computer", status: "running", app: null, startedAt: null, finishedAt: null, updates: [], ...(starting.background ? { background: true as const } : {}) }
-    : null;
-  const startingCard = startingStep !== null;
-  const lastIsLive = working && last?.kind === "steps" && !liveText && (!startingCard || computerBefore.length > 0);
-  return { working, liveText, startingCard, startingStep, lastIsLive };
+  const lastIsLive = working && last?.kind === "steps" && !liveText;
+  return { working, liveText, starting, lastIsLive };
 }
 
 
@@ -1693,8 +1705,9 @@ function useSettled(flag: boolean, ms: number) {
   return flag && settled;
 }
 
-/** One thing a turn shows: a model call's words (one bubble each) or the steps between them. */
-type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; key: string; steps: WorkbotStep[]; live: boolean };
+/** One thing a turn shows: a model call's words (one bubble each), work in apps between them, or a computer card. */
+type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; key: string; steps: WorkbotStep[]; live: boolean }
+  | { kind: "card"; key: string; surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; switchTo: SwitchTo | null };
 
 function TurnView(props: {
   canChange: boolean;
@@ -1711,7 +1724,7 @@ function TurnView(props: {
   onSwitch: (text: string) => void;
 }) {
   const { turn } = props;
-  const { working, liveText, startingCard, startingStep, lastIsLive } = replyProgress(turn, props.live);
+  const { working, liveText, starting, lastIsLive } = replyProgress(turn, props.live);
   // An answer watched while it was written keeps revealing at its pace once it's stored; answers already done when the
   // page opened show at once.
   const watched = useRef(working);
@@ -1721,10 +1734,32 @@ function TurnView(props: {
   // One bubble per model call, keyed by that call from its first streamed word to its stored copy, so a bubble never
   // swaps, jumps to its full length or starts over when the conversation is read again (DESIGN P11). Words streamed for
   // an earlier call stay until the stored copy arrives.
+  // The newest message is answered next; a follow-up interrupts the older answer, which only finishes its step.
+  const answering = props.latest && working;
+  // While it answers, the person can ask it to show its work on screen or carry on without them. (Not `canChange`:
+  // that is false while Workbot answers, which is exactly when these are offered.)
+  const switchMode = answering ? props.onSwitch : undefined;
+  // A computer card keeps its key wherever it sits, so moving below Workbot's newest words never restarts its live view.
+  const work = computerWork(parts, { working, starting, lastIsLive });
+  const card = (surface: ComputerSurface, others: UsedApp[] = []): TurnItem => {
+    const isLive = work.live.has(surface);
+    const switchTo = !isLive || !switchMode ? null
+      : surface === work.watch ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: switchMode }
+      : surface === "background" && work.watch === null ? { label: "Show me", text: "Show me what you're doing on screen.", send: switchMode }
+      : null;
+    return { kind: "card", key: `card-${surface}`, surface, steps: work.cards.get(surface)?.steps ?? [], live: isLive, others, switchTo };
+  };
   const items: TurnItem[] = [];
   parts.forEach((part, index) => {
-    if (part.kind === "text") items.push({ kind: "text", key: `text-${part.step ?? `part-${index}`}`, text: part.text });
-    else items.push({ kind: "steps", key: `steps-${index}`, steps: part.steps, live: working && index === parts.length - 1 && lastIsLive });
+    if (part.kind === "text") {
+      items.push({ kind: "text", key: `text-${part.step ?? `part-${index}`}`, text: part.text });
+      return;
+    }
+    const here = work.placed.get(index) ?? [];
+    const apps = part.steps.filter((step) => step.icon === "app");
+    // Apps used beside computer work show as logos on its card; on their own, as a quiet line.
+    here.forEach((surface, at) => items.push(card(surface, at === here.length - 1 ? usedApps(apps, null) : [])));
+    if (apps.length > 0 && here.length === 0) items.push({ kind: "steps", key: `steps-${index}`, steps: apps, live: working && index === parts.length - 1 && lastIsLive });
   });
   if (working && props.live) {
     for (const entry of props.live.earlier ?? []) {
@@ -1733,8 +1768,7 @@ function TurnView(props: {
     }
   }
   if (live && liveText) items.push({ kind: "text", key: `text-${live.step}`, text: liveText });
-  // The newest message is answered next; a follow-up interrupts the older answer, which only finishes its step.
-  const answering = props.latest && working;
+  for (const surface of work.trailing) items.push(card(surface));
   // The place Workbot's next words will take, one message line tall: the typing dots, or the app step running right now
   // ("Using Gmail"), then the words themselves, each replacing the last without moving the conversation. Once it has
   // shown, it keeps its place until the words arrive.
@@ -1742,7 +1776,7 @@ function TurnView(props: {
   const runningApps = answering && tail?.kind === "steps" && tail.live && tail.steps.every((step) => step.icon === "app") ? tail : null;
   if (runningApps) items.pop();
   const lastText = items.reduce((found, item, index) => (item.kind === "text" ? index : found), -1);
-  const waiting = answering && !liveText && !startingCard && !lastIsLive;
+  const waiting = answering && !liveText && !lastIsLive && work.live.size === 0;
   const fresh = items.length === 0 && !runningApps;
   const settled = useSettled(waiting && !fresh, 350);
   const dots = waiting && (fresh || settled);
@@ -1758,10 +1792,7 @@ function TurnView(props: {
   // One computer, so only the newest reply that used its screen offers to open it, already while it works. Commands run
   // in the background leave nothing on the screen to open.
   const onScreen = (step: WorkbotStep) => step.icon === "computer" && !step.background;
-  // While it answers, the person can ask it to show its work on screen or carry on without them. (Not `canChange`:
-  // that is false while Workbot answers, which is exactly when these are offered.)
-  const switchMode = answering ? props.onSwitch : undefined;
-  const usedComputer = props.latest && ((startingStep !== null && onScreen(startingStep)) || parts.some((part) => part.kind === "steps" && part.steps.some(onScreen)));
+  const usedComputer = props.latest && ((starting !== null && !starting.background) || parts.some((part) => part.kind === "steps" && part.steps.some(onScreen)));
   return (
     <>
       <SentAttachments attachments={turn.attachments} localUrls={props.previews} />
@@ -1770,7 +1801,7 @@ function TurnView(props: {
       ) : (
         <UserBubble text={turn.text} reaction={turn.reaction} />
       )}
-      {items.length > 0 || startingCard || slot ? <Gap /> : null}
+      {items.length > 0 || slot ? <Gap /> : null}
       {/* What it said and what it did, in the order it happened: "On it." · the computer card · the answer. */}
       <div className="group/answer flex flex-col">
         {items.map((item, index) =>
@@ -1779,11 +1810,14 @@ function TurnView(props: {
             <AssistantBubble key={item.key} trailing={turn.status === "done" && index === lastText ? <CopyAnswer text={copyText} /> : null}>
               <StreamingText text={item.text} instant={!(props.newestText && index === lastText && watched.current)} />
             </AssistantBubble>
+          ) : item.kind === "card" ? (
+            <div key={item.key} className="py-1 pl-1">
+              <SurfaceCard surface={item.surface} steps={item.steps} live={item.live} others={item.others} switchTo={item.switchTo} />
+            </div>
           ) : (
-            <StepsSegment key={item.key} steps={item.steps} live={item.live} onSwitch={startingStep ? undefined : switchMode} />
+            <StepsSegment key={item.key} steps={item.steps} live={item.live} />
           ),
         )}
-        {startingStep ? <StepsSegment steps={[startingStep]} live onSwitch={switchMode} /> : null}
         {slot ? <WaitingSlot>{runningApps ? <StepsSegment steps={runningApps.steps} live /> : dots ? <TypingDots /> : null}</WaitingSlot> : null}
       </div>
       <DocumentOffers links={offers} />

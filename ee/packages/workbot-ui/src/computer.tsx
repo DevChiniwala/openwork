@@ -283,26 +283,72 @@ function BrowserPages({ pages, selected }: { pages: WorkbotPage[]; selected: str
   </nav>;
 }
 
+type GlimpseState = "connecting" | "live" | "unavailable";
+/** One view's connection, shared by the live views in the chat: a card that replaces another picks it up as it is. */
+type SharedGlimpse = { host: ReturnType<typeof workbotHost>; container: HTMLDivElement; state: GlimpseState; listeners: Set<(state: GlimpseState) => void>; users: number; close(): void; linger?: ReturnType<typeof setTimeout> };
+const sharedGlimpses = new Map<ComputerView, SharedGlimpse>();
+/** How long a view's connection outlives its last live view, so the next card of the same reply doesn't reconnect. */
+const GLIMPSE_LINGER_MS = 15_000;
+
+function watchGlimpse(host: ReturnType<typeof workbotHost>, view: ComputerView): SharedGlimpse {
+  const existing = sharedGlimpses.get(view);
+  if (existing && existing.host === host) {
+    clearTimeout(existing.linger);
+    existing.users += 1;
+    return existing;
+  }
+  if (existing) { sharedGlimpses.delete(view); existing.close(); }
+  const container = document.createElement("div");
+  container.style.cssText = "position:absolute;inset:0";
+  const shared: SharedGlimpse = { host, container, state: "connecting", listeners: new Set(), users: 1, close: () => {} };
+  const set = (state: GlimpseState) => {
+    shared.state = state;
+    for (const listener of shared.listeners) listener(state);
+    // A view that can't connect is dropped, so the next live view tries again.
+    if (state === "unavailable" && sharedGlimpses.get(view) === shared) { sharedGlimpses.delete(view); shared.close(); }
+  };
+  shared.close = connectDesktopViewer(container, host, { view, control: false }, {
+    paused: () => set("unavailable"),
+    agentPaused: () => {},
+    connected: () => set("live"),
+    reconnecting: () => set("connecting"),
+    failed: () => set("unavailable"),
+  });
+  sharedGlimpses.set(view, shared);
+  return shared;
+}
+
+function releaseGlimpse(view: ComputerView, shared: SharedGlimpse) {
+  shared.users -= 1;
+  if (shared.users > 0) return;
+  shared.linger = setTimeout(() => {
+    if (sharedGlimpses.get(view) === shared) sharedGlimpses.delete(view);
+    shared.close();
+  }, GLIMPSE_LINGER_MS);
+}
+
 /**
  * A small live view of what Workbot is doing on its computer, shown in the chat while it works, like the floating
  * window in OpenWork Desktop: view only, with a ring and a label saying Workbot has it. Clicking opens the full view.
+ * Live views of the same view share one connection, so a new card keeps the picture instead of connecting again.
  */
 export function LiveGlimpse({ view, onOpen }: { view: ComputerView; onOpen?(): void }) {
   const host = workbotHost();
   const screen = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<"connecting" | "live" | "unavailable">("connecting");
+  const [state, setState] = useState<GlimpseState>("connecting");
   const away = useAway(30_000);
   useEffect(() => {
     const target = screen.current;
     if (!target || away) return;
-    setState("connecting");
-    return connectDesktopViewer(target, host, { view, control: false }, {
-      paused: () => setState("unavailable"),
-      agentPaused: () => {},
-      connected: () => setState("live"),
-      reconnecting: () => setState("connecting"),
-      failed: () => setState("unavailable"),
-    });
+    const shared = watchGlimpse(host, view);
+    target.append(shared.container);
+    setState(shared.state);
+    shared.listeners.add(setState);
+    return () => {
+      shared.listeners.delete(setState);
+      if (shared.container.parentElement === target) shared.container.remove();
+      releaseGlimpse(view, shared);
+    };
   }, [host, view, away]);
   if (state === "unavailable") return null;
   const label = view === "browser" ? "Workbot is browsing" : "Workbot is using its computer";

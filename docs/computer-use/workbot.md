@@ -29,6 +29,10 @@ Workbot uses its computer in two modes, and the conversation shows each its own 
 - **On screen**: the `desktop` tool, in the browser or a native app. The card
   shows a live view, and the reply offers **Open Computer**.
 
+A reply shows one card for each kind of work, however often Workbot stops to
+say what it is doing. While it works, the screen card stays below its latest
+words with its live view, which keeps one connection for the whole reply.
+
 Workbot is told to work like a coworker and read what the person wants. Most of
 the time that is the result, so it works in the background and comes back with
 it. It uses the screen only when that helps: the work needs it (a live website,
