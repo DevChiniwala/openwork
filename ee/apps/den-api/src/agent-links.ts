@@ -32,3 +32,8 @@ export function connectionRemovalLink(connectionId: string) {
   link.searchParams.set("remove", "1")
   return link.toString()
 }
+
+/** The member's own agent in the Library (My agent). den-web resolves the active organization. */
+export function myAgentLink() {
+  return new URL("/dashboard/library/my-agent", env.betterAuthUrl).toString()
+}
