@@ -274,25 +274,31 @@ final class SessionRuntime {
     private func observe(_ id: String, image: Bool, elements: String) async throws -> [[String: Any]] {
         // A paused session never resumes from an observation: only the person's Continue does.
         // Retry only read-only capture races. Never repeat an action or cross takeover.
-        let generation = try current(id).generation
+        let current = try current(id)
         session?.needsRefresh = true
         controls.update("Refreshing the selected window before continuing…", paused: false)
-        for attempt in 0..<3 {
-            guard try current(id).generation == generation else {
-                throw UseError("session_changed", "Control changed during refresh.", next: "human_takeover")
+        return try await ObservationPreparation.capture(mode: current.mode, check: {
+            try self.checkActive(current)
+        }, focus: {
+            if (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) == nil {
+                try await self.focusTarget(current)
             }
-            do { return try await observeAttempt(id, image: image, elements: elements) }
-            catch let error as UseError {
-                guard error.code == "stale_observation", attempt < 2 else { throw error }
-                try await Task.sleep(nanoseconds: 75_000_000)
+        }, read: {
+            for attempt in 0..<3 {
+                try self.checkActive(current)
+                do { return try await self.observeAttempt(id, image: image, elements: elements) }
+                catch let error as UseError {
+                    guard error.code == "stale_observation", attempt < 2 else { throw error }
+                    try await Task.sleep(nanoseconds: 75_000_000)
+                }
             }
-        }
-        throw UseError("stale_observation", "The window is still changing. Observe again.", next: "observe")
+            throw UseError("stale_observation", "The window is still changing. Observe again.", next: "observe")
+        })
     }
     private func observeAttempt(_ id: String, image: Bool, elements filter: String) async throws -> [[String: Any]] {
         let current = try current(id)
         session?.observation = nil; session?.records = []; session?.focus = nil
-        let bounds = try access.validate(current.target, app: current.app)
+        let bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
         @MainActor func check() throws { try self.checkActive(current) }
         var state = try await access.read(current.target, check: check)
         var png: Data?
@@ -316,7 +322,7 @@ final class SessionRuntime {
             }
         }
         try check()
-        guard try access.validate(current.target, app: current.app) == bounds else {
+        guard try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) == bounds else {
             throw UseError("stale_observation", "The window moved during the observation.", next: "observe")
         }
         var effectiveFilter = filter
@@ -358,7 +364,8 @@ final class SessionRuntime {
     /// The re-capture that guards coordinate input uses the same encoding, so digests compare.
     static let observationMimeType = "image/jpeg"
     private func observationImage(_ current: Session, bounds: CGRect, state: WindowState, check: () throws -> Void) async throws -> (Data, Int, Int, Int64) {
-        try await access.capture(target: current.target, app: current.app, bounds: bounds, state: state, maxLongSide: 1280, jpegQuality: 0.8, check: check)
+        try await access.capture(target: current.target, app: current.app, bounds: bounds, state: state,
+            maxLongSide: 1280, jpegQuality: 0.8, requireFrontmost: current.mode == .control, check: check)
     }
 
     /// A sharper look at part of the current observation, for reading only. It

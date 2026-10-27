@@ -1,17 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { eq, or, sql, type SQL } from "@openwork-ee/den-db/drizzle"
 import { OrganizationTable } from "@openwork-ee/den-db/schema"
-import { readOrganizationMetadata } from "@openwork/types/den/managed-models-policy"
 import { z } from "zod"
 import { db } from "../db.js"
 import { getDesktopReleaseMetadata } from "../desktop-releases.js"
 import { env } from "../env.js"
-import { parseOrganizationPlan, type PlanTier } from "../entitlements.js"
-import { normalizeOrganizationMetadata } from "../organization-limits.js"
+import { adminOrganizationPlanInputSchema, setOrganizationPlanByAdmin } from "../admin-organization-plan.js"
 import { readFeatureRollouts } from "@openwork-ee/den-db/organization-features"
 import { updateFeatureRollout, updateOrganizationFeatureOverrides } from "../features.js"
 import { FEATURE_KEYS, featureAvailableOn, featureDefinition, featureDocsUrl, featureKeySchema, featureRollout, resolveFeature } from "@openwork/features"
-import { updateOrganizationMetadata } from "../organization-metadata.js"
 import { runPlatformAdminPlatformAction, runPlatformAdminServiceAction, type PlatformAdminAuditActor } from "../audit/mcp-service-audit.js"
 import { readWorkbotAdoptionReport, workbotAdoptionInputSchema } from "../workbot/adoption-report.js"
 import { assertReadOnlySql, isDatabaseTimeLimitError, withDatabaseTimeLimit } from "./admin-query-limit.js"
@@ -162,14 +159,6 @@ async function resolveOrganization(org: string): Promise<
   }
 
   throw new Error(`No organization matching "${org}"`)
-}
-
-function manualPlan(tier: PlanTier) {
-  return {
-    tier,
-    source: "manual" as const,
-    ...(tier === "enterprise" ? { grantedAt: new Date().toISOString() } : {}),
-  }
 }
 
 function toTime(value: unknown): number | null {
@@ -447,21 +436,26 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
     "den_update_org_plan",
     {
       description:
-        "Admin write tool: grant or remove organization plan access and set the member seat limit. Use tier='enterprise' to grant enterprise access.",
+        "Admin write tool: set an organization's plan (free, team or enterprise) and how many users it allows, counting pending invitations, the same control as /admin › Billing. Invitations, SSO sign-up and SCIM all enforce it unless a paid Stripe plan bills every user. Team and Enterprise may carry a display-only end date (endsAt, YYYY-MM-DD; null clears it). Never changes Stripe. Returns the resolved plan.",
       inputSchema: z.object({
         organizationId: z.string().min(1).describe("Organization id, e.g. org_..."),
         tier: z.enum(["free", "team", "enterprise"]).describe("Plan tier to set"),
-        seatLimit: z.number().int().min(1).max(100000).describe("Maximum active organization members/seats"),
+        seatLimit: z.number().int().min(1).max(100000).describe("Users allowed, counting pending invitations (at least 5; smaller values are raised to 5)"),
+        endsAt: z.string().nullable().optional().describe("Optional end date for team or enterprise, YYYY-MM-DD; display only. null clears it. Not allowed on free."),
       }),
     },
-    async ({ organizationId, tier, seatLimit }) =>
+    async ({ organizationId, tier, seatLimit, endsAt }) =>
       writeScopeMissing("den_update_org_plan") ?? run(async () => {
         if (!isOrganizationId(organizationId)) {
           throw new Error("Invalid organization id")
         }
+        const input = adminOrganizationPlanInputSchema.safeParse({ tier, seatLimit, endsAt })
+        if (!input.success) {
+          throw new Error(input.error.issues[0]?.message ?? "Invalid organization plan")
+        }
 
         const existing = await db
-          .select({ id: OrganizationTable.id, name: OrganizationTable.name, slug: OrganizationTable.slug, metadata: OrganizationTable.metadata })
+          .select({ id: OrganizationTable.id, name: OrganizationTable.name, slug: OrganizationTable.slug })
           .from(OrganizationTable)
           .where(eq(OrganizationTable.id, organizationId))
           .limit(1)
@@ -471,19 +465,7 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
           throw new Error(`No organization found for ${organizationId}`)
         }
 
-        const metadata = await runPlatformAdminServiceAction("organization.plan.set", requireAdmin(), organization, () => updateOrganizationMetadata(organizationId, (current) => {
-          const normalized = normalizeOrganizationMetadata(current).metadata
-          const plan = { ...readOrganizationMetadata(current.plan), ...manualPlan(tier) }
-          if (tier !== "enterprise") delete plan.grantedAt
-          return {
-            ...normalized,
-            plan,
-            limits: {
-              ...normalized.limits,
-              members: seatLimit,
-            },
-          }
-        }))
+        const plan = await runPlatformAdminServiceAction("organization.plan.set", requireAdmin(), organization, () => setOrganizationPlanByAdmin(organizationId, input.data))
 
         return {
           ok: true,
@@ -491,8 +473,8 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
             id: organization.id,
             name: organization.name,
             slug: organization.slug,
-            plan: parseOrganizationPlan(metadata),
-            seatLimit,
+            plan,
+            seatLimit: plan.seats ?? plan.userLimit ?? input.data.seatLimit,
           },
         }
       }),
@@ -530,6 +512,7 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
           organizationId,
           changes: { [capability]: enabled },
           source: "platform",
+          setByUserId: requireAdmin().userId,
         }))
         return {
           ok: true,
@@ -561,6 +544,8 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
             return {
               key,
               label: definition.label,
+              category: definition.category,
+              added: definition.added,
               author: definition.author,
               docsUrl: featureDocsUrl(key),
               deployments: definition.deployments,
@@ -590,7 +575,7 @@ export function registerAdminMcpTools(server: McpServer, admin: AdminToolCaller 
         if (!featureAvailableOn(feature, env.features.deployment)) throw new Error(`${feature} is not part of this deployment.`)
         // Deployment-wide: no organization's data changes, so platform evidence only.
         const rollouts = await runPlatformAdminPlatformAction("feature.rollout.set", requireAdmin(), { type: "feature", id: feature }, () =>
-          updateFeatureRollout({ key: feature, enabled, killed, defaultEnabled: featureDefinition(feature).default }))
+          updateFeatureRollout({ key: feature, enabled, killed, defaultEnabled: featureDefinition(feature).default, updatedByUserId: requireAdmin().userId }))
         return { ok: true, feature, ...featureRollout(feature, rollouts) }
       }),
   )

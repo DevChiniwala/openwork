@@ -21,18 +21,18 @@ type Tool = {
 };
 type Context = CloudSkillContext & {
   location?: { directory?: string };
-  options: { url: string; token: string; browser?: { url: string; token: string } };
+  options: { url: string; token: string; codeMode?: boolean; browser?: { url: string; token: string } };
   tool: { transform(callback: (editor: { add(tool: Tool): void }) => void): Promise<{ dispose(): Promise<void> }> };
 };
 
 // Separate credentials authorize app reads, sidebar group changes, Drive
-// file transfers and Outlook drafts the person approves, and conversation-scoped browser and
+// file transfers and Gmail or Outlook drafts the person approves, and conversation-scoped browser and
 // computer operations. Neither grants arbitrary host APIs or other OpenWork
 // app commands.
 export default {
   id: "openwork.context",
   async setup(context: Context) {
-    // The host asks the person in this tool call's chat before a Drive change or an Outlook draft.
+    // The host asks the person in this tool call's chat before a Drive change or a Gmail or Outlook draft.
     const driveCall = async (name: string, input: unknown, call: ToolCall, failure: string) => {
       const response = await fetch(context.options.url, {
         method: "POST", redirect: "error", signal: call.signal,
@@ -60,12 +60,13 @@ export default {
             type: "object", properties: { id: { type: "string" }, args: { type: "object", additionalProperties: true } },
             required: ["id"], additionalProperties: false,
           },
-          options: { codemode: false },
+          options: { codemode: context.options.codeMode === true },
           async execute(input, call) {
+            call.signal.throwIfAborted();
             const response = await fetch(context.options.url, {
               method: "POST", redirect: "error", signal: call.signal,
               headers: { Authorization: `Bearer ${context.options.token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ name, input, sessionId: call.sessionID }),
+              body: JSON.stringify({ name, input, sessionId: call.sessionID, ...(context.options.codeMode === true ? { codeMode: true } : {}) }),
             });
             if (!response.ok) throw new Error(`OpenWork ${name === "openwork_execute" ? "command" : "read"} failed (${response.status})`);
             return { content: [{ type: "text", text: await response.text() }] };
@@ -80,6 +81,17 @@ export default {
         }, required: ["path"], additionalProperties: false },
         options: { codemode: false },
         execute: (input, call) => driveCall("openwork_drive_upload", input, call, "Drive upload failed"),
+      });
+      addProviderSafeTool(editor, {
+        name: "openwork_gmail_draft",
+        description: "Create a Gmail draft, or a reply on a Gmail thread, with workspace files attached through OpenWork Cloud, outside model context. Use this when the user asks to email or reply with local files from Gmail. to, cc and bcc are comma-separated addresses; a reply passes the thread's threadId and keeps its subject. Up to ten files, 4 MiB in all; paths are workspace-relative or absolute under an authorized workspace root. connectionId (google-workspace or emc_...) selects a Google account. The person approves each draft in the chat first, and it is never sent. Never retry an unconfirmed draft automatically.",
+        input: { type: "object", properties: {
+          to: { type: "string" }, cc: { type: "string" }, bcc: { type: "string" }, subject: { type: "string" }, body: { type: "string" }, threadId: { type: "string" },
+          connectionId: { type: "string", pattern: "^(google-workspace|emc_[A-Za-z0-9]+)$" },
+          paths: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 10 },
+        }, required: ["to", "subject", "body", "paths"], additionalProperties: false },
+        options: { codemode: false },
+        execute: (input, call) => driveCall("openwork_gmail_draft", input, call, "Gmail draft failed"),
       });
       addProviderSafeTool(editor, {
         name: "openwork_outlook_draft",

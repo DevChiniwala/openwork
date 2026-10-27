@@ -228,3 +228,37 @@ test("Computer asks to reconnect for other desktop failures", async t => {
   // Other runner codes, including ones this Workbot doesn't know, keep the reconnect message.
   assert.deepEqual(await response.json(), { error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." })
 })
+
+test("Opening the full view resumes a paused computer, but the chat's glimpse leaves it paused", async t => {
+  const signed = member("paused")
+  const connected = { state: "connected", url: "wss://viewer.example.test/vnc/synthetic", expiresAt: Date.now() + 60_000, paused: false }
+  let paused = true
+  const viewers: unknown[] = []
+  const actions: string[] = []
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    const parsed = new URL(url instanceof Request ? url.url : url)
+    if (parsed.pathname.endsWith("/desktop/viewer")) {
+      viewers.push(JSON.parse(String(init?.body)))
+      return Response.json(paused ? { state: "paused" } : connected)
+    }
+    if (parsed.pathname.endsWith("/desktop/action")) {
+      actions.push((JSON.parse(String(init?.body)) as { action: string }).action)
+      paused = false
+      return Response.json({ ok: true })
+    }
+    if (init?.method === "PUT") return Response.json({ id: parsed.pathname.split("/").at(-1) })
+    return Response.json({ turns: [], messages: [], finalAssistantText: "" })
+  })
+  const app = new Hono<AppEnv>()
+  registerWorkbotRoutes(app, {
+    config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => signed.den },
+    member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
+  })
+  const open = (body: unknown) => app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  assert.deepEqual(await (await open({ view: "browser" })).json(), { state: "paused" })
+  assert.deepEqual(actions, [])
+  assert.deepEqual(await (await open({ view: "browser", wake: true })).json(), connected)
+  assert.deepEqual(actions, ["resume"])
+  // The runner gets the view it always did; waking is Workbot's step.
+  assert.deepEqual(viewers.at(-1), { view: "browser", control: false, origin: "http://localhost:3020" })
+})

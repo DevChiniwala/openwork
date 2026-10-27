@@ -265,6 +265,7 @@ const computerControl = createComputerControl({
         const saved = JSON.parse(await readFile(computerTargetsPath(), "utf8"));
         return {
           targets: saved?.targets && typeof saved.targets === "object" ? saved.targets : {},
+          ...(typeof saved?.computer === "string" ? { computer: saved.computer } : {}),
         };
       } catch { return { targets: {} }; }
     },
@@ -2027,6 +2028,10 @@ const desktopCommandHandlers = {
       assertComputerSender(event);
       return computerControl.snapshot({ sessionId: String(sessionId ?? "") });
   },
+  "computerStatus": async (event) => {
+      assertComputerSender(event);
+      return computerControl.status();
+  },
   "computerPresentation": async (event, sessionId, visible) => {
       assertComputerSender(event);
       return computerControl.presentation({ sessionId: String(sessionId ?? ""), visible: visible === true });
@@ -2048,9 +2053,9 @@ const desktopCommandHandlers = {
       assertComputerSender(event);
       await computerControl.dismissSetup({ setupId });
   },
-  "computerChoose": async (event, input) => {
+  "computerChoose": async (event, targetId) => {
       assertComputerSender(event);
-      return computerControl.choose({ sessionId: String(input?.sessionId ?? ""), targetId: String(input?.targetId ?? "") });
+      return computerControl.chooseComputer({ targetId: String(targetId ?? "") });
   },
   "computerHalt": async (event, sessionId) => {
       assertComputerSender(event);

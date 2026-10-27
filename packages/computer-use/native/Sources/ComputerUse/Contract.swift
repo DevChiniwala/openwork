@@ -260,6 +260,22 @@ enum Geometry {
     }
 }
 
+enum ObservationPreparation {
+    @MainActor static func capture<Value>(mode: AccessMode, check: () throws -> Void,
+        focus: () async throws -> Void, read: () async throws -> Value) async throws -> Value {
+        try check()
+        // A control observation must show the same active window that will
+        // receive input. Observe/assist reads must not acquire keyboard focus.
+        if mode == .control {
+            try await focus()
+            try check()
+        }
+        let value = try await read()
+        try check()
+        return value
+    }
+}
+
 struct ObservationLease {
     let id: String
     let createdAt: TimeInterval
@@ -321,6 +337,17 @@ enum InputDispatch {
             try await pace()
         }
         try Task.checkCancellation(); try check()
+    }
+    @MainActor static func pointerDown(check: () throws -> Void, validate: () throws -> Void,
+        move: () throws -> Void, down: () throws -> Void,
+        pace: () async throws -> Void = { try await Task.sleep(nanoseconds: 20_000_000) }) async throws {
+        try Task.checkCancellation(); try check(); try validate()
+        // Custom canvases can use their last mouse-move position when handling
+        // button-down. Establish that position with the same scoped event path.
+        try move()
+        try await pace()
+        try Task.checkCancellation(); try check(); try validate(); try check()
+        try down()
     }
     static func pair(check: () throws -> Void, down: () -> Void, up: () -> Void) throws {
         try Task.checkCancellation(); try check()

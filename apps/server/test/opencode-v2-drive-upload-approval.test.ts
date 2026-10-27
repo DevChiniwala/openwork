@@ -93,9 +93,9 @@ test("a declined, pre-allowed, blocked or unaskable v2 Drive upload sends nothin
   assert.deepEqual([unaskable.asked, unaskable.uploads], [[], []]);
 });
 
-test("the engine asks before every context-tool Drive write and Outlook draft instead of allowing it by default", () => {
+test("the engine asks before every context-tool Drive write and Gmail or Outlook draft instead of allowing it by default", () => {
   const rendered = renderOpencodeV2Config({ providers: [], skills: [], contextPluginDirectory: "/plugins/context", contextTools: { url: "http://127.0.0.1:1/read", token: "t" } });
-  assert.deepEqual(rendered.permissions, ["drive_upload_file", "drive_pull_file", "drive_push_file", "outlook_create_draft_with_attachments"].map(action => ({ action, resource: "*", effect: "ask" })));
+  assert.deepEqual(rendered.permissions, ["drive_upload_file", "drive_pull_file", "drive_push_file", "gmail_create_draft_with_attachments", "outlook_create_draft_with_attachments"].map(action => ({ action, resource: "*", effect: "ask" })));
   assert.equal(renderOpencodeV2Config({ providers: [], skills: [] }).permissions, undefined);
 });
 
@@ -181,18 +181,21 @@ test("a declined, pre-allowed, blocked, unaskable or malformed v2 Drive push or 
   }
 });
 
-async function outlookDraftThroughBridge(answer: Answer, caller: Record<string, unknown> | null = { directory: "/work/acme", messageId: "msg_one", callId: "call_one", agent: "build" }) {
+const gmailDraft = { name: "openwork_gmail_draft", input: { to: "blair@example.test", subject: "Proposal", body: "Attached.", paths: ["proposal.docx"], connectionId: "google-workspace" } };
+const outlookDraft = { name: "openwork_outlook_draft", input: { to: ["blair@example.test"], subject: "Proposal", body: "Attached.", paths: ["proposal.docx"] } };
+
+async function draftThroughBridge(draft: { name: string; input: unknown }, answer: Answer, caller: Record<string, unknown> | null = { directory: "/work/acme", messageId: "msg_one", callId: "call_one", agent: "build" }) {
   const engine = await fakeEngine(answer);
   const drafts: unknown[] = [];
   const bridge = await createV2ContextBridge(async (path, init) => {
     assert.equal(path, "/experimental/extensions/call");
     drafts.push(JSON.parse(String(init?.body)));
-    return { ok: true, draft: { id: "draft-1" } };
+    return { ok: true, draftId: "draft-1" };
   }, () => engine.connection);
   try {
     const response = await fetch(bridge.url, {
       method: "POST", headers: { Authorization: `Bearer ${bridge.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "openwork_outlook_draft", input: { to: ["blair@example.test"], subject: "Proposal", body: "Attached.", paths: ["proposal.docx"] }, sessionId: "ses_one", ...(caller ? { caller } : {}) }),
+      body: JSON.stringify({ ...draft, sessionId: "ses_one", ...(caller ? { caller } : {}) }),
     });
     return { status: response.status, body: await response.json() as Record<string, unknown>, drafts, asked: engine.asked };
   } finally {
@@ -201,8 +204,22 @@ async function outlookDraftThroughBridge(answer: Answer, caller: Record<string, 
   }
 }
 
+test("a v2 Gmail draft with attachments is created only after the person allows it in the calling chat", async () => {
+  const result = await draftThroughBridge(gmailDraft, { effect: "ask", reply: "once" });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.deepEqual(result.asked.map(request => request.body), [{
+    action: "gmail_create_draft_with_attachments", resources: ["proposal.docx"], save: [], agent: "build",
+    metadata: { paths: ["proposal.docx"], subject: "Proposal", target: "Gmail draft to blair@example.test", connectionId: "google-workspace" },
+    source: { type: "tool", messageID: "msg_one", id: "call_one" },
+  }]);
+  assert.deepEqual(result.drafts, [{
+    extensionId: "openwork-cloud-uploads", action: "gmail_create_draft_with_attachments",
+    args: { to: "blair@example.test", subject: "Proposal", body: "Attached.", paths: ["proposal.docx"], connectionId: "google-workspace" }, context: { directory: "/work/acme" },
+  }]);
+});
+
 test("a v2 Outlook draft with attachments is created only after the person allows it in the calling chat", async () => {
-  const result = await outlookDraftThroughBridge({ effect: "ask", reply: "once" });
+  const result = await draftThroughBridge(outlookDraft, { effect: "ask", reply: "once" });
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.deepEqual(result.asked.map(request => request.body), [{
     action: "outlook_create_draft_with_attachments", resources: ["proposal.docx"], save: [], agent: "build",
@@ -215,18 +232,20 @@ test("a v2 Outlook draft with attachments is created only after the person allow
   }]);
 });
 
-test("a declined, pre-allowed, blocked or unaskable v2 Outlook draft creates nothing", async () => {
-  for (const [answer, message] of [
-    [{ effect: "ask", reply: "reject" }, /^You declined this draft, so no draft was created\.$/],
-    [{ effect: "allow" }, /not shown to you for approval/],
-    [{ effect: "deny" }, /do not allow this draft/],
-  ] as const) {
-    const result = await outlookDraftThroughBridge(answer);
-    assert.equal(result.status, 400);
-    assert.match(String(result.body.error), message);
-    assert.deepEqual(result.drafts, []);
+test("a declined, pre-allowed, blocked or unaskable v2 Gmail or Outlook draft creates nothing", async () => {
+  for (const draft of [gmailDraft, outlookDraft]) {
+    for (const [answer, message] of [
+      [{ effect: "ask", reply: "reject" }, /^You declined this draft, so no draft was created\.$/],
+      [{ effect: "allow" }, /not shown to you for approval/],
+      [{ effect: "deny" }, /do not allow this draft/],
+    ] as const) {
+      const result = await draftThroughBridge(draft, answer);
+      assert.equal(result.status, 400, draft.name);
+      assert.match(String(result.body.error), message);
+      assert.deepEqual(result.drafts, []);
+    }
+    const unaskable = await draftThroughBridge(draft, { effect: "ask", reply: "once" }, null);
+    assert.match(String(unaskable.body.error), /cannot ask for your approval, so no draft was created/);
+    assert.deepEqual([unaskable.asked, unaskable.drafts], [[], []]);
   }
-  const unaskable = await outlookDraftThroughBridge({ effect: "ask", reply: "once" }, null);
-  assert.match(String(unaskable.body.error), /cannot ask for your approval, so no draft was created/);
-  assert.deepEqual([unaskable.asked, unaskable.drafts], [[], []]);
 });

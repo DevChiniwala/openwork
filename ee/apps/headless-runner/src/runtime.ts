@@ -84,10 +84,20 @@ export async function createRuntime(config: Config, store: Store, stepHost?: Ste
   let computer: SessionComputer | undefined
   if (config.computer) {
     const { Computers, createComputerProvider } = await import("@openwork-ee/headless-computer")
-    computer = new Computers({ ...config.computer, provider: await createComputerProvider(config.computer) }, {
+    const computers = new Computers({
+      ...config.computer, provider: await createComputerProvider(config.computer),
+      pauses: { set: (sessionId, dueAt) => store.setComputerPause(sessionId, dueAt), clear: (sessionId) => store.clearComputerPause(sessionId) },
+    }, {
       files,
       readFile: (file, counts) => readToolFile({ name: file.name, mimeType: mediaTypeFor(file.name), data: Buffer.from(file.bytes).toString("base64") }, counts),
     })
+    // Idle computers pause from the stored time, so a restart or a recycled cell isolate can't leave one running.
+    background.register({
+      name: "computer-pause",
+      nextAt: () => store.nextComputerPauseAt(),
+      run: async () => { for (const sessionId of store.dueComputerPauses(Date.now())) await computers.pauseIdle(sessionId) },
+    })
+    computer = computers
   }
   store.onChange = (sessionId, messageId, status) => events.emit(sessionId, { type: "changed", messageId, ...(status ? { status } : {}) })
   // A native Workers fetch needs its global receiver; model adapters invoke their injected fetch as a method.

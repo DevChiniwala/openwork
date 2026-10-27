@@ -472,14 +472,18 @@ final class MacAccessibility {
     /// `region` is window-local points (top-left origin); nil captures the whole window.
     /// `jpegQuality` encodes JPEG instead of PNG; `maxLongSide` caps the image's longer edge.
     func capture(target: WindowTarget, app: AppIdentity, bounds: CGRect, state: WindowState, region: CGRect? = nil, maxScale: CGFloat = 1,
-                 maxLongSide: CGFloat = 1600, jpegQuality: CGFloat? = nil, check: () throws -> Void = {}) async throws -> (Data, Int, Int, Int64) {
+                 maxLongSide: CGFloat = 1600, jpegQuality: CGFloat? = nil, requireFrontmost: Bool = false,
+                 check: () throws -> Void = {}) async throws -> (Data, Int, Int, Int64) {
         try state.requireCapture()
         guard Geometry.valid(bounds) else { throw UseError("invalid_geometry", "The window has invalid capture bounds.", next: "observe") }
         try Task.checkCancellation(); try check()
         let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
         try check()
         guard let window = content.windows.first(where: { $0.windowID == target.id && $0.owningApplication?.processID == app.pid }),
-              window.frame == bounds else { throw UseError("stale_observation", "The selected window moved before capture.", next: "observe") }
+              window.frame == bounds,
+              try validate(target, app: app, requireFrontmost: requireFrontmost) == bounds else {
+            throw UseError("stale_observation", "The selected window moved before capture.", next: "observe")
+        }
         let config = SCStreamConfiguration()
         let source = region ?? CGRect(origin: .zero, size: bounds.size)
         guard Geometry.valid(source), CGRect(origin: .zero, size: bounds.size).contains(source) else {
@@ -496,7 +500,8 @@ final class MacAccessibility {
         try Task.checkCancellation(); try check()
         let after = try await read(target, check: check)
         try after.requireCapture()
-        guard try captureDigest(state) == captureDigest(after), try validate(target, app: app) == bounds else {
+        guard try captureDigest(state) == captureDigest(after),
+              try validate(target, app: app, requireFrontmost: requireFrontmost) == bounds else {
             throw UseError("stale_observation", "The window's content, focus or privacy masks changed during capture.", next: "observe")
         }
         try check()

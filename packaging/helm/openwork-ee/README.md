@@ -409,13 +409,13 @@ of truth.
 The `config.features` block and values schema are generated: run
 `pnpm features:sync` after changing the registry.
 
-### Automations rollout
+### Automations settings
 
 Automations are on by default. Organization admins choose in **Settings ›
 Automations** whether members can use Desktop Automations (run on a member's
 signed-in desktop) and Cloud Automations (run headlessly in OpenWork Cloud;
-these also need the headless runner, `DEN_HEADLESS_RUNNER_URL`). That setting
-is behind the `organizationAutomationSettings` rollout.
+these also need the headless runner, `DEN_HEADLESS_RUNNER_URL`). These settings
+are generally available on cloud and self-hosted deployments.
 
 Availability and server shutdown remain separate so a Den upgrade cannot remove
 routes beneath an older published Desktop:

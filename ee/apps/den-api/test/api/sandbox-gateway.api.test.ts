@@ -26,7 +26,7 @@ test("a new sandbox gets the workshop connectors and a Luna AI Gateway provider 
   assert.deepEqual(field(listed.body, "defaults"), { workplaceUrl: "https://workplace.example.test", gatewayModels: ["gpt-6-luna"], gatewayProviderId: "openai" }, summary(listed))
 
   const created = await den.request(admin.token, "POST", "/v1/admin/sandbox-orgs", { body: {
-    name: "Gateway sandbox", connectorBaseUrl: "https://workplace.example.test", days: 7, memberLimit: 5, allowedEmailDomains: [], extraFreeAutoUsd: null,
+    name: "Gateway sandbox", connectorBaseUrl: "https://workplace.example.test", days: 7, memberLimit: 5, allowedEmailDomains: [],
   } })
   assert.equal(created.status, 200, summary(created))
   const sandbox = field(created.body, "sandbox")

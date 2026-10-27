@@ -6,6 +6,8 @@ import {
 import {
   AUTOMATION_MODEL_ATTENTION_CAPABILITY,
   AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER,
+  AUTOMATION_SCHEDULE_KINDS,
+  AUTOMATION_SCHEDULE_KINDS_HEADER,
 } from "@openwork/types/automations";
 import type { GatewayProviderSummary } from "@openwork/types/den/gateway";
 import type { DesktopStartupReport } from "@openwork/types/den/diagnostics";
@@ -2868,6 +2870,8 @@ async function requestJsonRaw<T>(
   }
   if (options.automationModelAttentionCapable) {
     headers[AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER] = AUTOMATION_MODEL_ATTENTION_CAPABILITY;
+    // Without it Den treats this desktop as a release that reads only once/daily/weekly schedules.
+    headers[AUTOMATION_SCHEDULE_KINDS_HEADER] = AUTOMATION_SCHEDULE_KINDS.join(",");
   }
   if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";

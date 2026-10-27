@@ -1631,6 +1631,7 @@ export default {
   "session.remote_task_earlier": "Show earlier messages",
   "session.remote_task_read_failed": "Couldn't load the conversation",
   "session.remote_task_disabled": "Tasks on other computers are turned off.",
+  "session.remote_task_thread_view_disabled": "Opening a task's conversation is turned off.",
   "session.remote_task_retry": "Try again",
   "session.remote_task_steps_other": "{count} steps",
   "session.remote_task_steps_one": "1 step",

@@ -430,6 +430,11 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
         ttlMs?: number
         attachments?: string[]
         readOnly?: boolean
+        /**
+         * A read-scoped MCP token (`mcp:read`) while the session keeps its own file tools, so a background agent can
+         * keep notes in `memory/` but can't change anything through MCP. `readOnly` also removes the file tools.
+         */
+        mcpReadOnly?: boolean
         interrupt?: boolean
         execution?: "steps"
       },
@@ -444,7 +449,7 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
           messageId: input.messageId,
           ...(model ? { model } : {}),
           ...(modelAccessRequired ? { modelAccessRequired: true } : {}),
-          ...(input.readOnly ? { readOnly: true } : {}),
+          ...(input.readOnly || input.mcpReadOnly ? { readOnly: true } : {}),
         })
         const modelAccess = issued.modelAccess ?? await deps.modelAccess?.(actor, { ...(model ? { model } : {}), ...(modelAccessRequired ? { modelAccessRequired: true } : {}) })
         return { ...issued, modelAccess }

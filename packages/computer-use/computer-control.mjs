@@ -42,7 +42,7 @@ export const SCRIPT_APPS = Object.freeze(["applescript", "jxa", "blender"]);
 const setupNotFinished = (answer) => failure("not_allowed", answer === "dismissed"
   ? "The person dismissed computer setup. Nothing was dispatched. Do not ask again unless they bring it up; continue another way."
   : answer === "unavailable" ? "Computer use is not turned on in this OpenWork app. Use connected apps or the browser instead."
-  : "Computer setup did not finish in time. Nothing was dispatched. Tell the person it is waiting for the Computer card in the chat.");
+  : "Computer setup did not finish in time. Nothing was dispatched. Tell the person to finish it in Settings > Computer use, then ask again.");
 // A call made in the wrong order dispatched nothing: report it without revoking or closing anything.
 const SEQUENCE_CODES = new Set(["session_open", "session_required"]);
 const uiText = (value, limit) => typeof value === "string" && value.length <= limit;
@@ -80,7 +80,7 @@ function deadline(ms) {
  * @typedef {{ sessionId?: string }} ChatInput
  * @typedef {{ ok?: boolean, error?: { code: string, message: string }, mayHaveActed?: boolean, [key: string]: unknown }} ScriptResult
  * @typedef {{ id: string, reason: "setup" | "script", computer: string, placement: "local" | "remote", detail?: string, appId?: string, purpose?: string, script?: { app: string, code: string } }} ComputerRequest
- * @typedef {{ targets?: Record<string, string> }} SavedChoices
+ * @typedef {{ targets?: Record<string, string>, computer?: string }} SavedChoices
  * @typedef {{
  *   callTool: (name: string, args: Record<string, unknown>, options?: { signal?: AbortSignal, timeoutMs?: number }) => Promise<ComputerResult>,
  *   notifyUi: (params: Record<string, unknown>) => Promise<void>,
@@ -102,8 +102,8 @@ function deadline(ms) {
  * Adapters are trusted main-process dependencies, never renderer or model
  * input: "This Mac" (the native helper) or "This PC" (the Windows helper), and
  * any remote computer such as a Linux VM (see computer-remote.mjs). Every
- * adapter speaks the same seven-tool contract; each chat picks one, starting on
- * this computer on a Mac or a Windows PC. connect() owns a dedicated session
+ * adapter speaks the same seven-tool contract; Settings picks one for every
+ * chat, starting on this computer on a Mac or a Windows PC. connect() owns a dedicated session
  * scope; close() MUST confirm session revocation, not merely disconnect. One
  * controller across all chats and computers, deliberately conservative.
  * @param {{
@@ -135,6 +135,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   }
   if (!targets.size) throw new Error("At least one trusted computer adapter is required.");
   const defaultTarget = [...targets.values()].find((target) => target.placement === "local") ?? [...targets.values()][0];
+  /** Before anything is chosen: this computer on a Mac or a Windows PC, an available VM elsewhere. */
+  const firstTarget = ["darwin", "win32"].includes(platform) ? defaultTarget : [...targets.values()].find((target) => target.placement === "remote") ?? defaultTarget;
   const offered = () => [...targets.values()].filter((target) => target.placement === "local" || remoteEnabled);
   /** The computer a chat really uses: its choice, unless remote computers are turned off. */
   const targetFor = (grant) => grant.adapter.placement === "remote" && !remoteEnabled ? defaultTarget : grant.adapter;
@@ -228,7 +230,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     if (!saved) {
       loadingChoices ??= Promise.resolve().then(() => standing.read()).catch(() => null).then((state) => {
         const chosen = state?.targets && typeof state.targets === "object" ? Object.entries(state.targets).filter(([id, target]) => typeof id === "string" && typeof target === "string") : [];
-        saved = { targets: new Map(chosen) };
+        saved = { targets: new Map(chosen), computer: typeof state?.computer === "string" ? state.computer : null };
       });
       await loadingChoices;
     }
@@ -239,7 +241,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       const state = await choices();
       change(state);
       state.targets = new Map([...state.targets].slice(-500));
-      await standing.write({ targets: Object.fromEntries(state.targets) });
+      await standing.write({ targets: Object.fromEntries(state.targets), ...(state.computer ? { computer: state.computer } : {}) });
     });
     remembering = result.catch(() => {});
     return result;
@@ -268,9 +270,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       const state = await choices();
       grant = grants.get(sessionId);
       if (!grant) {
-        // Each chat remembers the computer it last used; one that went away falls back to the first.
-        const preferred = ["darwin", "win32"].includes(platform) ? defaultTarget : [...targets.values()].find((target) => target.placement === "remote") ?? defaultTarget;
-        const adapter = targets.get(state.targets.get(sessionId) ?? "") ?? preferred;
+        // A chat uses the computer chosen in Settings; one that went away falls back to the first.
+        const adapter = targets.get(state.targets.get(sessionId) ?? state.computer ?? "") ?? firstTarget;
         grant = { sessionId, revision: 0, controller: new AbortController(), enabled: true, handoff: null, lastOpen: null, adapter };
         grants.set(sessionId, grant);
       }
@@ -547,6 +548,23 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         : grant.handoff ? { state: "paused", purpose: grant.handoff.task ?? "", appName: grant.handoff.appName,
           windowTitle: grant.handoff.windowTitle, reason: "You have control. Choose Continue when ready." } : null,
       ...(current?.cleanupPending ? { cleanupPending: true } : {}),
+    };
+  }
+  /** The computer every chat uses and whether it is set up, with no chat involved. */
+  async function computerStatus() {
+    if (closed || resetting) throw new Error("Computer use is stopping.");
+    const state = await choices();
+    const chosen = targets.get(state.computer ?? "") ?? firstTarget;
+    const target = chosen.placement === "remote" && !remoteEnabled ? defaultTarget : chosen;
+    const status = await readiness(target);
+    return {
+      enabled: featureEnabled,
+      entry: await permissionEntry().then(({ name, ours }) => ({ name, ours }), () => ({ name: "OpenWork", ours: false })),
+      targetId: target.id,
+      targets: offered().map(({ id, label, placement }) => ({ id, label, placement })),
+      placement: target.placement,
+      readiness: status.readiness, ...(status.permissions ? { permissions: status.permissions } : {}),
+      detail: status.detail,
     };
   }
   async function run(call, signal, limit) {
@@ -904,6 +922,27 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     },
     /** @param {ChatInput} input */
     async snapshot({ sessionId } = {}) { return view(await grantFor(sessionId), true); },
+    /** Settings: the computer chats use and its setup, without a chat. */
+    async status() { return computerStatus(); },
+    /**
+     * Settings: point every chat at this computer or a connected VM. Earlier
+     * per-chat choices are dropped, and work on another computer stops first.
+     * @param {{ targetId?: string }} input
+     */
+    async chooseComputer({ targetId } = {}) {
+      const adapter = targets.get(String(targetId ?? ""));
+      if (!adapter || !offered().includes(adapter)) throw new Error("Choose one of the listed computers.");
+      if (lease && lease.adapter !== adapter && !await cleanup(lease)) throw new Error(COMPUTER_STOP_GUIDANCE);
+      for (const grant of grants.values()) {
+        if (grant.adapter === adapter) continue;
+        advance(grant);
+        grant.adapter = adapter;
+        grant.lastOpen = null;
+        requests.get(grant.sessionId)?.wake();
+      }
+      await remember((state) => { state.targets.clear(); state.computer = adapter.id; });
+      return computerStatus();
+    },
     /**
      * Stop from the Computer view or the pill: ends this task now and keeps the
      * chat allowed for the person's next message.

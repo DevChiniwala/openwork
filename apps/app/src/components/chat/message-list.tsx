@@ -42,7 +42,7 @@ import { BackgroundTaskNotice, BackgroundTasksLabel, BackgroundTasksMessage, bac
 import { sessionBackgroundShells, useBackgroundShellStore, type BackgroundShell } from "@/react-app/domains/session/status/background-shell-store"
 import { messageAutoAccessWall } from "@/app/lib/inference-access"
 import { AutoAccessNotice } from "@/react-app/domains/cloud/auto-access-ui"
-import { OpenWorkModelsLimitCard, useUsageLimitUpgrade } from "@/react-app/domains/cloud/usage-limit-card"
+import { OpenWorkModelsLimitCard } from "@/react-app/domains/cloud/usage-limit-card"
 import type { OpenWorkModelsLimit } from "@/react-app/domains/cloud/usage-limit-state"
 import { rejectedRecoveryFromMessage } from "@/react-app/domains/session/sync/rejected-turn"
 import { replyModelLabel, replyModelProvider } from "@/react-app/domains/session/sync/reply-model"
@@ -65,6 +65,7 @@ import { TodoWriteTool } from "@/components/tools/todowrite"
 import { WebfetchTool } from "@/components/tools/webfetch"
 import { WebsearchTool } from "@/components/tools/websearch"
 import { useMessageList, useSessionErrorMessage } from "@/components/chat/message-list-provider"
+import { useOrgFeature } from "@/react-app/domains/cloud/use-org-feature"
 import { TaskSuggestions } from "@/components/chat/task-suggestions"
 import { useSessionReferencesMaybe, type SessionReferences } from "@/components/chat/session-reference-context"
 import { SessionReferenceLink } from "@/components/chat/session-reference-link"
@@ -1092,11 +1093,12 @@ const MessageComponent = React.memo(
           canRetry={isLastMessage && !isStreaming}
           technicalDetails={presentation?.technicalDetails}
           gatewayConnectUrl={presentation?.kind === "gateway-auth-required" || presentation?.kind === "provider-credentials" ? presentation.connectUrl ?? null : undefined}
+          gatewayProviderAuthError={presentation?.kind === "gateway-provider-authentication-failed" || presentation?.kind === "gateway-provider-permission-denied"}
           gatewaySelectionRequired={presentation?.kind === "gateway-selection-required"}
           changeModel={presentation !== null && ["provider-access-denied", "provider-unavailable", "provider-unreachable", "model-unavailable", "rate-limited", "conversation-too-long", "attachment-unsupported"].includes(presentation.kind)}
         />
       )
-      if (presentation?.openworkModelsLimit) return <TranscriptOpenWorkModelsLimit limit={presentation.openworkModelsLimit} fallback={errorMessage} />
+      if (presentation?.openworkModelsLimit) return <TranscriptOpenWorkModelsLimit limit={presentation.openworkModelsLimit} />
       return errorMessage
     }
 
@@ -1128,10 +1130,9 @@ const MessageComponent = React.memo(
   }
 )
 
-/** The organization used its OpenWork Models allowance: one usage-limit card when `usageLimitUpgrade` is on. */
-function TranscriptOpenWorkModelsLimit({ limit, fallback }: { limit: OpenWorkModelsLimit; fallback: React.ReactNode }) {
+/** The organization used its OpenWork Models allowance: one usage-limit card. */
+function TranscriptOpenWorkModelsLimit({ limit }: { limit: OpenWorkModelsLimit }) {
   const { sessionId } = useMessageList()
-  if (!useUsageLimitUpgrade()) return fallback
   return <div className="mx-auto w-full max-w-3xl px-2 py-2 md:px-10"><OpenWorkModelsLimitCard limit={limit} sessionId={sessionId} /></div>
 }
 
@@ -1237,16 +1238,26 @@ interface ErrorMessageProps {
    * null deep-links to Settings > AI providers instead.
    */
   gatewayConnectUrl?: string | null
+  gatewayProviderAuthError?: boolean
   gatewaySelectionRequired?: boolean
   changeModel?: boolean
 }
 
-function ErrorMessage({ error, description, showDescriptionOnResume, resumePrompt, canRetry = true, technicalDetails, gatewayConnectUrl, gatewaySelectionRequired, changeModel }: ErrorMessageProps) {
+function ErrorMessage({ error, description, showDescriptionOnResume, resumePrompt, canRetry = true, technicalDetails, gatewayConnectUrl, gatewaySelectionRequired, gatewayProviderAuthError, changeModel }: ErrorMessageProps) {
   const { onResumeInterrupted, dispatchAction, sessionId } = useMessageList()
+  const gatewayProviderAuthEnabled = useOrgFeature("gatewayProviderAuthErrors")
+  const useGatewayProviderAuthCopy = gatewayProviderAuthError && gatewayProviderAuthEnabled
   const selection = error?.includes("gateway_selection_required") ? presentOpencodeSessionError(error) : null
-  const displayError = selection?.title ?? error
-  const displayDescription = selection?.description ?? description
+  const displayError = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? "Check your model connection"
+    : selection?.title ?? error
+  const displayDescription = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? "Update your connection in model settings."
+    : selection?.description ?? description
   const displayDetails = selection?.technicalDetails ?? technicalDetails
+  const displayTechnicalDetails = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? displayDetails?.split("\n").filter((line) => !line.startsWith("Request ID:")).join("\n")
+    : displayDetails
   const resumable = Boolean(resumePrompt && onResumeInterrupted)
   return (
     <TaskRecovery title={displayError ?? "Task failed"} state={resumable ? "paused" : "failed"}
@@ -1254,16 +1265,18 @@ function ErrorMessage({ error, description, showDescriptionOnResume, resumePromp
       description={showDescriptionOnResume && displayDescription
         ? <span data-testid="session-error-interruption-warning">{displayDescription}</span>
         : !resumePrompt ? displayDescription : null}
-      technicalDetails={displayDetails}
+      technicalDetails={useGatewayProviderAuthCopy ? displayDetails : displayTechnicalDetails}
       onRetry={canRetry && resumable && resumePrompt ? () => onResumeInterrupted?.(resumePrompt) : undefined}
       retryTestId="session-error-resume"
-      actions={gatewaySelectionRequired || selection || changeModel || gatewayConnectUrl !== undefined ? <>
+      actions={gatewaySelectionRequired || selection || changeModel || gatewayConnectUrl !== undefined || (gatewayProviderAuthError && !gatewayProviderAuthEnabled) ? <>
         {gatewaySelectionRequired || selection ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-selection"
           onClick={() => openAlternativeModelPicker(sessionId)}>
           Choose group and credential set
         </Button> : null}
         {changeModel && !gatewaySelectionRequired && !selection ? <Button variant="ghost" size="xs"
           onClick={() => openAlternativeModelPicker(sessionId)}>Change model</Button> : null}
+        {gatewayProviderAuthError && !gatewayProviderAuthEnabled ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-connect"
+          onClick={() => dispatchAction({ target: "settings", action: "open", section: "providers" })}>Connect</Button> : null}
         {gatewayConnectUrl !== undefined ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-connect"
           onClick={() => dispatchAction({ target: "settings", action: "open", section: "providers" })}>Connect</Button> : null}
       </> : null} />
@@ -1495,7 +1508,7 @@ function MessageGroup({
   isStreaming,
   newestAppCallIds,
 }: AssistantMessageGroupProps) {
-  const { onForkAtMessage, forkingMessageId, showThinking, readOnly, getConnectionDecision, resolveReplyModelTitle } = useMessageList()
+  const { onForkAtMessage, forkingMessageId, showThinking, readOnly, getConnectionDecision, resolveReplyModelTitle, autoRoutes, resolveAutoRouteName } = useMessageList()
   const connectionCardParts = React.useMemo(() => connectionCardPartIds(items, getConnectionDecision), [items, getConnectionDecision])
   const newestAppCalls = React.useMemo(() => new Set(newestAppCallIds.split("\n")), [newestAppCallIds])
   const lastItem = items[items.length - 1]
@@ -1536,8 +1549,9 @@ function MessageGroup({
   }
   // Native turns can end with a metadata-free completion marker. Keep the
   // latest known model within this turn rather than losing the answer's name.
-  const replyModelMessage = items.findLast(item => item.message.role === "assistant" && replyModelLabel(item.message, resolveReplyModelTitle))?.message
-  const resolvedReplyModel = replyModelMessage ? replyModelLabel(replyModelMessage, resolveReplyModelTitle) : null
+  const replyModelMessage = items.findLast(item => item.message.role === "assistant" && replyModelLabel(item.message, resolveReplyModelTitle, autoRoutes, resolveAutoRouteName))?.message
+  const resolvedReplyModel = replyModelMessage ? replyModelLabel(replyModelMessage, resolveReplyModelTitle, autoRoutes, resolveAutoRouteName) : null
+  const replyModelProviderId = replyModelMessage ? replyModelProvider(replyModelMessage, autoRoutes) : undefined
   const mcpAppParts = collectMcpAppParts(items)
 
   // Leading messages without prose (tool/reasoning steps) render inline and
@@ -1762,7 +1776,7 @@ function MessageGroup({
           >
             <span className="sr-only">Replied with </span>
             <span aria-hidden="true" className="flex size-3 shrink-0 items-center justify-center">
-              {replyModelMessage && replyModelProvider(replyModelMessage) ? <ProviderIcon providerId={replyModelProvider(replyModelMessage)} size={12} /> : null}
+              {replyModelProviderId ? <ProviderIcon providerId={replyModelProviderId} size={12} /> : null}
             </span>
             <span className="truncate">{resolvedReplyModel}</span>
           </span> : null}

@@ -9,7 +9,7 @@ import { ApiError } from "./errors.js";
 import { hasV1Chat, hasV1ChatsSince, opencodeV1DatabasePath, readMigrationSessions, runOpencodeV1HistoryMigration, snapshotV1Database, type EngineV2MigrationStatus } from "./opencode-v2-migration.js";
 import { executionRules } from "./managed-policy-rules.js";
 import { agentPermissionEngineMcpDenial, agentPermissionRulesOf } from "./agent-permission-engine.js";
-import { registeredOrganizationMcpServers } from "./connect-mcp-server-catalog.js";
+import { CONNECT_MCP_APP_HOST_CAPABILITY_HEADER, registeredOrganizationMcpServers } from "./connect-mcp-server-catalog.js";
 import { waitForEngineSkillChanges } from "./opencode-v2-skill-settle.js";
 import { MCP_READINESS_RPC_ID } from "./opencode-v2-mcp-readiness.js";
 import { execFile } from "node:child_process";
@@ -109,8 +109,7 @@ export interface EngineV2PreviewStatus {
   skippedProviderIds: string[];
   /**
    * Why each provider in `skippedProviderIds` is not on this engine, including
-   * providers connected on this computer that never reached the mirror. Only
-   * present while the `localProviderMirror` rollout is on.
+   * providers connected on this computer that never reached the mirror.
    */
   skippedProviders?: EngineV2SkippedProvider[];
   catalogModelIds: string[];
@@ -146,8 +145,6 @@ export interface EngineV2Preview {
   connection(): { url: string; username: string; password: string } | undefined;
   ensureWorkspaceReady(directory: string): Promise<void>;
   refreshProviders(): Promise<void>;
-  /** Mirror again when the `localProviderMirror` rollout changed since the last mirror, so turning it off applies without a restart. */
-  recheckLocalProviderMirror(): Promise<void>;
   setLiveProviderSync(enabled: boolean): Promise<void>;
   /**
    * Reconcile a folder's MCP connections with the engine: register new or
@@ -540,6 +537,20 @@ export async function waitForEngineV2Catalog(
   };
 }
 
+/**
+ * The v2 engine lists organization skills as native skills
+ * (openwork-cloud-skills-v2), so Den need not repeat them in Connect's server
+ * instructions. Den only drops that list when it also serves native delivery.
+ */
+const CONNECT_NATIVE_SKILLS_CAPABILITY = "native-skills-v1";
+
+function withClientCapability(headers: Record<string, string>, capability: string): Record<string, string> {
+  const key = Object.keys(headers).find((name) => name.toLowerCase() === CONNECT_MCP_APP_HOST_CAPABILITY_HEADER)
+    ?? CONNECT_MCP_APP_HOST_CAPABILITY_HEADER;
+  const existing = (headers[key] ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  return existing.includes(capability) ? headers : { ...headers, [key]: [...existing, capability].join(",") };
+}
+
 /** Translate only fields supported by the pinned v2 MCP API. */
 export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
@@ -562,7 +573,9 @@ export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string,
     ...(typeof value.oauth.clientSecret === "string" ? { client_secret: value.oauth.clientSecret } : {}),
     ...(typeof value.oauth.scope === "string" ? { scope: value.oauth.scope } : {}),
   } : value.oauth === false ? false : undefined;
-  return { type: "remote", url: value.url, headers: strings(value.headers),
+  const headers = strings(value.headers);
+  return { type: "remote", url: value.url,
+    headers: name === "openwork-cloud" ? withClientCapability(headers, CONNECT_NATIVE_SKILLS_CAPABILITY) : headers,
     // Only the managed Connect endpoint needs modern discovery and per-request
     // clientInfo. Keep third-party servers on the engine's legacy default.
     ...(name === "openwork-cloud" ? { protocol: "auto" } : {}),
@@ -603,22 +616,15 @@ export async function resolveLiveProviderSyncForEngineStart(resolve?: () => Prom
   catch { return false; }
 }
 
-/** A rollout that cannot be read is off: the mirror keeps its older behavior. */
-export async function resolveLocalProviderMirror(resolve?: () => Promise<boolean>): Promise<boolean> {
-  try { return await resolve?.() === true; }
-  catch { return false; }
-}
-
 export function createEngineV2Preview(options: {
   config: ServerConfig;
   env?: Pick<EnvService, "list" | "onChange">;
   deferStart?: boolean;
   hostReadRequest?: (path: string, init?: RequestInit) => Promise<unknown>;
+  resolveNativeAffordanceCodeMode?: () => Promise<boolean>;
   providerSession?: () => CloudProviderDenSession | null;
   /** Fresh Den resolution on every child start, independent of the cloud sync timer. */
   resolveLiveProviderSync?: () => Promise<boolean>;
-  /** The `localProviderMirror` rollout, read on every mirror. Missing, unreachable or signed out means off. */
-  resolveLocalProviderMirror?: () => Promise<boolean>;
   waits?: Partial<typeof ENGINE_V2_UPKEEP_WAITS>;
   /** Same running-task probe used by the interactive migration route; unknown is not idle. */
   autoUpgradeIdle?: () => Promise<boolean>;
@@ -676,9 +682,7 @@ export function createEngineV2Preview(options: {
   let binSource: EngineV2PreviewStatus["binSource"];
   let mirroredProviderIds: string[] = [];
   let skippedProviderIds: string[] = [];
-  let skippedProviders: EngineV2SkippedProvider[] | undefined;
-  // The `localProviderMirror` value the last mirror ran with.
-  let appliedLocalProviderMirror: boolean | undefined;
+  let skippedProviders: EngineV2SkippedProvider[] = [];
   let currentCatalogModelIds: string[] = [];
   let lastMirroredAt: string | undefined;
   let lastError: string | undefined;
@@ -869,7 +873,7 @@ export function createEngineV2Preview(options: {
       ...(binSource === undefined ? {} : { binSource }),
       mirroredProviderIds: [...mirroredProviderIds],
       skippedProviderIds: [...skippedProviderIds],
-      ...(skippedProviders === undefined ? {} : { skippedProviders: skippedProviders.map(provider => ({ ...provider })) }),
+      skippedProviders: skippedProviders.map(provider => ({ ...provider })),
       catalogModelIds: [...currentCatalogModelIds],
       ...(lastMirroredAt === undefined ? {} : { lastMirroredAt }),
       ...(lastError === undefined ? {} : { lastError }),
@@ -897,8 +901,6 @@ export function createEngineV2Preview(options: {
   }
 
   async function pushAndConfirmProviders(active: ManagedOpencodeV2Server, pushed: () => void, discovered: () => void): Promise<void> {
-    const mirrorLocal = await resolveLocalProviderMirror(options.resolveLocalProviderMirror);
-    appliedLocalProviderMirror = mirrorLocal;
     const globalRuntime = await readGlobalRuntimeOpencodeConfig(config);
     const configured = runtimeProviderMap(globalRuntime);
     // Same list v1 receives as `disabled_providers` (e.g. a disconnected
@@ -912,7 +914,7 @@ export function createEngineV2Preview(options: {
     const localKeys = allowsProvider
       ? new Map([...localAuth.apiKeys].filter(([id]) => allowsProvider(id)))
       : localAuth.apiKeys;
-    const local = await localProviderDefinitions(config, localAuth, configured, { normalize: mirrorLocal, allows: allowsProvider });
+    const local = await localProviderDefinitions(config, localAuth, configured, { allows: allowsProvider });
     const blockedConfigured = Object.keys(configured).filter(id => allowsProvider && !allowsProvider(id));
     const combinedProviders = { ...local.providers, ...Object.fromEntries(Object.entries(configured)
       .filter(([id]) => !allowsProvider || allowsProvider(id))) };
@@ -956,7 +958,7 @@ export function createEngineV2Preview(options: {
       mapped.skippedProviders,
     );
     skippedProviderIds = skipped.map(provider => provider.id);
-    skippedProviders = mirrorLocal ? skipped : undefined;
+    skippedProviders = skipped;
     lastMirroredAt = new Date().toISOString();
     pushed();
     // Re-check folders already in use now, so their next prompt pays nothing.
@@ -993,11 +995,6 @@ export function createEngineV2Preview(options: {
     scheduleMirror();
     await mirrorInFlight;
     if (mirrorError) throw new Error(mirrorError);
-  }
-
-  async function recheckLocalProviderMirror(): Promise<void> {
-    if (!running || !sidecar || appliedLocalProviderMirror === undefined) return;
-    if (await resolveLocalProviderMirror(options.resolveLocalProviderMirror) !== appliedLocalProviderMirror) scheduleMirror();
   }
 
   async function setLiveProviderSync(next: boolean): Promise<void> {
@@ -1050,7 +1047,9 @@ export function createEngineV2Preview(options: {
     // skills now use the same metadata/on-demand Connect path as v1.
     await rm(join(rootDir, "cloud-skills"), { recursive: true, force: true });
     const opencodeModelsUrl = await resolveOpencodeModelsUrl();
-    contextBridge = options.hostReadRequest ? await createV2ContextBridge(options.hostReadRequest, connection) : undefined;
+    contextBridge = options.hostReadRequest ? await createV2ContextBridge(options.hostReadRequest, connection, {
+      nativeAffordanceCodeMode: options.resolveNativeAffordanceCodeMode,
+    }) : undefined;
     providerSessionBridge = options.providerSession ? await createV2ProviderSessionBridge(() =>
       ownsGateway() ? options.providerSession?.() ?? null : null) : undefined;
     const globalSkills = globalSkillDirectories();
@@ -1486,5 +1485,5 @@ export function createEngineV2Preview(options: {
     } else if (enabled && !automaticHistoryCopy && engineOrigin !== "reverted" && !(autoUpgradeEnabled && !chatRouting && !chosenV1Manually())) void start().catch(recordStartError);
   }
   if (!options.deferStart) startWhenReady();
-  return { start: startWhenReady, setForcePolicy, migrateHistory, status, setEnabled, setChatRouting, requireV1HistoryCopied, describeUncopiedChat, connection, ensureWorkspaceReady, refreshProviders, recheckLocalProviderMirror, setLiveProviderSync, syncWorkspaceMcp, settleWorkspaceMcp, warmWorkspace, settleWorkspaceSkills, stop };
+  return { start: startWhenReady, setForcePolicy, migrateHistory, status, setEnabled, setChatRouting, requireV1HistoryCopied, describeUncopiedChat, connection, ensureWorkspaceReady, refreshProviders, setLiveProviderSync, syncWorkspaceMcp, settleWorkspaceMcp, warmWorkspace, settleWorkspaceSkills, stop };
 }
