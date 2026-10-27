@@ -1570,6 +1570,7 @@ export function translateV2Event(
     }
     return [{ type, properties: {
       ...properties, sequence: readNumber(value.durable, "seq"),
+      ...(type === "session.execution.started" ? { timestamp: readNumber(properties, "timestamp") ?? readNumber(value, "created") } : {}),
       ...(type === "session.execution.failed" ? {
         error: mapV2SessionError(properties.error),
       } : {}),

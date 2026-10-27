@@ -43,9 +43,14 @@ Only outcomes and credential-change revisions are persisted locally, scoped
 to workspace and runtime provider ID. No keys, request payloads, provider
 response bodies or error text enter the health store. Rejection survives
 navigation and reload. Saving a replacement or completing a new sign-in
-clears the verdict; a request already running at replacement time cannot
-verify or reject the replacement. Organization provider version changes also
-clear the old verdict when their inventory refreshes.
+clears the verdict across workspaces sharing the same credential store;
+removal also clears it before an environment fallback is discovered. Remote
+hosts keep separate credential revisions. A request already running at
+replacement time cannot verify or reject the replacement: evidence uses the
+engine's start time, not when the renderer first observes a busy run. A run
+without a trustworthy start time remains unverified. Organization provider
+version or organization-context changes also clear the old verdict when their
+inventory refreshes.
 
 This is observed client-side health, not a credential validation endpoint or
 a fleet-wide health guarantee. An externally changed environment or key on

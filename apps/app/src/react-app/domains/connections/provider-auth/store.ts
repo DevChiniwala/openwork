@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { useProviderCredentialHealth } from "./credential-health";
+import { providerCredentialScope, useProviderCredentialHealth } from "./credential-health";
 import { liveProviderSyncStatusQueryKey, usesLiveProviderSync, type LiveProviderSyncStatus } from "./live-provider-sync";
 import { isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
 import { CLOUD_MODEL_CONFIG_VERSION } from "@openwork/types/cloud-model-fast";
@@ -1396,6 +1396,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const removeProviderAuthCredentials = async (providerId: string) => {
+    const workspaceId = options.runtimeWorkspaceId();
+    if (workspaceId && options.providerBaseUrl().trim()) useProviderCredentialHealth.getState().bindWorkspace(workspaceId, providerCredentialScope(options.providerBaseUrl()));
+    const changed = () => { if (workspaceId) useProviderCredentialHealth.getState().changed(workspaceId, providerId); };
     const c = options.client();
     if (!c) {
       throw new Error(t("providers.not_connected"));
@@ -1408,6 +1411,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     if (typeof authClient.remove === "function") {
       const result = await authClient.remove({ providerID: providerId });
       assertNoClientError(result);
+      changed();
       return;
     }
 
@@ -1415,13 +1419,15 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       client?: { delete?: (options: { url: string }) => Promise<unknown> };
     }).client;
     if (rawClient?.delete) {
-      await rawClient.delete({ url: `/auth/${encodeURIComponent(providerId)}` });
+      assertNoClientError(await rawClient.delete({ url: `/auth/${encodeURIComponent(providerId)}` }));
+      changed();
       return;
     }
 
     if (typeof authClient.set === "function") {
       const result = await authClient.set({ providerID: providerId, auth: null });
       assertNoClientError(result);
+      changed();
       return;
     }
 
@@ -2739,6 +2745,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   const syncFromOptions = () => {
     if (disposed) return;
     const delivery = syncDenSessionDelivery();
+    const workspaceId = options.runtimeWorkspaceId();
+    if (workspaceId && options.providerBaseUrl().trim()) useProviderCredentialHealth.getState().bindWorkspace(workspaceId, providerCredentialScope(options.providerBaseUrl()));
     const workspaceKey = currentWorkspaceKey();
     const workspaceChanged = workspaceKey !== lastWorkspaceKey;
     lastWorkspaceKey = workspaceKey;

@@ -26,7 +26,7 @@ beforeEach(() => {
     setItem: (_key, value) => { stored = value; },
     removeItem: () => { stored = ""; },
   })) });
-  useProviderCredentialHealth.setState({ entries: {}, revisions: {}, configurations: {} });
+  useProviderCredentialHealth.setState({ entries: {}, revisions: {}, configurations: {}, workspaceScopes: {} });
 });
 afterEach(() => { mock.restore(); });
 
@@ -83,11 +83,11 @@ test("a changed organization configuration clears evidence, but refresh does not
 test("rejection survives a reload without storing any raw error or credential", async () => {
   useProviderCredentialHealth.getState().observe(workspace, provider, "rejected", now);
   const snapshot = stored;
-  useProviderCredentialHealth.setState({ entries: {}, revisions: {}, configurations: {} });
+  useProviderCredentialHealth.setState({ entries: {}, revisions: {}, configurations: {}, workspaceScopes: {} });
   stored = snapshot;
   await useProviderCredentialHealth.persist.rehydrate();
   expect(health()).toBe("rejected");
-  expect(JSON.parse(snapshot).state).toEqual({ entries: { [key]: { status: "rejected", revision: 0 } }, revisions: {}, configurations: {} });
+  expect(JSON.parse(snapshot).state).toEqual({ entries: { [key]: { status: "rejected", revision: 0 } }, revisions: {}, configurations: {}, workspaceScopes: {} });
 });
 
 for (const error of [
@@ -121,14 +121,14 @@ for (const providerId of ["openrouter", "ipr_fixture"]) test(`native lifecycle u
   const sessionID = "session-fixture";
   const evidenceKey = credentialHealthKey(workspace, providerId);
   try {
-    __applySessionSyncEventForTest(sync, { type: "session.execution.started", properties: { sessionID, model: { providerID: providerId, id: "http-401" } } });
+    __applySessionSyncEventForTest(sync, { type: "session.execution.started", properties: { sessionID, timestamp: now, model: { providerID: providerId, id: "http-401" } } });
     __applySessionSyncEventForTest(sync, { type: "session.execution.failed", properties: { sessionID, error: { name: "APIError", data: { statusCode: 401, message: "User not found." } } } });
     expect(useProviderCredentialHealth.getState().entries[evidenceKey]?.status).toBe("rejected");
     // A following idle is not proof of success.
     __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "idle" } } });
     expect(useProviderCredentialHealth.getState().entries[evidenceKey]?.status).toBe("rejected");
     now++;
-    __applySessionSyncEventForTest(sync, { type: "session.execution.started", properties: { sessionID, model: { providerID: providerId, id: "ok" } } });
+    __applySessionSyncEventForTest(sync, { type: "session.execution.started", properties: { sessionID, timestamp: now, model: { providerID: providerId, id: "ok" } } });
     __applySessionSyncEventForTest(sync, { type: "session.execution.succeeded", properties: { sessionID } });
     expect(useProviderCredentialHealth.getState().entries[evidenceKey]?.status).toBe("verified");
     expect(useProviderCredentialHealth.getState().entries[credentialHealthKey(workspace, "unrelated")]).toBeUndefined();
@@ -148,8 +148,41 @@ test("v1 idle without a completed assistant response is not credential verificat
     expect(health()).toBe("unverified");
     now++;
     __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "busy" } } });
-    __applySessionSyncEventForTest(sync, { type: "message.updated", properties: { info: { id: "message-success", sessionID, role: "assistant", providerID: provider, time: { completed: 200 } } } });
+    __applySessionSyncEventForTest(sync, { type: "message.updated", properties: { info: { id: "message-success", sessionID, role: "assistant", providerID: provider, time: { created: now, completed: 200 } } } });
     __applySessionSyncEventForTest(sync, { type: "session.status", properties: { sessionID, status: { type: "idle" } } });
     expect(health()).toBe("verified");
+  } finally { dispose(); }
+});
+
+test("replacing a shared device credential invalidates every workspace using it, not a remote host", () => {
+  const state = useProviderCredentialHealth.getState();
+  state.bindWorkspace(workspace, "device");
+  state.bindWorkspace("second-local", "device");
+  state.bindWorkspace("remote", "https://worker.example");
+  for (const id of [workspace, "second-local", "remote"]) state.observe(id, provider, "verified", now);
+  now++;
+  state.changed(workspace, provider);
+  expect(health()).toBe("unverified");
+  expect(state.entries[key]).toBeUndefined();
+  const latest = useProviderCredentialHealth.getState();
+  expect(latest.entries[credentialHealthKey("second-local", provider)]).toBeUndefined();
+  expect(latest.entries[credentialHealthKey("remote", provider)]?.status).toBe("verified");
+  state.observe("second-local", provider, "rejected", now - 1);
+  expect(useProviderCredentialHealth.getState().entries[credentialHealthKey("second-local", provider)]).toBeUndefined();
+});
+
+test("a delayed native start using the old key cannot reject its replacement", () => {
+  const sync = { workspaceId: workspace, baseUrl: "http://127.0.0.1:9/w/fixture/opencode2", openworkToken: "synthetic-local-token" };
+  spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ data: [] }));
+  useSessionActivityStore.setState({ recordsByWorkspaceId: {} });
+  const dispose = __createWorkspaceSessionSyncForTest(sync);
+  const sessionID = "session-delayed";
+  const oldStart = now;
+  now++;
+  useProviderCredentialHealth.getState().changed(workspace, provider);
+  try {
+    __applySessionSyncEventForTest(sync, { type: "session.execution.started", properties: { sessionID, timestamp: oldStart, model: { providerID: provider, id: "http-401" } } });
+    __applySessionSyncEventForTest(sync, { type: "session.execution.failed", properties: { sessionID, error: { name: "APIError", data: { statusCode: 401, message: "User not found." } } } });
+    expect(health()).toBe("unverified");
   } finally { dispose(); }
 });

@@ -12,6 +12,7 @@ const persistedSchema = z.object({
   entries: z.record(z.string(), entrySchema),
   revisions: z.record(z.string(), z.number()),
   configurations: z.record(z.string(), z.string()).default({}),
+  workspaceScopes: z.record(z.string(), z.string()).default({}),
 });
 
 /** Evidence belongs to the workspace's runtime provider, never its display name. */
@@ -19,10 +20,21 @@ export function credentialHealthKey(workspaceId: string, providerId: string): st
   return JSON.stringify([workspaceId, providerId]);
 }
 
+/** Local workspaces share one device auth store; remote hosts do not. */
+export function providerCredentialScope(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return "device";
+    return url.origin + url.pathname.split(/\/workspace\//)[0].replace(/\/opencode2?\/?$/, "");
+  } catch { return baseUrl; }
+}
+
 type CredentialHealthState = {
   entries: Record<string, z.infer<typeof entrySchema>>;
   revisions: Record<string, number>;
   configurations: Record<string, string>;
+  workspaceScopes: Record<string, string>;
+  bindWorkspace: (workspaceId: string, scope: string) => void;
   configure: (workspaceId: string, providerId: string, version: string) => void;
   changed: (workspaceId: string, providerId: string) => void;
   observe: (workspaceId: string, providerId: string, status: "verified" | "rejected", startedAt: number) => void;
@@ -33,6 +45,21 @@ export const useProviderCredentialHealth = create<CredentialHealthState>()(persi
   entries: {},
   revisions: {},
   configurations: {},
+  workspaceScopes: {},
+  bindWorkspace: (workspaceId, scope) => set((state) => {
+    const previous = state.workspaceScopes[workspaceId];
+    if (previous === scope) return state;
+    const entries = { ...state.entries };
+    const revisions = { ...state.revisions };
+    if (previous !== undefined) {
+      const prefix = JSON.stringify([workspaceId]).slice(0, -1) + ",";
+      for (const key of Object.keys(entries)) if (key.startsWith(prefix)) {
+        delete entries[key];
+        revisions[key] = Date.now();
+      }
+    }
+    return { entries, revisions, workspaceScopes: { ...state.workspaceScopes, [workspaceId]: scope } };
+  }),
   configure: (workspaceId, providerId, version) => {
     const key = credentialHealthKey(workspaceId, providerId);
     const previous = useProviderCredentialHealth.getState().configurations[key];
@@ -40,10 +67,16 @@ export const useProviderCredentialHealth = create<CredentialHealthState>()(persi
     set((state) => ({ configurations: { ...state.configurations, [key]: version } }));
   },
   changed: (workspaceId, providerId) => set((state) => {
-    const key = credentialHealthKey(workspaceId, providerId);
     const entries = { ...state.entries };
-    delete entries[key];
-    return { entries, revisions: { ...state.revisions, [key]: Date.now() } };
+    const revisions = { ...state.revisions };
+    const scope = state.workspaceScopes[workspaceId];
+    const workspaces = scope === undefined ? [workspaceId] : [workspaceId, ...Object.keys(state.workspaceScopes).filter((id) => state.workspaceScopes[id] === scope)];
+    for (const id of workspaces) {
+      const key = credentialHealthKey(id, providerId);
+      delete entries[key];
+      revisions[key] = Date.now();
+    }
+    return { entries, revisions };
   }),
   observe: (workspaceId, providerId, status, startedAt) => set((state) => {
     const key = credentialHealthKey(workspaceId, providerId);
@@ -56,7 +89,7 @@ export const useProviderCredentialHealth = create<CredentialHealthState>()(persi
 }), {
   name: "openwork.provider-credential-health.v1",
   storage: createJSONStorage(() => localStorage),
-  partialize: ({ entries, revisions, configurations }) => ({ entries, revisions, configurations }),
+  partialize: ({ entries, revisions, configurations, workspaceScopes }) => ({ entries, revisions, configurations, workspaceScopes }),
   merge: (persisted, current) => {
     const parsed = persistedSchema.safeParse(persisted);
     return parsed.success ? { ...current, ...parsed.data } : current;
