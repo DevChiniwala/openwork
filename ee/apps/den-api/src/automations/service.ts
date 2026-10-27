@@ -14,6 +14,8 @@ import type {
   AutomationRunEventType,
   AutomationRun,
   AutomationAction,
+  AutomationSchedule,
+  AutomationScheduleKind,
   CreateAutomationDefinition,
   DesktopRunnerInventory,
   UpdateAutomation,
@@ -27,6 +29,7 @@ import { validateWorkflowAutomationAction } from "../workflows.js"
 import type { CloudAgentExecution, CloudAgentExecutorInput } from "./cloud-agent-executor.js"
 import { cloudAutomationRuntime, HEADLESS_AGENT_ENGINE_KIND, type CloudAutomationRuntime } from "./headless-runtime.js"
 import { automationTargetAllowed } from "./organization-availability.js"
+import { keepsCurrentInterval, ownerIntervalSchedulesEnabled } from "./schedule-features.js"
 import { appLogger } from "../observability/logger.js"
 import {
   getOpenWorkWebRuntimeAccess,
@@ -53,6 +56,18 @@ type OwnerScope = {
   organizationId: string
   ownerMemberId: string
   modelAttentionCapable?: boolean
+  /**
+   * Schedule kinds the caller can read. Released desktops parse schedules
+   * strictly, so Automations with other kinds are left out of what they get,
+   * as if they did not exist. Absent or null: every kind.
+   */
+  readableScheduleKinds?: ReadonlySet<AutomationScheduleKind> | null
+  /** `automationIntervalSchedules` for this caller, checked when a request sets an interval schedule. */
+  intervalSchedules?: boolean
+}
+
+function readableBy(scope: OwnerScope, schedule: AutomationSchedule) {
+  return !scope.readableScheduleKinds || scope.readableScheduleKinds.has(schedule.kind)
 }
 
 /**
@@ -133,17 +148,28 @@ export function configureHeadlessAgentExecutor(execute: (input: CloudAgentExecut
 export type AutomationServiceOptions = {
   getOpenWorkWebAccess?: OpenWorkWebRuntimeAccessResolver
   cloudRuntime?: (organizationId: string) => Promise<CloudAutomationRuntime>
+  /** Whether an Automation's owner may still run interval schedules; the scheduler checks it per due occurrence. */
+  intervalSchedulesEnabled?: (owner: { organizationId: string; ownerMemberId: string }) => Promise<boolean>
 }
 
 export class AutomationService {
   private readonly cloudExecutions = new Map<string, Promise<void>>()
   private readonly getOpenWorkWebAccess: OpenWorkWebRuntimeAccessResolver
   private readonly cloudRuntime: (organizationId: string) => Promise<CloudAutomationRuntime>
+  private readonly intervalSchedulesEnabled: (owner: { organizationId: string; ownerMemberId: string }) => Promise<boolean>
   private runnerPruneDueAt = 0
 
   constructor(options: AutomationServiceOptions = {}) {
     this.getOpenWorkWebAccess = options.getOpenWorkWebAccess ?? getOpenWorkWebRuntimeAccess
     this.cloudRuntime = options.cloudRuntime ?? cloudAutomationRuntime
+    this.intervalSchedulesEnabled = options.intervalSchedulesEnabled ?? ownerIntervalSchedulesEnabled
+  }
+
+  /** A new interval schedule needs the feature; keeping the one an Automation already has does not. */
+  private requireScheduleAllowed(scope: OwnerScope, schedule: AutomationSchedule | undefined, current?: AutomationSchedule) {
+    if (schedule?.kind !== "interval" || scope.intervalSchedules === true) return
+    if (current && keepsCurrentInterval(schedule, current)) return
+    throw new Error("automation_interval_schedule_disabled")
   }
 
   /** The organization's setting (and, for Cloud, the deployment's headless runner) for this kind of Automation. */
@@ -276,7 +302,9 @@ export class AutomationService {
   }
 
   async list(scope: OwnerScope, input: { cursor?: string; limit?: number }) {
-    const page = await automationRepository.list({ ...scope, cursor: input.cursor, limit: input.limit ?? 50 })
+    const listed = await automationRepository.list({ ...scope, cursor: input.cursor, limit: input.limit ?? 50 })
+    // Filter first: a caller must not reconcile Automations it is not shown.
+    const page = { ...listed, items: listed.items.filter((item) => readableBy(scope, item.revision.schedule)) }
     const modelAccessBySelection = new Map<string, ReturnType<typeof resolveAutomationModelAccess>>()
     const resolveModelAccess = (item: AutomationListItem) => {
       const key = JSON.stringify([item.revision.model.providerId, item.revision.model.modelId])
@@ -305,10 +333,11 @@ export class AutomationService {
 
   async get(scope: OwnerScope, automationId: string) {
     const item = await automationRepository.get({ ...scope, automationId })
-    return item ? this.reconcileModelAttention(item, scope) : null
+    return item && readableBy(scope, item.revision.schedule) ? this.reconcileModelAttention(item, scope) : null
   }
 
   async create(scope: OwnerScope, definition: CreateAutomationDefinition) {
+    this.requireScheduleAllowed(scope, definition.schedule)
     await this.requireTargetAllowed(scope.organizationId, "action" in definition ? "cloud" : "desktop")
     if ("action" in definition) {
       if (definition.executionTarget !== "cloud") {
@@ -337,6 +366,7 @@ export class AutomationService {
   async update(scope: OwnerScope, automationId: string, changes: UpdateAutomation, options: AutomationPlacementOptions = {}) {
     const current = await this.get(scope, automationId)
     if (!current) return null
+    this.requireScheduleAllowed(scope, changes.schedule, current.revision.schedule)
     const currentTarget = current.revision.executionTarget ?? "desktop"
     const nextTarget = changes.executionTarget ?? currentTarget
     const moved = nextTarget !== currentTarget
@@ -541,6 +571,11 @@ export class AutomationService {
       if (claim.kind !== "duplicate") await recordAutomationRunStarted(claim.run.id)
       if (claim.kind === "overlap") await recordAutomationRunCompleted({ runId: claim.run.id, terminalAt: now })
       if (claim.kind !== "claimed") continue
+      if (item.revision.schedule.kind === "interval" && !await this.intervalSchedulesEnabled(item.automation)) {
+        // Turned off after the Automation was made: it stays, and each occurrence is recorded as skipped until it is back.
+        await this.skipRun({ runId: claim.run.id, code: "execution_runtime_unavailable", message: "Every-few-hours schedules are turned off for this organization.", now })
+        continue
+      }
       const target = item.revision.executionTarget ?? "desktop"
       if (!await automationTargetAllowed(item.automation.organizationId, target)) {
         // The organization turned this kind off: the occurrence is recorded as skipped and the schedule advances.

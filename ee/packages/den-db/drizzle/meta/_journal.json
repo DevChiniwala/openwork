@@ -1114,6 +1114,13 @@
       "when": 1793058495003,
       "tag": "0159_agent_instance",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "5",
+      "when": 1793077527383,
+      "tag": "0160_automation_interval_schedule",
+      "breakpoints": true
     }
   ]
 }

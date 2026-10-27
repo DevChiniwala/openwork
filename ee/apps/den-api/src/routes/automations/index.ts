@@ -4,6 +4,7 @@ import { z } from "zod"
 import {
   AUTOMATION_MODEL_ATTENTION_CAPABILITY,
   AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER,
+  AUTOMATION_SCHEDULE_KINDS_HEADER,
   automationDesktopRunnerAssignmentSchema,
   automationDesktopRunnerPresenceSchema,
   automationDesktopRunnerResultSchema,
@@ -20,6 +21,7 @@ import {
   automationRunnerHeartbeatResponseSchema,
   createAutomationSchema,
   createCloudAutomationSchema,
+  readableAutomationScheduleKinds,
   runAutomationNowSchema,
   updateAutomationSchema,
 } from "@openwork/types/automations"
@@ -68,11 +70,18 @@ function scope(c: {
   req: { header(name: string): string | undefined }
 }) {
   const context = c.get("organizationContext")
+  const modelAttentionCapable = c.req.header(AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER)
+    === AUTOMATION_MODEL_ATTENTION_CAPABILITY
   return {
     organizationId: context.organization.id,
     ownerMemberId: context.currentMember.id,
-    modelAttentionCapable: c.req.header(AUTOMATION_MODEL_ATTENTION_CAPABILITY_HEADER)
-      === AUTOMATION_MODEL_ATTENTION_CAPABILITY,
+    modelAttentionCapable,
+    // Only first-party desktops send the model-attention header, so only they are narrowed.
+    readableScheduleKinds: readableAutomationScheduleKinds({
+      scheduleKindsHeader: c.req.header(AUTOMATION_SCHEDULE_KINDS_HEADER),
+      firstPartyDesktop: modelAttentionCapable,
+    }),
+    intervalSchedules: context.features.automationIntervalSchedules,
   }
 }
 
@@ -129,6 +138,9 @@ function failure(error: unknown): { status: 400 | 403 | 404 | 409; body: { error
   }
   if (error.message === "automation_cloud_disabled") {
     return { status: 403, body: { error: error.message, message: "Cloud Automations are not available for this organization. An admin can turn them on in Settings once OpenWork's headless runner is set up." } }
+  }
+  if (error.message === "automation_interval_schedule_disabled") {
+    return { status: 400, body: { error: error.message, message: "Every-few-hours schedules are not turned on for this organization. Choose a once, daily or weekly schedule." } }
   }
   if (error.message === "automation_cloud_worker_required") {
     return { status: 409, body: { error: error.message, message: "Set up OpenWork Cloud before creating a Cloud Automation." } }
