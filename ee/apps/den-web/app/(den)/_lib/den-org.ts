@@ -815,6 +815,10 @@ export function getAiGatewayProvidersRoute(orgSlug?: string | null): string {
   return `${getAiGatewayRoute(orgSlug)}?tab=ai-providers`;
 }
 
+export function getAiGatewayAutoRouterRoute(orgSlug?: string | null): string {
+  return `${getAiGatewayRoute(orgSlug)}?tab=auto-router`;
+}
+
 export function getNewAiGatewayProviderRoute(orgSlug?: string | null, providerId?: string): string {
   const base = `${getAiGatewayRoute(orgSlug)}/providers/new`;
   return providerId ? `${base}?provider=${encodeURIComponent(providerId)}` : base;

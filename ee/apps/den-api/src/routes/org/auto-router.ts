@@ -58,7 +58,7 @@ export function registerOrgAutoRouterRoutes<T extends { Variables: OrgRouteVaria
     describeRoute({
       tags: ["Inference Providers"],
       summary: "Get the Auto Router",
-      description: "Returns whether the organization's Auto Router is enabled, whether the AI Gateway can route (routing: ready, missing_key when it has no TypeSafe key, or unknown when it could not be reached), and its routes in order: each AI Gateway model, when to use it, and the thinking levels it may run at. Requires the View Gateway providers permission and the Auto Router feature.",
+      description: "Returns whether the organization's Auto Router is enabled, whether the AI Gateway can route (routing: ready, missing_key when it has no TypeSafe key, or unknown when it could not be reached), and its routes in order: each AI Gateway model, when to use it, and the one thinking level it runs at. The first route is the default model, used when no other route matches, with a fixed prompt. Requires the View Gateway providers permission and the Auto Router feature.",
       responses: {
         200: jsonResponse("Auto Router returned.", autoRouterSettingsSchema),
         401: unauthorized,
@@ -102,10 +102,10 @@ export function registerOrgAutoRouterRoutes<T extends { Variables: OrgRouteVaria
     describeRoute({
       tags: ["Inference Providers"],
       summary: "Save the Auto Router",
-      description: "Replaces the organization's Auto Router: whether it is enabled and its routes in order. Each route names an AI Gateway model from the options list, a description of when to use it, and thinking levels the model allows. When the router cannot decide, the first route allowing High thinking is used. Enabling is refused with auto_router_not_configured while the AI Gateway has no TypeSafe key. Requires the Manage Gateway providers permission, a recent sign-in and the Auto Router feature.",
+      description: "Replaces the organization's Auto Router: whether it is enabled and its routes in order. Each route names an AI Gateway model from the options list, a description of when to use it, and one thinking level the model allows. The first route is the default model: its prompt is fixed (any prompt sent for it is ignored), Auto uses it when no other route matches, and it is the fallback when the router cannot decide. Every other route needs a prompt; enabling needs at least one route and is refused with auto_router_not_configured while the AI Gateway has no TypeSafe key. Requires the Manage Gateway providers permission, a recent sign-in and the Auto Router feature.",
       responses: {
         200: jsonResponse("Auto Router saved.", autoRouterSettingsSchema),
-        400: jsonResponse("A route names a model the AI Gateway does not offer, or a thinking level the model does not allow.", z.union([writeProblemSchema, invalidRequestSchema])),
+        400: jsonResponse("The request is invalid (for example a route other than the first has no prompt), a route names a model the AI Gateway does not offer, or a thinking level the model does not allow.", z.union([writeProblemSchema, invalidRequestSchema])),
         409: jsonResponse("Enabling was refused because the AI Gateway has no routing (TypeSafe) key.", notConfiguredSchema),
         401: unauthorized,
         403: jsonResponse("The caller lacks the Manage Gateway providers permission or needs to sign in again.", forbiddenSchema),

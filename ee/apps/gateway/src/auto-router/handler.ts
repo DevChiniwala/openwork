@@ -1,7 +1,8 @@
 // Auto (feature `autoRouter`): a desktop sends an OpenAI chat request with
 // model `openwork-auto`. The gateway asks Jev which of the organization's
-// routes and thinking levels fits the latest prompt, rewrites the request for
-// that model's protocol under the member's own Gateway alias, and hands it to
+// routes fits the latest prompt (each runs at its own thinking level),
+// rewrites the request for that model's protocol under the member's own
+// Gateway alias, and hands it to
 // the normal Gateway pipeline, which authorizes, meters and forwards it as if
 // the member had picked that model. Responses go back as Chat Completions.
 import { createGatewayModelAlias } from "@openwork-ee/utils/gateway-routing"
@@ -124,7 +125,7 @@ export function autoCandidates(config: AutoRouterConfig, rows: GatewayMemberAcce
       routeId: route.id,
       modelName: modelName(row),
       prompt: route.prompt,
-      thinkingLevels: route.thinkingLevels,
+      thinkingLevel: route.thinkingLevel,
       route,
       row,
       family,
