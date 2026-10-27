@@ -14,6 +14,7 @@ import { Store } from "../store.js"
 import { CellsStore } from "../cells-store.js"
 import { CellCallError, INTERNAL_PATHS, SESSION_CELL_ID, SessionCells, sessionCellName, type CellIdentity, type InternalPath } from "../cells.js"
 import { localMemory } from "../memory.js"
+import { localMemberFileIndex } from "../member-files.js"
 import { serviceHealthResponse } from "../service-health.js"
 import { durableObjectSql } from "./sql.js"
 
@@ -116,7 +117,11 @@ export class HeadlessCell {
     this.store = store
     this.cells = CellsStore.of(store)
     const pause = Number(typeof env[SPLIT_PAUSE_VAR] === "string" ? env[SPLIT_PAUSE_VAR] : 0)
+    // My files' rows: this cell's own (an owner cell), reached by the owner's chats in their own cells.
+    const memberFiles = localMemberFileIndex(store.db, (fn) => store.transaction(fn))
     this.sessionCells = new SessionCells({
+      memberFiles,
+      memberFileLimits: configFor(env).memberFileLimits,
       store,
       cells: this.cells,
       self: (): CellIdentity | null => (this.name === null ? null : parseCell(this.name)),
@@ -133,6 +138,7 @@ export class HeadlessCell {
     this.ready = ctx.blockConcurrencyWhile(async () => {
       const runtime = await createRuntime(configFor(env), store, this.stepHost(), {
         memory: this.sessionCells.memoryResolver(localMemory(store, this.cells)),
+        memberFileIndex: this.sessionCells.memberFileIndex(memberFiles),
         cells: this.cells,
         indexHeld: () => this.cells.meta("index_hold") !== null,
       })

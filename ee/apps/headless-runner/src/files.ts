@@ -1,4 +1,6 @@
 import { z } from "zod"
+import { listMemberTop, runMemberFileTool, targetsMemberFiles } from "./member-file-tools.js"
+import type { MemberFilesAccess } from "./member-files.js"
 import { MemoryUnavailableError, type MemoryAccess } from "./memory.js"
 import type { Store } from "./store.js"
 import type { ToolResult, ToolSpec } from "./types.js"
@@ -140,8 +142,10 @@ export const isMemoryPath = (path: string) => path === "memory" || path.startsWi
  * owner's), so the person's conversations remember together; everything else stays in this one. Without it, memory/
  * is this conversation's own, as every other path.
  */
-export async function runFileTool(store: Store, sessionId: string, name: string, input: unknown, memory?: MemoryAccess | null): Promise<ToolResult> {
+export async function runFileTool(store: Store, sessionId: string, name: string, input: unknown, memory?: MemoryAccess | null, member?: MemberFilesAccess | null): Promise<ToolResult> {
   const shared = (path: string) => (memory && isMemoryPath(path) ? memory : null)
+  // With My files, a /files path is theirs (member-file-tools.ts); every other path is this conversation's, as always.
+  if (member && targetsMemberFiles(name, input)) return runMemberFileTool(member, name, input)
   try {
     if (name === "list_files") {
       const files = memory
@@ -150,8 +154,9 @@ export async function runFileTool(store: Store, sessionId: string, name: string,
             ...(await memory.list()).filter((file) => isMemoryPath(file.path)).map((file) => ({ path: file.path, size: Buffer.byteLength(file.content) })),
           ].sort((left, right) => left.path.localeCompare(right.path))
         : store.listFiles(sessionId)
-      if (files.length === 0) return { output: "The workspace is empty.", isError: false }
-      return { output: files.map((file) => `${file.path}\t${file.size} bytes`).join("\n"), isError: false }
+      const scratch = files.length === 0 ? "The workspace is empty." : files.map((file) => `${file.path}\t${file.size} bytes`).join("\n")
+      if (!member) return { output: scratch, isError: false }
+      return { output: `Scratch workspace (this conversation):\n${scratch}\n\n${await listMemberTop(member)}`, isError: false }
     }
     const read = (path: string) => shared(path)?.read(path) ?? Promise.resolve(store.readFile(sessionId, path))
     const write = async (path: string, content: string): Promise<ToolResult> => {

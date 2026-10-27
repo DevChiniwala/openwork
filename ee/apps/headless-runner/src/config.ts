@@ -78,6 +78,8 @@ const configSchema = z.object({
   HEADLESS_FILES_MAX_BYTES: z.coerce.number().int().min(1024).default(100 * 1024 * 1024),
   /** How much one conversation may keep in total. */
   HEADLESS_FILES_MAX_SESSION_BYTES: z.coerce.number().int().min(1024).default(5 * 1024 * 1024 * 1024),
+  /** How much one member may keep in My files (docs/features/member-files); each file is limited by HEADLESS_FILES_MAX_BYTES. */
+  HEADLESS_MEMBER_FILES_MAX_BYTES: z.coerce.number().int().min(1024).default(10 * 1024 * 1024 * 1024),
   /**
    * Session storage (README "Long conversations"): seal old turns into segments and move large tool outputs to the
    * files bucket, so the hot database stays small. Off by default; reading sealed history and large outputs always
@@ -158,6 +160,8 @@ export type Config = {
     | { kind: "disk"; directory: string }
     | { kind: "s3"; endpoint: string; region: string; bucket: string; accessKeyId: string; secretAccessKey: string; forcePathStyle: boolean }
   fileLimits: { maxFileBytes: number; maxSessionBytes: number }
+  /** My files: per file (the same as kept files), per member, and how many files one member may have. */
+  memberFileLimits: { maxFileBytes: number; maxMemberBytes: number; maxFiles: number }
   /** Sealing and large bodies (storage/); `segments` false is the default and the kill switch. */
   storage: { segments: boolean; hotLimitBytes: number; segmentTargetBytes: number; largeBodyBytes: number }
   computer?: ComputerProviderConfig & { scope?: string; idlePauseMs: number; keepDays: number }
@@ -203,6 +207,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     systemPrompt: value.HEADLESS_SYSTEM_PROMPT,
     files: filesConfig(value),
     fileLimits: { maxFileBytes: value.HEADLESS_FILES_MAX_BYTES, maxSessionBytes: value.HEADLESS_FILES_MAX_SESSION_BYTES },
+    memberFileLimits: { maxFileBytes: value.HEADLESS_FILES_MAX_BYTES, maxMemberBytes: value.HEADLESS_MEMBER_FILES_MAX_BYTES, maxFiles: 10_000 },
     storage: storageConfig(value),
     computer: computerConfig(value),
     errorReporting: errorReportingConfig(value),

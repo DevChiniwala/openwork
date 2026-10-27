@@ -208,7 +208,7 @@ before.
 ## Backups and restore
 
 `.github/workflows/celld-backup.yml` copies the whole bucket (celld cells under `fleet/`, kept files under
-`sessions/`, not `ci/`) once a day into `s3://$CELLD_BACKUP_BUCKET/snapshots/<UTC time>/`, with a `_snapshot.json`
+`sessions/`, My files under `members/`, not `ci/`) once a day into `s3://$CELLD_BACKUP_BUCKET/snapshots/<UTC time>/`, with a `_snapshot.json`
 recording object counts. The backup bucket's lifecycle rule deletes snapshots after 15 days, which bounds how long a
 deleted conversation survives in backups. Configure it on the `celld-backup` environment: secrets
 `CELLD_BACKUP_R2_ACCESS_KEY_ID` / `CELLD_BACKUP_R2_SECRET_ACCESS_KEY` (an R2 token that reads the live bucket and
@@ -217,7 +217,7 @@ writes the backup bucket, nothing else) and variables `CELLD_BACKUP_BUCKET` / `C
 A snapshot is copied from a running fleet, so it is consistent per object, not at one instant. To restore:
 
 1. Stop every node (scale the service to 0) so no cell writes while the bucket changes.
-2. Copy the chosen snapshot back over the live bucket's `fleet/` and `sessions/`
+2. Copy the chosen snapshot back over the live bucket's `fleet/`, `sessions/` and `members/`
    (`aws s3 sync s3://<backup>/snapshots/<time>/fleet s3://<live>/fleet --delete`, same for `sessions`).
 3. Start the nodes. Cells restore from the restored change chains; writes after the snapshot are lost.
 
@@ -377,3 +377,14 @@ answer.
 Not covered locally: celld's multi-node failover and bucket durability (celld's own guarantees; check them on the
 real fleet before pointing production at it), and the Freestyle/Daytona computer inside celld, which bundles but
 has not run there. If the computer misbehaves, keep `HEADLESS_COMPUTER=off` on the celld deployment.
+
+## My files in cells
+
+A member's My files (`memberFiles`, [docs/features/member-files](../../../docs/features/member-files/README.md)) keep
+their rows in the owner cell (`member_files`, no `session_id`, so a split never copies them) and their bytes in the
+shared bucket under `members/<sha256(owner)[:40]>/`. A chat in its own session cell reaches the rows with
+`/internal/member-files` (`list`, `get`, `usage`, `commit`, `remove`), answered only for chats in the owner's directory
+(or moved from it), only for that owner's space, and only for objects under that space's prefix; the commit records
+the calling chat as the writer. Bytes go to and from the bucket directly, under keys the owner cell recorded. When the
+owner cell doesn't answer, a file tool says the outcome is unknown, as for memory. Owner routes (`/v1/owner/files…`)
+reach the owner cell through the router's owner header.

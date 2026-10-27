@@ -114,6 +114,12 @@ export const turnCredentialsSchema = z
 export type TurnCredentials = z.infer<typeof turnCredentialsSchema>
 
 /**
+ * What one desktop call may use beyond the conversation: the owner's My files, where the browser's downloads are saved
+ * and its uploads come from (null when the conversation has none, which also turns the browser's Downloads back).
+ */
+export type ComputerCallContext = { memberFiles: import("@openwork-ee/headless-computer").ComputerMemberFiles | null }
+
+/**
  * An optional Linux computer per conversation (`@openwork-ee/headless-computer`), loaded only when configured.
  * The runner offers its tools and prompt, and tells it when a conversation starts, goes quiet, or is deleted.
  */
@@ -124,7 +130,7 @@ export type SessionComputer = {
   /** The snapshot new computers boot from, for logs. */
   image: string
   desktopTools?: ToolSpec[]
-  desktopRun?(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>
+  desktopRun?(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal, context?: ComputerCallContext): Promise<ToolResult>
   /** Desktop failures may carry `desktopCode` (`desktop_outdated`, `desktop_unresponsive`), which the runner reports as its error code. */
   desktopViewer?(sessionId: string, input: { view: "browser" | "computer"; control: boolean; origin: string }): Promise<{ state: "paused" } | { state: "connected"; url: string; expiresAt: number; paused: boolean }>
   browserDemonstration?(sessionId: string, command: import("@openwork/types/browser-demonstration").DemonstrationCommand): Promise<import("@openwork/types/browser-demonstration").DemonstrationReply>

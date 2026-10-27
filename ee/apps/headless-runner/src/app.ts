@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto"
-import { Hono, type MiddlewareHandler } from "hono"
+import { Hono, type Context, type MiddlewareHandler } from "hono"
 import { bodyLimit } from "hono/body-limit"
 import { routePath } from "hono/route"
 import { streamSSE } from "hono/streaming"
@@ -11,6 +11,7 @@ import { formatBytes } from "./tool-files.js"
 import { z } from "zod"
 import { demonstrationCommandSchema } from "@openwork/types/browser-demonstration"
 import { FILE_LIMITS, isMemoryPath, normalizePath } from "./files.js"
+import { AGENT_SLUG, MemberFileError, memberSpace, normalizeMemberFolder, normalizeMemberPath, publicFile, shownPath, type MemberFiles } from "./member-files.js"
 import { localMemory, MemoryUnavailableError, type MemoryResolver } from "./memory.js"
 import type { Runner } from "./runner.js"
 import { scopedCatalogResponse } from "./model-catalog.js"
@@ -49,9 +50,21 @@ const createSessionBody = z
     memoryOf: z.string().regex(/^hs_[A-Za-z0-9_-]{8,96}$/).optional(),
     /** `owner`: memory/ is shared by all the owner's conversations (needs `owner`); replaces memoryOf for new chats. */
     memoryScope: z.enum(["owner"]).optional(),
+    /** The owner's My files at /files (needs `owner` and HEADLESS_FILES). Off unless asked for. */
+    memberFiles: z.boolean().optional(),
+    /** The agent this conversation acts as: its own folder is /files/agents/<agent>/. */
+    agent: z.string().regex(AGENT_SLUG).optional(),
+    /** Nobody waits on this conversation: its turns save only in their agent folder of My files. */
+    background: z.boolean().optional(),
   })
   .strict()
 const messageIdSchema = z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/)
+/** The trusted caller's key for the person (Workbot's `wb:<hash>`), also what routes a request to their cell on celld. */
+const OWNER_HEADER = "x-openwork-headless-owner"
+const ownerHeader = z.string().min(1).max(200)
+const memberFileId = z.string().regex(/^mf_[a-f0-9]{32}$/)
+const memberListQuery = z.object({ prefix: z.string().max(600).optional(), session: z.string().regex(/^hs_[A-Za-z0-9_-]{8,96}$/).optional() })
+const memberPutQuery = z.object({ path: z.string().min(1).max(600), replace: z.enum(["0", "1"]).optional() })
 /** Caller-chosen session ids share the runner's `hs_` prefix so they can never collide with other ids. */
 const sessionIdSchema = z.string().regex(/^hs_[A-Za-z0-9_-]{8,96}$/)
 const listQuery = z.object({ owner: z.string().min(1).max(200), limit: z.coerce.number().int().min(1).max(200).default(50) })
@@ -146,6 +159,8 @@ export function createApp(input: {
   events?: SessionEvents
   /** Saved files; without them the file routes answer `files_not_configured`. */
   files?: SavedFiles
+  /** Each member's My files (owner routes); without them those routes answer `files_not_configured`. */
+  memberFiles?: MemberFiles
   /** The per-conversation computers, deleted with their conversation. */
   computer?: SessionComputer
   /** Reports request failures (route and error type only, never the request or its body). */
@@ -180,6 +195,7 @@ export function createApp(input: {
       if (memoryOf) return { ok: false, error: "invalid_request" }
       return owner ? { ok: true, input: rest } : { ok: false, error: "owner_required" }
     }
+    if (body.memberFiles && !owner) return { ok: false, error: "owner_required" }
     if (!memoryOf) return { ok: true, input: body }
     if (existing?.memoryScope === "owner") return { ok: true, input: rest }
     if (memoryOf === id) return { ok: false, error: "unknown_memory_session" }
@@ -481,8 +497,72 @@ export function createApp(input: {
       enabled: Boolean(input.files),
       kind: input.files?.blobs.kind ?? null,
       ...(input.files ? { maxFileBytes: input.files.limits.maxFileBytes, maxSessionBytes: input.files.limits.maxSessionBytes } : {}),
+      memberFiles: Boolean(input.memberFiles),
+      ...(input.memberFiles ? { maxMemberBytes: input.memberFiles.limits.maxMemberBytes } : {}),
     }),
   )
+
+  // My files (member-files.ts): one owner's space, named by the trusted owner header (on celld it routes here, to the
+  // owner's cell). Callers authorize the person first; nothing in a body or query can name another owner's files.
+  const ownerOf = (c: Context) => ownerHeader.safeParse(c.req.header(OWNER_HEADER))
+  app.get("/v1/owner/files", async (c) => {
+    if (!input.memberFiles) return c.json({ error: "files_not_configured" }, 501)
+    const owner = ownerOf(c)
+    if (!owner.success) return c.json({ error: "owner_required" }, 400)
+    const query = memberListQuery.safeParse(c.req.query())
+    if (!query.success) return c.json({ error: "invalid_request" }, 400)
+    const prefix = query.data.prefix === undefined ? "" : normalizeMemberFolder(query.data.prefix)
+    if (prefix === null) return c.json({ error: "invalid_path" }, 400)
+    const space = memberSpace(owner.data)
+    const [files, usage] = await Promise.all([input.memberFiles.list(space, { ...(prefix ? { prefix } : {}), ...(query.data.session ? { sessionId: query.data.session } : {}) }), input.memberFiles.usage(space)])
+    return c.json({ files: files.map(publicFile), usage: { ...usage, maxBytes: input.memberFiles.limits.maxMemberBytes, maxFileBytes: input.memberFiles.limits.maxFileBytes } })
+  })
+  app.get("/v1/owner/files/:fileId", async (c) => {
+    if (!input.memberFiles) return c.json({ error: "files_not_configured" }, 501)
+    const owner = ownerOf(c)
+    if (!owner.success) return c.json({ error: "owner_required" }, 400)
+    const id = memberFileId.safeParse(c.req.param("fileId"))
+    if (!id.success) return c.json({ error: "unknown_file" }, 404)
+    const found = await input.memberFiles.read(memberSpace(owner.data), { id: id.data })
+    if (!found) return c.json({ error: "unknown_file" }, 404)
+    return c.body(found.bytes, 200, {
+      "content-type": found.file.mediaType,
+      "content-length": String(found.bytes.byteLength),
+      "x-file-name": encodeURIComponent(found.file.name),
+      "x-file-path": encodeURIComponent(found.file.path),
+    })
+  })
+  const memberUploadLimit: MiddlewareHandler = (c, next) => {
+    const maxSize = input.memberFiles?.limits.maxFileBytes ?? 0
+    return bodyLimit({ maxSize, onError: (limited) => limited.json({ error: "file_too_large", message: `The most a file in My files can be is ${formatBytes(maxSize)}.` }, 413) })(c, next)
+  }
+  app.put("/v1/owner/files", memberUploadLimit, async (c) => {
+    if (!input.memberFiles) return c.json({ error: "files_not_configured" }, 501)
+    const owner = ownerOf(c)
+    if (!owner.success) return c.json({ error: "owner_required" }, 400)
+    const query = memberPutQuery.safeParse(c.req.query())
+    const path = query.success ? normalizeMemberPath(query.data.path) : null
+    if (!query.success || path === null) return c.json({ error: "invalid_path", message: "That isn't a valid file name." }, 400)
+    const bytes = new Uint8Array(await c.req.arrayBuffer())
+    try {
+      const existing = await input.memberFiles.get(memberSpace(owner.data), { path })
+      if (existing && query.data.replace !== "1") return c.json({ error: "file_exists", message: `${shownPath(path)} already exists.` }, 409)
+      const file = await input.memberFiles.write(memberSpace(owner.data), path, bytes, { writer: { kind: "upload" }, mediaType: c.req.header("content-type") ?? null, ...(existing ? { ifVersion: existing.version } : { ifVersion: null }) })
+      return c.json(publicFile(file), existing ? 200 : 201)
+    } catch (error) {
+      if (error instanceof MemberFileError) return c.json({ error: error.code, message: error.message }, error.code === "file_too_large" || error.code === "files_full" || error.code === "too_many_files" ? 413 : error.code === "invalid_path" ? 400 : 409)
+      throw error
+    }
+  })
+  app.delete("/v1/owner/files/:fileId", async (c) => {
+    if (!input.memberFiles) return c.json({ error: "files_not_configured" }, 501)
+    const owner = ownerOf(c)
+    if (!owner.success) return c.json({ error: "owner_required" }, 400)
+    const id = memberFileId.safeParse(c.req.param("fileId"))
+    if (!id.success) return c.json({ error: "unknown_file" }, 404)
+    const deleted = await input.memberFiles.delete(memberSpace(owner.data), { id: id.data })
+    return deleted.ok ? c.body(null, 204) : c.json({ error: "unknown_file" }, 404)
+  })
 
   /** Refuses an upload before its body is read: no file store, unknown session, or a session without files. */
   const uploadAllowed: MiddlewareHandler = async (c, next) => {
