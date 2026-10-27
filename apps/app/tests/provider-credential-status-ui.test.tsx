@@ -85,7 +85,7 @@ test("local rejected key recovery is scoped to this runtime workspace and flag",
   const key = credentialHealthKey("workspace-test", "provider-test");
   const previous = initialState.entries[key];
   // Server rendering reads Zustand's initial snapshot, not its current snapshot.
-  initialState.entries[key] = { status: "rejected", revision: 0 };
+  initialState.entries[key] = { status: "rejected", revision: 0, observedAt: 0 };
   try {
     const rejected = renderToStaticMarkup(<AiSettingsView {...localView} />);
     expect(rejected).toContain("Key not accepted");
@@ -109,7 +109,7 @@ test("organization rejection directs the member to an admin rather than a person
   const initialState = useProviderCredentialHealth.getInitialState();
   const key = credentialHealthKey("workspace-test", "ipr_fixture");
   const previous = initialState.entries[key];
-  initialState.entries[key] = { status: "rejected", revision: 0 };
+  initialState.entries[key] = { status: "rejected", revision: 0, observedAt: 0 };
   try {
     const markup = renderToStaticMarkup(<AiSettingsView {...localView}
       signedIn organizationName="Acme"

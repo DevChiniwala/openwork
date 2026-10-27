@@ -57,7 +57,9 @@ test("a person sees a rejected personal provider key, replaces it, and earns Rea
     await user.see({ text: /Check your model connection|User not found/ }, { timeoutMs: WITHIN });
     expect(requests.some(value => value.status === 401 && value.credential === "original" && value.model === world.modelId)).toBe(true);
     expect(requests.some(value => value.status === 200)).toBe(false);
-    evidence.recordAssertionEvidence("The native engine really received a credential rejection", JSON.stringify({ requests, history: await world.nativeFailure() }), requests.some(value => value.status === 401 && value.credential === "original" && value.model === world.modelId));
+    const native = await world.nativeFailure();
+    expect(native.some(error => error.status === 401)).toBe(true);
+    evidence.recordAssertionEvidence("The native engine really received a credential rejection", JSON.stringify({ requests, native }), requests.some(value => value.status === 401 && value.credential === "original" && value.model === world.modelId));
     await user.screenshot();
   });
 

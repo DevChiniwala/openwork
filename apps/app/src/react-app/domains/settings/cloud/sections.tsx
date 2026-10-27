@@ -228,9 +228,9 @@ function CloudProviderListItem({ actionId, row, onRetry }: CloudProviderListItem
       tile={<ProviderTile providerId={providerId} name={row.name} />}
       name={row.name}
       status={cloudProviderRowStatus(status)}
-      meta={<ProviderMeta id={row.metaId} parts={[row.detail, status === "credential_rejected" ? "Contact your admin" : null]} />}
+      meta={<ProviderMeta id={row.metaId} parts={[row.detail]} />}
       aside={row.access ? <><Users className="size-3.5" aria-hidden />{row.access}</> : null}
-      actions={row.status === "error" && row.provider ? (
+      actions={status === "credential_rejected" ? <span className="text-xs text-muted-foreground">Contact your admin</span> : row.status === "error" && row.provider ? (
         <Button
           variant="outline"
           size="sm"

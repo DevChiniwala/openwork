@@ -96,8 +96,12 @@ export async function providerCredentialStatus(seed: Seed) {
         const response = await fetch(`${app.openworkUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/opencode2/api/session/${encodeURIComponent(sessionId)}/message`, {
           headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000),
         });
-        const text = await response.text();
-        return text.replaceAll(rejectedKey, "[synthetic]").replaceAll(replacementKey, "[synthetic]");
+        const payload: unknown = await response.json();
+        const messages = isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
+        return messages.flatMap((message) => {
+          if (!isRecord(message) || !isRecord(message.error)) return [];
+          return [{ type: typeof message.error.type === "string" ? message.error.type : "unknown", status: typeof message.error.status === "number" ? message.error.status : null }];
+        });
       },
       async [Symbol.asyncDispose]() { await close(upstream); },
     };

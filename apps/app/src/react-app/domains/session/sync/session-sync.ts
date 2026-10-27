@@ -1978,6 +1978,7 @@ async function reconcileSessionMessages(entry: SyncEntry, sessionId: string, mes
       if (messages.some(({ info, parts }) => info.sessionID !== sessionId || (messageId && info.id !== messageId)
         || parts.some((part) => part.sessionID !== sessionId || part.messageID !== info.id))) return;
       const workspaceId = entry.input.workspaceId;
+      observeProviderCredentialMessages(workspaceId, messages);
       const queryClient = getReactQueryClient();
       flushSessionDeltas(entry, workspaceId, sessionId);
       queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, sessionId), (current = []) => applyRevertCursor(
@@ -2439,6 +2440,22 @@ async function refreshSessionTodos(workspaceId: string, sessionId: string) {
   await queryClient.invalidateQueries({ queryKey });
 }
 
+/** Durable messages recover authentication evidence even when the new task's
+ * first lifecycle events arrived before its chat route attached to the stream. */
+export function observeProviderCredentialMessages(workspaceId: string, messages: ReadonlyArray<{
+  info: { role: string; providerID?: string; time?: { created?: number; completed?: number }; finish?: string; error?: unknown };
+}>) {
+  for (const { info } of messages) {
+    if (info.role !== "assistant" || !info.providerID || !info.time?.created) continue;
+    const observedAt = info.time.completed ?? info.time.created;
+    if (info.error && isProviderCredentialRejection(info.error)) {
+      useProviderCredentialHealth.getState().observe(workspaceId, info.providerID, "rejected", info.time.created, observedAt);
+    } else if (!info.error && info.time.completed && info.finish && !["error", "aborted"].includes(info.finish)) {
+      useProviderCredentialHealth.getState().observe(workspaceId, info.providerID, "verified", info.time.created, observedAt);
+    }
+  }
+}
+
 export function seedSessionState(
   workspaceId: string,
   snapshot: OpenworkSessionHistory,
@@ -2448,6 +2465,7 @@ export function seedSessionState(
   if (options.preview && snapshot.session.revert?.messageID) return;
   const queryClient = getReactQueryClient();
   const key = transcriptKey(workspaceId, snapshot.session.id);
+  observeProviderCredentialMessages(workspaceId, snapshot.messages);
   const projected = snapshotToUIMessages(snapshot);
   let incoming = projected;
   // Commit against the old text before merging a cumulative snapshot, never

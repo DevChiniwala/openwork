@@ -7,6 +7,7 @@ export type ProviderCredentialHealth = "unverified" | "verified" | "rejected";
 const entrySchema = z.object({
   status: z.enum(["verified", "rejected"]),
   revision: z.number(),
+  observedAt: z.number().default(0),
 });
 const persistedSchema = z.object({
   entries: z.record(z.string(), entrySchema),
@@ -37,7 +38,7 @@ type CredentialHealthState = {
   bindWorkspace: (workspaceId: string, scope: string) => void;
   configure: (workspaceId: string, providerId: string, version: string) => void;
   changed: (workspaceId: string, providerId: string) => void;
-  observe: (workspaceId: string, providerId: string, status: "verified" | "rejected", startedAt: number) => void;
+  observe: (workspaceId: string, providerId: string, status: "verified" | "rejected", startedAt: number, observedAt?: number) => void;
 };
 
 /** Only the outcome is retained. No keys, error text, response bodies or model output. */
@@ -78,17 +79,23 @@ export const useProviderCredentialHealth = create<CredentialHealthState>()(persi
     }
     return { entries, revisions };
   }),
-  observe: (workspaceId, providerId, status, startedAt) => set((state) => {
+  observe: (workspaceId, providerId, status, startedAt, observedAt = Date.now()) => set((state) => {
     const key = credentialHealthKey(workspaceId, providerId);
     const revision = state.revisions[key] ?? 0;
     // A request already in flight when a key was replaced cannot bless or
     // reject the replacement. Equal timestamps are conservatively ignored.
     if (revision >= startedAt) return state;
-    return { entries: { ...state.entries, [key]: { status, revision } } };
+    const current = state.entries[key];
+    if (current && (current.observedAt > observedAt || (current.observedAt === observedAt && current.status === status))) return state;
+    return { entries: { ...state.entries, [key]: { status, revision, observedAt } } };
   }),
 }), {
   name: "openwork.provider-credential-health.v1",
-  storage: createJSONStorage(() => localStorage),
+  storage: createJSONStorage(() => ({
+    getItem: (key) => typeof localStorage === "undefined" ? null : localStorage.getItem(key),
+    setItem: (key, value) => { if (typeof localStorage !== "undefined") localStorage.setItem(key, value); },
+    removeItem: (key) => { if (typeof localStorage !== "undefined") localStorage.removeItem(key); },
+  })),
   partialize: ({ entries, revisions, configurations, workspaceScopes }) => ({ entries, revisions, configurations, workspaceScopes }),
   merge: (persisted, current) => {
     const parsed = persistedSchema.safeParse(persisted);

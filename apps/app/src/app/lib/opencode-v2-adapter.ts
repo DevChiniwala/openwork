@@ -947,7 +947,7 @@ function mapV2Message(
         created,
         ...(completed === undefined ? {} : { completed }),
       },
-      ...(role === "assistant" ? mapV2ReplyModel(value) : {}),
+      ...(role === "assistant" ? { ...mapV2ReplyModel(value), finish: readString(value, "finish") } : {}),
       ...(role === "assistant" ? mapV2ReplyUsage(value) : {}),
       ...(role === "assistant" && error
         ? { error: mapV2SessionError(error) }

@@ -6,7 +6,7 @@ import { isProviderCredentialRejection } from "../src/react-app/domains/session/
 const ownedDom = typeof window === "undefined";
 if (ownedDom) GlobalRegistrator.register({ url: "http://localhost/" });
 const { credentialHealthKey, useProviderCredentialHealth } = await import("../src/react-app/domains/connections/provider-auth/credential-health");
-const { __applySessionSyncEventForTest, __createWorkspaceSessionSyncForTest } = await import("../src/react-app/domains/session/sync/session-sync");
+const { __applySessionSyncEventForTest, __createWorkspaceSessionSyncForTest, observeProviderCredentialMessages } = await import("../src/react-app/domains/session/sync/session-sync");
 const { useSessionActivityStore } = await import("../src/react-app/domains/session/status/session-activity-store");
 afterAll(async () => { if (ownedDom) await GlobalRegistrator.unregister(); });
 
@@ -87,13 +87,14 @@ test("rejection survives a reload without storing any raw error or credential", 
   stored = snapshot;
   await useProviderCredentialHealth.persist.rehydrate();
   expect(health()).toBe("rejected");
-  expect(JSON.parse(snapshot).state).toEqual({ entries: { [key]: { status: "rejected", revision: 0 } }, revisions: {}, configurations: {}, workspaceScopes: {} });
+  expect(JSON.parse(snapshot).state).toEqual({ entries: { [key]: { status: "rejected", revision: 0, observedAt: now } }, revisions: {}, configurations: {}, workspaceScopes: {} });
 });
 
 for (const error of [
   { name: "APIError", data: { statusCode: 401, message: "User not found.", responseBody: '{"error":{"message":"User not found.","code":401}}' } },
   { name: "UnknownError", data: { message: "Provider request failed with HTTP 401: User not found." } },
   { name: "APIError", data: { message: "Invalid API key" } },
+  { name: "APIError", data: { statusCode: 403, responseBody: '{"error":{"code":"invalid_api_key"}}' } },
   { name: "APIError", data: { responseBody: '{"error":{"code":"invalid_api_key"}}' } },
 ]) test(`recognized inference rejection: ${JSON.stringify(error)}`, () => {
   expect(isProviderCredentialRejection(error)).toBe(true);
@@ -200,4 +201,20 @@ test("the native adapter retains a confirmed 401 even when the engine omits the 
     expect(mapped.name).toBe("APIError");
     expect(isProviderCredentialRejection(mapped)).toBe(true);
   }
+});
+
+test("durable assistant outcomes recover missed lifecycle events without reviving stale verdicts", () => {
+  const failure = { info: { role: "assistant", providerID: provider, time: { created: 101, completed: 102 }, error: { name: "APIError", data: { statusCode: 401, message: "User not found." } } } };
+  observeProviderCredentialMessages(workspace, [failure]);
+  expect(health()).toBe("rejected");
+  const oldSuccess = { info: { role: "assistant", providerID: provider, time: { created: 90, completed: 99 }, finish: "stop" } };
+  observeProviderCredentialMessages(workspace, [oldSuccess]);
+  expect(health()).toBe("rejected");
+  const success = { info: { role: "assistant", providerID: provider, time: { created: 103, completed: 104 }, finish: "stop" } };
+  observeProviderCredentialMessages(workspace, [success]);
+  expect(health()).toBe("verified");
+  now = 105;
+  useProviderCredentialHealth.getState().changed(workspace, provider);
+  observeProviderCredentialMessages(workspace, [failure, success]);
+  expect(health()).toBe("unverified");
 });

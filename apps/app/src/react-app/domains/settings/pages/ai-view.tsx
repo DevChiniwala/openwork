@@ -204,7 +204,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
         {props.onOpenDen ? <Button variant="ghost" onClick={props.onOpenDen}>Open in Den</Button> : null}
       </div>
       <ProviderList>
-        {organization.map((provider) => <ProviderRow key={provider.id} scope="organization" tile={<ProviderTile providerId={provider.id} name={provider.name} />} name={provider.name} status={props.credentialStatusEnabled ? <CredentialHealthStatus health={providerHealth(provider.id) ?? "unverified"} /> : <ProviderStatus tone="ready">Ready to use</ProviderStatus>} meta={<ProviderMeta id={provider.id} parts={[providerHealth(provider.id) === "rejected" ? "Contact your admin" : "Managed in Den"]} />} />)}
+        {organization.map((provider) => <ProviderRow key={provider.id} scope="organization" tile={<ProviderTile providerId={provider.id} name={provider.name} />} name={provider.name} status={props.credentialStatusEnabled ? <CredentialHealthStatus health={providerHealth(provider.id) ?? "unverified"} /> : <ProviderStatus tone="ready">Ready to use</ProviderStatus>} meta={<ProviderMeta id={provider.id} parts={["Managed in Den"]} />} actions={providerHealth(provider.id) === "rejected" ? <span className="text-xs text-muted-foreground">Contact your admin</span> : null} />)}
         {props.gatewayConnectProviders?.map((provider) => <GatewayConnectRow key={gatewayConnectProviderKey(provider)} provider={provider} busy={props.connectingGatewayProviderId === gatewayConnectProviderKey(provider)} onConnect={props.onConnectGatewayProvider} onCancel={props.onCancelGatewayConnect} />)}
       </ProviderList>
     </section> : null)}
