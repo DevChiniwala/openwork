@@ -49,6 +49,24 @@ test("an older runner that can't limit the desktop's views gives a one-view conv
   assert.deepEqual(bodies.at(-1), { computer: true, desktop: true })
 })
 
+test("a runner that can't turn a one-view conversation's desktop off fails the update instead of keeping it", async () => {
+  const bodies: Record<string, unknown>[] = []
+  const client = createHeadlessRunnerClient({
+    config: { url: "http://runner", token: "r".repeat(32) }, maxTokenTtlMs: 60_000, mintToken: async () => ({ token: "synthetic" }),
+    fetch: async (_url, init) => {
+      const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Record<string, unknown>
+      bodies.push(body)
+      const rejected = "desktopViews" in body || "desktop" in body
+      return new Response(JSON.stringify(rejected ? { error: "invalid_request" } : { id: "hs_fixture" }), { status: rejected ? 400 : 200, headers: { "content-type": "application/json" } })
+    },
+  })
+  const saved = await client.putSession("hs_fixture", { computer: true, desktop: true, desktopViews: ["browser"], documentNavigation: true })
+  assert.equal(saved.ok, false)
+  assert.ok(bodies.every(body => body.desktop === false || "desktopViews" in body), "no update may leave the desktop setting out")
+  // Both views ask for nothing narrower, so the conversation is still kept without the settings this runner lacks.
+  assert.equal((await client.putSession("hs_fixture", { computer: true, desktop: true, desktopViews: ["browser", "computer"] })).ok, true)
+})
+
 test("Computer access uses the signed-in member's conversation and refuses a caller-supplied target", async (t) => {
   const calls: { method: string; url: URL; owner: string | null; body: unknown }[] = []
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } })

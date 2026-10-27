@@ -368,11 +368,13 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       let { status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...extras })
       let compatible: Record<string, unknown> = extras
       // The newest setting first. An older runner can't limit the desktop to some views, so a conversation allowed fewer
-      // than all of them gets no desktop there rather than every view; it keeps its other settings.
+      // than all of them gets no desktop there rather than every view; it keeps its other settings. Such a conversation
+      // is never saved without turning its desktop off: if the runner won't take that either, the update fails.
+      let limited = false
       if (unknownSetting(status, payload) && input.desktopViews !== undefined) {
         const { desktopViews: _views, ...rest } = compatible
-        const narrowed = !RUNNER_DESKTOP_VIEWS.every(view => input.desktopViews!.includes(view))
-        compatible = narrowed ? { ...rest, desktop: false } : rest
+        limited = !RUNNER_DESKTOP_VIEWS.every(view => input.desktopViews!.includes(view))
+        compatible = limited ? { ...rest, desktop: false } : rest
         ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
       }
       // An older runner has no document-navigation setting: the conversation keeps its other settings and offers links.
@@ -382,12 +384,12 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
         ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
       }
       // An older runner has no desktop setting. Omitting an explicit off value preserves side-chat settings.
-      if (unknownSetting(status, payload) && input.desktop === false) {
+      if (unknownSetting(status, payload) && input.desktop === false && !limited) {
         const { desktop: _desktop, ...rest } = compatible
         ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...rest }))
       }
       // A runner older than per-session capabilities or settings rejects them: keep the conversation, without them.
-      if (unknownSetting(status, payload) && Object.keys(extras).length && !input.strict) ({ status, payload } = await request(deps, "PUT", sessionPath(id), base))
+      if (unknownSetting(status, payload) && Object.keys(extras).length && !input.strict && !limited) ({ status, payload } = await request(deps, "PUT", sessionPath(id), base))
       const saved = z.object({ id: z.string() }).safeParse(payload)
       if ((status !== 200 && status !== 201) || !saved.success) return { ok: false, status, error: errorCode(payload, `headless_put_${status}`) }
       return { ok: true, value: { id: saved.data.id, created: status === 201 } }
