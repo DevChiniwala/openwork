@@ -21,7 +21,7 @@ describe("Automation catalog", () => {
       omitted: 0,
       automations: [entry("atm_daily", { kind: "weekly", timezone: "UTC", daysOfWeek: [1, 3], hour: 9, minute: 0 })],
     });
-    expect(renderOpenWorkAutomationInstruction(index)).toContain("<schedule>Weekly · Mon, Wed · 09:00 · UTC</schedule>");
+    expect(renderOpenWorkAutomationInstruction(index)).toContain("<schedule>weekly on days 1,3 at 09:00 UTC (0=Sunday)</schedule>");
   });
 
   test("lists interval Automations from moreAutomations with Den's summary", () => {
@@ -46,11 +46,11 @@ describe("Automation catalog", () => {
       automations: [entry("atm_daily", { kind: "daily", timezone: "UTC", hour: 8, minute: 0 })],
       moreAutomations: [
         entry("atm_future", { kind: "someday", timezone: "UTC" }),
-        entry("atm_meetings", { kind: "calendar", timezone: "UTC", edge: "end", offsetMinutes: 5, rule: { withExternalAttendees: true } }),
+        entry("atm_meetings", { kind: "calendar", timezone: "UTC", edge: "end", offsetMinutes: 5, rule: { withExternalAttendees: true } }, { summary: "After each meeting (+5 min) · with people outside the organization · UTC" }),
       ],
     });
     const rendered = renderOpenWorkAutomationInstruction(index);
-    expect(rendered).toContain("<schedule>Daily · 08:00 · UTC</schedule>");
+    expect(rendered).toContain("<schedule>daily at 08:00 UTC</schedule>");
     expect(rendered).toContain("<schedule>a schedule this OpenWork version cannot describe</schedule>");
     expect(rendered).toContain("<schedule>After each meeting (+5 min) · with people outside the organization · UTC</schedule>");
   });

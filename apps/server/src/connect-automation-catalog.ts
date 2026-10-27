@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { formatAutomationSchedule } from "@openwork/types/automation-schedule";
-import { automationScheduleSchema } from "@openwork/types/automations";
 import { z } from "zod";
 
 import { escapeXml, readMcpResourceText, type McpFetch } from "./connect-mcp-transport.js";
@@ -104,10 +102,25 @@ export async function readOpenWorkAutomationCatalog(
   }
 }
 
+// Dens that send `summary` describe every schedule kind themselves. Older
+// Dens send only these three kinds. The packaged server cannot load
+// @openwork/types' source-only schedule module at runtime, so it keeps this
+// small fallback instead of importing the shared label.
+const legacyScheduleSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("once"), timezone: z.string(), at: z.number() }),
+  z.object({ kind: z.literal("daily"), timezone: z.string(), hour: z.number(), minute: z.number() }),
+  z.object({ kind: z.literal("weekly"), timezone: z.string(), daysOfWeek: z.array(z.number()), hour: z.number(), minute: z.number() }),
+]);
+
 function scheduleText(automation: OpenWorkAutomationIndex["automations"][number]): string {
   if (automation.summary?.trim()) return automation.summary.trim();
-  const schedule = automationScheduleSchema.safeParse(automation.schedule);
-  return schedule.success ? formatAutomationSchedule(schedule.data, "en-US") : "a schedule this OpenWork version cannot describe";
+  const parsed = legacyScheduleSchema.safeParse(automation.schedule);
+  if (!parsed.success) return "a schedule this OpenWork version cannot describe";
+  const schedule = parsed.data;
+  if (schedule.kind === "once") return `once at ${new Date(schedule.at).toISOString()} (${schedule.timezone})`;
+  const time = `${String(schedule.hour).padStart(2, "0")}:${String(schedule.minute).padStart(2, "0")}`;
+  if (schedule.kind === "daily") return `daily at ${time} ${schedule.timezone}`;
+  return `weekly on days ${schedule.daysOfWeek.join(",")} at ${time} ${schedule.timezone} (0=Sunday)`;
 }
 
 /**
