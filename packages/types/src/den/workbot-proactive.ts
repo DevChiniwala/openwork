@@ -121,6 +121,28 @@ export const workbotProactiveViewSchema = z.object({
 })
 export type WorkbotProactiveView = z.infer<typeof workbotProactiveViewSchema>
 
+/** A member's watch, set up by chat: "tell me when someone emails me" (`workbotAgentWatches`). */
+export const AGENT_WATCHES_MAX = 10
+export const agentWatchSchema = z.object({
+  id: z.string(),
+  /** A sender: an address, a domain or a name, as the member said it. */
+  from: z.string().nullable(),
+  /** Words in the subject. */
+  subject: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+})
+export type AgentWatch = z.infer<typeof agentWatchSchema>
+
+/** `POST /v1/me/agent/watches`: a sender, subject words, or both. */
+export const agentWatchInputSchema = z
+  .object({
+    from: z.string().trim().min(1).max(254).optional(),
+    subject: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict()
+  .refine((value) => Boolean(value.from || value.subject), { message: "Give a sender, subject words, or both." })
+export type AgentWatchInput = z.infer<typeof agentWatchInputSchema>
+
 /** `GET /v1/me/agent`: a member's own agent, in their words. */
 export const memberAgentViewSchema = z.object({
   /** Turned on for the organization (and the feature is on for this member). */
@@ -145,6 +167,8 @@ export const memberAgentViewSchema = z.object({
   }).nullable(),
   workingHours: z.object({ workingDays: z.enum(["weekdays", "everyday"]), startHour: z.number(), endHour: z.number(), dailyCap: z.number() }),
   nextCheckAt: z.iso.datetime().nullable(),
+  /** Emails the member asked to hear about. Empty while watches are off for them. */
+  watches: z.array(agentWatchSchema),
 })
 export type MemberAgentView = z.infer<typeof memberAgentViewSchema>
 

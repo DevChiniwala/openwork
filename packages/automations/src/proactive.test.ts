@@ -18,6 +18,9 @@ import {
   projectGoogleCalendarEvents,
   rememberWakes,
   safeProactiveLink,
+  detectWatchWakes,
+  watchCheckDue,
+  watchQuery,
   withinWorkingHours,
   zonedClock,
   zonedDayStart,
@@ -260,6 +263,41 @@ describe("the delivery step", () => {
     assert.deepEqual(decideAgentDelivery({ ...base, items, sentToday: 3 }), { kind: "drop", reason: "daily_limit", items })
     assert.deepEqual(decideAgentDelivery({ ...base, items, at: at("2026-10-20T20:00:00") }), { kind: "drop", reason: "quiet_hours" })
     assert.deepEqual(decideAgentDelivery({ ...base, items, snoozedUntil: now + 60_000 }), { kind: "drop", reason: "snoozed" })
+  })
+})
+
+describe("watches set up by chat", () => {
+  const watch = { id: "aw_1", from: "lead@northwind.example", subject: null, createdAt: at("2026-10-20T09:00:00") }
+
+  test("a watch becomes a Gmail search for new mail since the last look, without operators of its own", () => {
+    assert.equal(watchQuery(watch, at("2026-10-20T12:00:00")), `from:(lead@northwind.example) -from:me after:${Math.floor(at("2026-10-20T12:00:00") / 1000)}`)
+    assert.equal(watchQuery({ ...watch, from: null, subject: 'Renewal" OR from:(anyone)' }, 0), 'subject:("Renewal OR from: anyone") -from:me after:0')
+    assert.equal(watchQuery({ ...watch, from: "  ", subject: null }, 0), null)
+  })
+
+  test("each new thread wakes the agent once; the prompt names the email by id, never its text", () => {
+    const matches = new Map([["aw_1", [{ id: "m1", threadId: "t1" }, { id: "m2", threadId: "t1" }, { id: "m3", threadId: "t2" }]]])
+    const wakes = detectWatchWakes({ watches: [watch], matches, seen: ["m3"] })
+    assert.deepEqual(wakes.map((wake) => [wake.messageId, wake.ref]), [["m1", "t1"]])
+    const prompt = agentWakePrompt({ reasons: [{ kind: "watch", wake: wakes[0] ?? { watchId: "", from: null, subject: null, messageId: "", threadId: "", ref: "" } }], lastLook: {}, responsibilities: ["calendar_changes"], instructions: "", now, timeZone: TZ })
+    assert.match(prompt, /Woken by an email the person asked to hear about/)
+    assert.match(prompt, /Gmail message m1, thread t1\) matches what the person asked to hear about: email from lead@northwind\.example \(watch, ref t1\)/)
+    assert.match(prompt, /- watch: Emails the person asked to hear about/)
+  })
+
+  test("Gmail is searched for watches at most hourly", () => {
+    assert.equal(watchCheckDue({ watches: [], checkedAt: null, now }), false)
+    assert.equal(watchCheckDue({ watches: [watch], checkedAt: null, now }), true)
+    assert.equal(watchCheckDue({ watches: [watch], checkedAt: now - 59 * 60_000, now }), false)
+    assert.equal(watchCheckDue({ watches: [watch], checkedAt: now - 60 * 60_000, now }), true)
+  })
+
+  test("a watch item is delivered like any other, once", () => {
+    const items = [{ responsibility: "watch" as const, ref: "t1" }]
+    const base = { enabled: new Set<"watch">(["watch"]), muted: new Set<"watch">(), told: new Set<string>(), sentToday: 0, policy, at: now, timeZone: TZ, snoozedUntil: null }
+    assert.deepEqual(decideAgentDelivery({ ...base, items }), { kind: "deliver", items })
+    assert.deepEqual(decideAgentDelivery({ ...base, items, told: new Set(["watch:t1"]) }), { kind: "drop", reason: "nothing_new" })
+    assert.equal(parseAgentReply('{"message":"Northwind wrote back.","items":[{"responsibility":"watch","ref":"t1"}]}').kind, "message")
   })
 })
 

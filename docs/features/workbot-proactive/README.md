@@ -112,6 +112,19 @@ yet (`slack_app_not_installed`, `member_not_linked`). Both are tagged for Connec
 can say "stop telling me about calendar changes" or "snooze until tomorrow" to Workbot. The agent's own `mcp:read`
 token can read them but never change them. There are no buttons on messages and no Slack Home tab.
 
+## Watches: "tell me when someone emails me"
+
+Feature `workbotAgentWatches` (cloud and self-hosted, off; needs `workbotProactive`). A member tells Workbot "tell me
+when lead@northwind.example emails me" or "tell me when an email about the renewal arrives"; Workbot calls
+`POST /v1/me/agent/watches` (`{ from?, subject? }`, up to 10). The watches are listed in `GET /v1/me/agent` and
+cancelled with `DELETE /v1/me/agent/watches/:watchId` ("stop telling me about those").
+
+At most hourly, inside working hours, Den runs one read-only Gmail search per watch as the member
+(`from:(…) subject:("…") -from:me after:<last look>`, ids only). A new thread wakes the agent with the message and
+thread ids; the agent opens the email itself, as data, and writes one or two lines. Each thread is delivered once
+(ledger item `watch:<threadId>`), under the same daily limit, quiet hours and snooze. Turning the feature off stops the
+searches; stored watches stay and are ignored.
+
 ## Where notes live
 
 The agent keeps its notes in its own session's scratch files under `memory/` (what it already told the member,
@@ -164,7 +177,7 @@ from the stored state.
    moved by someone else; the member's own move; an external meeting in 15 minutes with an open thread; the same with
    nothing useful; an external email unanswered for 5 hours; the same answered; a newsletter; three changes in one
    hour past the daily limit; a cancelled meeting tomorrow.
-2. Follow-ups ("remind me", "tell me when"): no `schedule_wake` tool yet.
+2. Follow-ups beyond email watches ("remind me at 3"): no `schedule_wake` tool yet.
 3. Copying delivered text into the member's Workbot conversation.
 4. A member settings page in Den web (the API and Connect capability exist).
 5. Desktop notifications as a destination.

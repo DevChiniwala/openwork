@@ -475,6 +475,31 @@ export async function readMemberGoogleCalendar(input: {
   return { kind: "ok", json: await readJson(response) }
 }
 
+export type MemberGmailSearch =
+  | { kind: "ok"; json: unknown }
+  | { kind: "needs_connection" | "policy_blocked" | "missing_scope" | "google_api_error" }
+
+/**
+ * Searches a member's Gmail for their agent's watches, outside any request: one read-only `messages.list` (ids and
+ * thread ids only, no content), with the member's default Google Workspace connection.
+ */
+export async function searchMemberGmail(input: {
+  organizationId: DenTypeId<"organization">
+  orgMembershipId: DenTypeId<"member">
+  q: string
+  maxResults: number
+}): Promise<MemberGmailSearch> {
+  const token = await googleWorkspaceToken({ organizationId: input.organizationId, orgMembershipId: input.orgMembershipId, connectionId: null })
+  if (token.kind !== "ok") return { kind: token.kind }
+  if (missingScope(token.account, [GMAIL_READ_SCOPE])) return { kind: "missing_scope" }
+  const url = new URL(`${gmailApiBase()}/gmail/v1/users/me/messages`)
+  url.searchParams.set("q", input.q)
+  url.searchParams.set("maxResults", String(Math.min(25, Math.max(1, input.maxResults))))
+  const response = await googleWorkspaceApiFetch(url, { headers: { authorization: `Bearer ${token.accessToken}` } })
+  if (!response.ok) return { kind: "google_api_error" }
+  return { kind: "ok", json: await readJson(response) }
+}
+
 async function googleApiError(operation: string, response: Response) {
   const text = await response.text()
   return { error: "google_api_error" as const, message: `${operation} failed: ${response.status} ${text.slice(0, 300)}` }

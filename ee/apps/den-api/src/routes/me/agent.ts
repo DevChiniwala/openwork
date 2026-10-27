@@ -1,7 +1,10 @@
 import { isValidTimeZone } from "@openwork/automations/proactive"
+import { randomBytes } from "node:crypto"
 import {
   AGENT_RESPONSIBILITIES,
   AGENT_RESPONSIBILITY_COPY,
+  AGENT_WATCHES_MAX,
+  agentWatchInputSchema,
   memberAgentInputSchema,
   memberAgentViewSchema,
   type MemberAgentView,
@@ -11,8 +14,8 @@ import type { DenTypeId } from "@openwork-ee/utils/typeid"
 import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { z } from "zod"
-import { requireFeature } from "../../features.js"
-import { jsonValidator, orgMemberRoute, type OrganizationContextVariables } from "../../middleware/index.js"
+import { organizationFeatureEnabled, requireFeature } from "../../features.js"
+import { jsonValidator, orgMemberRoute, paramValidator, type OrganizationContextVariables } from "../../middleware/index.js"
 import { invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
 import { readProactiveSettings } from "../../workbot-proactive/access.js"
@@ -32,6 +35,10 @@ const memberAgentDocumentSchema = memberAgentViewSchema.meta({ ref: "MemberAgent
 const memberAgentInputDocumentSchema = memberAgentInputSchema.meta({ ref: "MemberAgentInput" })
 const featureDisabledSchema = z.object({ error: z.literal("feature_disabled"), feature: z.string() }).meta({ ref: "MemberAgentDisabled" })
 
+const watchParamSchema = z.object({ watchId: z.string().trim().min(1).max(64) })
+const tooManyWatchesSchema = z.object({ error: z.literal("too_many_watches"), message: z.string() }).meta({ ref: "MemberAgentTooManyWatchesError" })
+const watchNotFoundSchema = z.object({ error: z.literal("watch_not_found") }).meta({ ref: "MemberAgentWatchNotFoundError" })
+
 async function memberAgentView(input: {
   organizationId: DenTypeId<"organization">
   userId: DenTypeId<"user">
@@ -39,6 +46,7 @@ async function memberAgentView(input: {
   row: (MemberChoices & { nextWakeAt: Date | null }) | null
 }): Promise<MemberAgentView> {
   const { settings, row } = input
+  const watchesOn = await organizationFeatureEnabled(input.organizationId, "workbotAgentWatches", { userId: input.userId })
   const template = await readAgentTemplate(input.organizationId)
   const muted = mutedOf(row)
   const on = memberAgentOn(row, settings)
@@ -53,6 +61,7 @@ async function memberAgentView(input: {
     destination,
     workingHours: { workingDays: settings.workingDays, startHour: settings.startHour, endHour: settings.endHour, dailyCap: settings.dailyCap },
     nextCheckAt: settings.enabled && on && row?.nextWakeAt ? row.nextWakeAt.toISOString() : null,
+    watches: watchesOn ? (row?.overrides?.watches ?? []).map((watch) => ({ id: watch.id, from: watch.from, subject: watch.subject, createdAt: watch.createdAt })) : [],
   }
 }
 
@@ -114,6 +123,74 @@ export function registerMeAgentRoutes<T extends { Variables: AuthContextVariable
       const timeZone = row && isValidTimeZone(row.timeZone) ? row.timeZone : "UTC"
       await saveMemberChoices(organizationId, memberId, memberChoiceChange(input, row, settings, Date.now(), timeZone))
       return c.json(await memberAgentView({ organizationId, userId, settings, row: await readAgentInstance(memberId) }))
+    },
+  )
+
+  app.post(
+    "/v1/me/agent/watches",
+    describeRoute({
+      tags: ["Users"],
+      summary: "Tell me when someone emails me",
+      description:
+        "Adds a watch to the signed-in member's agent: \"tell me when <sender> emails me\" or \"tell me when an email about <words> arrives\". Give a sender (an address, a domain or a name), subject words, or both. The agent checks the member's Gmail for new matching email at most hourly in working hours and DMs them from the Workbot Slack app once per new thread. Up to 10 watches. Returns the member's agent with its watches. Requires the workbotProactive and workbotAgentWatches features and Workbot on this deployment.",
+      responses: {
+        201: jsonResponse("The watch was added.", memberAgentDocumentSchema),
+        400: jsonResponse("The request was invalid, or the member already has 10 watches.", z.union([tooManyWatchesSchema, invalidRequestSchema])),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+        404: jsonResponse("Agents or watches are off for this organization.", featureDisabledSchema),
+      },
+    }),
+    orgMemberRoute(),
+    requireFeature("workbotProactive"),
+    requireFeature("workbotAgentWatches"),
+    jsonValidator(agentWatchInputSchema),
+    async (c) => {
+      const context = c.get("organizationContext")
+      const userId = context?.currentMember.userId
+      if (!context || !userId || workbotOrigin() === null) return c.json({ error: "feature_disabled" as const, feature: "workbot" }, 404)
+      c.header("Cache-Control", "no-store")
+      const organizationId = context.organization.id
+      const memberId = context.currentMember.id
+      const input = c.req.valid("json")
+      const row = await readAgentInstance(memberId)
+      const watches = row?.overrides?.watches ?? []
+      if (watches.length >= AGENT_WATCHES_MAX) return c.json({ error: "too_many_watches" as const, message: `You can have ${AGENT_WATCHES_MAX} watches. Cancel one first.` }, 400)
+      const watch = { id: `aw_${randomBytes(8).toString("hex")}`, from: input.from ?? null, subject: input.subject ?? null, createdAt: new Date().toISOString() }
+      // Due now, so the first look records where the watch starts.
+      await saveMemberChoices(organizationId, memberId, { overrides: { ...row?.overrides, watches: [...watches, watch] } }, new Date(), { wake: true })
+      return c.json(await memberAgentView({ organizationId, userId, settings: await readProactiveSettings(organizationId), row: await readAgentInstance(memberId) }), 201)
+    },
+  )
+
+  app.delete(
+    "/v1/me/agent/watches/:watchId",
+    describeRoute({
+      tags: ["Users"],
+      summary: "Stop telling me about these emails",
+      description: "Cancels one of the signed-in member's watches (\"stop telling me when <sender> emails me\"). Returns the member's agent with its remaining watches. Requires the workbotProactive and workbotAgentWatches features and Workbot on this deployment.",
+      responses: {
+        200: jsonResponse("The watch was cancelled.", memberAgentDocumentSchema),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+        404: jsonResponse("No such watch, or agents or watches are off for this organization.", z.union([watchNotFoundSchema, featureDisabledSchema])),
+      },
+    }),
+    orgMemberRoute(),
+    requireFeature("workbotProactive"),
+    requireFeature("workbotAgentWatches"),
+    paramValidator(watchParamSchema),
+    async (c) => {
+      const context = c.get("organizationContext")
+      const userId = context?.currentMember.userId
+      if (!context || !userId || workbotOrigin() === null) return c.json({ error: "feature_disabled" as const, feature: "workbot" }, 404)
+      c.header("Cache-Control", "no-store")
+      const organizationId = context.organization.id
+      const memberId = context.currentMember.id
+      const { watchId } = c.req.valid("param")
+      const row = await readAgentInstance(memberId)
+      const watches = row?.overrides?.watches ?? []
+      if (!watches.some((watch) => watch.id === watchId)) return c.json({ error: "watch_not_found" as const }, 404)
+      await saveMemberChoices(organizationId, memberId, { overrides: { ...row?.overrides, watches: watches.filter((watch) => watch.id !== watchId) } })
+      return c.json(await memberAgentView({ organizationId, userId, settings: await readProactiveSettings(organizationId), row: await readAgentInstance(memberId) }))
     },
   )
 }

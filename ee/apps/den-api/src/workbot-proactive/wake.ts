@@ -5,25 +5,32 @@ import {
   cleanAgentMessage,
   decideAgentDelivery,
   detectCalendarWakes,
+  detectWatchWakes,
   isMorningPass,
   isValidTimeZone,
   nextCalendarPoll,
   nextScheduledPass,
   nextWorkingStart,
   parseAgentState,
+  projectGmailMatches,
   projectGoogleCalendarEvents,
   rememberWakes,
   wakeResponsibility,
+  watchCheckDue,
+  watchQuery,
+  WATCH_CHECK_MS,
   withinWorkingHours,
   zonedDayStart,
   type AgentItem,
+  type AgentItemKind,
+  type AgentWatchFilter,
   type AgentState,
   type AgentWakeReason,
 } from "@openwork/automations/proactive"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
 import type { AgentDestinationBlock, WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
 import { appLogger } from "../observability/logger.js"
-import type { MemberCalendarRead } from "../routes/org/google-workspace.js"
+import type { MemberCalendarRead, MemberGmailSearch } from "../routes/org/google-workspace.js"
 import type { DeliveryResult } from "./deliver.js"
 import { activeResponsibilities, enabledOf, memberAgentOn, mutedOf, proactivePolicy } from "./policy.js"
 import type { AgentInstanceRow, AgentSettle, DeliveryOutcome } from "./repository.js"
@@ -45,6 +52,9 @@ export type AgentWakeDeps = {
   template: (organizationId: DenTypeId<"organization">) => Promise<AgentTemplateVersion>
   user: (organizationId: DenTypeId<"organization">, memberId: DenTypeId<"member">) => Promise<DenTypeId<"user"> | null>
   calendar: (input: { organizationId: DenTypeId<"organization">; orgMembershipId: DenTypeId<"member">; timeMin: string; timeMax: string }) => Promise<MemberCalendarRead>
+  /** Watches are on for this member (`workbotAgentWatches`). */
+  watchesAllowed: (organizationId: DenTypeId<"organization">, userId: DenTypeId<"user">) => Promise<boolean>
+  gmail: (input: { organizationId: DenTypeId<"organization">; orgMembershipId: DenTypeId<"member">; q: string; maxResults: number }) => Promise<MemberGmailSearch>
   model: (actor: { userId: DenTypeId<"user">; organizationId: DenTypeId<"organization"> }) => Promise<string | null>
   turn: (input: { actor: { userId: string; organizationId: string }; sessionId: string; instructions: string; model: string; prompt: string; messageId: string }) => Promise<AgentTurnResult>
   sessionId: (organizationId: string, memberId: string) => string
@@ -69,6 +79,14 @@ export type AgentWakeOutcome =
 
 function iso(at: number) {
   return new Date(at).toISOString()
+}
+
+/** The member's watches, as set up by chat; anything malformed is ignored. */
+function watchesOf(row: AgentInstanceRow): AgentWatchFilter[] {
+  return (row.overrides?.watches ?? []).flatMap((watch) => {
+    const createdAt = Date.parse(watch.createdAt)
+    return typeof watch.id === "string" && Number.isFinite(createdAt) ? [{ id: watch.id, from: watch.from ?? null, subject: watch.subject ?? null, createdAt }] : []
+  })
 }
 
 /** One wake for one claimed agent. Always settles it (next wake, state) before returning. */
@@ -101,7 +119,8 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   }
   const template = await deps.template(organizationId)
   const responsibilities = activeResponsibilities(template, row)
-  if (!responsibilities.length) return skip("no_responsibilities", now + 6 * HOUR_MS, { templateVersionId: template.versionId })
+  const watches = (await deps.watchesAllowed(organizationId, userId)) ? watchesOf(row) : []
+  if (!responsibilities.length && !watches.length) return skip("no_responsibilities", now + 6 * HOUR_MS, { templateVersionId: template.versionId })
 
   // The event source: one read-only calendar GET as the member. It also tells us their time zone.
   const state = parseAgentState(row.state)
@@ -120,7 +139,13 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   const nextPoll = projected
     ? nextCalendarPoll({ now, events: projected.events, leadMinutes: settings.leadMinutes, policy, timeZone })
     : now + AGENT_TIMING.calendarPollMs
-  const nextWake = (nextPassAt: number | null) => new Date(calendarResponsibilities ? Math.min(nextPoll, nextPassAt ?? nextPoll) : (nextPassAt ?? nextPoll))
+  let watchCheckedAt = state.watchCheckedAt ?? null
+  const nextWake = (nextPassAt: number | null) => {
+    const candidates = [nextPassAt ?? nextPoll]
+    if (calendarResponsibilities) candidates.push(nextPoll)
+    if (watches.length) candidates.push(Math.max(now + 60_000, (watchCheckedAt ?? now) + WATCH_CHECK_MS))
+    return new Date(Math.min(...candidates))
+  }
   const observed: AgentState = { ...state, calendar: detected?.checkpoint ?? state.calendar }
 
   // Someone new: the first look learns their zone; outside their hours it only records the calendar.
@@ -128,10 +153,29 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     return skip("outside_hours", nextWorkingStart(policy, now, timeZone), { state: JSON.stringify(observed), timeZone })
   }
 
-  const passDue = state.nextPassAt === null || state.nextPassAt <= now
+  // The member's watches: a read-only Gmail search (ids only) at most hourly. A match wakes the agent, which reads the
+  // email itself.
+  let watchWakes: ReturnType<typeof detectWatchWakes> = []
+  if (watchCheckDue({ watches, checkedAt: watchCheckedAt, now })) {
+    const matches = new Map<string, { id: string; threadId: string }[]>()
+    for (const watch of watches) {
+      const q = watchQuery(watch, Math.max(watch.createdAt, (watchCheckedAt ?? watch.createdAt) - 5 * 60_000))
+      if (!q) continue
+      const found = await deps.gmail({ organizationId, orgMembershipId: memberId, q, maxResults: 10 })
+      if (found.kind === "ok") matches.set(watch.id, projectGmailMatches(found.json))
+    }
+    watchWakes = detectWatchWakes({ watches, matches, seen: state.watchSeen ?? [] })
+    const matchedIds = [...matches.values()].flat().map((message) => message.id)
+    observed.watchSeen = [...(state.watchSeen ?? []).filter((id) => !matchedIds.includes(id)), ...matchedIds].slice(-200)
+    observed.watchCheckedAt = now
+    watchCheckedAt = now
+  }
+
+  const passDue = (state.nextPassAt === null || state.nextPassAt <= now) && responsibilities.length > 0
   const reasons: AgentWakeReason[] = [
     ...(passDue ? [{ kind: "scheduled" as const, morning: isMorningPass(policy, state.lastPassAt, now, timeZone) }] : []),
     ...wakes.map((wake) => ({ kind: "calendar" as const, wake })),
+    ...watchWakes.map((wake) => ({ kind: "watch" as const, wake })),
   ]
   if (!reasons.length) return skip("nothing_due", nextWake(state.nextPassAt).getTime(), { state: JSON.stringify(observed), timeZone, failures: 0 })
 
@@ -155,6 +199,7 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   if (result.kind === "unavailable") return retry("unavailable", result.code)
 
   const nextState: AgentState = {
+    ...observed,
     v: 1,
     calendar: observed.calendar,
     lastLook: passDue ? { gmail: now, google_calendar: now } : { ...state.lastLook, google_calendar: now },
@@ -167,7 +212,7 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   if (result.kind === "message") {
     const decision = decideAgentDelivery({
       items: result.items,
-      enabled: enabledOf(template),
+      enabled: watches.length ? new Set<AgentItemKind>([...enabledOf(template), "watch"]) : enabledOf(template),
       muted: mutedOf(row),
       told: await deps.told(memberId, result.items),
       sentToday: await deps.sentSince(memberId, new Date(zonedDayStart(now, timeZone))),

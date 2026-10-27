@@ -176,8 +176,12 @@ export function nextScheduledPass(policy: ProactivePolicy, passAt: number, timeZ
 
 // ---- The delivery step: plain code, after the turn ends ----------------------------------------------------------------
 
+/** What a message can be about: a responsibility from the template, or a watch the member set up by chat. */
+export type AgentItemKind = AgentResponsibility | "watch"
+const agentItemKindSchema = z.union([agentResponsibilitySchema, z.literal("watch")])
+
 /** One thing a message is about, named by the agent: what it is responsible for and a stable reference. */
-export type AgentItem = { responsibility: AgentResponsibility; ref: string }
+export type AgentItem = { responsibility: AgentItemKind; ref: string }
 
 /** The ledger key for one item: one message per item, ever. */
 export function agentLedgerKey(item: AgentItem) {
@@ -199,8 +203,8 @@ export type AgentDeliveryDecision =
  */
 export function decideAgentDelivery(input: {
   items: readonly AgentItem[]
-  enabled: ReadonlySet<AgentResponsibility>
-  muted: ReadonlySet<AgentResponsibility>
+  enabled: ReadonlySet<AgentItemKind>
+  muted: ReadonlySet<AgentItemKind>
   told: ReadonlySet<string>
   sentToday: number
   policy: ProactivePolicy
@@ -256,10 +260,11 @@ export const AGENT_INSTRUCTIONS = [
   '- Otherwise reply with only this JSON: {"message": "...", "items": [{"responsibility": "...", "ref": "..."}]}. The message is plain text for the person: at most five short lines, most urgent first, no greeting. List every item it mentions: its responsibility (one of the active ones) and a stable ref (the ref given below, or the Gmail thread id).',
 ].join("\n")
 
-/** Why a pass runs. Only the schedule and calendar events wake the agent. */
+/** Why a pass runs. Only the schedule, calendar events and the member's own watches wake the agent. */
 export type AgentWakeReason =
   | { kind: "scheduled"; morning: boolean }
   | { kind: "calendar"; wake: CalendarWake }
+  | { kind: "watch"; wake: WatchWake }
 
 function formatClock(at: number, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).format(at)
@@ -314,7 +319,8 @@ export function agentWakePrompt(input: {
   const clock = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(now)
   const scheduled = input.reasons.find((reason) => reason.kind === "scheduled")
   const morning = scheduled?.kind === "scheduled" && scheduled.morning
-  const events = input.reasons.flatMap((reason) => (reason.kind === "calendar" ? [describeWake(reason.wake, now, timeZone)] : []))
+  const events = input.reasons.flatMap((reason) => (reason.kind === "calendar" ? [describeWake(reason.wake, now, timeZone)] : reason.kind === "watch" ? [describeWatchWake(reason.wake)] : []))
+  const watched = input.reasons.some((reason) => reason.kind === "watch")
   const looks = AGENT_SOURCES.map((source) => {
     const at = input.lastLook[source]
     const name = source === "gmail" ? "Gmail" : "Google Calendar"
@@ -325,7 +331,10 @@ export function agentWakePrompt(input: {
   const active = input.responsibilities
     .filter((responsibility) => responsibility !== "morning_brief" || morning)
     .map((responsibility) => `- ${responsibility}: ${AGENT_RESPONSIBILITY_PROMPTS[responsibility]}${responsibility === "morning_brief" ? ` Use ref brief:${day}.` : ""}`)
-  const why = scheduled ? (morning ? "Scheduled check: the morning pass." : "Scheduled check.") : "Woken early by the calendar."
+  if (watched) active.push(`- watch: ${WATCH_PROMPT}`)
+  const why = scheduled
+    ? (morning ? "Scheduled check: the morning pass." : "Scheduled check.")
+    : input.reasons.some((reason) => reason.kind === "calendar") ? "Woken early by the calendar." : "Woken by an email the person asked to hear about."
   return [
     `${AGENT_WAKE_MARKER} ${why} It is ${clock} (${timeZone}).`,
     events.length ? `What happened:\n${events.map((line) => `- ${line}`).join("\n")}` : "",
@@ -340,7 +349,7 @@ export function agentWakePrompt(input: {
 
 const agentReplySchema = z.object({
   message: z.string().trim().min(1).max(1_500),
-  items: z.array(z.object({ responsibility: agentResponsibilitySchema, ref: z.string().trim().min(1).max(200) })).min(1).max(8),
+  items: z.array(z.object({ responsibility: agentItemKindSchema, ref: z.string().trim().min(1).max(200) })).min(1).max(8),
 })
 
 export type AgentReply = { kind: "quiet" } | { kind: "message"; message: string; items: AgentItem[] } | { kind: "invalid" }
@@ -714,6 +723,74 @@ export function nextCalendarPoll(input: { now: number; events: CalendarEventFact
   return withinWorkingHours(policy, next, timeZone) ? next : nextWorkingStart(policy, next, timeZone)
 }
 
+// ---- Watches: "tell me when X emails me" ---------------------------------------------------------------------------------
+
+/** A watch the member set up by chat: an email from someone, or with a subject, that they want to hear about. */
+export type AgentWatchFilter = { id: string; from: string | null; subject: string | null; createdAt: number }
+
+/** Den looks for a watch's emails at most this often. */
+export const WATCH_CHECK_MS = 60 * MINUTE_MS
+
+const WATCH_PROMPT =
+  "Emails the person asked to hear about (\"tell me when …\"): open the email, then say in a line or two who wrote and what it is about. Use its thread id as ref."
+
+/** A Gmail search term from a member's words: no operators, quotes or brackets of their own. */
+function gmailTerm(value: string) {
+  return value.replace(/["(){}]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200)
+}
+
+/** The Gmail search for a watch's new emails, received after `afterMs`. Null when the filter has nothing to search. */
+export function watchQuery(watch: AgentWatchFilter, afterMs: number): string | null {
+  const parts: string[] = []
+  const from = watch.from ? gmailTerm(watch.from) : ""
+  const subject = watch.subject ? gmailTerm(watch.subject) : ""
+  if (from) parts.push(`from:(${from})`)
+  if (subject) parts.push(`subject:("${subject}")`)
+  if (!parts.length) return null
+  return `${parts.join(" ")} -from:me after:${Math.floor(afterMs / 1000)}`
+}
+
+const gmailListSchema = z.object({ messages: z.array(z.object({ id: z.string().min(1).max(200), threadId: z.string().min(1).max(200) })).optional() })
+
+/** A raw Gmail `messages.list` answer as ids only. */
+export function projectGmailMatches(raw: unknown): { id: string; threadId: string }[] {
+  const parsed = gmailListSchema.safeParse(raw)
+  return parsed.success ? (parsed.data.messages ?? []) : []
+}
+
+/** One email that matched a watch. The prompt names it by id only: its sender and subject are the email's own text. */
+export type WatchWake = { watchId: string; from: string | null; subject: string | null; messageId: string; threadId: string; ref: string }
+
+/** New matches since the last look, one wake per thread, skipping what was already handed to the agent. */
+export function detectWatchWakes(input: {
+  watches: readonly AgentWatchFilter[]
+  matches: ReadonlyMap<string, readonly { id: string; threadId: string }[]>
+  seen: readonly string[]
+}): WatchWake[] {
+  const wakes: WatchWake[] = []
+  const threads = new Set<string>()
+  for (const watch of input.watches) {
+    for (const message of input.matches.get(watch.id) ?? []) {
+      const ref = message.threadId
+      if (input.seen.includes(message.id) || threads.has(ref)) continue
+      threads.add(ref)
+      wakes.push({ watchId: watch.id, from: watch.from, subject: watch.subject, messageId: message.id, threadId: message.threadId, ref })
+    }
+  }
+  return wakes
+}
+
+/** The member's own filter is theirs to quote; the email itself is read by the agent, as data. */
+function describeWatchWake(wake: WatchWake) {
+  const filter = [wake.from ? `from ${gmailTerm(wake.from)}` : "", wake.subject ? `with "${gmailTerm(wake.subject)}" in the subject` : ""].filter(Boolean).join(", ")
+  return `A new email (Gmail message ${wake.messageId}, thread ${wake.threadId}) matches what the person asked to hear about: email ${filter} (watch, ref ${wake.ref})`
+}
+
+/** Whether Den should search Gmail for the member's watches now: at most hourly, inside working hours. */
+export function watchCheckDue(input: { watches: readonly AgentWatchFilter[]; checkedAt: number | null; now: number }) {
+  return input.watches.length > 0 && (input.checkedAt === null || input.now - input.checkedAt >= WATCH_CHECK_MS)
+}
+
 // ---- The agent's own state, kept by the host between passes -----------------------------------------------------------
 
 const agentStateSchema = z.object({
@@ -727,6 +804,9 @@ const agentStateSchema = z.object({
   nextPassAt: z.number().nullable(),
   /** Calendar wakes already handed to the agent, newest last, so one event never wakes it twice. */
   woke: z.array(z.string()).max(100),
+  /** When Den last searched Gmail for the member's watches, and the messages it already handed to the agent. */
+  watchCheckedAt: z.number().nullable().optional(),
+  watchSeen: z.array(z.string()).max(200).optional(),
 })
 export type AgentState = z.infer<typeof agentStateSchema>
 

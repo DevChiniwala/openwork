@@ -32,9 +32,9 @@ export async function ensureAgentInstances(organizationId: DenTypeId<"organizati
 
 export type MemberChoiceChange = Partial<Pick<AgentInstanceRow, "status" | "overrides" | "snoozedUntil">>
 
-/** Saves a member's own choice. Turning on or resuming makes the agent due now. */
-export async function saveMemberChoices(organizationId: DenTypeId<"organization">, memberId: DenTypeId<"member">, change: MemberChoiceChange, now = new Date()) {
-  const wake = change.status === "on" || change.snoozedUntil === null
+/** Saves a member's own choice. Turning on, resuming or a new watch (`wake`) makes the agent due now. */
+export async function saveMemberChoices(organizationId: DenTypeId<"organization">, memberId: DenTypeId<"member">, change: MemberChoiceChange, now = new Date(), options: { wake?: boolean } = {}) {
+  const wake = options.wake === true || change.status === "on" || change.snoozedUntil === null
   const set = { ...change, ...(wake ? { nextWakeAt: now } : {}), updatedAt: now }
   await db.insert(Instance).values({ memberId, organizationId, nextWakeAt: now, createdAt: now, ...set }).onDuplicateKeyUpdate({ set })
 }

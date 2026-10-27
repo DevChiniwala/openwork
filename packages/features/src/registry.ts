@@ -252,6 +252,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotAgentWatches: {
+    label: "Workbot: watches for Your agent",
+    description: "Members tell Workbot \"tell me when someone emails me\" and their agent DMs them when a matching email arrives. Watches filter by sender or subject, are checked at most hourly in working hours, and are listed and cancelled from the member's agent settings. Needs Workbot: Your agent.",
+    category: "workbot",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-proactive/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",

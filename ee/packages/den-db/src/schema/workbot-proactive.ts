@@ -5,6 +5,8 @@ import { compatJsonColumn, denTypeIdColumn, encryptedMediumTextColumn } from "..
 export type AgentInstanceOverrides = {
   /** Responsibilities the member turned off. */
   muted?: string[]
+  /** Emails the member asked to hear about, set up by chat. */
+  watches?: { id: string; from: string | null; subject: string | null; createdAt: string }[]
 }
 
 /**

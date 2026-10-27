@@ -85,6 +85,8 @@ function agentRow(overrides: Partial<AgentInstanceRow> = {}): AgentInstanceRow {
 const message = (text: string, items: { responsibility: string; ref: string }[]) => JSON.stringify({ message: text, items })
 
 type HarnessState = {
+  gmailQueries: string[]
+  gmailMatches: { id: string; threadId: string }[]
   destinations: string[]
   clock: number
   events: RawEvent[]
@@ -97,8 +99,8 @@ type HarnessState = {
 }
 
 /** An in-memory agent, ledger and destination; `events`, `clock` and the reply change between runs. */
-function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
-  const state: HarnessState = { destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
+function harness(input: { watchesOn?: boolean; settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
+  const state: HarnessState = { gmailQueries: [], gmailMatches: [], destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
   const replies = [...(input.replies ?? ["NO_REPLY"])]
   let allowedCalls = 0
   const deps: AgentWakeDeps = {
@@ -110,6 +112,11 @@ function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Pa
     calendar: async () => {
       state.calendarReads += 1
       return { kind: "ok", json: { timeZone: TZ, items: state.events } }
+    },
+    watchesAllowed: async () => input.watchesOn ?? true,
+    gmail: async (call) => {
+      state.gmailQueries.push(call.q)
+      return { kind: "ok", json: { messages: state.gmailMatches } }
     },
     model: async () => "openai/gpt-6-luna",
     turn: async (call) => {
@@ -246,6 +253,32 @@ describe("waking a member's agent", () => {
     assert.equal(h.state.row.nextWakeAt.getTime(), NOW + 15 * 60_000)
     assert.equal(h.state.row.state, null, "nothing was recorded, so the pass and any event run on the retry")
     assert.equal(h.state.row.failures, 1)
+  })
+})
+
+describe("watches set up by chat", () => {
+  const watch = { id: "aw_1", from: "lead@northwind.example", subject: null, createdAt: "2026-10-20T13:00:00.000Z" }
+
+  test("Gmail is searched at most hourly; a new matching thread wakes the agent and is delivered once", async () => {
+    const h = harness({ row: { overrides: { watches: [watch] }, state: JSON.stringify({ v: 1, calendar: null, lastLook: {}, lastPassAt: NOW - 600_000, nextPassAt: NOW + 3 * 3_600_000, woke: [] }) }, replies: [message("Northwind wrote back about the renewal.", [{ responsibility: "watch", ref: "t1" }])] })
+    h.state.gmailMatches = [{ id: "m1", threadId: "t1" }]
+    assert.deepEqual(await h.run(), { status: "ran", reasons: ["watch"], reply: "message", delivered: "sent" })
+    assert.match(h.state.gmailQueries[0] ?? "", /^from:\(lead@northwind\.example\) -from:me after:\d+$/)
+    assert.match(h.state.turns[0]?.prompt ?? "", /Woken by an email the person asked to hear about[\s\S]*Gmail message m1, thread t1/)
+    assert.deepEqual(h.state.delivered, ["Northwind wrote back about the renewal."])
+    h.state.clock = NOW + 30 * 60_000
+    assert.deepEqual(await h.run(), { status: "skipped", reason: "nothing_due" })
+    assert.equal(h.state.gmailQueries.length, 1, "not again within the hour")
+    h.state.clock = NOW + 61 * 60_000
+    h.state.gmailMatches = [{ id: "m1", threadId: "t1" }]
+    assert.deepEqual(await h.run(), { status: "skipped", reason: "nothing_due" }, "the same email never wakes it twice")
+    assert.equal(h.state.gmailQueries.length, 2)
+  })
+
+  test("with watches off for the member, Gmail is never searched for them", async () => {
+    const h = harness({ watchesOn: false, row: { overrides: { watches: [watch] } } })
+    await h.run()
+    assert.deepEqual(h.state.gmailQueries, [])
   })
 })
 
