@@ -436,17 +436,25 @@ static class OpenWorkComputerUse {
       Native.ShowWindow(target.Hwnd, 9);
       WaitUntil(delegate { return !Native.IsIconic(target.Hwnd); }, 1000);
     }
+    long baseline = -1;
     if (!Belongs(target, Native.GetForegroundWindow())) {
       TakeGap();
       Remember(target, Native.GetForegroundWindow());
+      baseline = Person.Now;
       Foreground(target.Hwnd);
       WaitUntil(delegate { return Belongs(target, Native.GetForegroundWindow()); }, 1000);
     }
     if (!Belongs(target, Native.GetForegroundWindow())) {
       throw new Failure("focus_refused", "Windows kept another window in front, so nothing was sent. Observe again in a moment.");
     }
+    // A click or key while the window came forward may have landed in it: stop
+    // before any input follows, and leave the front there.
+    if (baseline >= 0 && Person.PressedSince(baseline)) {
+      Forget();
+      throw PersonInterrupted();
+    }
     // A click or key of the person's from here on stops the input that follows.
-    momentAt = Person.Now;
+    momentAt = baseline >= 0 ? baseline : Person.Now;
     Native.RECT frame;
     if (!CurrentFrame(target, out frame)) throw new Failure("window_minimized", "The selected window is minimized.");
     return Message("ok", true, "region", Region(frame));
@@ -822,9 +830,11 @@ static class OpenWorkComputerUse {
   }
 
   static void Interrupted(InputContext context) {
-    if (Person.PressedSince(context.Started)) {
-      throw new Failure("person_interrupted", "The person clicked or typed, so this step stopped and the PC is theirs for now. Observe again to continue.");
-    }
+    if (Person.PressedSince(context.Started)) throw PersonInterrupted();
+  }
+
+  static Failure PersonInterrupted() {
+    return new Failure("person_interrupted", "The person clicked or typed, so this step stopped and the PC is theirs for now. Observe again to continue.");
   }
 
   // Runs before every step and between short chunks of a step.
