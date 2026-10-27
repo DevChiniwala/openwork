@@ -39,8 +39,14 @@ test(`a member messages a busy helper and returns without losing its draft (AGEN
       until: requests => requests.some(request => request.path.includes(`/session/${childId}/`) && /\/prompt(?:_async)?$/.test(request.path)),
     });
     evidence.recordJsonArtifact("Scoped command transport", requests);
-    expect(requests.filter(request => /\/(?:abort|interrupt)$/.test(request.path))).toEqual([]);
+    const aborts = requests.filter(request => /\/(?:abort|interrupt)$/.test(request.path));
     const state = await world.grandchildState();
+    evidence.recordAssertionEvidence(
+      "Enter sends to the busy helper without stopping it",
+      "The helper receives its own prompt admission, no abort or interrupt is sent, and its delegated work is still mid-reply.",
+      aborts.length === 0 && state.deliveredChunks === 1 && !state.complete,
+    );
+    expect(aborts).toEqual([]);
     expect(state.deliveredChunks).toBe(1);
     expect(state.complete).toBe(false);
   });
@@ -48,10 +54,17 @@ test(`a member messages a busy helper and returns without losing its draft (AGEN
     await user.type("composer", "Ask about the fixture provenance", { verify: true });
     await user.press("Escape");
     await user.see({ role: "button", label: "Review fixture. Open sub-agent chat" });
-    expect((await probe.composer()).draftText).not.toContain("fixture provenance");
+    const parentDraft = (await probe.composer()).draftText;
+    expect(parentDraft).not.toContain("fixture provenance");
     await user.click({ role: "button", label: "Review fixture. Open sub-agent chat" });
-    await probe.eventually(() => probe.composer(), { within: 10_000, label: "the child restores its scoped draft", until: state => state.draftText === "Ask about the fixture provenance" });
-    expect((await commands.read()).filter(request => /\/(?:abort|interrupt)$/.test(request.path))).toEqual([]);
+    const restored = await probe.eventually(() => probe.composer(), { within: 10_000, label: "the child restores its scoped draft", until: state => state.draftText === "Ask about the fixture provenance" });
+    const aborts = (await commands.read()).filter(request => /\/(?:abort|interrupt)$/.test(request.path));
+    evidence.recordAssertionEvidence(
+      "Escape returns to the parent and keeps the helper's unsent draft",
+      "The parent composer does not inherit the helper's text, reopening the helper restores it, and leaving sends no abort.",
+      !parentDraft.includes("fixture provenance") && restored.draftText === "Ask about the fixture provenance" && aborts.length === 0,
+    );
+    expect(aborts).toEqual([]);
   });
   await step("after: the grandchild and child finish and the result reaches the main chat", async () => {
     await world.releaseGrandchild();
@@ -94,6 +107,11 @@ test(`a member stops one helper from its parent chat (AGENT-CHILD-STOP ${resolve
     const interrupts = (await commands.read()).filter(request => /\/(?:abort|interrupt)$/.test(request.path));
     evidence.recordJsonArtifact("Acknowledged helper interruption targets", interrupts);
     const targets = [...new Set(interrupts.map(request => decodeURIComponent(request.path.split("/session/")[1]?.split("/")[0] ?? "")))];
+    evidence.recordAssertionEvidence(
+      "Stop interrupts only the selected helper",
+      "Stopped appears after the engine acknowledges the interrupt, which targets the helper and never the parent chat.",
+      targets.includes(childId) && !targets.includes(world.session.sessionId),
+    );
     expect(targets).toContain(childId);
     expect(targets).not.toContain(world.session.sessionId);
     for (const target of targets.filter(id => id !== childId)) {
@@ -106,7 +124,13 @@ test(`a member stops one helper from its parent chat (AGENT-CHILD-STOP ${resolve
   await step("returning to the helper keeps navigation usable after Stop", async () => {
     await user.click({ role: "button", label: "Review fixture. Open sub-agent chat" });
     await user.click({ role: "button", label: "Original task" });
-    expect(await world.selectedSessionId()).toBe(childId);
+    const selected = await world.selectedSessionId();
+    evidence.recordAssertionEvidence(
+      "The stopped helper stays reachable",
+      "Reopening the helper after Stop selects the same conversation.",
+      selected === childId,
+    );
+    expect(selected).toBe(childId);
     await user.see("composer", { editable: true });
     await user.click("composer");
     await user.press("Escape");
