@@ -4,7 +4,9 @@ import {
   AGENT_INSTRUCTIONS,
   AGENT_QUIET_REPLY,
   AGENT_WAKE_MARKER,
+  agentFailureNotice,
   agentLedgerKey,
+  noteAgentFailure,
   agentWakePrompt,
   cleanAgentMessage,
   decideAgentDelivery,
@@ -260,6 +262,28 @@ describe("the delivery step", () => {
     assert.deepEqual(decideAgentDelivery({ ...base, items, sentToday: 3 }), { kind: "drop", reason: "daily_limit", items })
     assert.deepEqual(decideAgentDelivery({ ...base, items, at: at("2026-10-20T20:00:00") }), { kind: "drop", reason: "quiet_hours" })
     assert.deepEqual(decideAgentDelivery({ ...base, items, snoozedUntil: now + 60_000 }), { kind: "drop", reason: "snoozed" })
+  })
+})
+
+describe("when a source breaks", () => {
+  test("the member hears once per break, and the same failure five times in a row pauses the agent", () => {
+    let streak: ReturnType<typeof noteAgentFailure>["streak"] | null = null
+    const reported: ("google_needs_connection" | "model_unavailable")[] = []
+    const outcomes: [boolean, boolean][] = []
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const noted = noteAgentFailure({ streak, reported, code: "google_needs_connection" })
+      if (noted.report) reported.push("google_needs_connection")
+      streak = noted.streak
+      outcomes.push([noted.report, noted.pause])
+    }
+    assert.deepEqual(outcomes, [[true, false], [false, false], [false, false], [false, false], [false, true]])
+    assert.deepEqual(noteAgentFailure({ streak, reported, code: "model_unavailable" }), { streak: { code: "model_unavailable", count: 1 }, report: true, pause: false }, "a different failure starts over")
+  })
+
+  test("the notice says what broke and where to fix it", () => {
+    const links = { connections: "https://den.example/dashboard/your-connections" }
+    assert.equal(agentFailureNotice("google_needs_connection", "broken", links), "Your agent can't read your Gmail and Google Calendar: Google isn't connected to OpenWork. Connect it here: https://den.example/dashboard/your-connections")
+    assert.match(agentFailureNotice("model_unavailable", "paused", links), /^I've paused your agent after the same problem came up 5 times in a row\. Your agent can't run: .*Ask your OpenWork admin to set one up\. Then tell Workbot "resume my agent"\.$/)
   })
 })
 

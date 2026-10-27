@@ -57,7 +57,7 @@ export async function claimDueAgents(limit: number, now: Date): Promise<AgentIns
   })
 }
 
-export type AgentSettle = Partial<Pick<AgentInstanceRow, "state" | "timeZone" | "templateVersionId" | "failures" | "overrides">> & { nextWakeAt: Date }
+export type AgentSettle = Partial<Pick<AgentInstanceRow, "state" | "timeZone" | "templateVersionId" | "failures" | "overrides" | "status">> & { nextWakeAt: Date }
 
 /** Releases a claimed agent; false when another instance took the lease meanwhile. */
 export async function settleAgent(row: AgentInstanceRow, changes: AgentSettle, now = new Date()) {

@@ -127,6 +127,8 @@ export const memberAgentViewSchema = z.object({
   available: z.boolean(),
   /** The member gets messages: their own choice, else the organization's starting choice. */
   on: z.boolean(),
+  /** The agent paused itself after the same fixable failure again and again. Turning it on (`on: true`) resumes it. */
+  paused: z.boolean(),
   snoozedUntil: z.iso.datetime().nullable(),
   responsibilities: z.array(z.object({
     id: agentResponsibilitySchema,

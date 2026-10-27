@@ -1,5 +1,8 @@
 import {
   AGENT_INSTRUCTIONS,
+  AGENT_PAUSE_AFTER,
+  agentFailureNotice,
+  noteAgentFailure,
   AGENT_TIMING,
   agentWakePrompt,
   cleanAgentMessage,
@@ -16,6 +19,7 @@ import {
   wakeResponsibility,
   withinWorkingHours,
   zonedDayStart,
+  type AgentFailureCode,
   type AgentItem,
   type AgentState,
   type AgentWakeReason,
@@ -58,9 +62,13 @@ export type AgentWakeDeps = {
   /** Why a Workbot DM couldn't reach the member now (no Slack app, Slack not linked), or null. */
   destinationBlock: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user"> }) => Promise<AgentDestinationBlock | null>
   deliver: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; text: string }) => Promise<DeliveryResult>
+  /** Failure notices and auto-pause are on for this member (`workbotAgentHealthNotices`). */
+  healthNotices: (organizationId: DenTypeId<"organization">, userId: DenTypeId<"user">) => Promise<boolean>
+  /** Where a member reconnects their accounts. */
+  connectionsUrl: () => string
 }
 
-type SkipReason = "off" | "not_allowed" | "opted_out" | "snoozed" | "outside_hours" | "no_destination" | AgentDestinationBlock | "no_responsibilities" | "no_google" | "nothing_due"
+type SkipReason = "off" | "not_allowed" | "opted_out" | "paused" | "snoozed" | "outside_hours" | "no_destination" | AgentDestinationBlock | "no_responsibilities" | "no_google" | "nothing_due"
 type Delivered = "sent" | "failed" | "nothing_new" | "daily_limit" | "quiet_hours" | "snoozed" | null
 
 export type AgentWakeOutcome =
@@ -85,6 +93,8 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   if (!settings.enabled) return skip("off", now + HOUR_MS)
   const userId = await deps.user(organizationId, memberId)
   if (!userId || !(await deps.allowed(organizationId, userId))) return skip("not_allowed", now + HOUR_MS)
+  // Paused by itself after the same fixable failure again and again: waits for the member to resume it.
+  if (row.status === "paused") return skip("paused", now + 6 * HOUR_MS)
   if (!memberAgentOn(row, settings)) return skip("opted_out", now + 6 * HOUR_MS)
   if (row.snoozedUntil && row.snoozedUntil.getTime() > now) return skip("snoozed", row.snoozedUntil.getTime())
 
@@ -105,10 +115,31 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
 
   // The event source: one read-only calendar GET as the member. It also tells us their time zone.
   const state = parseAgentState(row.state)
+  // A member who resumed a paused agent starts a fresh streak.
+  const resumed = (state.failure?.count ?? 0) >= AGENT_PAUSE_AFTER
+  const streak = resumed ? null : state.failure ?? null
+  const reported = resumed ? [] : state.reported ?? []
+  /**
+   * A failure the member or their admin can fix: they hear about it once per break (only when their working hours
+   * are known, so never at night), and the same failure AGENT_PAUSE_AFTER times in a row pauses the agent.
+   */
+  const noteFailure = async (code: AgentFailureCode): Promise<Partial<AgentSettle>> => {
+    if (!(await deps.healthNotices(organizationId, userId))) return {}
+    const noted = noteAgentFailure({ streak, reported, code })
+    let told = reported
+    if ((noted.report || noted.pause) && storedZone) {
+      const sent = await deps.deliver({ organizationId, userId, text: agentFailureNotice(code, noted.pause ? "paused" : "broken", { connections: deps.connectionsUrl() }) })
+      if (sent.ok && !told.includes(code)) told = [...told, code]
+      appLogger.info("workbot_agent_failure_notice", { member_id: memberId, code, kind: noted.pause ? "paused" : "broken", delivered: sent.ok })
+    }
+    if (noted.pause) appLogger.warn("workbot_agent_paused", { member_id: memberId, code })
+    return { state: JSON.stringify({ ...state, failure: noted.streak, reported: told }), ...(noted.pause ? { status: "paused" } : {}) }
+  }
   const read = await deps.calendar({ organizationId, orgMembershipId: memberId, timeMin: iso(now - 15 * 60_000), timeMax: iso(now + AGENT_TIMING.horizonMs + 2 * HOUR_MS) })
   if (read.kind === "needs_connection" || read.kind === "policy_blocked" || read.kind === "missing_scope") {
     appLogger.info("workbot_agent_google_unavailable", { member_id: memberId, reason: read.kind })
-    return skip("no_google", now + Math.min(6, row.failures + 1) * HOUR_MS, { failures: row.failures + 1 })
+    const code: AgentFailureCode = read.kind === "needs_connection" ? "google_needs_connection" : read.kind === "missing_scope" ? "google_missing_scope" : "google_policy_blocked"
+    return skip("no_google", now + Math.min(6, row.failures + 1) * HOUR_MS, { failures: row.failures + 1, ...(await noteFailure(code)) })
   }
   const projected = read.kind === "ok" ? projectGoogleCalendarEvents(read.json) : null
   const timeZone = isValidTimeZone(projected?.timeZone) ? projected.timeZone : storedZone ?? "UTC"
@@ -121,7 +152,14 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     ? nextCalendarPoll({ now, events: projected.events, leadMinutes: settings.leadMinutes, policy, timeZone })
     : now + AGENT_TIMING.calendarPollMs
   const nextWake = (nextPassAt: number | null) => new Date(calendarResponsibilities ? Math.min(nextPoll, nextPassAt ?? nextPoll) : (nextPassAt ?? nextPoll))
-  const observed: AgentState = { ...state, calendar: detected?.checkpoint ?? state.calendar }
+  // Google works again: that break is over.
+  const googleFine = read.kind === "ok" && streak?.code.startsWith("google_") === true
+  const observed: AgentState = {
+    ...state,
+    calendar: detected?.checkpoint ?? state.calendar,
+    failure: googleFine ? null : streak,
+    reported: read.kind === "ok" ? reported.filter((code) => !code.startsWith("google_")) : reported,
+  }
 
   // Someone new: the first look learns their zone; outside their hours it only records the calendar.
   if (!withinWorkingHours(policy, now, timeZone)) {
@@ -138,7 +176,8 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   // A pass that can't run keeps the calendar where it was, so its events wake the next try too.
   const retry = async (reply: "unavailable", code: string): Promise<AgentWakeOutcome> => {
     appLogger.info("workbot_agent_turn_unavailable", { member_id: memberId, code })
-    await deps.settle(row, { timeZone, failures: row.failures + 1, nextWakeAt: new Date(now + AGENT_TIMING.retryMs) })
+    const noted = code === "model_unavailable" ? await noteFailure("model_unavailable") : {}
+    await deps.settle(row, { timeZone, failures: row.failures + 1, ...noted, nextWakeAt: new Date(now + AGENT_TIMING.retryMs) })
     return { status: "ran", reasons: reasons.map((reason) => reason.kind), reply, delivered: null }
   }
   const actor = { userId, organizationId }
@@ -156,6 +195,8 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
 
   const nextState: AgentState = {
     v: 1,
+    failure: null,
+    reported: [],
     calendar: observed.calendar,
     lastLook: passDue ? { gmail: now, google_calendar: now } : { ...state.lastLook, google_calendar: now },
     lastPassAt: passDue ? now : state.lastPassAt,

@@ -97,7 +97,7 @@ type HarnessState = {
 }
 
 /** An in-memory agent, ledger and destination; `events`, `clock` and the reply change between runs. */
-function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
+function harness(input: { healthOn?: boolean; google?: "ok" | "needs_connection"; settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
   const state: HarnessState = { destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
   const replies = [...(input.replies ?? ["NO_REPLY"])]
   let allowedCalls = 0
@@ -109,8 +109,10 @@ function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Pa
     user: async () => userId,
     calendar: async () => {
       state.calendarReads += 1
-      return { kind: "ok", json: { timeZone: TZ, items: state.events } }
+      return input.google === "needs_connection" ? { kind: "needs_connection" } : { kind: "ok", json: { timeZone: TZ, items: state.events } }
     },
+    healthNotices: async () => input.healthOn ?? false,
+    connectionsUrl: () => "https://den.example/dashboard/your-connections",
     model: async () => "openai/gpt-6-luna",
     turn: async (call) => {
       state.turns.push({ prompt: call.prompt, sessionId: call.sessionId, instructions: call.instructions })
@@ -246,6 +248,41 @@ describe("waking a member's agent", () => {
     assert.equal(h.state.row.nextWakeAt.getTime(), NOW + 15 * 60_000)
     assert.equal(h.state.row.state, null, "nothing was recorded, so the pass and any event run on the retry")
     assert.equal(h.state.row.failures, 1)
+  })
+})
+
+describe("when a source breaks", () => {
+  test("one DM when Google breaks, then the agent pauses itself after the fifth time in a row", async () => {
+    const h = harness({ healthOn: true, google: "needs_connection", row: { timeZone: TZ } })
+    const outcomes = []
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      outcomes.push(await h.run())
+      h.state.row = { ...h.state.row, nextWakeAt: new Date(h.state.clock) }
+    }
+    assert.deepEqual(outcomes.map((outcome) => (outcome.status === "skipped" ? outcome.reason : outcome.status)), ["no_google", "no_google", "no_google", "no_google", "no_google"])
+    assert.equal(h.state.delivered.length, 2, "once when it broke, once when it paused")
+    assert.match(h.state.delivered[0] ?? "", /Google isn't connected to OpenWork\. Connect it here: https:\/\/den\.example\/dashboard\/your-connections/)
+    assert.match(h.state.delivered[1] ?? "", /^I've paused your agent after the same problem came up 5 times in a row\./)
+    assert.equal(h.state.row.status, "paused")
+    assert.deepEqual(await h.run(), { status: "skipped", reason: "paused" })
+    assert.equal(h.state.turns.length, 0)
+  })
+
+  test("after the member resumes it, a failure starts a fresh streak", async () => {
+    const paused = JSON.stringify({ v: 1, calendar: null, lastLook: {}, lastPassAt: null, nextPassAt: null, woke: [], failure: { code: "google_needs_connection", count: 5 }, reported: ["google_needs_connection"] })
+    const h = harness({ healthOn: true, google: "needs_connection", row: { timeZone: TZ, status: "on", state: paused } })
+    await h.run()
+    assert.equal(h.state.row.status, "on", "not paused again at once")
+    assert.equal(h.state.delivered.length, 1, "told again: this is a new break")
+  })
+
+  test("without the rollout, or before the member's hours are known, nobody is messaged", async () => {
+    const off = harness({ google: "needs_connection", row: { timeZone: TZ } })
+    await off.run()
+    assert.deepEqual(off.state.delivered, [])
+    const unknownHours = harness({ healthOn: true, google: "needs_connection" })
+    await unknownHours.run()
+    assert.deepEqual(unknownHours.state.delivered, [], "a DM could land at night")
   })
 })
 

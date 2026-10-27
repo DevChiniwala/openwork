@@ -1,4 +1,6 @@
 import { appLogger } from "../observability/logger.js"
+import { env } from "../env.js"
+import { organizationFeatureEnabled } from "../features.js"
 import { readMemberGoogleCalendar } from "../routes/org/google-workspace.js"
 import { organizationCloudModel } from "../workbot/model.js"
 import { activeMemberUser, listAgentCandidates, proactiveAllowed, readProactiveSettings } from "./access.js"
@@ -50,6 +52,8 @@ export function defaultAgentWakeDeps(): AgentWakeDeps {
     settle: (row, changes) => settleAgent(row, changes),
     destinationBlock: (input) => destinationBlock(input),
     deliver: (input) => deliverAgentMessage(input),
+    healthNotices: (organizationId, userId) => organizationFeatureEnabled(organizationId, "workbotAgentHealthNotices", { userId }),
+    connectionsUrl: () => new URL("/dashboard/your-connections", env.betterAuthUrl).toString(),
   }
 }
 

@@ -714,6 +714,40 @@ export function nextCalendarPoll(input: { now: number; events: CalendarEventFact
   return withinWorkingHours(policy, next, timeZone) ? next : nextWorkingStart(policy, next, timeZone)
 }
 
+// ---- When a source breaks: tell the member once, pause after the same failure again and again -------------------------
+
+/** Failures the member (or their admin) can fix; anything else is OpenWork's to retry and never pauses an agent. */
+export const AGENT_FAILURES = ["google_needs_connection", "google_missing_scope", "google_policy_blocked", "model_unavailable"] as const
+export type AgentFailureCode = (typeof AGENT_FAILURES)[number]
+/** The same failure this many times in a row pauses the agent until the member resumes it. */
+export const AGENT_PAUSE_AFTER = 5
+
+export type AgentFailureStreak = { code: AgentFailureCode; count: number }
+
+/** What one more failure changes: the streak, whether the member hears about it now (once per break), whether to pause. */
+export function noteAgentFailure(input: { streak: AgentFailureStreak | null; reported: readonly AgentFailureCode[]; code: AgentFailureCode }) {
+  const count = input.streak?.code === input.code ? input.streak.count + 1 : 1
+  return {
+    streak: { code: input.code, count },
+    report: !input.reported.includes(input.code),
+    pause: count >= AGENT_PAUSE_AFTER,
+  }
+}
+
+const FAILURE_WORDS: Record<AgentFailureCode, (links: { connections: string }) => string> = {
+  google_needs_connection: (links) => `Your agent can't read your Gmail and Google Calendar: Google isn't connected to OpenWork. Connect it here: ${links.connections}`,
+  google_missing_scope: (links) => `Your agent can't read your Gmail and Google Calendar: OpenWork needs more Google permissions. Reconnect Google here: ${links.connections}`,
+  google_policy_blocked: () => "Your agent can't read your Gmail and Google Calendar: your organization's policy blocks it. Ask your OpenWork admin.",
+  model_unavailable: () => "Your agent can't run: no AI model is available to you. Ask your OpenWork admin to set one up.",
+}
+
+/** The DM Den sends (never the model): what broke and who can fix it, or that the agent paused. */
+export function agentFailureNotice(code: AgentFailureCode, kind: "broken" | "paused", links: { connections: string }): string {
+  const what = FAILURE_WORDS[code](links)
+  if (kind === "broken") return what
+  return `I've paused your agent after the same problem came up ${AGENT_PAUSE_AFTER} times in a row. ${what} Then tell Workbot "resume my agent".`
+}
+
 // ---- The agent's own state, kept by the host between passes -----------------------------------------------------------
 
 const agentStateSchema = z.object({
@@ -727,6 +761,9 @@ const agentStateSchema = z.object({
   nextPassAt: z.number().nullable(),
   /** Calendar wakes already handed to the agent, newest last, so one event never wakes it twice. */
   woke: z.array(z.string()).max(100),
+  /** The current run of identical fixable failures, and the ones the member was already told about in this break. */
+  failure: z.object({ code: z.enum(AGENT_FAILURES), count: z.number().int().min(1) }).nullable().optional(),
+  reported: z.array(z.enum(AGENT_FAILURES)).max(10).optional(),
 })
 export type AgentState = z.infer<typeof agentStateSchema>
 

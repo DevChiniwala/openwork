@@ -112,6 +112,16 @@ yet (`slack_app_not_installed`, `member_not_linked`). Both are tagged for Connec
 can say "stop telling me about calendar changes" or "snooze until tomorrow" to Workbot. The agent's own `mcp:read`
 token can read them but never change them. There are no buttons on messages and no Slack Home tab.
 
+## When a source breaks (`workbotAgentHealthNotices`, off)
+
+Failures the member or their admin can fix: Google not connected, missing Google permissions, blocked by policy, or no
+AI model available. The first time one happens in a break, Den DMs the member once from the Workbot app with what
+broke and where to fix it (only when their working hours are known, so never at night). The same failure five times
+in a row pauses the agent (`agent_instance.status = paused`) with one more DM; the member says "resume my agent" to
+Workbot (`PUT /v1/me/agent { on: true }`) and the streak starts over. When the source works again the break is over.
+Runner and network trouble is OpenWork's to retry: it never pauses an agent or messages anyone. Off: the agent backs
+off silently, as before.
+
 ## Where notes live
 
 The agent keeps its notes in its own session's scratch files under `memory/` (what it already told the member,

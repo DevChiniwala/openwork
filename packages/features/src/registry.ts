@@ -252,6 +252,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotAgentHealthNotices: {
+    label: "Workbot: Your agent reports what broke",
+    description: "When a member's agent can't do its job for a reason they or their admin can fix (Google not connected or missing permissions, blocked by policy, no AI model), it DMs them once with what broke and where to fix it. After the same failure five times in a row it pauses itself until the member tells Workbot to resume it. Needs Workbot: Your agent.",
+    category: "workbot",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-proactive/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",

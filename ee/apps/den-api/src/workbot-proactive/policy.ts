@@ -25,7 +25,8 @@ export function proactivePolicy(settings: WorkbotProactiveSettings): ProactivePo
 /** The member's own choice wins; without one, the organization's starting choice. */
 export function memberAgentOn(row: Pick<MemberChoices, "status"> | null | undefined, settings: WorkbotProactiveSettings) {
   if (row?.status === "on") return true
-  if (row?.status === "off") return false
+  // `paused`: the agent paused itself after the same fixable failure again and again; the member resumes it.
+  if (row?.status === "off" || row?.status === "paused") return false
   return settings.membersStart === "opted_in"
 }
 
