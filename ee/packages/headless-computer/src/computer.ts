@@ -2,7 +2,8 @@ import { createHash } from "node:crypto"
 import { posix } from "node:path"
 import { ensureRunning, isSandboxError, shellQuote, SCOPE_LABEL, withBlocks, type RunSpec, type SandboxHandle, type SandboxProvider, type SandboxSpec } from "@openwork/sandbox"
 import { z } from "zod"
-import type { ComputerFile, ComputerFiles, FileReader, ToolResult, ToolSpec } from "./types.js"
+import type { ComputerCallContext, ComputerFile, ComputerFiles, ComputerMemberFiles, FileReader, ToolResult, ToolSpec } from "./types.js"
+import { collectDownloads, downloadNotes, DOWNLOADS_DIR, DOWNLOADS_MANIFEST, DOWNLOADS_MARKER, MAX_UPLOAD_FILES, parseScan, SCAN_SCRIPT, uploadPath, type DownloadsReport } from "./browser-files.js"
 import { demonstrationReplySchema, type DemonstrationCommand } from "@openwork/types/browser-demonstration"
 import { Desktop, type DesktopView } from "./desktop.js"
 import { DESKTOP_TOOL } from "./desktop-tool.js"
@@ -54,6 +55,13 @@ export class Computers {
   private readonly pausing = new Map<string, Promise<void>>()
   /** Saved file ids already copied into each session's VM by this process. */
   private readonly copied = new Map<string, Set<string>>()
+  /**
+   * My files on each session's desktop, as this process knows it: set up (`on`), checked off (`off`), or why it can't be
+   * set up (said once). Unknown after a restart.
+   */
+  private readonly memberFiles = new Map<string, "on" | "off" | { problem: string }>()
+  /** One downloads collection at a time per session: background tasks share the browser. */
+  private readonly collecting = new Map<string, Promise<unknown>>()
 
   private readonly snapshot: string
   private readonly files?: ComputerFiles
@@ -80,7 +88,7 @@ export class Computers {
     this.desktopTools = this.desktop ? [DESKTOP_TOOL] : []
   }
 
-  async desktopRun(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
+  async desktopRun(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal, context?: ComputerCallContext): Promise<ToolResult> {
     // `description` is narration for the person watching; it never reaches the computer.
     const parsed = z.object({ view: z.enum(["browser", "computer"]), operation: z.string().max(64), args: z.record(z.string(), z.unknown()), description: z.string().optional() }).strict().parse(input)
     const desktop = this.desktop
@@ -92,8 +100,18 @@ export class Computers {
       stopping ??= desktop.call(box, "/stop", {})
       void stopping.catch(() => {})
     }
+    const member = context?.memberFiles ?? null
     try {
       await desktop.start(box)
+      // My files: the browser's Downloads in /files/Downloads (or back in /workspace/out without them), and the files an
+      // upload names copied onto the computer first.
+      const setup = await this.memberFilesSetup(sessionId, box, member)
+      let args = parsed.args
+      if (parsed.view === "browser" && parsed.operation === "act") {
+        const staged = await this.stageUploads(box, member, args)
+        if ("refused" in staged) return staged.refused
+        args = staged.args
+      }
       signal?.addEventListener("abort", stop, { once: true })
       if (signal?.aborted) { stop(); signal.throwIfAborted() }
       const program = parsed.operation === "computer_run"
@@ -101,14 +119,18 @@ export class Computers {
         : null
       const raw = await desktop.call(box, program ? "/computer/program" : parsed.view === "browser" ? "/browser/task" : "/computer/task", program
         ? { ...program, sessionId, surface: parsed.view }
-        : { sessionId, ...(parsed.view === "browser" ? { operation: parsed.operation } : { name: parsed.operation }), args: parsed.args })
+        : { sessionId, ...(parsed.view === "browser" ? { operation: parsed.operation } : { name: parsed.operation }), args })
       signal?.throwIfAborted()
       const result = z.object({ ok: z.boolean().optional(), isError: z.boolean().optional(), image: z.object({ data: z.string(), mediaType: z.string().optional(), mimeType: z.string().optional() }).optional(), images: z.array(z.object({ data: z.string(), mimeType: z.string() })).optional(), content: z.array(z.object({ type: z.string(), text: z.string().optional(), data: z.string().optional(), mimeType: z.string().optional() })).optional() }).loose().parse(raw)
       const images = result.content?.flatMap(part => part.type === "image" && part.data ? [{ mediaType: part.mimeType ?? "image/png", data: part.data }] : []) ?? []
       if (result.image) images.push({ mediaType: result.image.mediaType ?? result.image.mimeType ?? "image/png", data: result.image.data })
       for (const image of result.images ?? []) images.push({ mediaType: image.mimeType, data: image.data })
       const { image, images: programImages, content, ...text } = result
-      return { output: content ? content.filter(part => part.type === "text").map(part => part.text ?? "").join("\n") : JSON.stringify(text), isError: result.isError === true || result.ok === false, ...(images.length ? { images } : {}) }
+      // What the browser downloaded goes to My files right after the call.
+      const downloads = member && setup === "on" && parsed.view === "browser" ? await this.saveDownloads(sessionId, box, member) : null
+      const output = content ? content.filter(part => part.type === "text").map(part => part.text ?? "").join("\n") : JSON.stringify(text)
+      const notes = [...(setup !== null && typeof setup === "object" ? [`[Browser downloads can't reach My files on this computer: ${setup.problem}]`] : []), ...downloads ?? []]
+      return { output: [output, ...notes].join("\n"), isError: result.isError === true || result.ok === false, ...(images.length ? { images } : {}) }
     } finally {
       signal?.removeEventListener("abort", stop)
       try { if (stopping) await stopping }
@@ -201,7 +223,10 @@ export class Computers {
     const pending = prior ? prior.then(async box => {
       const current = await this.provider.inspect(box)
       if (current.state === "running") return current
-      if (current.state === "missing") this.copied.delete(sessionId)
+      if (current.state === "missing") {
+        this.copied.delete(sessionId)
+        this.memberFiles.delete(sessionId)
+      }
       return this.resolve(sessionId)
     }) : this.resolve(sessionId)
     this.vms.set(sessionId, pending)
@@ -289,10 +314,104 @@ export class Computers {
     this.cancelPause(sessionId)
     this.vms.delete(sessionId)
     this.copied.delete(sessionId)
+    this.memberFiles.delete(sessionId)
     const box = await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })
     if (box) await this.provider.destroy(box, { timeoutMs: 30_000 }).catch((error: unknown) => {
       if (!isSandboxError(error) || error.code !== "not_found") throw error
     })
+  }
+
+  /**
+   * Turns My files on for this desktop (once per process), or back off for a conversation that no longer has them
+   * (only where an earlier setup left its manifest). `on`, `off`, or why it can't be set up (reported once).
+   */
+  private async memberFilesSetup(sessionId: string, box: SandboxHandle, member: ComputerMemberFiles | null): Promise<"on" | "off" | { problem: string } | null> {
+    const desktop = this.desktop
+    if (!desktop) return null
+    const known = this.memberFiles.get(sessionId)
+    if (member) {
+      if (known === "on") return "on"
+      if (typeof known === "object") return null
+      try {
+        await desktop.files(box, true)
+        this.memberFiles.set(sessionId, "on")
+        return "on"
+      } catch (error) {
+        const problem = { problem: error instanceof Error ? error.message : "the desktop couldn't set it up" }
+        this.memberFiles.set(sessionId, problem)
+        return problem
+      }
+    }
+    if (known === "off") return "off"
+    this.memberFiles.set(sessionId, "off")
+    await this.execute(box, {
+      command: `if [ -f ${DOWNLOADS_MANIFEST} ]; then sudo -n /usr/local/sbin/openwork-desktop-bridge files off && rm -f ${DOWNLOADS_MANIFEST}; fi`,
+      activity: "maintenance",
+      timeoutMs: 30_000,
+    }).catch(() => undefined)
+    return "off"
+  }
+
+  /**
+   * The files an `upload` action names (`/files/...`), copied from My files onto the computer, with the action pointed at
+   * the copies. A file that isn't in My files, or a conversation without them, refuses the call before anything runs.
+   */
+  private async stageUploads(box: SandboxHandle, member: ComputerMemberFiles | null, args: Record<string, unknown>): Promise<{ args: Record<string, unknown> } | { refused: ToolResult }> {
+    const actions = Array.isArray(args.actions) ? args.actions : []
+    const uploads = actions.filter((action): action is { type: "upload"; paths?: unknown } => typeof action === "object" && action !== null && "type" in action && action.type === "upload")
+    if (uploads.length === 0) return { args }
+    const refuse = (output: string) => ({ refused: { output, isError: true } })
+    if (!member) return refuse("Uploading needs My files, which aren't on for this conversation. Nothing was sent.")
+    const staged = new Map<string, string>()
+    for (const upload of uploads) {
+      const paths = z.array(z.string().min(1).max(600)).min(1).max(MAX_UPLOAD_FILES).safeParse(upload.paths)
+      if (!paths.success) return refuse(`An upload needs paths: 1 to ${MAX_UPLOAD_FILES} files in /files, such as /files/Downloads/report.pdf. Nothing was sent.`)
+      for (const path of paths.data) {
+        const inside = path.startsWith("/files/") ? path.slice("/files/".length) : ""
+        if (!inside || inside.split("/").some((part) => !part || part === "." || part === "..")) return refuse(`${path} isn't in /files. Upload one of their files, such as /files/Downloads/report.pdf. Nothing was sent.`)
+        if (staged.has(path)) continue
+        const found = await member.read(inside)
+        if (!found) return refuse(`There is no file at ${path}. List /files to find it. Nothing was sent.`)
+        const target = uploadPath(inside, found.file.version)
+        await this.execute(box, { command: `mkdir -p "$FOLDER"`, env: { FOLDER: posix.dirname(target) }, activity: "maintenance", timeoutMs: 30_000 })
+        await this.blocks.files.write(box, target, found.bytes, { timeoutMs: 120_000, mode: 0o660 })
+        staged.set(path, target)
+      }
+    }
+    const rewritten = actions.map((action) => {
+      if (typeof action !== "object" || action === null || !("type" in action) || action.type !== "upload" || !("paths" in action) || !Array.isArray(action.paths)) return action
+      return { ...action, paths: action.paths.map((path: unknown) => (typeof path === "string" ? staged.get(path) ?? path : path)) }
+    })
+    return { args: { ...args, actions: rewritten } }
+  }
+
+  /** Saves what the browser downloaded to My files (one collection at a time per session); notes for the result. */
+  private saveDownloads(sessionId: string, box: SandboxHandle, member: ComputerMemberFiles): Promise<string[]> {
+    const previous = this.collecting.get(sessionId) ?? Promise.resolve()
+    const run = previous.catch(() => undefined).then(async () => {
+      try {
+        const report: DownloadsReport = await collectDownloads({
+          scan: async () => {
+            const result = await this.execute(box, {
+              command: `python3 -c "$DOWNLOADS_SCRIPT" ${DOWNLOADS_DIR}; echo '${DOWNLOADS_MARKER}'; cat ${DOWNLOADS_MANIFEST} 2>/dev/null || echo '{}'`,
+              env: { DOWNLOADS_SCRIPT: SCAN_SCRIPT },
+              timeoutMs: 60_000,
+            })
+            if (result.exitCode !== 0) throw new Error("scan_failed")
+            return parseScan(result.stdout ?? "")
+          },
+          read: async (path) => new Uint8Array(await this.blocks.files.read(box, `${DOWNLOADS_DIR}/${path}`, { timeoutMs: 120_000 })),
+          saveManifest: (manifest) => this.blocks.files.write(box, DOWNLOADS_MANIFEST, new TextEncoder().encode(JSON.stringify(manifest)), { timeoutMs: 30_000 }),
+        }, member)
+        return downloadNotes(report)
+      } catch (error) {
+        console.error("[headless-computer] downloads didn't reach My files", { error: error instanceof Error ? error.message : "unknown" })
+        return ["[Downloads didn't reach My files this time; they will after the next browser step.]"]
+      }
+    })
+    this.collecting.set(sessionId, run)
+    void run.finally(() => { if (this.collecting.get(sessionId) === run) this.collecting.delete(sessionId) })
+    return run
   }
 
   /** Copies files the person sent into /workspace/files. Returns the paths it copied this time. */

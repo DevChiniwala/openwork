@@ -1,11 +1,13 @@
 #!/usr/bin/python3 -I
 """The command user's only privileged desktop entry point. All executable inputs are image-owned."""
 import fcntl
+import grp
 import hashlib
 import http.client
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import secrets
 import signal
@@ -16,6 +18,10 @@ import time
 ROOT = Path('/usr/local/share/openwork-desktop')
 STATE = Path('/var/lib/openwork-desktop')
 ROUTES = {'/health', '/viewer', '/continue', '/stop', '/browser/task', '/computer/task', '/computer/program', '/browser/demonstration'}
+# My files (docs/features/member-files): where the browser saves downloads and uploads from; the runner moves the files.
+FILES_ROOT = Path('/files')
+WORKSPACE_OUT = Path('/workspace/out')
+BROWSER_USER = 'openwork-browser'
 ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root',
        'LANG': 'C.UTF-8', 'DISPLAY': ':99', 'XAUTHORITY': '/run/openwork-desktop/99/.Xauthority'}
 
@@ -27,7 +33,9 @@ def arguments(argv):
         return 'start', argv[1]
     if len(argv) == 2 and argv[0] == 'call' and argv[1] in ROUTES:
         return 'call', argv[1]
-    raise ValueError('Use command, start VERSION or call with a supported desktop route.')
+    if len(argv) == 2 and argv[0] == 'files' and argv[1] in ('on', 'off'):
+        return 'files', argv[1]
+    raise ValueError('Use command, start VERSION, files on|off or call with a supported desktop route.')
 
 
 def call(route, body):
@@ -99,6 +107,54 @@ def start(expected):
     return {'ok': True, 'version': actual}
 
 
+def shared_folder(parent, name, uid, gid):
+    """A real folder (never a link) for the provider account and the shared workspace group: setgid, default ACLs."""
+    try:
+        os.mkdir(name, 0o2770, dir_fd=parent)
+    except FileExistsError:
+        pass
+    # The command account can write in /files: open without following a link it may have put there, then change the
+    # held folder rather than its name.
+    folder = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        os.fchown(folder, uid, gid)
+        os.fchmod(folder, 0o2770)
+        subprocess.run(['setfacl', '-m', 'd:u::rwx,d:g::rwx,d:o::---', f'/proc/self/fd/{folder}'], pass_fds=(folder,), check=True)
+    except BaseException:
+        os.close(folder)
+        raise
+    return folder
+
+
+def point(link, target, uid, gid):
+    """Points a home folder's link at `target` in one step; a real folder someone made there is kept."""
+    if link.exists() and not link.is_symlink():
+        return
+    temporary = link.with_name(f'.{link.name}.{secrets.token_hex(4)}')
+    os.symlink(target, temporary)
+    os.lchown(temporary, uid, gid)
+    os.replace(temporary, link)
+
+
+def member_files(mode):
+    """`on`: /files for the shared group, and the browser's Downloads in it. `off`: Downloads as the image had it."""
+    owner = pwd.getpwnam('ubuntu')
+    shared = grp.getgrnam('openwork-workspace').gr_gid
+    if mode == 'on':
+        parent = os.open(str(FILES_ROOT.parent), os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            root = shared_folder(parent, FILES_ROOT.name, owner.pw_uid, shared)
+        finally:
+            os.close(parent)
+        try:
+            os.close(shared_folder(root, 'Downloads', owner.pw_uid, shared))
+        finally:
+            os.close(root)
+    account = pwd.getpwnam(BROWSER_USER)
+    point(Path(account.pw_dir) / 'Downloads', str(FILES_ROOT / 'Downloads' if mode == 'on' else WORKSPACE_OUT), account.pw_uid, account.pw_gid)
+    return {'ok': True, 'files': mode}
+
+
 def main(argv):
     operation, argument = arguments(argv)
     if os.geteuid() != 0:
@@ -106,6 +162,8 @@ def main(argv):
     os.umask(0o077)
     if operation == 'start':
         return start(argument)
+    if operation == 'files':
+        return member_files(argument)
     limit = 1024 * 1024 if operation == 'command' else 65536
     body = sys.stdin.buffer.read(limit + 1)
     if len(body) > limit:

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createCloudBrowser, publicDestination } from "./chromium.mjs";
+import { chooseFilesThrough, createCloudBrowser, publicDestination } from "./chromium.mjs";
 
 async function fixture({ rejectInterception = false, holdInterception = false, existing = true, missingEgress = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "openwork-browser-network-"));
@@ -149,5 +149,46 @@ test("native kernel readiness requires complete UID-bound IPv4 and IPv6 rejectio
     const incomplete = structuredClone(rules);
     change(incomplete);
     assert.equal(nativeBrowserEgress(incomplete, 1001), false);
+  }
+});
+
+test("an upload answers the chooser its click opens with files under My files only, and intercepts only around that click", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openwork-browser-upload-"));
+  try {
+    const root = join(directory, "files");
+    await mkdir(join(root, ".uploads"), { recursive: true });
+    await writeFile(join(root, ".uploads", "statement.csv"), "date,amount");
+    await writeFile(join(directory, "secret.txt"), "not theirs");
+    await symlink(join(directory, "secret.txt"), join(root, ".uploads", "link.txt"));
+    const sent = [];
+    let listener = null;
+    const wire = {
+      async send(method, params) { sent.push({ method, params }); return {}; },
+      nextEvent(name, waitMs) {
+        let resolve;
+        const promise = new Promise(done => { resolve = done; listener = (method, params) => { if (method === name) done(params); }; setTimeout(() => done(null), waitMs); });
+        return Object.assign(promise, { cancel: () => resolve(null) });
+      },
+    };
+    const click = async () => listener?.("Page.fileChooserOpened", { frameId: "main", mode: "selectSingle", backendNodeId: 42 });
+    assert.equal(await chooseFilesThrough(wire, [join(root, ".uploads", "statement.csv")], click, { root }), 1);
+    assert.deepEqual(sent.map(entry => entry.method), ["Page.setInterceptFileChooserDialog", "DOM.setFileInputFiles", "Page.setInterceptFileChooserDialog"]);
+    assert.deepEqual(sent[1].params, { files: [await realpath(join(root, ".uploads", "statement.csv"))], backendNodeId: 42 });
+    assert.deepEqual([sent[0].params, sent[2].params], [{ enabled: true }, { enabled: false }]);
+    // A link out of My files, a path outside it, or two files for a single-file control: refused, nothing set.
+    for (const paths of [[join(root, ".uploads", "link.txt")], [join(directory, "secret.txt")]]) {
+      sent.length = 0;
+      await assert.rejects(chooseFilesThrough(wire, paths, click, { root }), { code: "upload_refused" });
+      assert.deepEqual(sent, []);
+    }
+    sent.length = 0;
+    await assert.rejects(chooseFilesThrough(wire, [join(root, ".uploads", "statement.csv"), join(root, ".uploads", "statement.csv")], click, { root }), { code: "upload_refused" });
+    assert.equal(sent.some(entry => entry.method === "DOM.setFileInputFiles"), false);
+    // A click that opens no chooser: said so, and interception is off again.
+    sent.length = 0;
+    await assert.rejects(chooseFilesThrough(wire, [join(root, ".uploads", "statement.csv")], async () => {}, { root, waitMs: 50 }), { code: "no_file_chooser" });
+    assert.deepEqual(sent.at(-1), { method: "Page.setInterceptFileChooserDialog", params: { enabled: false } });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

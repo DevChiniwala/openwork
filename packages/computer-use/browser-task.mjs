@@ -40,7 +40,9 @@ const BLOCKED_CHORDS = [
 ].map((parts) => ({ key: parts.at(-1), modifiers: parts.slice(0, -1) }));
 // Chromium on macOS runs these through the app menu, not page key events.
 const EDIT_COMMANDS = { a: "selectAll", z: "undo", "shift+z": "redo" };
-const ACTION_TYPES = ["click", "fill", "select", "set_checked", "key", "scroll", "reveal"];
+const ACTION_TYPES = ["click", "fill", "select", "set_checked", "key", "scroll", "reveal", "upload"];
+/** Files one upload action gives a page's file chooser at most. */
+const MAX_UPLOAD_PATHS = 10;
 const PREPARE_CODES = ["stale_observation", "stale_element", "sign_in_required", "unverifiable_focus", "element_disabled", "element_outside_viewport",
   "element_obscured", "not_editable", "not_selectable", "option_unavailable", "not_checkable", "outside_viewport"];
 
@@ -856,7 +858,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
         if (!observed || observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("stale_observation", "Observe the current page before acting.");
         const keys = new Map();
         for (const [index, action] of actions.entries()) {
-          if (!action || typeof action !== "object" || !ACTION_TYPES.includes(action.type)) fail("invalid_action", "Use click, fill, select, set_checked, key or scroll.");
+          if (!action || typeof action !== "object" || !ACTION_TYPES.includes(action.type)) fail("invalid_action", "Use click, fill, select, set_checked, key, scroll or upload.");
           if (action.ref !== undefined && (typeof action.ref !== "string" || !action.ref || action.ref.length > 64)) fail("invalid_action", "Use a ref from an observation of this page.");
           if (action.type === "click" && !action.ref) {
             if (index > 0) fail("invalid_action", "An image-coordinate click can only be the first action. Use refs for later steps.");
@@ -866,12 +868,17 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
           if (action.type === "select" && (!action.ref || !Array.isArray(action.values) || action.values.length > 200 || !action.values.every(value => typeof value === "string" && value.length <= 8000))) fail("invalid_action", "Select needs an observed select reference and an array of option values.");
           if (action.type === "set_checked" && (!action.ref || typeof action.checked !== "boolean")) fail("invalid_action", "Set_checked needs an observed checkbox, radio or switch reference and checked true or false.");
           if (action.type === "reveal" && !action.ref) fail("invalid_action", "Reveal needs an observed reference.");
+          // Uploads exist only where the host can answer a file chooser itself (the cloud browser, from My files).
+          if (action.type === "upload" && typeof tab.view.webContents.chooseFiles !== "function") fail("upload_unavailable", "Uploading files isn't available in this browser.");
+          if (action.type === "upload" && (!action.ref || !Array.isArray(action.paths) || !action.paths.length || action.paths.length > MAX_UPLOAD_PATHS || !action.paths.every(path => typeof path === "string" && path.startsWith("/") && path.length <= 1024))) {
+            fail("invalid_action", `Upload needs the observed control that opens the file chooser and 1 to ${MAX_UPLOAD_PATHS} file paths.`);
+          }
           if (action.type === "key") keys.set(index, resolveKey(action));
           if (action.type === "scroll" && (!Number.isFinite(action.deltaY) || Math.abs(action.deltaY) > 1200)) fail("invalid_scroll", "Scroll distance must be between -1200 and 1200.");
         }
         // A click or key already sent from this observation is not sent again
         // from it: the page may have acted on the first one.
-        const signature = (action, index) => ["click", "key"].includes(action.type)
+        const signature = (action, index) => ["click", "key", "upload"].includes(action.type)
           ? JSON.stringify([action.type, action.ref ?? null, action.x ?? null, action.y ?? null, keys.get(index)?.chord ?? null]) : null;
         if (actions.some((action, index) => observed.sent.has(signature(action, index)))) {
           fail("repeat_requires_observe", "That click or key was already sent from this observation. Observe to confirm the page before repeating it; nothing was dispatched.");
@@ -902,7 +909,8 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
             break;
           }
           let point;
-          try { point = await isolated(contents, prepareAction, observed.id, action); }
+          // An upload is a click on the control that opens the file chooser; the host answers the chooser.
+          try { point = await isolated(contents, prepareAction, observed.id, action.type === "upload" ? { type: "click", ref: action.ref } : action); }
           catch (error) {
             const code = PREPARE_CODES.find((item) => String(error?.message).includes(item));
             if (!code) throw error;
@@ -932,7 +940,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
               }
             }
           }
-          if (action.type === "click" || action.type === "scroll" || (action.type === "set_checked" && !point.unchanged)) {
+          const pointer = async () => {
             // sendInputEvent targets the main widget, not an OOPIF's widget.
             // Chromium's input router hit-tests these observed CSS pixels,
             // converted to view pixels when the page is drawn scaled.
@@ -952,6 +960,21 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
             } finally {
               if (attached && cdp.isAttached()) cdp.detach();
             }
+          };
+          if (action.type === "click" || action.type === "scroll" || (action.type === "set_checked" && !point.unchanged)) await pointer();
+          if (action.type === "upload") {
+            let attached;
+            try { attached = await contents.chooseFiles(action.paths, pointer); }
+            catch (error) {
+              const message = error?.code === "no_file_chooser" ? "The control didn't open a file chooser. Observe the page and pick its upload control."
+                : error?.code === "upload_refused" ? "Only their files in /files can be uploaded." : "The files couldn't be attached. Observe the page before retrying.";
+              if (!batch) fail(error?.code === "no_file_chooser" || error?.code === "upload_refused" ? error.code : "upload_failed", message);
+              failure = { index, type: action.type, ref: action.ref, code: error?.code ?? "upload_failed", error: message };
+              break;
+            }
+            if (!batch) return { ok: true, dispatched: true, outcome: "attached", files: attached, retrySafe: false, tabId: tab.tabId, next: "observe" };
+            steps.push({ i: index, type: action.type, ref: action.ref, outcome: "attached", files: attached });
+            continue;
           }
           if (action.type === "key") {
             const key = keys.get(index);

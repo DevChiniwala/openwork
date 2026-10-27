@@ -17,6 +17,7 @@
     "./computer-x11-driver": "./computer-x11-driver.mjs",
     "./computer-windows-driver": "./computer-windows-driver.mjs",
     "./browser-task": "./browser-task.mjs",
+    "./chromium": "./chromium.mjs",
     "./browser-demonstration": "./browser-demonstration.mjs",
     "./cloud": {
       "types": "./cloud.d.mts",

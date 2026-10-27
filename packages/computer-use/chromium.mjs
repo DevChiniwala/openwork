@@ -1,6 +1,6 @@
 // Headed Chromium on the cloud computer. CDP stays on loopback; callers only
 // get the existing conversation-owned browser contract, never arbitrary CDP.
-import { readFile, writeFile, rename } from "node:fs/promises";
+import { readFile, writeFile, rename, realpath, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
@@ -91,7 +91,36 @@ const verifyLocalEgress = async () => {
   if (!(await browserEgressStatus()).ok) throw Object.assign(new Error("The cloud browser's private-network filter is unavailable. Reconnect the computer."), { code: "egress_unavailable" });
 };
 
-export function createCloudBrowser({ statePath, assertActive, enabled, beforeInput, endpoint = "http://127.0.0.1:9222", privateBrowsing = false, verifyEgress = verifyLocalEgress }) {
+/**
+ * Answers the file chooser a click opens with `paths`: only regular files under `root` (My files on the computer, where
+ * the runner copied them), never a link out of it. Interception is on only around the click, so a chooser the page or
+ * the person opens at any other time behaves as usual. Throws `no_file_chooser` when the click opened none.
+ */
+export async function chooseFilesThrough(wire, paths, trigger, { root, waitMs = 5000 }) {
+  const base = await realpath(root).catch(() => null);
+  const files = [];
+  for (const path of paths) {
+    const real = await realpath(path).catch(() => null);
+    const info = real ? await stat(real).catch(() => null) : null;
+    if (!base || !real || !real.startsWith(`${base}/`) || !info?.isFile()) throw Object.assign(new Error("Only files under the files folder can be uploaded."), { code: "upload_refused" });
+    files.push(real);
+  }
+  const opened = wire.nextEvent("Page.fileChooserOpened", waitMs);
+  await wire.send("Page.setInterceptFileChooserDialog", { enabled: true });
+  try {
+    await trigger();
+    const chooser = await opened;
+    if (!chooser) throw Object.assign(new Error("No file chooser opened."), { code: "no_file_chooser" });
+    if (chooser.mode === "selectSingle" && files.length > 1) throw Object.assign(new Error("This control takes one file."), { code: "upload_refused" });
+    await wire.send("DOM.setFileInputFiles", { files, backendNodeId: chooser.backendNodeId });
+    return files.length;
+  } finally {
+    opened.cancel();
+    await wire.send("Page.setInterceptFileChooserDialog", { enabled: false }).catch(() => {});
+  }
+}
+
+export function createCloudBrowser({ statePath, assertActive, enabled, beforeInput, endpoint = "http://127.0.0.1:9222", privateBrowsing = false, verifyEgress = verifyLocalEgress, uploadRoot = "/files" }) {
   // privateBrowsing is only for operator diagnostics on a dedicated VM.
   const allowedDestination = privateBrowsing ? async () => true : publicDestination;
   const tabs = new Map();
@@ -153,13 +182,25 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       else reply("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
     }
     let pageEvent = (_method, _params) => {};
+    // One-shot waits for an event (the file chooser an upload's click opens).
+    const waiters = new Set();
     socket.addEventListener("close", () => {
       for (const item of pending.values()) { clearTimeout(item.timer); item.reject(new Error("Browser disconnected; inspect before retrying input.")); }
       pending.clear();
     });
     return {
       changed(callback) { tabChanged = callback; },
-      events(callback) { pageEvent = callback; },
+      events(callback) { pageEvent = (method, params) => { for (const waiter of [...waiters]) waiter(method, params); callback(method, params); }; },
+      nextEvent(name, waitMs) {
+        let done = () => {};
+        const promise = new Promise((resolve) => {
+          const timer = setTimeout(() => { waiters.delete(listen); resolve(null); }, waitMs);
+          const listen = (method, params) => { if (method === name) { clearTimeout(timer); waiters.delete(listen); resolve(params); } };
+          done = () => { clearTimeout(timer); waiters.delete(listen); resolve(null); };
+          waiters.add(listen);
+        });
+        return Object.assign(promise, { cancel: () => done() });
+      },
       async send(method, params = {}, check = true) {
         await ready;
         if (check) assertActive();
@@ -228,6 +269,8 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
           windowsVirtualKeyCode: character ? character.charCodeAt(0) : { Enter: 13, Tab: 9, Escape: 27, Backspace: 8, Delete: 46, Space: 32, Home: 36, End: 35, PageUp: 33, PageDown: 34, Up: 38, Down: 40, Left: 37, Right: 39 }[event.keyCode] });
       },
       debugger: { isAttached: () => true, sendCommand: async (method, params) => { await beforeInput(); await wire.send("Page.bringToFront"); return wire.send(method, params); } },
+      // Uploads from My files (copied under uploadRoot by the runner); the desktop app's browser has no such method.
+      chooseFiles: async (paths, trigger) => { await guarded; assertActive(); return chooseFilesThrough(wire, paths, trigger, { root: uploadRoot }); },
     } },
       async navigate(url) {
         await guarded;

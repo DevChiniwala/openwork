@@ -26,6 +26,27 @@ export interface ComputerFiles {
   putPreview(sessionId: string, id: string, pages: Array<Uint8Array<ArrayBuffer>>, size: { width: number; height: number }): Promise<boolean>
 }
 
+/** A file in the member's My files, as the browser's downloads and uploads need it. `path` is inside My files. */
+export type MemberFileEntry = { path: string; size: number; version: number; updatedAt: number }
+export type MemberFileWrite = { ok: true; file: MemberFileEntry } | { ok: false; code: string; message: string }
+
+/**
+ * One browser call's view of the member's My files. The runner binds it to the conversation's owner and to what this
+ * run may change; the computer never names a space or sees a store key.
+ */
+export interface ComputerMemberFiles {
+  /** The largest file My files keeps; bigger downloads stay on the computer and are reported. */
+  readonly maxFileBytes: number
+  /** Where this run's downloads are saved: Downloads, or a background run's agent folder; null when it can't save. */
+  readonly downloads: string | null
+  read(path: string): Promise<{ file: MemberFileEntry; bytes: Uint8Array<ArrayBuffer> } | null>
+  /** `ifVersion` null: only when the path is free (else `conflict`). */
+  write(path: string, bytes: Uint8Array<ArrayBuffer>, input: { kind: "browser"; ifVersion: null; url?: string | null }): Promise<MemberFileWrite>
+}
+
+/** What one desktop call may use beyond the conversation; null My files turns the browser's Downloads back. */
+export type ComputerCallContext = { memberFiles: ComputerMemberFiles | null }
+
 /**
  * Turns a file into what the model can see: an image or PDF as model input, text as text, or a note. `counts`
  * caps images and PDFs per result across the files of one call.
