@@ -337,23 +337,19 @@ enum PointerRoute: Equatable {
 /// Windows an action opened or closed and whether another app came to the front.
 /// The session sees one window, so these are the only signs of a new dialog.
 struct WindowChanges {
-    /// Normal windows a session can open, with their titles.
-    var windows: [UInt32: String] = [:]
+    /// Normal windows a session can open. Titles stay out until a window is
+    /// opened, since they can name private documents.
+    var windows: Set<UInt32> = []
     /// Panels and alerts above normal windows, which a session cannot open.
     var panels: Set<UInt32> = []
     var frontmost = false
 
     func diff(_ after: WindowChanges, target: UInt32) -> [String: Any]? {
         var result: [String: Any] = [:]
-        let opened = after.windows.keys.filter { windows[$0] == nil }.sorted()
-        if !opened.isEmpty {
-            result["opened"] = opened.prefix(4).map { id in
-                ["window_id": Int(id), "title": String((after.windows[id] ?? "").prefix(80))] as [String: Any]
-            }
-            result["content_trust"] = "untrusted_app_content"
-        }
+        let opened = after.windows.subtracting(windows).sorted()
+        if !opened.isEmpty { result["opened"] = opened.prefix(4).map { ["window_id": Int($0)] } }
         if !after.panels.subtracting(panels).isEmpty { result["panel_opened"] = true }
-        if windows[target] != nil && after.windows[target] == nil { result["target_closed"] = true }
+        if windows.contains(target) && !after.windows.contains(target) { result["target_closed"] = true }
         if frontmost && !after.frontmost { result["another_app_in_front"] = true }
         return result.isEmpty ? nil : result
     }

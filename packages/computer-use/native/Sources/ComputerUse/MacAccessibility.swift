@@ -280,7 +280,7 @@ final class MacAccessibility {
     }
 
     /// The app's on-screen windows, for spotting what an action opened. Reads
-    /// only window numbers, layers and titles; never window content.
+    /// only window numbers, layers and sizes; never titles or content.
     func windowChanges(_ app: AppIdentity) -> WindowChanges {
         var changes = WindowChanges(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier == app.pid)
         let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -289,7 +289,7 @@ final class MacAccessibility {
                   let layer = (window[kCGWindowLayer as String] as? NSNumber)?.intValue,
                   let bounds = window[kCGWindowBounds as String] as? NSDictionary,
                   let frame = CGRect(dictionaryRepresentation: bounds), frame.width > 20, frame.height > 20 else { continue }
-            if layer == 0 { changes.windows[id] = window[kCGWindowName as String] as? String ?? "Untitled window" }
+            if layer == 0 { changes.windows.insert(id) }
             else if layer < Int(CGWindowLevelForKey(.dockWindow)) { changes.panels.insert(id) }
         }
         return changes

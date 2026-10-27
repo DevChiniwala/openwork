@@ -151,16 +151,16 @@ final class InputRoutingTests: XCTestCase {
     }
 
     func testWindowChangesReportOpenedWindowsPanelsAndFocusLoss() {
-        let before = WindowChanges(windows: [10: "Doc"], panels: [], frontmost: true)
+        let before = WindowChanges(windows: [10], panels: [], frontmost: true)
         XCTAssertNil(before.diff(before, target: 10))
-        let after = WindowChanges(windows: [10: "Doc", 12: "Preferences", 11: String(repeating: "x", count: 200)], panels: [40], frontmost: false)
+        let after = WindowChanges(windows: [10, 12, 11], panels: [40], frontmost: false)
         let changes = before.diff(after, target: 10)
         let opened = changes?["opened"] as? [[String: Any]]
         XCTAssertEqual(opened?.map { $0["window_id"] as? Int }, [11, 12])
-        XCTAssertEqual((opened?.first?["title"] as? String)?.count, 80)
+        XCTAssertEqual(opened?.allSatisfy { $0.keys.sorted() == ["window_id"] }, true)
         XCTAssertEqual(changes?["panel_opened"] as? Bool, true)
         XCTAssertEqual(changes?["another_app_in_front"] as? Bool, true)
         XCTAssertNil(changes?["target_closed"])
-        XCTAssertEqual(before.diff(WindowChanges(windows: [:], panels: [], frontmost: true), target: 10)?["target_closed"] as? Bool, true)
+        XCTAssertEqual(before.diff(WindowChanges(windows: [], panels: [], frontmost: true), target: 10)?["target_closed"] as? Bool, true)
     }
 }
