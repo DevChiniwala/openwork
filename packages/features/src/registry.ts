@@ -399,6 +399,17 @@ export const FEATURES = defineFeatures({
     deployments: ["cloud"],
     default: false,
   },
+  providerCredentialStatus: {
+    label: "Desktop: honest AI provider key status",
+    description: "AI Providers says \"Not checked yet\" for a key that has not answered a chat, and \"Key not accepted\" with Replace key (or ask your admin, for organization providers) after the provider rejects it, instead of always \"Ready to use\".",
+    category: "models",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/provider-credential-status/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   sessionTokenHashing: {
     label: "Hashed sign-in sessions",
     description: "Den keeps only a one-way hash of each sign-in session token, so a copy of the database cannot sign anyone in. New sessions are stored hashed and older ones convert the next time they are used; turn on only once every Den replica runs a release that reads both forms.",

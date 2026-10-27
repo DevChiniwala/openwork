@@ -55,6 +55,7 @@ config:
     connectStandardTools: ""       # default off · Supported clients, including OpenWork Desktop, OpenCode and Claude Code, discover connected actions, Workflows and Apps as individual tools. Capability search uses MCP tool schemas with older fields kept for compatibility. Turning this off restores the previous search view and schemas.
     teamPlan: ""                   # default off (cloud only) · Going past 5 people moves the workspace to the Team plan at $10 per person per month, and paying sets the plan.
     selfServeEnterprise: ""        # default off (cloud only) · Owners can buy Enterprise by card at the planned per-person price.
+    providerCredentialStatus: ""   # default off · AI Providers says "Not checked yet" for a key that has not answered a chat, and "Key not accepted" with Replace key (or ask your admin, for organization providers) after the provider rejects it, instead of always "Ready to use".
     sessionTokenHashing: ""        # default off · Den keeps only a one-way hash of each sign-in session token, so a copy of the database cannot sign anyone in. New sessions are stored hashed and older ones convert the next time they are used; turn on only once every Den replica runs a release that reads both forms.
   # END GENERATED features
   administratorRecovery:
