@@ -973,6 +973,11 @@ export function getLibraryNewPluginRoute(orgSlug?: string | null, start?: "skill
   return `${getLibraryRoute(orgSlug)}/plugins/new${start ? `?start=${start}` : ""}`;
 }
 
+/** The member's own agent in the Library (My agent). */
+export function getLibraryMyAgentRoute(orgSlug?: string | null): string {
+  return `${getLibraryRoute(orgSlug)}/my-agent`;
+}
+
 export function getLibraryModelsRoute(orgSlug?: string | null): string {
   return `${getLibraryRoute(orgSlug)}?show=models`;
 }
