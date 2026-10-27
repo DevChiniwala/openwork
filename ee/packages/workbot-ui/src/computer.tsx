@@ -6,7 +6,6 @@ import { ExternalLink, Globe, Maximize2, Monitor, Pause, Play, RotateCw, Wrench 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
-import { workbotViewContextSchema, type WorkbotViewContext } from "@openwork/types/workbot-context";
 import { WorkbotTeaching } from "./teaching";
 import { ScreencastViewer, type ScreencastPage } from "./screencast";
 import { errorMessage, workbotHost } from "./host";
@@ -38,7 +37,7 @@ export function openBrowserPage(id: string) {
  * Both views belong to the main conversation's computer. noVNC carries pixels and native input; with the browser live
  * view on, watching the browser streams the page itself instead.
  */
-export function WorkbotComputer({ onTeachingChange, onRun, onContextChange, canTeach = true, pages = [] }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; /** The browser page on screen, for the chat beside it. */ onContextChange?(context: WorkbotViewContext | null): void; canTeach?: boolean; /** The pages Workbot opened in this conversation, oldest first. */ pages?: WorkbotPage[] }) {
+export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, pages = [] }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean; /** The pages Workbot opened in this conversation, oldest first. */ pages?: WorkbotPage[] }) {
   const host = workbotHost();
   const [teaching, setTeaching] = useState<BrowserTeachingContext>();
   const teachingChange = useCallback((context: BrowserTeachingContext | undefined) => { setTeaching(context); onTeachingChange?.(context); }, [onTeachingChange]);
@@ -84,14 +83,6 @@ export function WorkbotComputer({ onTeachingChange, onRun, onContextChange, canT
       page: setLivePage,
     });
   }, [host, identity, view, control, paused, away, revision]);
-
-  // The live stream names the front tab; without it, the page picked from the list is the best known one.
-  const shown = view === "browser" && !paused && !error ? livePage ?? pages.find(entry => entry.id === page) ?? null : null;
-  useEffect(() => {
-    const context = shown ? workbotViewContextSchema.safeParse({ kind: "browser", url: shown.url, title: shown.title.slice(0, 512) }) : null;
-    onContextChange?.(context?.success ? context.data : null);
-  }, [shown?.url, shown?.title, onContextChange]);
-  useEffect(() => () => onContextChange?.(null), [onContextChange]);
 
   const action = async (next: "pause" | "resume" | "continue" | "rebuild") => {
     if (changing) return false;

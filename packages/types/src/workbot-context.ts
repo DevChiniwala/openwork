@@ -10,16 +10,10 @@ const selection = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("automation"), id, title: label }).strict(),
 ])
 
-/** A web page on Workbot's own computer: http(s) only, never with credentials in the address. */
-const pageUrl = z.string().max(2048).refine(value => {
-  try { const url = new URL(value); return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password } catch { return false }
-}, "Choose a web page address.")
-
 /** A snapshot of visible metadata at Send, never document bytes, a permission, or a live screen feed. */
 export const workbotViewContextSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("documents"), view: z.enum(["recent", "folder"]), folderId: id, folderName: label, query: z.string().max(500) }).strict(),
   z.object({ kind: z.literal("document"), provider: z.literal("google-drive"), fileId: id, title: label, mimeType: z.string().min(1).max(255), unsaved: z.boolean() }).strict(),
-  z.object({ kind: z.literal("browser"), url: pageUrl, title: z.string().max(512) }).strict(),
   z.object({ kind: z.literal("calendar"), view: z.enum(["day", "week", "month"]), start: instant, end: instant, timeZone: z.string().min(1).max(64).refine(value => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true } catch { return false } }, "Choose a valid time zone."), selected: selection.optional() }).strict(),
 ]).refine(value => value.kind !== "calendar" || value.end > value.start && value.end - value.start <= 370 * 86_400_000, "Choose a valid calendar range.")
 export type WorkbotViewContext = z.infer<typeof workbotViewContextSchema>
@@ -64,19 +58,9 @@ export function workbotContextForModel(value: WorkbotViewContext): WorkbotViewCo
   const context = workbotViewContextSchema.parse(value)
   if (context.kind === "document") return { kind: context.kind, provider: context.provider, fileId: context.fileId, title: context.title, mimeType: mimeType.test(context.mimeType) ? context.mimeType : "application/octet-stream", unsaved: context.unsaved }
   if (context.kind === "documents") return { kind: context.kind, view: context.view, folderId: context.folderId, folderName: "Current folder", query: "" }
-  // The page's own title and the query or fragment (which can carry tokens) stay out; Workbot can read the page itself.
-  if (context.kind === "browser") { const url = new URL(context.url); return { kind: context.kind, url: `${url.origin}${url.pathname}`, title: "" } }
   return { kind: context.kind, view: context.view, start: context.start, end: context.end,
     timeZone: new Intl.DateTimeFormat("en", { timeZone: context.timeZone }).resolvedOptions().timeZone,
     ...(context.selected ? { selected: { ...context.selected, title: context.selected.kind === "meeting" ? "Selected meeting" : "Selected automation" } } : {}) }
-}
-
-/** Document and calendar references run with read-only credentials. A browser page is Workbot's own computer, so a
- * message sent while watching it keeps the computer, but its connected-app token is read-scoped: what a page says
- * can't get Workbot to change the member's apps. */
-export function workbotContextAccess(context?: WorkbotViewContext): { readOnly?: true; mcpReadOnly?: true } {
-  if (!context) return {}
-  return context.kind === "browser" ? { mcpReadOnly: true } : { readOnly: true }
 }
 
 /** The person's command is separate from the fixed-shape, read-only resource reference. */
@@ -111,7 +95,6 @@ export function googleDriveFileId(href: string): string | null {
 
 export function workbotContextLabel(context: WorkbotViewContext) {
   if (context.kind === "document") return context.title
-  if (context.kind === "browser") return context.title.trim() || new URL(context.url).host
   if (context.kind === "documents") return context.query ? `Search in ${context.folderName}` : context.folderName
   return context.selected?.title ?? `${context.view[0]?.toUpperCase()}${context.view.slice(1)} calendar`
 }
