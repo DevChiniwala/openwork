@@ -6,6 +6,7 @@ import type { ComputerFile, ComputerFiles, FileReader, ToolResult, ToolSpec } fr
 import { demonstrationReplySchema, type DemonstrationCommand } from "@openwork/types/browser-demonstration"
 import { Desktop, type DesktopView } from "./desktop.js"
 import { DESKTOP_TOOL } from "./desktop-tool.js"
+import { DesktopTiming, timedProvider } from "./desktop-timing.js"
 
 /** One provider-neutral Linux computer per conversation. Jobs own idle policy and files; adapters own transport. */
 export type ComputerOptions = {
@@ -54,6 +55,8 @@ export class Computers {
   private readonly pausing = new Map<string, Promise<void>>()
   /** Saved file ids already copied into each session's VM by this process. */
   private readonly copied = new Map<string, Set<string>>()
+  /** The desktop request being timed for each VM, by its slug. */
+  private readonly timings = new Map<string, DesktopTiming>()
 
   private readonly snapshot: string
   private readonly files?: ComputerFiles
@@ -71,7 +74,7 @@ export class Computers {
    * `readFile` turns a file into what the model can see (images, PDFs, text), the same way tool results are read.
    */
   constructor(private readonly options: ComputerOptions, deps: { files?: ComputerFiles; readFile: FileReader }) {
-    this.provider = options.provider
+    this.provider = timedProvider(options.provider, key => this.timings.get(key))
     this.blocks = computerBlocks(this.provider)
     this.snapshot = this.provider.currentImage()?.id ?? "configured image"
     this.files = deps.files
@@ -86,14 +89,17 @@ export class Computers {
     const desktop = this.desktop
     if (!desktop) throw new Error("Desktop access is not configured.")
     signal?.throwIfAborted()
-    const box = await this.vm(sessionId)
+    const timing = this.track(sessionId, "tool")
+    const box = await this.vm(sessionId).catch((error: unknown) => { this.finish(timing, "failed"); throw error })
     let stopping: Promise<unknown> | undefined
     const stop = () => {
       stopping ??= desktop.call(box, "/stop", {})
       void stopping.catch(() => {})
     }
     try {
-      await desktop.start(box)
+      await desktop.start(box).catch((error: unknown) => { this.finish(timing, "failed"); throw error })
+      // A tool call that found the desktop ready is not worth a log line; one that woke or started it is.
+      this.finish(timing, "ok", !timing.prepared)
       signal?.addEventListener("abort", stop, { once: true })
       if (signal?.aborted) { stop(); signal.throwIfAborted() }
       const program = parsed.operation === "computer_run"
@@ -118,12 +124,22 @@ export class Computers {
 
   async desktopViewer(sessionId: string, input: { view: DesktopView; control: boolean; origin: string }) {
     if (!this.desktop) throw new Error("Desktop access is not configured.")
-    const pending = this.vms.get(sessionId)
-    const existing = pending ? await this.provider.inspect(await pending) : await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })
-    if (existing?.state === "stopped" || existing?.state === "stopping") return { state: "paused" as const }
-    const box = await this.vm(sessionId)
-    try { return { state: "connected" as const, ...await this.desktop.viewer(box, input) } }
-    finally { this.release(sessionId) }
+    const timing = this.track(sessionId, "viewer")
+    let outcome = "failed"
+    try {
+      const pending = this.vms.get(sessionId)
+      const existing = pending ? await this.provider.inspect(await pending) : await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })
+      if (existing?.state === "stopped" || existing?.state === "stopping") {
+        outcome = "paused"
+        return { state: "paused" as const }
+      }
+      const box = await this.vm(sessionId)
+      try {
+        const viewer = { state: "connected" as const, ...await this.desktop.viewer(box, input) }
+        outcome = "ok"
+        return viewer
+      } finally { this.release(sessionId) }
+    } finally { this.finish(timing, outcome) }
   }
 
   async browserDemonstration(sessionId: string, command: DemonstrationCommand) {
@@ -141,6 +157,16 @@ export class Computers {
   }
 
   async desktopAction(sessionId: string, action: "continue" | "pause" | "resume" | "rebuild") {
+    const timing = this.track(sessionId, action)
+    let outcome = "failed"
+    try {
+      const result = await this.changeDesktop(sessionId, action)
+      outcome = "ok"
+      return result
+    } finally { this.finish(timing, outcome) }
+  }
+
+  private async changeDesktop(sessionId: string, action: "continue" | "pause" | "resume" | "rebuild") {
     if (!this.desktop) throw new Error("Desktop access is not configured.")
     if (action === "rebuild") {
       // A fresh VM from the configured snapshot, without waking the old one first. Kept Files survive; the VM's own disk does not.
@@ -282,6 +308,20 @@ export class Computers {
     const timer = this.pauseTimers.get(sessionId)
     if (timer) clearTimeout(timer)
     this.pauseTimers.delete(sessionId)
+  }
+
+  /** Times one desktop request; the first one open for a VM gets its steps, a concurrent one only its total. */
+  private track(sessionId: string, operation: string) {
+    const timing = new DesktopTiming(sessionId, operation)
+    const slug = this.slug(sessionId)
+    if (!this.timings.has(slug)) this.timings.set(slug, timing)
+    return timing
+  }
+
+  private finish(timing: DesktopTiming, outcome: string, quiet = false) {
+    const slug = this.slug(timing.sessionId)
+    if (this.timings.get(slug) === timing) this.timings.delete(slug)
+    if (!quiet) timing.log(outcome)
   }
 
   /** Deletes the conversation's VM, if it has one. */

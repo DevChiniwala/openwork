@@ -97,6 +97,36 @@ test("rebuilding replaces the conversation's VM and starts the desktop on the ne
   await computers.delete("rebuild")
 })
 
+test("opening and resuming a desktop log one line with where the time went", async t => {
+  let desktopUp = false
+  const provider = createFakeProvider({ capabilities: { platform: { os: "linux", isolation: "microvm" } }, onRun(spec) {
+    if (/ start [a-f0-9]{64}$/.test(spec.command)) desktopUp = true
+    if (spec.command.includes("call '/health'")) return desktopUp ? { exitCode: 0, stdout: JSON.stringify({ version: "running" }), stderr: "" } : { exitCode: 1, stdout: "", stderr: "" }
+    return { exitCode: 0, stdout: "0", stderr: "" }
+  } })
+  const lines: string[] = []
+  t.mock.method(console, "log", (line: string) => { lines.push(line) })
+  const computers = new Computers({ provider, idlePauseMs: 1000, keepDays: 1, desktop: true }, { readFile: async () => ({ text: "" }) })
+  t.after(() => computers.delete("timed"))
+  await provider.stop(await computers.vm("timed"), { timeoutMs: 1000 })
+  const timings = () => lines.filter(line => line.startsWith("[headless-computer] desktop timing ")).map(line => JSON.parse(line.slice(35)) as { sessionId: string; operation: string; outcome: string; totalMs: number; before: string | null; steps: Record<string, { ms: number; count: number }> })
+
+  assert.deepEqual(await computers.desktopViewer("timed", { view: "browser", control: false, origin: "https://chat.example.test" }), { state: "paused" })
+  assert.deepEqual(await computers.desktopAction("timed", "resume"), { ok: true })
+  const [viewer, resume] = timings()
+  assert.deepEqual([viewer?.operation, viewer?.outcome, viewer?.before], ["viewer", "paused", "stopped"])
+  assert.deepEqual([resume?.sessionId, resume?.operation, resume?.outcome, resume?.before], ["timed", "resume", "ok", "stopped"])
+  // The paused VM is woken, the desktop is found down, started, and polled until it answers.
+  assert.deepEqual(Object.keys(resume?.steps ?? {}).sort(), ["desktop_start", "health", "vm_lookup", "vm_start"])
+  assert.equal(resume?.steps.vm_start?.count, 1)
+  assert.equal(resume?.steps.health?.count, 2)
+
+  // A tool call that finds the desktop ready stays out of the log.
+  Object.assign(computers as unknown as Record<string, unknown>, { desktop: { start: async () => {}, call: async () => ({ ok: true }) } })
+  await computers.desktopRun("timed", { view: "browser", operation: "open", args: {} })
+  assert.equal(timings().length, 2)
+})
+
 test("a new command waits for a pending idle pause and resumes before running", { timeout: 2000 }, async t => {
   let release = () => {}
   const gate = new Promise<void>(resolve => { release = resolve })
