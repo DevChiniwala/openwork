@@ -2,13 +2,14 @@ import {
   readFeatures,
   readOrganizationFeatureOverridesForMany,
   setFeatureRollout,
+  setMemberFeatureOverrides,
   setOrganizationFeatureOverrides,
   type FeatureDatabase,
 } from "@openwork-ee/den-db/organization-features"
 import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
 import { eq } from "@openwork-ee/den-db/drizzle"
 import { OrganizationTable } from "@openwork-ee/den-db/schema"
-import { resolveFeature, resolveFeatures, type FeatureKey, type FeatureMap } from "@openwork/features"
+import { resolveFeatures, type FeatureKey, type FeatureMap } from "@openwork/features"
 import type { MiddlewareHandler } from "hono"
 import { cache } from "./cache.js"
 import { db } from "./db.js"
@@ -23,14 +24,17 @@ import type { OrganizationContextVariables } from "./middleware/organization-con
  * .opencode/skills/add-a-feature first). Never read organization metadata or
  * environment variables to decide whether a feature is on.
  *
- * Writes use updateFeatureRollout / updateOrganizationFeatureOverrides below,
- * which invalidate the shared cache. Never call den-db's setFeatureRollout or
- * setOrganizationFeatureOverrides directly from den-api.
+ * Writes use updateFeatureRollout / updateOrganizationFeatureOverrides /
+ * updateMemberFeatureOverrides below, which invalidate the shared cache. Never
+ * call den-db's setFeatureRollout, setOrganizationFeatureOverrides or
+ * setMemberFeatureOverrides directly from den-api.
  */
 
 export type { FeatureKey, FeatureMap }
 
 type ReadOptions = {
+  /** Authenticated user: overrides apply only to their active membership in this organization. */
+  userId?: string
   /** A transaction: always read from it, never from the cache. */
   database?: FeatureDatabase
   /** Locks the override rows until the transaction commits; never cached. */
@@ -52,18 +56,16 @@ export async function readOrganizationForAuthorization(organizationId: string) {
  */
 export async function getOrganizationFeatures(organizationId: string, options: ReadOptions = {}): Promise<FeatureMap> {
   if (options.database || options.lock) {
-    return readFeatures(options.database ?? db, organizationId, env.features, { lock: options.lock })
+    return readFeatures(options.database ?? db, organizationId, env.features, { lock: options.lock, userId: options.userId })
   }
   const id = normalizeDenTypeId("organization", organizationId)
-  const { rollouts, overrides } = await cache.features.state(id)
-  return resolveFeatures({ ...env.features, rollouts, overrides })
+  const userId = options.userId ? normalizeDenTypeId("user", options.userId) : undefined
+  const { rollouts, overrides, memberOverrides } = await cache.features.state(id, userId)
+  return resolveFeatures({ ...env.features, rollouts, overrides, memberOverrides })
 }
 
 export async function organizationFeatureEnabled(organizationId: string, key: FeatureKey, options: ReadOptions = {}): Promise<boolean> {
-  if (options.database || options.lock) return (await getOrganizationFeatures(organizationId, options))[key]
-  const id = normalizeDenTypeId("organization", organizationId)
-  const { rollouts, overrides } = await cache.features.state(id)
-  return resolveFeature(key, { ...env.features, rollouts, overrides }).enabled
+  return (await getOrganizationFeatures(organizationId, options))[key]
 }
 
 /**
@@ -106,6 +108,16 @@ export async function updateFeatureRollout(input: Parameters<typeof setFeatureRo
 export async function updateOrganizationFeatureOverrides(input: Parameters<typeof setOrganizationFeatureOverrides>[1]) {
   try {
     return await setOrganizationFeatureOverrides(db, input)
+  } finally {
+    // After the commit (or a failure that may have committed).
+    await cache.features.invalidate()
+  }
+}
+
+/** Changes one member's feature overrides, then clears the feature cache on every replica. */
+export async function updateMemberFeatureOverrides(input: Parameters<typeof setMemberFeatureOverrides>[1]) {
+  try {
+    return await setMemberFeatureOverrides(db, input)
   } finally {
     // After the commit (or a failure that may have committed).
     await cache.features.invalidate()

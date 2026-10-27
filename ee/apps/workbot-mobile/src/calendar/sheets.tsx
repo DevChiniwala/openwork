@@ -133,14 +133,17 @@ function TimeStepper({ hour, minute, onChange }: { hour: number; minute: number;
 }
 
 function ScheduleFields({ draft, setDraft }: { draft: AutomationSchedule; setDraft: (schedule: AutomationSchedule) => void }) {
+  const atSetTime = draft.kind === "daily" || draft.kind === "weekly"
   const setKind = (kind: "daily" | "weekly") => {
-    const hour = draft.kind === "once" ? 9 : draft.hour
-    const minute = draft.kind === "once" ? 0 : draft.minute
-    setDraft(kind === "daily" ? { kind, timezone: draft.timezone, hour, minute } : { kind, timezone: draft.timezone, hour, minute, daysOfWeek: draft.kind === "weekly" ? draft.daysOfWeek : [1, 2, 3, 4, 5] })
+    const hour = atSetTime ? draft.hour : draft.kind === "interval" ? draft.startHour : 9
+    const minute = atSetTime ? draft.minute : 0
+    const daysOfWeek = draft.kind === "weekly" || draft.kind === "interval" ? draft.daysOfWeek : [1, 2, 3, 4, 5]
+    setDraft(kind === "daily" ? { kind, timezone: draft.timezone, hour, minute } : { kind, timezone: draft.timezone, hour, minute, daysOfWeek })
   }
   return (
     <View style={styles.fields}>
       {draft.kind === "once" ? <Text style={styles.note}>This runs once, {formatInstant(draft.at, draft.timezone)}. Change it to repeat:</Text> : null}
+      {draft.kind === "interval" || draft.kind === "calendar" ? <Text style={styles.note}>{describeSchedule(draft, draft.timezone, "en-US")}. Change it to repeat at a set time:</Text> : null}
       <Segmented label="Repeats" value={draft.kind === "weekly" ? "weekly" : draft.kind === "daily" ? "daily" : ("" as "daily")} options={[{ id: "daily", label: "Every day" }, { id: "weekly", label: "Some days" }]} onChange={setKind} />
       {draft.kind === "weekly" ? (
         <View style={styles.weekdays}>
@@ -163,7 +166,7 @@ function ScheduleFields({ draft, setDraft }: { draft: AutomationSchedule; setDra
           })}
         </View>
       ) : null}
-      {draft.kind !== "once" ? (
+      {draft.kind === "daily" || draft.kind === "weekly" ? (
         <TimeStepper hour={draft.hour} minute={draft.minute} onChange={(hour, minute) => setDraft({ ...draft, hour, minute })} />
       ) : null}
       <Text style={styles.note}>Time zone: {draft.timezone}</Text>

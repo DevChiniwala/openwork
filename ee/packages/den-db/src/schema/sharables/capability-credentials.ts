@@ -67,11 +67,18 @@ export const OrgOAuthClientTable = mysqlTable(
   ],
 )
 
+export type ExternalMcpReadinessFailure = "sign_in_required" | "sign_in_rejected" | "setup_required" | "unavailable" | "timed_out" | "settings_changed" | "tools_unreadable"
+
 export type ExternalMcpReadinessCheck = {
   status: "ready" | "could_not_verify"
   checkedAt: string
   lastSuccessfulAt: string | null
   reason: string | null
+  /**
+   * Why a check did not pass, so clients can tell a rejected sign-in from an
+   * outage without parsing copy. Absent on checks recorded before 2026-10-22.
+   */
+  failure?: ExternalMcpReadinessFailure | null
   /** Binds the probe to the configuration and credential it actually checked. Never returned. */
   fingerprint: string
 }

@@ -2,6 +2,8 @@ import { z } from "zod"
 
 const id = z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/)
 const label = z.string().trim().min(1).max(512)
+/** A request to open one Drive file beside the chat; the host still checks access before anything loads. */
+export const workbotDocumentNavigationSchema = z.object({ fileId: id }).strict()
 const instant = z.number().int().min(0).max(8_640_000_000_000_000)
 const selection = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("meeting"), provider: z.enum(["google", "microsoft"]), id: z.string().min(1).max(512).regex(/^[A-Za-z0-9_=.@+/-]+$/), title: label }).strict(),
@@ -47,11 +49,14 @@ export function readWorkbotCorrectionPrompt(prompt: string): { text: string; cor
 const PREFIX = "[OpenWork visible context v1]\n"
 const END = "\n[End OpenWork visible context]\n\n"
 
-/** Only opaque resource identifiers and typed view coordinates reach the model.
- * Display names, search text and provider-supplied MIME labels stay out of the prompt. */
+const mimeType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/
+
+/** Identifiers and typed view coordinates reach the model. An open document also keeps its title and a
+ * well-formed MIME type, JSON-quoted as data, so the model knows what the person is looking at; folder names,
+ * search text and calendar titles stay out of the prompt. */
 export function workbotContextForModel(value: WorkbotViewContext): WorkbotViewContext {
   const context = workbotViewContextSchema.parse(value)
-  if (context.kind === "document") return { kind: context.kind, provider: context.provider, fileId: context.fileId, title: "Current document", mimeType: "application/octet-stream", unsaved: context.unsaved }
+  if (context.kind === "document") return { kind: context.kind, provider: context.provider, fileId: context.fileId, title: context.title, mimeType: mimeType.test(context.mimeType) ? context.mimeType : "application/octet-stream", unsaved: context.unsaved }
   if (context.kind === "documents") return { kind: context.kind, view: context.view, folderId: context.folderId, folderName: "Current folder", query: "" }
   return { kind: context.kind, view: context.view, start: context.start, end: context.end,
     timeZone: new Intl.DateTimeFormat("en", { timeZone: context.timeZone }).resolvedOptions().timeZone,
@@ -80,10 +85,10 @@ export function googleDriveFileId(href: string): string | null {
   try {
     const url = new URL(href)
     if (url.protocol !== "https:" || url.username || url.password || url.port) return null
-    const path = url.hostname === "docs.google.com" ? /^\/(?:document|spreadsheets|presentation)\/d\/([A-Za-z0-9_-]{1,512})(?:\/|$)/.exec(url.pathname)
+    const path = url.hostname === "docs.google.com" ? /^\/(?:document|spreadsheets|presentation)(?:\/u\/\d+)?\/d\/([A-Za-z0-9_-]{1,512})(?:\/|$)/.exec(url.pathname)
       : url.hostname === "drive.google.com" ? /^\/file\/d\/([A-Za-z0-9_-]{1,512})(?:\/|$)/.exec(url.pathname) : null
     if (path) return path[1] ?? null
-    const queryId = url.hostname === "drive.google.com" && url.pathname === "/open" ? url.searchParams.get("id") : null
+    const queryId = url.hostname === "drive.google.com" && (url.pathname === "/open" || url.pathname === "/uc") ? url.searchParams.get("id") : null
     return queryId && id.safeParse(queryId).success ? queryId : null
   } catch { return null }
 }

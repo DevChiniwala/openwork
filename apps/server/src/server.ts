@@ -1,3 +1,4 @@
+import { cloudComputerCall, cloudComputerFor, cloudComputerJson, startCloudComputerBridge } from "./cloud-computer.js";
 import { createV2SessionHomes, nativeSession, nativeSessionDirectory } from "./opencode-v2-session-home.js";
 import { createNativeCloudMcpResolver, createRoutedCloudMcpRegistrar } from "./cloud-mcp-v2.js";
 import { managedDesktopPolicy } from "./managed-desktop-policy.js";
@@ -42,7 +43,13 @@ import { warmEngineFolder, type EngineFolderWarmupResult } from "./engine-folder
 import { addPlugin, listPlugins, normalizePluginSpec, removePlugin } from "./plugins.js";
 import { sanitizePortableOpencodeConfig } from "./portable-opencode.js";
 import { addMcp, listMcp, removeMcp, setMcpEnabled } from "./mcp.js";
-import { buildOpenWorkV2Instructions, OPENWORK_V2_INSTRUCTION_KEY } from "./opencode-v2-instructions.js";
+import {
+  buildOpenWorkV2Instructions,
+  ENGINE_IGNORES_CONFIGURED_INSTRUCTIONS,
+  OPENWORK_V2_CONFIGURED_INSTRUCTION_KEY,
+  OPENWORK_V2_INSTRUCTION_KEY,
+  readConfiguredInstructions,
+} from "./opencode-v2-instructions.js";
 import {
   callMcpAppTool,
   listMcpAppCatalog,
@@ -78,7 +85,7 @@ import {
 import { opencodeConfigPath, openworkConfigPath, projectCommandsDir, projectSkillsDir } from "./workspace-files.js";
 import { ensureDir, exists, hashToken, shortId } from "./utils.js";
 import { defaultWorkspaceOpenworkConfig, ensureWorkspaceFiles, readRawOpencodeConfig } from "./workspace-init.js";
-import { sanitizeCommandName, validateMcpName, validateUserMcpName } from "./validators.js";
+import { sanitizeCommandName, validateMcpName, validateUserMcpName, validateUserOpencodeConfigText, validateUserProviderUpdate } from "./validators.js";
 import { TokenService } from "./tokens.js";
 import { resetManagedProviderAuthCache, syncManagedProviderAuth } from "./managed-provider-auth.js";
 import { EnvService } from "./env-file.js";
@@ -100,6 +107,7 @@ import {
 } from "./workspace-export-safety.js";
 import { serve, type ServeResult } from "./serve-node.js";
 import { serveStaticUi } from "./static-ui.js";
+import { isAllowedHost } from "./allowed-hosts.js";
 import { externalFetch, loopbackFetch, transferResponseBody } from "./server-fetch.js";
 import { registerCoreRoutes } from "./routes/core.js";
 import { registerFileRoutes } from "./routes/files.js";
@@ -107,6 +115,7 @@ import { registerOperationRoutes } from "./routes/operations.js";
 import { addRoute, matchRoute, type AuthMode, type RequestContext, type Route } from "./routes/registry.js";
 import { registerSessionGroupRoutes } from "./routes/session-groups.js";
 import { registerWorkspaceDefaultModelRoutes } from "./routes/workspace-default-model.js";
+import { createNativeClaudeImportEngine, registerClaudeImportRoutes } from "./routes/claude-import.js";
 import { registerUiControlRoutes } from "./routes/ui-control.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 import { registerCloudMcpRoutes } from "./routes/cloud-mcp.js";
@@ -163,6 +172,7 @@ import { findManagedEngineWorkspace, managedEngineRootWorkspace } from "./worksp
 import { startThreadApprovalReplayer, type ThreadApprovalReplayer } from "./thread-approvals.js";
 import { CloudProviderSync, parseCloudProviderDenSession } from "./cloud-provider-sync.js";
 import { createEngineV2Preview, shouldSyncLiveProviderOwnerTransition, type EngineV2Preview } from "./engine-v2-preview.js";
+import { MACHINE_PROVIDER_TEMPLATE_OWNERSHIP, providerConfigFingerprint } from "./provider-config-templates.js";
 import pkg from "../package.json" with { type: "json" };
 import constants from "../../../constants.json" with { type: "json" };
 
@@ -826,11 +836,8 @@ export async function startServer(
   };
   const engineV2Preview: EngineV2Preview = createEngineV2Preview({ config, env, deferStart: true,
     resolveLiveProviderSync,
+    resolveNativeAffordanceCodeMode: async () => (await managedDesktopPolicy(config).current())?.nativeAffordanceCodeMode === true,
     autoUpgradeIdle: async () => (await describeV1EngineActivity(config)).verdict === "idle",
-    autoRevertIdle: async () => {
-      if (!engineV2Preview.status().running) return true;
-      return (await describeV2EngineActivity(config, engineV2Preview.connection()))?.verdict === "idle";
-    },
     autoUpgradeError: (error) => logger.log("warn", "Automatic engine upgrade failed; keeping v1", { error }),
     providerSession: () => cloudProviderSync.currentSession(),
     hostReadRequest: async (path, init) => {
@@ -840,7 +847,10 @@ export async function startServer(
         ...init, headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
       }));
       const payload: unknown = await response.json();
-      if (!response.ok) throw new Error(`OpenWork read failed (${response.status})`);
+      if (!response.ok) {
+        const message = payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string" ? `: ${payload.message}` : "";
+        throw new Error(`OpenWork request failed (${response.status})${message}`);
+      }
       return payload;
     },
   });
@@ -881,6 +891,7 @@ export async function startServer(
     // workspace has no engine to reload.
     if (config.workspaces.length > 0 || enginePoolForConfig(config)) cloudProviderSync.markReloadPending();
   };
+  const stopCloudComputer = await startCloudComputerBridge(config);
   const routes = createRoutes(
     config,
     approvals,
@@ -928,8 +939,8 @@ export async function startServer(
         errorCause = error instanceof Error ? error.message : String(error);
       };
 
-      const finalize = (response: Response) => {
-        const wrapped = withCors(response, request, config);
+      const finalize = (response: Response, options: { cors?: boolean } = {}) => {
+        const wrapped = options.cors === false ? response : withCors(response, request, config);
         if (config.logRequests) {
             logRequest({
               logger,
@@ -976,11 +987,26 @@ export async function startServer(
           const response = await sendWithOwnershipProof(ownership,
             () => taskRecovery ? taskRecovery.forward(workspace, "v1", mount.restPath, request, send) : send());
           if (response.ok && engineV2Preview.status().chatRouting
-            && ["PUT", "DELETE"].includes(request.method)
-            && /^\/opencode\/auth\/[^/]+$/.test(mount.restPath)) {
-            // The ordinary local-provider form writes v1's credential store.
-            // Join v2 catalog reconciliation before reporting that save complete.
+            && ((["PUT", "DELETE"].includes(request.method) && /^\/opencode\/auth\/[^/]+$/.test(mount.restPath))
+              || (request.method === "POST" && /^\/opencode\/provider\/[^/]+\/oauth\/callback$/.test(mount.restPath)))) {
+            // The ordinary local-provider form and provider sign-in write v1's
+            // credential store. Join v2 catalog reconciliation before reporting
+            // that save complete, so the engine's status already explains it.
             await engineV2Preview.refreshProviders();
+            // Also rebuild v1's provider state for this folder:
+            // AI Providers lists providers from v1, which caches them per
+            // folder and otherwise keeps the old list until a restart.
+            // Disposed in place, not through the engine pool: the pool skips a
+            // folder already reloaded onto the same config file, and saved
+            // credentials are not part of that file, so every save after the
+            // first was skipped. Never spawns an engine, and never while v1 is
+            // running work.
+            if (!await engineHasActiveSessions(config, workspace)) {
+              await reloadOpencodeEngineInPlace(config, workspace, engineMcpServerState, { awaitPostRefreshSync: false })
+                .catch((error) => logger.log("warn", "Could not refresh OpenCode v1 providers after a provider change.", {
+                  error: error instanceof Error ? error.message : String(error),
+                }));
+            }
           }
           return finalizeProxyResponse(response);
         } catch (error) {
@@ -1063,6 +1089,13 @@ export async function startServer(
         }
       };
 
+      if (!isAllowedHost(request, config)) {
+        const apiError = new ApiError(403, "host_not_allowed",
+          "This server does not answer to this host name. Add it with --allowed-hosts or OPENWORK_ALLOWED_HOSTS.");
+        recordApiError(apiError);
+        return finalize(jsonResponse(formatError(apiError), apiError.status));
+      }
+
       if (request.method === "OPTIONS") {
         return finalize(new Response(null, { status: 204 }));
       }
@@ -1137,7 +1170,8 @@ export async function startServer(
       const route = matchRoute(routes, request.method, url.pathname);
       if (!route) {
         const staticUiResponse = await serveStaticUi(request, config);
-        if (staticUiResponse) return finalize(staticUiResponse);
+        // The web UI loads from its own origin; other sites never read its pages.
+        if (staticUiResponse) return finalize(staticUiResponse, { cors: false });
         errorMessage = "not_found";
         return finalize(jsonResponse({ code: "not_found", message: "Not found" }, 404));
       }
@@ -1216,6 +1250,7 @@ export async function startServer(
     anonymousInference.stop();
     cloudProviderSync.stop();
     await engineV2Preview.stop().catch(() => undefined);
+    await stopCloudComputer();
     engineInstanceReaper.close();
     clearEngineInstanceReaperForConfig(config);
     invalidateEngineMcpServerState(config, engineMcpServerState);
@@ -1338,6 +1373,7 @@ export async function startServer(
       invalidateEngineMcpServerState(config, engineMcpServerState);
       watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
+      await stopCloudComputer();
       await server.stop();
       if (recoveryError) throw recoveryError;
     },
@@ -1491,8 +1527,8 @@ async function forwardOpencodeV2Request(input: {
     target.searchParams.set("location[directory]", executionDirectory);
   }
 
-  if (method !== "GET" && method !== "HEAD"
-    && decodeURIComponent(forwardedPath).endsWith(`/instructions/entries/${OPENWORK_V2_INSTRUCTION_KEY}`)) {
+  if (method !== "GET" && method !== "HEAD" && [OPENWORK_V2_INSTRUCTION_KEY, OPENWORK_V2_CONFIGURED_INSTRUCTION_KEY]
+    .some((key) => decodeURIComponent(forwardedPath).endsWith(`/instructions/entries/${key}`))) {
     throw new ApiError(403, "engine_instructions_managed", "OpenWork instructions are managed by the server");
   }
 
@@ -1509,12 +1545,29 @@ async function forwardOpencodeV2Request(input: {
       isRecord(entry) && entry.name === "openwork-cloud" && isRecord(entry.status) && entry.status.status === "connected");
     // Keep organization skill discovery on demand through Connect. The full
     // catalog can exceed the engine's instruction-entry request limit.
-    const value = buildOpenWorkV2Instructions(connectReady);
-    const instructionUrl = new URL(target);
-    instructionUrl.pathname = `/api/experimental/session/${encodeURIComponent(sessionId)}/instructions/entries/${OPENWORK_V2_INSTRUCTION_KEY}`;
-    const synced = await engineFetch(instructionUrl.toString(), {
-      method: "PUT", headers: internalHeaders, body: JSON.stringify({ value }), signal: AbortSignal.timeout(15_000),
-    });
+    // The organization's Prompts arrive with the cloud provider sync.
+    const organizationPrompts = (await readGlobalRuntimeOpencodeConfig(input.config)).managedPrompt;
+    const value = buildOpenWorkV2Instructions(connectReady, organizationPrompts);
+    // The pinned engine never loads the config's `instructions` files, so send
+    // them as their own entry, and clear it once the engine does. Best effort:
+    // a failure leaves the entry as it was and never blocks the turn.
+    const configured = ENGINE_IGNORES_CONFIGURED_INSTRUCTIONS
+      ? await readConfiguredInstructions(input.workspace.path).catch(() => undefined)
+      : null;
+    const entryUrl = (key: string) => {
+      const url = new URL(target);
+      url.pathname = `/api/experimental/session/${encodeURIComponent(sessionId)}/instructions/entries/${key}`;
+      return url.toString();
+    };
+    const [synced] = await Promise.all([
+      engineFetch(entryUrl(OPENWORK_V2_INSTRUCTION_KEY), {
+        method: "PUT", headers: internalHeaders, body: JSON.stringify({ value }), signal: AbortSignal.timeout(15_000),
+      }),
+      configured !== undefined && engineFetch(entryUrl(OPENWORK_V2_CONFIGURED_INSTRUCTION_KEY), configured === null
+        ? { method: "DELETE", headers: internalHeaders, signal: AbortSignal.timeout(15_000) }
+        : { method: "PUT", headers: internalHeaders, body: JSON.stringify({ value: configured }), signal: AbortSignal.timeout(15_000) })
+        .catch(() => null),
+    ]);
     if (!synced.ok) throw new ApiError(502, "engine_instruction_sync_failed", "OpenWork instructions could not be updated");
   }
 
@@ -2532,6 +2585,7 @@ function resolveDevLogPath(): string | null {
 
 function resolveBrowserProvider(): Capabilities["toolProviders"]["browser"] {
   const raw = (process.env.OPENWORK_BROWSER_PROVIDER ?? "").trim().toLowerCase();
+  if (raw === "sandbox-interactive") return { enabled: true, placement: "in-sandbox", mode: "interactive" };
   if (raw === "sandbox-headless") {
     return { enabled: true, placement: "in-sandbox", mode: "headless" };
   }
@@ -2768,6 +2822,15 @@ function createRoutes(
     const refresh = await applyManagedProviderReload(resolveEngineRuntimeWorkspace(config));
     return jsonResponse({ ...preferences, refresh });
   });
+  // The app's analytics setting. Free Auto sends its analytics journey only after the app reports it is on.
+  // Not gated on writability: turning analytics off must always take effect.
+  addRoute(routes, "PUT", "/anonymous-inference/analytics", "host-token", async (ctx) => {
+    const body = await readJsonBody(ctx.request);
+    if (typeof body.enabled !== "boolean" || Object.keys(body).some((key) => key !== "enabled")) {
+      throw new ApiError(400, "invalid_payload", "Only enabled is accepted.");
+    }
+    return privateProviderResponse(await anonymousInference.setAnalyticsEnabled(body.enabled));
+  });
   const nativeEngineForWorkspace = createNativeCloudMcpResolver(engineV2Preview);
   registerCoreRoutes({
     nativeEngineForWorkspace,
@@ -2831,6 +2894,17 @@ function createRoutes(
   registerWorkspaceDefaultModelRoutes({
     routes,
     config,
+    jsonResponse,
+    readJsonBody,
+    ensureWritable,
+    requireClientScope,
+    resolveWorkspaceWithoutBootstrap,
+  });
+
+  registerClaudeImportRoutes({
+    routes,
+    config,
+    engineForWorkspace: () => createNativeClaudeImportEngine(engineV2Preview),
     jsonResponse,
     readJsonBody,
     ensureWritable,
@@ -3358,6 +3432,24 @@ function createRoutes(
 
   addRoute(routes, "GET", "/managed-policy", "client", async () =>
     jsonResponse({ policy: await managedDesktopPolicy(config).current() }));
+  addRoute(routes, "GET", "/cloud-computer/status", "client", async (ctx) => {
+    requireClientScope(ctx, "collaborator");
+    return cloudComputerJson(await cloudComputerCall(() => cloudComputerFor(config).snapshot()));
+  });
+  addRoute(routes, "GET", "/cloud-computer/frame", "client", async (ctx) => {
+    requireClientScope(ctx, "collaborator");
+    return cloudComputerJson(await cloudComputerCall(() => cloudComputerFor(config).frame()));
+  });
+  addRoute(routes, "POST", "/cloud-computer/interact", "client", async (ctx) => {
+    requireClientScope(ctx, "collaborator");
+    ensureWritable(config);
+    if (ctx.request.headers.get("content-type")?.split(";")[0]?.trim() !== "application/json") throw new ApiError(415, "invalid_content_type", "A JSON request is required");
+    const body = await readJsonBody(ctx.request);
+    return cloudComputerJson(await cloudComputerCall(() => cloudComputerFor(config).interact(body)));
+  });
+  // Electron verifies remote rollout authority here, independent of renderer state.
+  addRoute(routes, "GET", "/managed-policy/remote-computers", "client", async () =>
+    jsonResponse({ enabled: await managedDesktopPolicy(config).remoteComputersEnabled() }));
   // The desktop process reads the built-in browser's website rules here itself.
   addRoute(routes, "GET", "/managed-policy/website-rules", "client", async () =>
     jsonResponse({ rules: await managedDesktopPolicy(config).websiteRules() }));
@@ -3448,11 +3540,26 @@ function createRoutes(
     const workspace = resolveEngineRuntimeWorkspace(config);
     const body = await readJsonBody(ctx.request);
     const providerPatch = parseRuntimeProviderPatchPayload(body);
+    validateUserProviderUpdate(providerPatch);
     const result = await writeGlobalRuntimeOpencodeConfig(config, (current) => ({
       ...current,
       provider: mergeRuntimeProviderUpdate(current.provider, providerPatch),
     }));
 
+    // Only this host-token route can approve local process/file sources. Bind
+    // approval to the exact definition so a later collaborator write cannot
+    // retain privileges merely by reusing its provider ID.
+    const previousOwnership = await readOpenworkWorkspaceConfig(config, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP);
+    const providers = runtimeProviderMap(result.config);
+    const ownership = await writeOpenworkWorkspaceConfig(config, MACHINE_PROVIDER_TEMPLATE_OWNERSHIP, current => {
+      const next = new Map(Object.entries(current));
+      for (const id of Object.keys(providerPatch)) {
+        if (providers[id]) next.set(id, providerConfigFingerprint(providers[id]));
+        else next.delete(id);
+      }
+      return Object.fromEntries(next);
+    });
+    const templateOwnershipChanged = providerConfigFingerprint(previousOwnership) !== providerConfigFingerprint(ownership);
     const fileResult = await writeOpenworkRuntimeConfigFile(config);
     // Auth must land before the reload so the replacement provider instance is
     // constructed with its credential. This also refreshes SDK clients after
@@ -3463,6 +3570,7 @@ function createRoutes(
       logger: toManagedProviderAuthLogger(logger),
     });
     const shouldReload = result.changed
+      || templateOwnershipChanged
       || fileResult.changed
       || authResult.delivered.length > 0
       || authResult.removed.length > 0;
@@ -3545,6 +3653,7 @@ function createRoutes(
       throw new ApiError(400, "invalid_payload", "content must be a string");
     }
 
+    validateUserOpencodeConfigText(content);
     const configPath = resolveOpencodeConfigFilePath(scope, workspace.path);
     await requireApproval(ctx, {
       workspaceId: workspace.id,
@@ -3640,6 +3749,7 @@ function createRoutes(
       const mergeProviderModels = new Set(Array.isArray(body.mergeProviderModels)
         ? body.mergeProviderModels.filter((id): id is string => typeof id === "string")
         : []);
+      validateUserProviderUpdate(providerUpdate);
       // Removing a provider is always allowed; adding or changing one must fit the organization's model access.
       if (Object.keys(providerUpdate).length) await managedDesktopPolicy(config).assert("provider", {
         providerIDs: Object.entries(providerUpdate).filter(([, value]) => value !== null).map(([id]) => id),
