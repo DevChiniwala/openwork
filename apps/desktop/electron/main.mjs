@@ -97,6 +97,7 @@ import {
 import { createQuitSequencer } from "./quit-sequence.mjs";
 import { attachFloatingViewWindow, floatingViewWindowOptions } from "./floating-view-window.mjs";
 import { createStartupLog, startupPhase, withStartupPhase } from "./startup-log.mjs";
+import { createWindowStateStore } from "./window-state.mjs";
 
 // Startup milestones (epoch ms) for the renderer's one-per-launch startup
 // report to Den. The OS process creation time includes module loading; the
@@ -136,6 +137,7 @@ const {
   net: electronNet,
   powerMonitor,
   Notification: ElectronNotification,
+  screen,
   session,
   shell,
 } = require("electron");
@@ -263,6 +265,7 @@ const computerControl = createComputerControl({
         const saved = JSON.parse(await readFile(computerTargetsPath(), "utf8"));
         return {
           targets: saved?.targets && typeof saved.targets === "object" ? saved.targets : {},
+          ...(typeof saved?.computer === "string" ? { computer: saved.computer } : {}),
         };
       } catch { return { targets: {} }; }
     },
@@ -298,6 +301,7 @@ const uiControlServer = createUiControlServer({
   computerTask: (args, options) => computerControl.execute(args, options),
   computerProgram: (args, options) => computerControl.program(args, options),
   computerScript: (args, options) => computerControl.script(args, options),
+  computerEnabled: () => computerControl.featureEnabled(),
   listWebMcpTools: (args, options) => browserPanel?.listWebMcpTools(args, options) ?? {
     ok: false,
     error: "The built-in browser is not ready.",
@@ -2025,6 +2029,10 @@ const desktopCommandHandlers = {
       assertComputerSender(event);
       return computerControl.snapshot({ sessionId: String(sessionId ?? "") });
   },
+  "computerStatus": async (event) => {
+      assertComputerSender(event);
+      return computerControl.status();
+  },
   "computerPresentation": async (event, sessionId, visible) => {
       assertComputerSender(event);
       return computerControl.presentation({ sessionId: String(sessionId ?? ""), visible: visible === true });
@@ -2046,9 +2054,9 @@ const desktopCommandHandlers = {
       assertComputerSender(event);
       await computerControl.dismissSetup({ setupId });
   },
-  "computerChoose": async (event, input) => {
+  "computerChoose": async (event, targetId) => {
       assertComputerSender(event);
-      return computerControl.choose({ sessionId: String(input?.sessionId ?? ""), targetId: String(input?.targetId ?? "") });
+      return computerControl.chooseComputer({ targetId: String(targetId ?? "") });
   },
   "computerHalt": async (event, sessionId) => {
       assertComputerSender(event);
@@ -2660,9 +2668,15 @@ async function createMainWindowInner() {
     app.dock.setIcon(windowIconImage);
   }
 
+  const windowState = createWindowStateStore({
+    directory: app.getPath("userData"),
+    screen,
+    log: (message, error) => console.warn(message, error),
+  });
+  const restoredWindow = windowState.initialOptions({ width: 1180, height: 820 });
+
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 820,
+    ...restoredWindow.options,
     title: currentDisplayAppName,
     show: false,
     ...(process.platform === "win32" ? { skipTaskbar: true } : {}),
@@ -2684,6 +2698,7 @@ async function createMainWindowInner() {
   if (cachedBrandImage && bootSourceUrl) {
     await applyCachedBrandIcon(cachedBrandImage, bootSourceUrl);
   }
+  windowState.track(mainWindow);
   applicationMenu.applyVisibility(mainWindow);
   browserPanel.registerWindowShortcuts(mainWindow);
 
@@ -2713,6 +2728,7 @@ async function createMainWindowInner() {
     if (startupTimings.windowShownAt === null) startupTimings.windowShownAt = Date.now();
     mainWindow?.setTitle(currentDisplayAppName);
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
+    if (restoredWindow.maximized) mainWindow?.maximize();
     mainWindow?.show();
     endWindowShow();
     resolveShortcutWindowReady();

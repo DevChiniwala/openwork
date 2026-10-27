@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react"
 import { Monitor } from "lucide-react"
+import { useLocation, useNavigate } from "react-router"
 import type { ComputerRequest } from "@openwork/types/desktop-ipc"
 
 import { desktopBridge } from "@/app/lib/desktop"
 import { Button } from "@/components/ui/button"
-import { useComputerStore } from "./computer-store"
+import { settingsNavigationFromPathname } from "@/react-app/shell/workspace-routes"
 
 /** "com.apple.TextEdit" reads as "TextEdit"; the agent's own purpose says the rest. */
 function appLabel(appId: string | undefined) {
@@ -98,7 +99,13 @@ export function ComputerRequestPanel({ sessionId, request }: { sessionId: string
 
 function SetupRequest({ sessionId, request }: { sessionId: string; request: ComputerRequest }) {
   const remote = request.placement === "remote"
-  const openSetup = useComputerStore((state) => state.openSetup)
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // Setup lives in Settings; the agent keeps waiting and continues once the computer is ready.
+  const openSetup = () => {
+    const target = settingsNavigationFromPathname(pathname, "computer")
+    navigate(target.to, { state: target.state })
+  }
   const [busy, setBusy] = useState<"dismiss" | null>(null)
   const [error, setError] = useState("")
 
@@ -135,7 +142,7 @@ function SetupRequest({ sessionId, request }: { sessionId: string; request: Comp
           <Button type="button" variant="ghost" size="sm" disabled={busy !== null} aria-busy={busy === "dismiss"} data-testid="session-computer-request-dismiss" onClick={() => void answer("dismiss")}>
             Not now
           </Button>
-          {!remote ? <Button type="button" size="sm" data-testid="session-computer-request-setup" onClick={() => openSetup(sessionId)}>Set up</Button> : null}
+          <Button type="button" size="sm" data-testid="session-computer-request-setup" onClick={openSetup}>Set up</Button>
         </div>
       </div>
     </div>

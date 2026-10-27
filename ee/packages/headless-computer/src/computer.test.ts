@@ -67,6 +67,31 @@ test("idle policy uses stop when pause is absent", async () => {
   await computers.delete("idle")
 })
 
+test("a computer pauses from its stored time after the process that used it is gone", async () => {
+  const f = fixture()
+  const due = new Map<string, number>()
+  const pauses = { set: (sessionId: string, at: number) => { due.set(sessionId, at) }, clear: (sessionId: string) => { due.delete(sessionId) } }
+  const before = Date.now()
+  const used = new Computers({ provider: f.provider, idlePauseMs: 60_000, keepDays: 1, pauses }, { readFile: async () => ({ text: "" }) })
+  const box = await used.vm("stored")
+  // In use, it is due only once the longest command would be done; released, after one idle period.
+  assert.ok((due.get("stored") ?? 0) >= before + 60_000 + 300_000)
+  used.release("stored")
+  assert.ok((due.get("stored") ?? 0) < before + 60_000 + 300_000)
+  // A new process (a restarted runner or a recycled cell) acts on the stored time without having used the computer.
+  const restarted = new Computers({ provider: f.provider, idlePauseMs: 60_000, keepDays: 1, pauses }, { readFile: async () => ({ text: "" }) })
+  await restarted.pauseIdle("stored")
+  assert.equal((await f.provider.inspect(box)).state, "stopped")
+  assert.equal(due.has("stored"), false)
+  // A paused computer is never woken to check it.
+  const starts = f.provider.fake.count("start")
+  pauses.set("stored", 0)
+  await restarted.pauseIdle("stored")
+  assert.equal(f.provider.fake.count("start"), starts)
+  assert.equal(due.has("stored"), false)
+  await used.delete("stored")
+})
+
 test("desktop stays off on existing computers and opening a paused desktop does not wake it", async () => {
   const f = fixture()
   assert.deepEqual(f.computers.desktopTools, [])
@@ -95,6 +120,36 @@ test("rebuilding replaces the conversation's VM and starts the desktop on the ne
   assert.notDeepEqual(after.ref, before.ref)
   assert.ok(commands.some(command => / start [a-f0-9]{64}$/.test(command)), "the new VM's desktop is started")
   await computers.delete("rebuild")
+})
+
+test("opening and resuming a desktop log one line with where the time went", async t => {
+  let desktopUp = false
+  const provider = createFakeProvider({ capabilities: { platform: { os: "linux", isolation: "microvm" } }, onRun(spec) {
+    if (/ start [a-f0-9]{64}$/.test(spec.command)) desktopUp = true
+    if (spec.command.includes("call '/health'")) return desktopUp ? { exitCode: 0, stdout: JSON.stringify({ version: "running" }), stderr: "" } : { exitCode: 1, stdout: "", stderr: "" }
+    return { exitCode: 0, stdout: "0", stderr: "" }
+  } })
+  const lines: string[] = []
+  t.mock.method(console, "log", (line: string) => { lines.push(line) })
+  const computers = new Computers({ provider, idlePauseMs: 1000, keepDays: 1, desktop: true }, { readFile: async () => ({ text: "" }) })
+  t.after(() => computers.delete("timed"))
+  await provider.stop(await computers.vm("timed"), { timeoutMs: 1000 })
+  const timings = () => lines.filter(line => line.startsWith("[headless-computer] desktop timing ")).map(line => JSON.parse(line.slice(35)) as { sessionId: string; operation: string; outcome: string; totalMs: number; before: string | null; steps: Record<string, { ms: number; count: number }> })
+
+  assert.deepEqual(await computers.desktopViewer("timed", { view: "browser", control: false, origin: "https://chat.example.test" }), { state: "paused" })
+  assert.deepEqual(await computers.desktopAction("timed", "resume"), { ok: true })
+  const [viewer, resume] = timings()
+  assert.deepEqual([viewer?.operation, viewer?.outcome, viewer?.before], ["viewer", "paused", "stopped"])
+  assert.deepEqual([resume?.sessionId, resume?.operation, resume?.outcome, resume?.before], ["timed", "resume", "ok", "stopped"])
+  // The paused VM is woken, the desktop is found down, started, and polled until it answers.
+  assert.deepEqual(Object.keys(resume?.steps ?? {}).sort(), ["desktop_start", "health", "vm_lookup", "vm_start"])
+  assert.equal(resume?.steps.vm_start?.count, 1)
+  assert.equal(resume?.steps.health?.count, 2)
+
+  // A tool call that finds the desktop ready stays out of the log.
+  Object.assign(computers as unknown as Record<string, unknown>, { desktop: { start: async () => {}, call: async () => ({ ok: true }) } })
+  await computers.desktopRun("timed", { view: "browser", operation: "open", args: {} })
+  assert.equal(timings().length, 2)
 })
 
 test("a new command waits for a pending idle pause and resumes before running", { timeout: 2000 }, async t => {

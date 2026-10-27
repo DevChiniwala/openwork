@@ -46,7 +46,6 @@ import {
   resolveMemberTeamsMiddleware,
 } from "../../middleware/index.js"
 import { memberPermissionsForOrganizationContext } from "../../middleware/member-permissions.js"
-import { requireFeature } from "../../features.js"
 import type { PermissionKey } from "@openwork/types/den/permissions"
 import { forbiddenSchema, htmlResponse, invalidRequestSchema, jsonResponse, okSchema, unauthorizedSchema } from "../../openapi.js"
 import { createOAuthStateToken, verifyOAuthStateToken } from "../../capability-sources/generic-oauth.js"
@@ -2420,7 +2419,7 @@ async function deleteExternalConnection(
  * connection itself. List/status/presets are tagged Capability Sources so a
  * harness can see what's connected. Agents prepare removing a connection with
  * POST /v1/mcp-connections/:connectionId/removal-request
- * (requestMcpConnectionRemoval, behind agentConnectionRemoval); the person
+ * (requestMcpConnectionRemoval); the person
  * confirms it in Den, through the DELETE route agents cannot call.
  */
 export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVariables & RequestIdVariables }>(app: Hono<T>) {
@@ -3543,7 +3542,7 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
   // deleted until the person opens it and confirms in Den, signed in, through
   // the dashboard DELETE that agents cannot call. A value the agent sends can
   // therefore never authorize a deletion by itself.
-  // Shown to agents only with agentConnectionRemoval.
+  // Offered only to a person's agent, not unattended Workflow, Automation or App capability calls.
   app.post(
     "/v1/mcp-connections/:connectionId/removal-request",
     describeAgentRoute({
@@ -3558,12 +3557,11 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
         400: jsonResponse("Invalid request.", invalidRequestSchema),
         401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
         403: jsonResponse("The caller may not remove this connection.", forbiddenSchema),
-        404: jsonResponse("Unknown connection, or removing connections through agents is off for this organization.", connectionNotFoundSchema),
+        404: jsonResponse("Unknown connection.", connectionNotFoundSchema),
         409: jsonResponse("The name does not match this connection, or plugins need it.", removeConnectionConflictSchema),
       },
     }),
     orgMemberRoute(),
-    requireFeature("agentConnectionRemoval"),
     paramValidator(connectionParamsSchema),
     jsonValidator(removalRequestBodySchema),
     async (c) => {

@@ -63,6 +63,17 @@ names. `connection_status` shows the card for a connection that is not ready. A 
 members may use sends `notifications/tools/list_changed` to its full-view streams
 on the same replica; the `tools/list` cache hint (60 s, private) covers the rest.
 
+## Slack messages from the OpenWork bot
+
+`slack_send_as_bot` (`slack-send-as-bot.ts`, feature `slackSendAsBot`, off by
+default) is a Den-native capability next to the Slack connection's tools: a DM
+to the caller or a channel post from the OpenWork Slack app's bot, instead of
+as the member (`slack_send_message`). It needs a member and `mcp:write`, so
+read-only tokens never list or run it, and it is not in Code Mode scripts. Limits
+(20 a day, 5 a minute, no repeat of the same text to the same place within 24
+hours) are enforced in the tool. See
+[docs/features/slack-send-as-bot](../../../../../docs/features/slack-send-as-bot/README.md).
+
 ## Allowed Tags
 
 Every tagged Den API product surface is allowed unless it is listed under blocked tags or blocked operation IDs:
@@ -125,9 +136,9 @@ These individual operations are blocked even though their tags may otherwise be 
 The dashboard's `DELETE /v1/mcp-connections/{connectionId}` stays blocked
 (`Authentication`), so no agent request can delete a connection. Agents
 prepare one with `requestMcpConnectionRemoval`
-(`POST /v1/mcp-connections/{connectionId}/removal-request`), shown and
-accepted only with the `agentConnectionRemoval` feature and only to a
-person's own agent (`usageSource: "agent"`, see `catalog-availability.ts`).
+(`POST /v1/mcp-connections/{connectionId}/removal-request`), available to all
+organizations but offered only to a person's own agent, never unattended
+Workflows, Automations or Apps (`usageSource: "agent"`, see `catalog-availability.ts`).
 It checks the same permissions as the dashboard (`connections.delete`, or
 having added the connection), requires the connection's exact
 `expectedName` (409 `connection_name_mismatch`), and refuses a connection

@@ -26,8 +26,6 @@ export const sandboxCreateInputSchema = z.object({
   memberLimit: z.number().int().min(1).max(SANDBOX_MAX_MEMBERS),
   /** Empty means anyone with the link can join. */
   allowedEmailDomains: z.array(domainSchema).max(20),
-  /** Extra Free Auto usage for the whole sandbox on top of each member's standard allowance, expiring with it. */
-  extraFreeAutoUsd: z.number().finite().positive().max(10_000).multipleOf(0.01).nullable(),
   /** Omitted means member, as before. */
   joinRole: sandboxJoinRoleSchema.optional(),
 }).strict();

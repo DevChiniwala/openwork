@@ -1,9 +1,10 @@
-import { messageNotice } from "@/lib/session-run";
 import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai"
 import type { ThreadStatus } from "@/lib/messages"
 // Relative so the pure grouping contract stays importable from alias-free
 // test workspaces (evals specs import this module directly).
 import { isAggregatableToolPart, type AggregateThought } from "../../lib/tool-aggregate"
+import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../app/types"
+import { messageNotice } from "../../lib/session-run"
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -117,6 +118,47 @@ export function getMessageCompleted(message: UIMessage): number | null {
   if (!opencode || !("completed" in opencode)) return null
   const completed: unknown = opencode.completed
   return typeof completed === "number" ? completed : null
+}
+
+/**
+ * When the current run started (server timestamp). A follow-up sent while the
+ * reply before it was still being written joins that run, so steering does not
+ * restart the working time; a message sent after the reply finished, or after
+ * an error, starts a new run. A helper's completion notice counts like a
+ * follow-up: it starts a new run only when the reply before it had finished.
+ */
+export function getRunStartedAt(messages: UIMessage[]): number | null {
+  const newestReply = messages.findLast((message) => message.role === "assistant" && !messageNotice(message))
+  let startedAt: number | null = null
+  // The message being traced back, when it was sent, and the newest reply
+  // written before it.
+  let followUp: UIMessage | null = null
+  let followUpSentAt: number | null = null
+  let reply: UIMessage | null = null
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    const notice = message.role === "assistant" ? messageNotice(message) : null
+    if (message.role === "assistant" && !notice) {
+      if (followUp) reply ??= message
+      continue
+    }
+    if (message.role !== "user" && !notice) continue
+    if (followUp && !(reply && replyUnfinishedAt(reply, followUpSentAt, reply === newestReply))) break
+    followUp = message
+    followUpSentAt = notice ? notice.timestamp : getMessageCreated(message)
+    reply = null
+    startedAt = followUpSentAt ?? startedAt
+  }
+  return startedAt
+}
+
+function replyUnfinishedAt(reply: UIMessage, sentAt: number | null, newest: boolean) {
+  if (reply.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)) return false
+  const completed = getMessageCompleted(reply)
+  // An interrupted run can leave an old reply without a completion time; only
+  // the newest reply may still be in progress.
+  if (completed === null) return newest
+  return sentAt !== null && completed > sentAt
 }
 
 export function formatMessageTimestamp(timestampMs: number): string {

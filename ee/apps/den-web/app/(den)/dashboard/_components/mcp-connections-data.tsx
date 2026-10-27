@@ -695,9 +695,9 @@ export function mcpConnectionsQueryOptions(orgId: string | null, scope: External
   });
 }
 
-export function useMcpConnections(scope: ExternalMcpConnectionScope = "manageable", options: { refetchOnMount?: "always" } = {}) {
+export function useMcpConnections(scope: ExternalMcpConnectionScope = "manageable", options: { refetchOnMount?: "always"; enabled?: boolean } = {}) {
   const { orgId } = useOrgDashboard();
-  return useQuery({ ...mcpConnectionsQueryOptions(orgId, scope), enabled: Boolean(orgId), ...options });
+  return useQuery({ ...mcpConnectionsQueryOptions(orgId, scope), ...options, enabled: Boolean(orgId) && options.enabled !== false });
 }
 
 export function mcpConnectionPresetsQueryOptions() {
@@ -1076,9 +1076,10 @@ export function useDisconnectMyProviderAccount() {
       }
       return connection.id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all });
-    },
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: mcpConnectionQueryKeys.all }),
+      queryClient.invalidateQueries({ queryKey: libraryQueryKeys.items }),
+    ]),
   });
 }
 

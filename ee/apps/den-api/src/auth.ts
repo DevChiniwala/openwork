@@ -47,6 +47,7 @@ import {
 import { DEN_ACCOUNT_CONFIG, DEN_USER_CONFIG } from "./account-linking-policy.js";
 import { cache } from "./cache.js";
 import { deploymentFeatureEnabled } from "./features.js";
+import { lastSignInCookieChange, lastSignInCookieWrites } from "./last-sign-in-method.js";
 import { hashSessionTokens } from "./session-token.js";
 import { auditBetterAuthAfter, auditBetterAuthBefore, auditBetterAuthRefusal, auditBetterAuthSessionAfter, auditBetterAuthSessionBefore, BETTER_AUTH_AUDIT_AFTER_PATHS, BETTER_AUTH_AUDIT_BEFORE_PATHS, BETTER_AUTH_SESSION_AFTER_PATHS, BETTER_AUTH_SESSION_BEFORE_PATHS, noteOAuthConsentReference, noteOAuthRevocation, noteOAuthTokenIssuance, type BetterAuthHookSession } from "./audit/better-auth.js";
 import { auditUserUpdateAfter, auditUserUpdateBefore, recordAccountDeleted, recordIdentityLinked, recordIdentityUnlinked } from "./audit/domain/account.js";
@@ -754,6 +755,36 @@ function getEnterpriseAuthRedirectUrl(input: {
   return url.toString();
 }
 
+const lastSignInLogger = appLogger.child({ component: "last_sign_in_method" });
+
+/**
+ * Remembers a password, Google or GitHub sign-in in a long-lived cookie, and
+ * forgets it after an SSO sign-in (feature `lastUsedSignIn`). Never fails the
+ * sign-in: a broken feature lookup only skips remembering.
+ */
+async function updateLastSignInCookie(ctx: Parameters<Parameters<typeof createAuthMiddleware>[0]>[0]) {
+  const change = lastSignInCookieChange({
+    path: ctx.path,
+    provider: readStringProperty(ctx.params, "id") ?? readStringProperty(ctx.body, "provider"),
+    signedIn: Boolean(ctx.context.newSession),
+  });
+  if (!change) return;
+  if (change.type === "remember") {
+    const enabled = await deploymentFeatureEnabled("lastUsedSignIn").catch((error: unknown) => {
+      lastSignInLogger.warn("could not read lastUsedSignIn; not remembering the sign-in method", { auth_path: ctx.path, error_name: error instanceof Error ? error.name : typeof error });
+      return false;
+    });
+    if (!enabled) return;
+  }
+  const writes = lastSignInCookieWrites(change, {
+    secure: env.betterAuthUrl.startsWith("https:"),
+    cookieDomain: env.betterAuthCookieDomain,
+  });
+  for (const write of writes) {
+    ctx.setCookie(write.name, write.value, write.options);
+  }
+}
+
 function removeSsoTestSessionCookie(ctx: Parameters<Parameters<typeof createAuthMiddleware>[0]>[0]) {
   const headers = ctx.context.responseHeaders;
   if (!headers) return;
@@ -1262,11 +1293,19 @@ export const auth = betterAuth({
         return;
       }
 
+      if (ctx.path === "/sign-in/email" || ctx.path === "/sign-up/email" || ctx.path === "/sign-in/social") {
+        await updateLastSignInCookie(ctx);
+        return;
+      }
+
       if (ctx.path === "/sso/callback/:providerId" || ctx.path === "/sso/saml2/sp/acs/:providerId") {
         const callbackUrl = ctx.context.responseHeaders?.get("location") ?? null;
         const intentId = getSsoTestIntentIdFromCallbackUrl(callbackUrl);
         const providerId = readStringProperty(ctx.params, "providerId");
         if (!intentId || !providerId) {
+          // A real SSO sign-in (not an admin's connection test) forgets the
+          // remembered password or social method.
+          await updateLastSignInCookie(ctx);
           return;
         }
 
@@ -1307,6 +1346,7 @@ export const auth = betterAuth({
           email: newSession.user.email,
           emailVerified: newSession.user.emailVerified === true,
         });
+        await updateLastSignInCookie(ctx);
         return;
       }
 

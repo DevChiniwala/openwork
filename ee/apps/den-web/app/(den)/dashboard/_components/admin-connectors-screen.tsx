@@ -3,12 +3,13 @@
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { DenPageHeader } from "../../_components/ui/page-header";
-import { getAddConnectorRoute, getMcpConnectionRoute } from "../../_lib/den-org";
+import { getAddConnectorRoute, getLibraryConnectorRoute, getMcpConnectionRoute, orgFeatureEnabled } from "../../_lib/den-org";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { managedAccessStatus } from "./access-summary";
 import { usePrefetchConnectorCatalog } from "./connector-catalog-screen";
 import { GOOGLE_WORKSPACE_QUICK_ADD_ID, MICROSOFT_365_QUICK_ADD_ID } from "./connector-catalog";
 import { connectorAccountReady, displayedConnectorConnections } from "./connector-detail";
+import { assignedConnectorForLibrary } from "./connector-library-navigation";
 import { useDenToast } from "./den-toast";
 import { ItemPage } from "./item-header";
 import { FilterInput, ItemMenu, removeEntry, ItemPanel, ItemRow, ItemRowsSkeleton, LinkButton } from "./item-list";
@@ -45,6 +46,7 @@ function ConnectorsEmpty({ orgSlug }: { orgSlug: string | null }) {
 export function AdminConnectorsScreen() {
   const toast = useDenToast();
   const { orgSlug, orgContext } = useOrgDashboard();
+  const libraryNavigation = orgFeatureEnabled(orgContext, "libraryConnectorNavigation");
   const connections = useMcpConnections("manageable");
   const usable = useMcpConnections("usable");
   const deleteConnection = useDeleteMcpConnection();
@@ -120,6 +122,7 @@ export function AdminConnectorsScreen() {
             <ItemPanel>
               {visible.map((connection) => {
                 const href = getMcpConnectionRoute(orgSlug, connection.id);
+                const assignedConnection = assignedConnectorForLibrary(libraryNavigation, connection.id, usable.data);
                 const readinessView = { organization: true, checking: firstChecks.has(connection.id) || rechecking.has(connection.id) };
                 const readinessState = connectorReadinessState(connection, readinessView);
                 const checkLabel = readinessState === "Not checked" ? "Check now" : "Check again";
@@ -155,6 +158,7 @@ export function AdminConnectorsScreen() {
                           label={`More for ${connection.name}`}
                           entries={[
                             { label: "Open", href },
+                            ...(assignedConnection ? [{ label: "Open in My Library", href: getLibraryConnectorRoute(orgSlug, assignedConnection.id) }] : []),
                             ...(readinessState && canCheck && (connection.credentialMode === "shared" || connection.connectedForMe) ? [{ label: "Check again", onSelect: () => checkAgain(connection) }] : []),
                             ...(connection.id === GOOGLE_WORKSPACE_QUICK_ADD_ID || connection.id === MICROSOFT_365_QUICK_ADD_ID
                               ? []
