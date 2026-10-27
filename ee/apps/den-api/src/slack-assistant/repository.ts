@@ -23,6 +23,7 @@ import {
 import { listTeamsForMember } from "../orgs.js"
 import { canUseSlackAssistant, scopeKey, slackClient, type SlackEvent } from "./protocol.js"
 import { CLAIMABLE_STATUSES, THREAD_ACTIVE_STATUSES } from "./statuses.js"
+import type { ThreadTask } from "./steering.js"
 
 export type InstallationRow = typeof Installation.$inferSelect
 export type EventRow = typeof Event.$inferSelect
@@ -351,8 +352,12 @@ export async function saveSlackSession(threadId: string, sessionId: string) {
 export async function clearSlackSession(threadId: string) {
   await db.update(Thread).set({ sessionId: null, workspaceId: null }).where(eq(Thread.id, threadId))
 }
-export async function cancelSlackThread(installation: InstallationRow, event: SlackEvent) {
-  if (!event.user || !event.channel || !event.thread_ts) return
+/**
+ * Slack's Stop, pressed by `event.user`: ends that member's task in the thread. `stopEventId` is the queued Stop event
+ * itself, never one of the tasks it stops. Returns how many events it stopped.
+ */
+export async function cancelSlackThread(installation: InstallationRow, event: SlackEvent, stopEventId?: string) {
+  if (!event.user || !event.channel || !event.thread_ts) return 0
   // Private replies may run in a DM while the source mention was in a channel.
   // Search only this signed actor's active events, then match source or output.
   const candidates = await db
@@ -366,6 +371,7 @@ export async function cancelSlackThread(installation: InstallationRow, event: Sl
       ),
     )
   const matches = candidates.filter((candidate) => {
+    if (candidate.id === stopEventId) return false
     const output = z
       .object({ channel: z.string().optional(), threadTs: z.string().optional() })
       .safeParse(candidate.checkpoint ? JSON.parse(candidate.checkpoint) : {})
@@ -377,8 +383,49 @@ export async function cancelSlackThread(installation: InstallationRow, event: Sl
   // Stop ends the task that is running; messages the member sent while it ran start next. With nothing
   // running yet, Stop cancels the request itself.
   const running = matches.filter((candidate) => candidate.status === "running")
-  for (const candidate of running.length ? running : matches)
-    await db.update(Event).set({ cancelled: true, availableAt: new Date() }).where(eq(Event.id, candidate.id))
+  const stopped = running.length ? running : matches
+  await cancelSlackEvents(stopped.map((candidate) => candidate.id))
+  return stopped.length
+}
+/** Stops these events as Slack's Stop button would: each closes its reply with "Stopped." on its next turn. */
+export async function cancelSlackEvents(eventIds: string[]) {
+  for (const id of eventIds) await db.update(Event).set({ cancelled: true, availableAt: new Date() }).where(eq(Event.id, id))
+}
+
+const threadTaskCheckpointSchema = z
+  .object({
+    channel: z.string().optional(),
+    threadTs: z.string().optional(),
+    privateReply: z.boolean().optional(),
+  })
+  .catch({})
+
+function threadTaskCheckpoint(raw: string | null) {
+  try {
+    return threadTaskCheckpointSchema.parse(raw ? JSON.parse(raw) : {})
+  } catch {
+    return threadTaskCheckpointSchema.parse({})
+  }
+}
+
+/**
+ * Tasks running in this event's thread, asked there or replying there, other than the event itself: whose they are,
+ * and whether the reply is in the thread (a private reply goes to a DM).
+ */
+export async function runningSlackTasksInThread(event: EventRow): Promise<ThreadTask[]> {
+  const rows = await db
+    .select({ id: Event.id, slackUserId: Event.slackUserId, channelId: Event.channelId, threadTs: Event.threadTs, checkpoint: Event.checkpoint })
+    .from(Event)
+    .where(and(eq(Event.connectionId, event.connectionId), eq(Event.status, "running"), eq(Event.cancelled, false)))
+  return rows.flatMap((row) => {
+    if (row.id === event.id) return []
+    const cp = threadTaskCheckpoint(row.checkpoint)
+    const askedHere = row.channelId === event.channelId && row.threadTs === event.threadTs
+    const repliesHere = cp.channel === event.channelId && cp.threadTs === event.threadTs
+    if (!askedHere && !repliesHere) return []
+    const shared = !cp.privateReply && cp.channel === event.channelId && cp.threadTs === event.threadTs
+    return [{ id: row.id, slackUserId: row.slackUserId, shared }]
+  })
 }
 export async function revokeSlackInstallation(connectionId: DenTypeId<"externalMcpConnection">) {
   await db

@@ -111,6 +111,17 @@ platform capability are rechecked while processing each turn.
   feature, the assistant, the runner or the member's access is gone (the report
   stays in the conversation).
 
+## Whose agent
+
+Behind `slackAgentIdentity` (off by default; see `docs/features/slack-agent-identity/README.md`). Each message of a
+reply in a shared thread opens with a context line mentioning its owner (`<@U…>'s agent`, shown by Slack as their
+name), decided when the task starts (`ownerLine` in its checkpoint); a long task's answer that opened with it skips the
+extra "Done" ping. A message that only steers running work (`steering.ts`: "stop", "never mind", "change that", "try
+again") is handled before it starts a task: the owner's own "stop" stops their running task like Slack's Stop; anyone
+else gets a private note saying whose agent is working and that they can ask their own, and no task runs. Slack's Stop
+pressed by someone with nothing running in the thread gets the same note. Replies kept private are never named.
+Sessions, credentials and thread locks stay per member.
+
 ## Work handed to the desktop
 
 Den records which Slack run each MCP token was minted for (`slack_assistant_run_token`). When that run calls `remote-session:create`

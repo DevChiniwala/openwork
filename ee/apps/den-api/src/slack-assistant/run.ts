@@ -3,6 +3,7 @@ import { excerpt, slackSafeText } from "./desktop-handoff-messages.js"
 import type { RunnerFailure, SlackRunner, SlackRunSnapshot, SlackRunStep, SlackSessionSettings } from "./headless.js"
 import type { LiveFeed, LiveFeedSource } from "./live.js"
 import { scopeKey, slackReactionName, SlackApiError, type SlackCall } from "./protocol.js"
+import { agentLabelChunk, isSlackUserId } from "./steering.js"
 export const checkpointSchema = z.object({
   /** watch: the answer is done; the message's background tasks are still running and report back in the thread. */
   phase: z.enum(["create", "send", "read", "finish", "watch"]).default("create"),
@@ -51,6 +52,11 @@ export const checkpointSchema = z.object({
   taskIds: z.array(z.string()).default([]),
   reported: z.array(z.string()).default([]),
   watchUntil: z.number().optional(),
+  /**
+   * Each message of the reply opens with "<@owner>'s agent" (the owner is `recipientUserId`). Set when a shared reply
+   * starts with the feature on; private replies and older checkpoints don't show it.
+   */
+  ownerLine: z.boolean().default(false),
 })
 export type Checkpoint = z.infer<typeof checkpointSchema>
 
@@ -136,17 +142,31 @@ function streamClosedBySlack(error: unknown) {
   return error instanceof SlackApiError && error.code === "message_not_in_streaming_state"
 }
 
+/** Slack refused the blocks chunk that carries the owner line: the message goes out without it. */
+function blocksRefused(error: unknown) {
+  return error instanceof SlackApiError && ["invalid_chunks", "invalid_blocks", "invalid_blocks_format"].includes(error.code)
+}
+
 async function startStream(slack: SlackCall, checkpoint: Checkpoint, chunks: Chunk[], now: () => number) {
-  const stream = z.object({ ts: z.string() }).parse(
-    await slack("chat.startStream", {
+  // Every message of a shared reply says whose agent wrote it, above its first words.
+  const owner = checkpoint.ownerLine && isSlackUserId(checkpoint.recipientUserId) ? agentLabelChunk(checkpoint.recipientUserId) : null
+  const open = (withOwner: boolean) =>
+    slack("chat.startStream", {
       channel: checkpoint.channel,
       thread_ts: checkpoint.threadTs,
       recipient_user_id: checkpoint.recipientUserId,
       recipient_team_id: checkpoint.recipientTeamId,
-      chunks,
+      chunks: withOwner && owner ? [owner, ...chunks] : chunks,
       task_display_mode: "timeline",
-    }),
-  )
+    })
+  let started: Record<string, unknown>
+  try {
+    started = await open(true)
+  } catch (error) {
+    if (!owner || !blocksRefused(error)) throw error
+    started = await open(false)
+  }
+  const stream = z.object({ ts: z.string() }).parse(started)
   checkpoint.streamTs = stream.ts
   checkpoint.streamStartedAt = now()
   checkpoint.streamCharacters = chunkText(chunks).length
@@ -399,10 +419,13 @@ export async function advanceSlackRun(input: RunInput): Promise<Step> {
   })
   // A reaction alone is the whole reply: nobody needs a ping about it.
   const reactedOnly = cp.workbot && !cp.sentText && cp.finalStatus !== "suspended"
-  // A quiet task's answer is a new reply, which already notifies; only a streamed reply needs the extra mention.
+  // A quiet task's answer is a new reply, which already notifies; only a streamed reply needs the extra mention. One
+  // that opened with the owner line already mentioned them.
+  const answerMentioned = cp.quiet && cp.ownerLine
   if (
     (cp.live || cp.workbot) &&
     !reactedOnly &&
+    !answerMentioned &&
     cp.startedAt !== undefined &&
     cp.completedAt - cp.startedAt > DONE_PING_AFTER_MS &&
     cp.recipientUserId

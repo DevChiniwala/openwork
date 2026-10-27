@@ -35,7 +35,9 @@ import {
   latestSlackContext,
   removeSlackIdentities,
   persistSlackCheckpoint,
+  cancelSlackEvents,
   cancelSlackThread,
+  runningSlackTasksInThread,
   checkpointEvent,
   claimSlackEvent,
   getInstallation,
@@ -51,6 +53,8 @@ import {
   type SlackActor,
 } from "./repository.js"
 import { pruneSlackEvents, renewSlackLease, SlackLeaseLostError } from "./repository.js"
+import { decideSteering, steeringCommand, type SteeringDecision } from "./steering.js"
+import { organizationFeatureEnabled } from "../features.js"
 
 type WorkerDeps = {
   model?: typeof slackTurnModel
@@ -131,6 +135,46 @@ async function answerWithoutRunner(event: EventRow, slack: SlackCall, invocation
   return checkpointEvent(event, { status: "done" })
 }
 
+/** Whose agent: shared replies name their owner and only the owner steers them. The organization's switch. */
+async function agentIdentityOn(installation: InstallationRow) {
+  return installation.enabled && (await organizationFeatureEnabled(installation.organizationId, "slackAgentIdentity"))
+}
+
+/** Tells the sender, privately, whose agent they tried to steer. Best effort: nothing else depends on it. */
+async function answerNotYours(event: EventRow, slack: SlackCall, decision: SteeringDecision) {
+  if (decision.action !== "not_yours") return false
+  try {
+    await slack("chat.postEphemeral", { channel: event.channelId, user: event.slackUserId, thread_ts: event.threadTs, text: decision.text })
+  } catch (error) {
+    appLogger.warn("slack_assistant_steering_note_failed", { event_id: event.id, code: error instanceof SlackApiError ? error.code : "worker_error" })
+  }
+  return true
+}
+
+/**
+ * A message that only steers running work ("stop", "change that"), before it starts a task of its own: stops the
+ * sender's own running task, or tells them the agent working here is someone else's. True when the message is handled.
+ */
+async function steerSlackThread(event: EventRow, installation: InstallationRow, slack: SlackCall, text: string, directMessage: boolean) {
+  const command = steeringCommand(text)
+  if (!command || !(await agentIdentityOn(installation))) return false
+  const decision = decideSteering({
+    command,
+    sender: event.slackUserId,
+    directMessage,
+    tasks: await runningSlackTasksInThread(event),
+    botUserId: installation.botUserId,
+  })
+  if (decision.action === "run") return false
+  if (decision.action === "stop_own") await cancelSlackEvents(decision.eventIds)
+  else await answerNotYours(event, slack, decision)
+  // Never admitted, so it doesn't count toward the member's daily limit.
+  await releaseSlackThread(event)
+  await checkpointEvent(event, { status: "done" })
+  appLogger.info("slack_assistant_steered", { event_id: event.id, action: decision.action })
+  return true
+}
+
 export async function processSlackEvent(event: EventRow, suppliedDeps: WorkerDeps = defaultWorkerDeps) {
   await renewSlackLease(event)
   const deps: WorkerDeps = {
@@ -166,7 +210,12 @@ export async function processSlackEvent(event: EventRow, suppliedDeps: WorkerDep
     return checkpointEvent(event, { status: "done" })
   }
   if (payload.type === "agent_session_stopped") {
-    await cancelSlackThread(installation, payload)
+    // Stop only ends the presser's own task. Pressed on another person's agent, it says whose agent that is.
+    const stopped = await cancelSlackThread(installation, payload, event.id)
+    if (!stopped && payload.channel && payload.thread_ts && (await agentIdentityOn(installation))) {
+      const tasks = await runningSlackTasksInThread(event)
+      await answerNotYours(event, slack, decideSteering({ command: "stop", sender: event.slackUserId, directMessage: false, tasks, botUserId: installation.botUserId }))
+    }
     return checkpointEvent(event, { status: "done" })
   }
   if (payload.type === "tokens_revoked") {
@@ -219,6 +268,9 @@ export async function processSlackEvent(event: EventRow, suppliedDeps: WorkerDep
   const cp = checkpointSchema.parse(event.checkpoint ? JSON.parse(event.checkpoint) : {})
   if (event.status === "watching") return watchSlackEvent(event, installation, slack, deps, cp)
   if (!slackRunnerAvailable()) return answerWithoutRunner(event, slack, isInvocation(payload), cp)
+  // "Stop" or "change that" before a new message starts: only the agent's owner steers it.
+  const steering = event.status === "pending" && !cp.prompt && isInvocation(payload)
+  if (steering && (await steerSlackThread(event, installation, slack, payload.text ?? "", payload.channel_type === "im"))) return
   let actor = await resolveSlackActor(installation, event.slackUserId)
   // Members who connected Slack before the assistant existed are linked from their token, not asked to reconnect.
   if (!actor && event.status !== "running" && installation.enabled && (await linkConnectedSlackMembers(installation, deps.slack)) > 0)
@@ -319,6 +371,8 @@ export async function processSlackEvent(event: EventRow, suppliedDeps: WorkerDep
       cp.channel = dm.channel.id
       cp.threadTs = root.ts
     }
+    // A shared reply says whose agent wrote it; set once, so turning the feature off never changes a reply half-way.
+    cp.ownerLine = !cp.privateReply && (await agentIdentityOn(installation))
     // A reaction shows on the person's message to everyone in the channel, so a reply kept private doesn't react.
     cp.reactTo =
       payload.ts && (!cp.privateReply || payload.channel_type === "im") ? { channel: event.channelId, ts: payload.ts } : undefined

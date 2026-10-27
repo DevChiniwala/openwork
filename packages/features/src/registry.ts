@@ -251,6 +251,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  slackAgentIdentity: {
+    label: "Workbot in Slack: whose agent",
+    description: "In shared Slack channels each OpenWork reply shows whose agent wrote it. Only the person who asked can stop their agent; when someone else asks it to stop or change, OpenWork tells them whose agent it is and that they can ask their own.",
+    category: "workbot",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/slack-agent-identity/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotUsageRecovery: {
     label: "Workbot: usage limits and upgrades",
     description: "Signed-in Workbot uses free Auto or the member’s paid Models Luna entitlement, with allowance recovery and permission-aware upgrades in the conversation.",

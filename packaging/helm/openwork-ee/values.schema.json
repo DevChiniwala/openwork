@@ -211,6 +211,16 @@
               ],
               "description": "Workbot: included OpenWork models by default: Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings. Renders DEN_FEATURE_WORKBOT_INCLUDED_MODELS."
             },
+            "slackAgentIdentity": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot in Slack: whose agent: In shared Slack channels each OpenWork reply shows whose agent wrote it. Only the person who asked can stop their agent; when someone else asks it to stop or change, OpenWork tells them whose agent it is and that they can ask their own. Renders DEN_FEATURE_SLACK_AGENT_IDENTITY."
+            },
             "workbotUsageRecovery": {
               "enum": [
                 "",
