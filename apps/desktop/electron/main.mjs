@@ -301,6 +301,7 @@ const uiControlServer = createUiControlServer({
   computerTask: (args, options) => computerControl.execute(args, options),
   computerProgram: (args, options) => computerControl.program(args, options),
   computerScript: (args, options) => computerControl.script(args, options),
+  computerEnabled: () => computerControl.featureEnabled(),
   listWebMcpTools: (args, options) => browserPanel?.listWebMcpTools(args, options) ?? {
     ok: false,
     error: "The built-in browser is not ready.",
