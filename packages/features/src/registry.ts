@@ -95,6 +95,17 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  libraryConnectorNavigation: {
+    label: "Library: connected items and skill previews",
+    description: "Open assigned connectors in My Library from Manage and expand skills in plugins and My Library.",
+    category: "connect",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/library-connector-navigation/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   mcpAppLibraries: {
     label: "Apps: built-in libraries",
     description: "Apps built in OpenWork can use icons, charts, animation, 3D and SVG drawing from pinned libraries bundled into each App, with no remote scripts or network access.",

@@ -61,6 +61,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "libraryConnectorNavigation": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Library: connected items and skill previews: Open assigned connectors in My Library from Manage and expand skills in plugins and My Library. Renders DEN_FEATURE_LIBRARY_CONNECTOR_NAVIGATION."
+            },
             "mcpAppLibraries": {
               "enum": [
                 "",
