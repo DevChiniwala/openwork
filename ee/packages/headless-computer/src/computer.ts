@@ -89,8 +89,9 @@ export class Computers {
   }
 
   async desktopRun(sessionId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
-    // `description` is narration for the person watching; it never reaches the computer.
-    const parsed = z.object({ view: z.enum(["browser", "computer"]), operation: z.string().max(64), args: z.record(z.string(), z.unknown()), description: z.string().optional() }).strict().parse(input)
+    // `description` and `show` are for the person (what it is doing, and whether to put it in front of them); they
+    // never reach the computer.
+    const parsed = z.object({ view: z.enum(["browser", "computer"]), operation: z.string().max(64), args: z.record(z.string(), z.unknown()), description: z.string().optional(), show: z.boolean().optional() }).strict().parse(input)
     const desktop = this.desktop
     if (!desktop) throw new Error("Desktop access is not configured.")
     signal?.throwIfAborted()

@@ -327,6 +327,25 @@ test("the screen's live view stays up while Workbot works on it, not once it tur
   assert.deepEqual([back.watch, back.trailing], ["browser", ["browser"]])
 })
 
+test("the screen is in the chat only while Workbot chooses to show it", () => {
+  const step = (extra: { surface?: "browser"; background?: true; shown?: boolean }) =>
+    ({ label: "step", icon: "computer" as const, status: "done" as const, app: null, startedAt: 1, finishedAt: null, updates: [], ...extra })
+  const work = (...steps: Array<Parameters<typeof step>[0]>) => computerWork(steps.map((extra) => ({ kind: "steps" as const, steps: [step(extra)] })), { working: true, starting: null, lastIsLive: false })
+  // A lookup in the browser is work on the screen, not something to watch.
+  const lookup = work({ surface: "browser" })
+  assert.deepEqual([lookup.watch, lookup.shown], ["browser", null])
+  // Shown on purpose, it stays shown for the rest of the reply, also across steps that don't repeat it.
+  assert.equal(work({ surface: "browser", shown: true }, { surface: "browser" }).shown, "browser")
+  assert.equal(work({ surface: "browser", shown: true }, { surface: "browser", shown: false }).shown, null)
+  // Never while it works in the background, and again once it is back on that screen.
+  assert.equal(work({ shown: true }, { background: true }).shown, null)
+  assert.equal(work({ shown: true }, { background: true }, {}).shown, "computer")
+  // Showing one screen doesn't show the other.
+  assert.equal(work({ surface: "browser", shown: true }, {}).shown, null)
+  // Not after the reply.
+  assert.equal(computerWork([{ kind: "steps", steps: [step({ surface: "browser", shown: true })] }], { working: false, starting: null, lastIsLive: false }).shown, null)
+})
+
 test("the address bar opens web addresses and searches everything else", () => {
   assert.equal(addressFor("https://example.com/a?b=1"), "https://example.com/a?b=1")
   assert.equal(addressFor("  example.com/path "), "https://example.com/path")

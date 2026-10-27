@@ -14,9 +14,12 @@ export function surfaceOf(step: WorkbotStep): ComputerSurface {
 /**
  * Workbot's computer work in one reply, as one card per kind of work (its browser, its screen, its background
  * commands), however often it stops to say what it is doing. While it works, the cards it is using go below its latest
- * words: the one it is on now, and the screen it was last on, whose live view stays up while it says what it is doing.
- * Once it turns to commands in the background, that screen is no longer watched until Workbot is back on it. The
- * others stay where that work last happened.
+ * words: the one it is on now, and the screen it was last on, which stays while it says what it is doing. Once it turns
+ * to commands in the background, that screen is no longer watched until Workbot is back on it. The others stay where
+ * that work last happened.
+ *
+ * Only a screen Workbot chose to show (the desktop tool's `show`) is `shown` with its live view: working on the screen
+ * is not by itself a reason to put it in front of the person.
  */
 export function computerWork(parts: WorkbotPart[], { working, starting, lastIsLive }: { working: boolean; starting: LiveText["working"] | null; lastIsLive: boolean }) {
   const cards = new Map<ComputerSurface, { steps: WorkbotStep[]; last: number }>();
@@ -24,6 +27,8 @@ export function computerWork(parts: WorkbotPart[], { working, starting, lastIsLi
   let current: ComputerSurface | null = null;
   // The kind of work it did last: after commands in the background, there is no screen to keep watching.
   let latest: ComputerSurface | null = null;
+  // Whether Workbot is showing each screen: the last `show` it gave there in this reply.
+  const showing = new Map<ComputerSurface, boolean>();
   for (const [index, part] of parts.entries()) {
     if (part.kind !== "steps") continue;
     for (const step of part.steps) {
@@ -34,6 +39,7 @@ export function computerWork(parts: WorkbotPart[], { working, starting, lastIsLi
       card.last = index;
       cards.set(surface, card);
       if (surface !== "background") screen = surface;
+      if (step.shown !== undefined) showing.set(surface, step.shown);
       latest = surface;
       if (lastIsLive && index === parts.length - 1) current = surface;
     }
@@ -48,6 +54,7 @@ export function computerWork(parts: WorkbotPart[], { working, starting, lastIsLi
     latest = surface;
   }
   const watch = working && latest !== "background" ? latest : null;
+  const shown = watch && showing.get(watch) ? watch : null;
   const live = new Set<ComputerSurface>();
   if (working && current) live.add(current);
   if (watch) live.add(watch);
@@ -55,5 +62,5 @@ export function computerWork(parts: WorkbotPart[], { working, starting, lastIsLi
   for (const [surface, card] of cards) if (!live.has(surface)) placed.set(card.last, [...(placed.get(card.last) ?? []), surface]);
   // Below its latest words: background work first, then the screen it is watched on.
   const trailing = [...live].sort((a, b) => Number(a === watch) - Number(b === watch));
-  return { cards, live, watch, placed, trailing };
+  return { cards, live, watch, shown, placed, trailing };
 }

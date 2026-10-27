@@ -208,13 +208,13 @@ test("desktop computers expose only the viewer port, and persistent computers ar
   await persistent.delete("forever")
 })
 
-test("a desktop call's description narrates for the person and never reaches the computer", async () => {
+test("a desktop call's description and show are for the person and never reach the computer", async () => {
   const f = fixture()
   const computers = new Computers({ provider: f.provider, idlePauseMs: 1000, keepDays: 1, desktop: true }, { readFile: async () => ({ text: "" }) })
-  assert.ok(computers.desktopTools[0]?.inputSchema.properties && "description" in (computers.desktopTools[0].inputSchema.properties as object))
+  for (const field of ["description", "show"]) assert.ok(computers.desktopTools[0]?.inputSchema.properties && field in (computers.desktopTools[0].inputSchema.properties as object))
   const sent: unknown[] = []
   Object.assign(computers as unknown as Record<string, unknown>, { desktop: { start: async () => {}, call: async (_box: unknown, path: string, body: unknown) => { sent.push({ path, body }); return { ok: true } } } })
-  const result = await computers.desktopRun("narrated", { view: "browser", operation: "open", args: { url: "https://example.test" }, description: "Checking listings" })
+  const result = await computers.desktopRun("narrated", { view: "browser", operation: "open", args: { url: "https://example.test" }, description: "Checking listings", show: true })
   assert.equal(result.isError, false)
   assert.deepEqual(sent, [{ path: "/browser/task", body: { sessionId: "narrated", operation: "open", args: { url: "https://example.test" } } }])
   await computers.delete("narrated")

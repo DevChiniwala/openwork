@@ -47,28 +47,34 @@ Workbot uses its computer in two modes, and the conversation shows each its own 
   on my computer" with Workbot's own progress notes and never connects a live
   view, so the desktop does not start for this work.
 - **On screen**: the `desktop` tool, in the browser or a native app. The card
-  shows a live view, and the reply offers **Open Computer**.
+  shows Workbot's progress notes, and the reply offers **Open Computer**. The
+  card shows a live view only when Workbot passes `show: true` because the
+  person should watch: they asked to see it, or there is something to look at
+  or decide together. A browser lookup the person only wants the result of
+  stays a card. The live view appears once it has a picture, never as a
+  connecting placeholder.
 
 A reply shows one card for each kind of work, however often Workbot stops to
 say what it is doing. While it works on screen, the screen card stays below its
-latest words with its live view, also while it says what it is doing, so the
-view keeps one connection. Once it turns to work in the background, the screen
-card goes back to where it was used, without its live view, until Workbot is on
-the screen again.
+latest words, also while it says what it is doing, so a live view keeps one
+connection. Once it turns to work in the background, the screen card goes back
+to where it was used, without its live view, until Workbot is on the screen
+again. `show` holds for the rest of the reply until Workbot passes `false`.
 
 Workbot is told to work like a coworker and read what the person wants. Most of
 the time that is the result, so it works in the background and comes back with
 it. It uses the screen only when that helps: the work needs it (a live website,
 an app with no command line), the person asks to see it, or there is something
-to look at or decide together. Then it changes the open app where the person can
-see each change, and leaves the screen when that part is done. On longer work it
-mentions milestones and offers an early look when that helps the person steer.
+to look at or decide together, and shows it only for the last two. Then it
+changes the open app where the person can see each change, and leaves the
+screen when that part is done. On longer work it mentions milestones and offers
+an early look when that helps the person steer.
 
-While it works, the live card offers the other mode in one tap: **Show me** on
-background work, **Carry on without me** on screen work. Either sends a
-follow-up, which Workbot takes up after its current step. Work the person wants
-to watch stays in the conversation rather than a background task, which works
-out of sight.
+While it works, the live card offers the other mode in one tap: **Show me**
+when nothing is shown, **Carry on without me** while it shows its screen.
+Either sends a follow-up, which Workbot takes up after its current step. Work
+the person wants to watch stays in the conversation rather than a background
+task, which works out of sight.
 
 The main Workbot conversation's existing `hc-…` computer owns both views. The
 viewer does not create a second computer or accept a sandbox/session id from the

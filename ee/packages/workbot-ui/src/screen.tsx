@@ -1528,13 +1528,13 @@ function openSurface(surface: Exclude<ComputerSurface, "background">) {
 }
 
 /**
- * Work in Workbot's browser or on the rest of its computer, as one card: what it is doing now in its own words, and
- * while it works on a screen a small live view of it (when the computer is on for the person). Commands in the
- * background (running Blender from the command line) have no screen to watch, so their card never connects one. The
- * browser card links the pages it opened.
+ * Work in Workbot's browser or on the rest of its computer, as one card: what it is doing now in its own words, and a
+ * live view of its screen only while Workbot is showing it to the person (when the computer is on for them). Other
+ * work, on the screen or in the background, is its progress notes alone. The browser card links the pages it opened.
  */
-function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; switchTo?: SwitchTo | null }) {
-  const [asked, setAsked] = useState(false);
+function SurfaceCard({ surface, steps, live, showing, others, switchTo = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; showing: boolean; others: UsedApp[]; switchTo?: SwitchTo | null }) {
+  // The switch just tapped, until Workbot takes it up and the card offers the other one.
+  const [asked, setAsked] = useState<string | null>(null);
   const updates = steps.flatMap((step) => step.updates);
   const latest = updates.at(-1) ?? null;
   const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
@@ -1559,15 +1559,15 @@ function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surfac
       action={<AppLogos apps={others} />}
       footer={
         <>
-          {live && watchable && surface !== "background" ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
-          {live && watchable && switchTo && !asked ? (
+          {showing && watchable && surface !== "background" ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
+          {live && watchable && switchTo && asked !== switchTo.label ? (
             <div className="flex px-2.5 pb-2.5 pt-2" data-workbot-computer-switch>
               <button
                 type="button"
-                onClick={() => { setAsked(true); switchTo.send(switchTo.text); }}
+                onClick={() => { setAsked(switchTo.label); switchTo.send(switchTo.text); }}
                 className="inline-flex h-7 items-center gap-1.5 rounded-full bg-[var(--wb-surface)] px-2.5 text-[12px] text-[var(--wb-text)] shadow-[0_0_0_1px_var(--wb-ring)] transition-shadow duration-150 hover:shadow-[0_0_0_1px_var(--wb-disabled)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
               >
-                {surface === "background" ? <Monitor size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" /> : null}
+                {showing ? null : <Monitor size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" />}
                 {switchTo.label}
               </button>
             </div>
@@ -1658,7 +1658,7 @@ function useSettled(flag: boolean, ms: number) {
 
 /** One thing a turn shows: a model call's words (one bubble each), work in apps between them, or a computer card. */
 type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; key: string; steps: WorkbotStep[]; live: boolean }
-  | { kind: "card"; key: string; surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; switchTo: SwitchTo | null };
+  | { kind: "card"; key: string; surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; showing: boolean; others: UsedApp[]; switchTo: SwitchTo | null };
 
 function TurnView(props: {
   canChange: boolean;
@@ -1694,11 +1694,12 @@ function TurnView(props: {
   const work = computerWork(parts, { working, starting, lastIsLive });
   const card = (surface: ComputerSurface, others: UsedApp[] = []): TurnItem => {
     const isLive = work.live.has(surface);
+    const showing = surface === work.shown;
+    // The live card offers the other way: Carry on without me while Workbot shows its screen, Show me otherwise.
     const switchTo = !isLive || !switchMode ? null
-      : surface === work.watch ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: switchMode }
-      : surface === "background" && work.watch === null ? { label: "Show me", text: "Show me what you're doing on screen.", send: switchMode }
-      : null;
-    return { kind: "card", key: `card-${surface}`, surface, steps: work.cards.get(surface)?.steps ?? [], live: isLive, others, switchTo };
+      : showing ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: switchMode }
+      : { label: "Show me", text: "Show me what you're doing on screen.", send: switchMode };
+    return { kind: "card", key: `card-${surface}`, surface, steps: work.cards.get(surface)?.steps ?? [], live: isLive, showing, others, switchTo };
   };
   const items: TurnItem[] = [];
   parts.forEach((part, index) => {
@@ -1763,7 +1764,7 @@ function TurnView(props: {
             </AssistantBubble>
           ) : item.kind === "card" ? (
             <div key={item.key} className="py-1 pl-1">
-              <SurfaceCard surface={item.surface} steps={item.steps} live={item.live} others={item.others} switchTo={item.switchTo} />
+              <SurfaceCard surface={item.surface} steps={item.steps} live={item.live} showing={item.showing} others={item.others} switchTo={item.switchTo} />
             </div>
           ) : (
             <StepsSegment key={item.key} steps={item.steps} live={item.live} />

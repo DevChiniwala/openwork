@@ -44,6 +44,8 @@ const stepSchema = z.object({
   surface: z.literal("browser").optional(),
   /** Commands on the computer with no screen to watch (running Blender from the command line); absent for screen work. */
   background: z.literal(true).optional(),
+  /** Whether Workbot put this screen work in front of the person: the last value it gave; absent when it gave none. */
+  shown: z.boolean().optional(),
   /** Web pages it opened in the browser, each with a stable id for its link (/browser/<id>). */
   pages: z.array(z.object({ id: z.string(), url: z.string(), title: z.string() })).optional(),
 });

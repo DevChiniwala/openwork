@@ -435,14 +435,18 @@ function releaseGlimpse(view: ComputerView, shared: SharedGlimpse) {
 }
 
 /**
- * A small live view of what Workbot is doing on its computer, shown in the chat while it works, like the floating
- * window in OpenWork Desktop: view only, with a ring and a label saying Workbot has it. Clicking opens the full view.
- * Live views of the same view share one connection, so a new card keeps the picture instead of connecting again.
+ * A small live view of what Workbot is showing on its computer, in the chat while it works, like the floating window
+ * in OpenWork Desktop: view only, with a ring and a label saying Workbot has it. Clicking opens the full view. It
+ * appears once it has a picture, so connecting takes no room in the chat. Live views of the same view share one
+ * connection, so a new card keeps the picture instead of connecting again.
  */
 export function LiveGlimpse({ view, onOpen }: { view: ComputerView; onOpen?(): void }) {
   const host = workbotHost();
   const screen = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<GlimpseState>("connecting");
+  // Once it has had a picture it stays, so a reconnect doesn't collapse it.
+  const [pictured, setPictured] = useState(false);
+  useEffect(() => { if (state === "live") setPictured(true); }, [state]);
   const away = useAway(30_000);
   useEffect(() => {
     const target = screen.current;
@@ -460,7 +464,7 @@ export function LiveGlimpse({ view, onOpen }: { view: ComputerView; onOpen?(): v
   if (state === "unavailable") return null;
   const label = view === "browser" ? "Workbot is browsing" : "Workbot is using its computer";
   return <button type="button" onClick={onOpen} disabled={!onOpen} aria-label={`${label}. Open the full view`}
-    className="workbot-fade-in workbot-glimpse relative mt-2 block aspect-[16/10] w-full overflow-hidden rounded-[10px] bg-[#f5f6f7] text-left outline-none focus-visible:shadow-[var(--wb-focus)] enabled:cursor-pointer">
+    className={`${pictured || state === "live" ? "block" : "hidden"} workbot-fade-in workbot-glimpse relative mt-2 aspect-[16/10] w-full overflow-hidden rounded-[10px] bg-[#f5f6f7] text-left outline-none focus-visible:shadow-[var(--wb-focus)] enabled:cursor-pointer`}>
     <div ref={screen} className="pointer-events-none absolute inset-0" aria-hidden />
     {state === "connecting" ? <span className="absolute inset-0 grid place-items-center text-[12px] text-[var(--wb-muted)]"><span className="workbot-shimmer">{view === "browser" ? "Connecting to the browser" : "Connecting to the computer"}</span></span> : null}
     <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--wb-surface)]/90 px-2 py-0.5 text-[11px] font-medium text-[var(--wb-text)] shadow-[var(--wb-card-shadow)]">
