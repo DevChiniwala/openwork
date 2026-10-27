@@ -123,7 +123,7 @@ OpenAI-compatible provider really used):
    its completion (`autoRouteForReply` in
    `apps/app/src/react-app/domains/session/sync/reply-model.ts`), so every
    reply, including earlier ones and retried requests, gets its own model.
-   Without one (an older gateway, or the classic engine) the footer keeps
+   Without one (for example from a gateway without this change) the footer keeps
    saying "Auto".
 
 Nothing is recorded when the organization has no Auto Router: the plugin only
