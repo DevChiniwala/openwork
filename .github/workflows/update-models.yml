@@ -49,10 +49,23 @@ jobs:
         with:
           node-version: 24.22.1
 
+      # The generator comes from this workflow's own commit, never from the
+      # dispatcher-chosen base branch, and is checked out without credentials,
+      # so a branch can't run its own code next to the persisted write token.
+      - name: Checkout generator
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .update-models-generator
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: ee/apps/gateway/scripts/update-models.mjs
+          sparse-checkout-cone-mode: false
+
       # The script validates the models.dev response, derives the openrouter-eu
       # provider from OpenRouter's EU model list, and writes minified JSON.
       - name: Download and validate models
-        run: node ee/apps/gateway/scripts/update-models.mjs
+        run: node .update-models-generator/ee/apps/gateway/scripts/update-models.mjs
 
       - name: Check for changes
         id: changes
