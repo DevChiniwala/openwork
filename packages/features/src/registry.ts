@@ -295,6 +295,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  automationCalendarTriggers: {
+    label: "Automations: before or after meetings",
+    description: "Members and their agents can run a Cloud Automation a set time before or after each meeting on their Google Calendar, for example 5 minutes after every meeting with people outside the organization.",
+    category: "automations",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/automation-calendar-triggers/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   computerUse: {
     label: "Computer use",
     description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
