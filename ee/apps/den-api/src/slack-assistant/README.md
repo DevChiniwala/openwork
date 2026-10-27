@@ -131,8 +131,10 @@ session. Stable prompt IDs prevent duplicate agent turns once the session is sav
 
 ## Audience and permissions
 
-The signed event user is the sole actor. The member's token reads thread context;
-the bot token only manages the Slack surface. The built-in Slack assistant skill
+The signed event user is the sole actor. The member's token reads thread context
+(for a new top-level message in the app DM, the DM's last ten messages from the past
+day, so a DM Workbot sent just before is included); the bot token only manages the
+Slack surface. The built-in Slack assistant skill
 separates the invocation from untrusted messages, app context, and files, and tells
 the agent to cite sources and ask before ambiguous consequential actions.
 

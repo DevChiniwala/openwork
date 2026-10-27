@@ -46,6 +46,33 @@ export function verifySlackSignature(
 export function scopeKey(...parts: string[]) {
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex")
 }
+/** How far back, and how many messages, a new top-level DM reads of the DM before it. */
+export const DM_CONTEXT_WINDOW_SECONDS = 24 * 60 * 60
+export const DM_CONTEXT_LIMIT = 10
+
+/**
+ * What the member's own token reads as the request's context. A message in a thread reads the thread. A new top-level
+ * message in the app DM has no thread yet, so reading "its thread" finds only itself: it reads the DM's last few
+ * messages from the past day instead, so whatever Workbot posted there just before (a DM it sent the member, an
+ * earlier answer) is part of the context.
+ */
+export function slackContextRequest(event: Pick<SlackEvent, "channel_type" | "thread_ts" | "ts">, channelId: string, threadTs: string) {
+  // Slack timestamps are "<seconds>.<micros>"; the window is computed on the seconds so no precision is lost.
+  const sent = /^(\d+)\.(\d+)$/.exec(event.ts ?? "")
+  if (event.channel_type === "im" && !event.thread_ts && event.ts && sent)
+    return {
+      method: "conversations.history",
+      body: {
+        channel: channelId,
+        latest: event.ts,
+        inclusive: true,
+        oldest: `${Number(sent[1]) - DM_CONTEXT_WINDOW_SECONDS}.${sent[2]}`,
+        limit: DM_CONTEXT_LIMIT,
+      },
+    }
+  return { method: "conversations.replies", body: { channel: channelId, ts: threadTs, limit: 30 } }
+}
+
 export function isInvocation(event: SlackEvent) {
   return Boolean(
     event.user &&

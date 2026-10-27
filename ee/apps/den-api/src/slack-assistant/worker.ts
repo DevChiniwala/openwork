@@ -17,6 +17,7 @@ import {
   SLACK_WORKBOT_INSTRUCTIONS,
   SlackApiError,
   slackClient,
+  slackContextRequest,
   slackEventSchema,
   type SlackCall,
 } from "./protocol.js"
@@ -334,11 +335,8 @@ export async function processSlackEvent(event: EventRow, suppliedDeps: WorkerDep
     // Fetch with the member's token: bot access must never widen what the actor sees.
     let context: unknown = { unavailable: true, instruction: "Read the relevant thread using your Slack connection." }
     try {
-      context = await deps.slack(actor.userToken)("conversations.replies", {
-        channel: event.channelId,
-        ts: event.threadTs,
-        limit: 30,
-      })
+      const read = slackContextRequest(payload, event.channelId, event.threadTs)
+      context = await deps.slack(actor.userToken)(read.method, read.body)
     } catch {
       /* Agent can use the member's MCP tools. */
     }
