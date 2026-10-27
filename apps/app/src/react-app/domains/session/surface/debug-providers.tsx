@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
-import { createClientV2 } from "@/app/lib/opencode-v2-adapter";
+import { createClient } from "@/app/lib/opencode";
+import { createClientV2, isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
 import { getNativeSessionMessages } from "@/app/lib/opencode-session-native";
 import type { ModelRef } from "@/app/types";
 import { useProviderListQuery } from "@/react-app/infra/provider-list-query";
@@ -49,7 +50,9 @@ export function DebugProviders(props: {
   // Inspecting another provider never writes model selection or configuration.
   const [inspection, setInspection] = useState<ModelRef | null>(null);
   const [copying, setCopying] = useState(false);
-  const engine = useMemo(() => createClientV2(props.baseUrl, props.workspaceRoot, { token: props.token }),
+  const engine = useMemo(() => isOpencodeV2BaseUrl(props.baseUrl)
+    ? createClientV2(props.baseUrl, props.workspaceRoot, { token: props.token })
+    : createClient(props.baseUrl, props.workspaceRoot, { mode: "openwork", token: props.token }),
   [props.baseUrl, props.workspaceRoot, props.token]);
   const providers = useProviderListQuery({ client: engine, baseUrl: props.baseUrl, directory: props.workspaceRoot });
   const history = useQuery({
@@ -185,7 +188,9 @@ export function DebugProviders(props: {
 
 /** Workspace-wide provider setup, shown when no thread is focused. */
 export function DebugWorkspaceProviders(props: { workspaceRoot: string; baseUrl: string; token: string }) {
-  const engine = useMemo(() => createClientV2(props.baseUrl, props.workspaceRoot, { token: props.token }),
+  const engine = useMemo(() => isOpencodeV2BaseUrl(props.baseUrl)
+    ? createClientV2(props.baseUrl, props.workspaceRoot, { token: props.token })
+    : createClient(props.baseUrl, props.workspaceRoot, { mode: "openwork", token: props.token }),
   [props.baseUrl, props.workspaceRoot, props.token]);
   const providers = useProviderListQuery({ client: engine, baseUrl: props.baseUrl, directory: props.workspaceRoot });
   const connected = new Set(providers.data?.connected ?? []);

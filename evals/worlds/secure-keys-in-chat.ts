@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { allocateFreePort } from "@openwork/cdp";
 import type { Place, Seed } from "@openwork/env";
 import type { MockAgentToolStep, MockAgentWorkload } from "@openwork/labs";
-import { engineWorkspace } from "./engine-workspace.ts";
+import { engineParity } from "./engine-parity.ts";
 import { isRecord } from "./library.ts";
 import { seededOrganizationId } from "./organization-capabilities.ts";
 
@@ -78,7 +78,7 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
   if (!address || typeof address === "string") throw new Error("Status witness unavailable");
   const statusUrl = `http://127.0.0.1:${address.port}/mcp`;
 
-  const base = setup.use(await engineWorkspace(seed, context, { env: {
+  const base = setup.use(await engineParity(seed, context, { env: {
     OPENWORK_DEV_HEADLESS_WEB_DEN_PROXY: "1", OPENWORK_DEV_DEN_PROXY_TARGET: den.ref.webUrl,
     OPENWORK_DEV_HEADLESS_DEN_API_TARGET: den.ref.apiUrl,
     VITE_DEN_BASE_URL: den.ref.webUrl, VITE_DEN_API_BASE_URL: "/api/den",
@@ -94,8 +94,6 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
     if (!workspace) await new Promise((resolve) => setTimeout(resolve, 500));
   }
   if (!workspace) throw new Error(`Missing workspace after sign-in; route: ${await base.route()}`);
-  // Signing in can bring organization models; keep chatting with the scripted witness.
-  await base.selectWitnessModel();
   // A 200 only means reconciliation ran. On a slow boot the engine can still
   // be unreachable, and the first chat would then fail or miss Cloud tools,
   // so repeat it until the health says the Cloud tools are usable.
@@ -113,15 +111,18 @@ export async function secureKeysInChat(seed: Seed, context: { place: Place }) {
   const sentinels = await fetch(`${base.mock.url}/admin/private-sentinels`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: [...Object.values(keys), serviceAccountSentinel] }) });
   if (!sentinels.ok) throw new Error("Model privacy witness setup failed");
 
-  /** One OpenWork Cloud call as the engine makes it: inside Code Mode. */
-  const cloudCall = (tool: "search_capabilities" | "execute_capability", input: Record<string, unknown>): MockAgentToolStep =>
-    ({ tool: "execute", arguments: { code: `return await tools["openwork-cloud"].${tool}(${JSON.stringify(input)});` } });
-  const statusCall: MockAgentToolStep[] = [{ tool: "execute", arguments: { code: `
+  /** One OpenWork Cloud call as the engine makes it: a direct call (v1) or inside Code Mode (v2). */
+  const cloudCall = (tool: "search_capabilities" | "execute_capability", input: Record<string, unknown>): MockAgentToolStep => base.engine === "v2"
+    ? { tool: "execute", arguments: { code: `return await tools["openwork-cloud"].${tool}(${JSON.stringify(input)});` } }
+    : { tool, arguments: input };
+  const statusCall: MockAgentToolStep[] = base.engine === "v2"
+    ? [{ tool: "execute", arguments: { code: `
         const found = await tools["openwork-cloud"].search_capabilities({ query: "team_status", type: "mcp", limit: 1 });
         const result = typeof found === "string" ? JSON.parse(found) : found;
         const catalog = result.matches ? result : JSON.parse(result.content[0].text);
         return await tools["openwork-cloud"].execute_capability({ name: catalog.matches[0].name, body: {} });
-      ` } }];
+      ` } }]
+    : [{ tool: "search_capabilities", arguments: { query: "team_status", type: "mcp", limit: 1 } }, { tool: "execute_capability", arguments: { body: {} }, argumentsFrom: "capability-search" }];
 
   async function script(workloads: MockAgentWorkload[]) {
     const response = await fetch(`${base.mock.url}/admin/agent-workloads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workloads }) });

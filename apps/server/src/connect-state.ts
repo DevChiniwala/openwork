@@ -1,10 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import {
   readOpenworkCloudMcpHealth,
   type CloudMcpHealth,
   type CloudMcpNativeEngineResolver,
+  type CloudMcpLiveStatusObserver,
   type CloudMcpProviderModelContext,
   type CloudMcpServerMetadata,
 } from "./cloud-mcp-health.js";
@@ -22,6 +24,7 @@ const CONNECT_STATE_FILE = "connect-state.json";
 const CONNECT_STATE_MAX_BYTES = 16 * 1024;
 const CONNECT_SNAPSHOT_MAX_RUNTIME_ROWS = 100;
 const OPENWORK_CLOUD_MCP_NAME = "openwork-cloud";
+type WorkspaceOpencodeClient = ReturnType<typeof createOpencodeClient>;
 
 type PersistedConnectState = {
   connectEnabled: boolean;
@@ -57,13 +60,14 @@ export type ConnectSnapshot = {
 };
 
 export type ConnectSnapshotOptions = {
-  /** The local OpenCode v2 engine; without it the snapshot skips the health probe. */
   nativeEngineForWorkspace?: CloudMcpNativeEngineResolver;
   workspaceId?: string;
   directory?: string;
   providerModel?: CloudMcpProviderModelContext;
   serverMetadata?: CloudMcpServerMetadata;
   resolveOpencodeDirectory?: (workspace: WorkspaceInfo) => string | null;
+  createWorkspaceOpencodeClient?: (config: ServerConfig, workspace: WorkspaceInfo) => WorkspaceOpencodeClient;
+  refreshRegistrationFromLiveStatus?: CloudMcpLiveStatusObserver;
 };
 
 export type ConnectSnapshotInspection = {
@@ -250,7 +254,7 @@ async function resolveCloudHealth(config: ServerConfig, options: ConnectSnapshot
       },
     };
   }
-  if (!options.nativeEngineForWorkspace) {
+  if (!options.createWorkspaceOpencodeClient) {
     return {
       cloudHealth: null,
       workspace: {
@@ -268,7 +272,9 @@ async function resolveCloudHealth(config: ServerConfig, options: ConnectSnapshot
     providerModel: options.providerModel,
     serverMetadata: options.serverMetadata,
     probe: false,
+    createWorkspaceOpencodeClient: options.createWorkspaceOpencodeClient,
     nativeEngineForWorkspace: options.nativeEngineForWorkspace,
+    refreshRegistrationFromLiveStatus: options.refreshRegistrationFromLiveStatus,
   });
   return {
     cloudHealth,

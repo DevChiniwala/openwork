@@ -37,11 +37,11 @@ export function resolveDefaultServerUrl(): string {
     const baseUrl = openworkUrl === "/api/openwork" && typeof window !== "undefined"
       ? new URL(openworkUrl, window.location.origin).href
       : openworkUrl;
-    return baseUrl.replace(/\/+$/, "");
+    return `${baseUrl.replace(/\/+$/, "")}/opencode`;
   }
 
   if (isWebDeployment() && import.meta.env.PROD && typeof window !== "undefined") {
-    return window.location.origin;
+    return `${window.location.origin}/opencode`;
   }
 
   const envUrl =

@@ -35,9 +35,10 @@ export function localProviderEngineStates(status: LocalProviderEngineStatus | nu
 export type DeviceProvider = { id: string; name: string; source?: "env" | "api" | "config" | "custom" };
 
 /**
- * "On this device": the providers connected for this folder, reconciled with
- * what the engine reports. A provider the engine mirrored or skipped is always
- * listed, even when the connected list does not have it yet, so a provider that works in the picker is never missing and a
+ * "On this device" while chat runs on v2: the providers OpenCode v1 lists for
+ * this folder, reconciled with what the engine reports. A provider the
+ * engine mirrored or skipped is always listed, even when v1's list does not
+ * have it yet, so a provider that works in the picker is never missing and a
  * skipped one shows its reason. Hidden (disconnected) providers stay hidden.
  */
 export function deviceProviders(input: {

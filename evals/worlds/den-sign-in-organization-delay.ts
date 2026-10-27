@@ -66,7 +66,7 @@ export async function denSignInOrganizationDelay(seed: Seed) {
       name: "den-sign-in-organization-delay", workspacePath: seed.tmpPath("startup-workspace"),
       headless: true, env: {
         VITE_DEN_REQUIRE_SIGNIN: "1",
-        ...(process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}),
+        ...(process.env.OPENWORK_OPENCODE_BIN ? { OPENWORK_OPENCODE_BIN: process.env.OPENWORK_OPENCODE_BIN } : {}),
       },
       den: { apiUrl: origin, webUrl: origin },
     });

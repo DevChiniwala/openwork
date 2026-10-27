@@ -16,18 +16,19 @@ test("a person sees a failed report write as failed, and a saved report as saved
     await user.screenshot();
   };
   let failedSession = "";
-  await step("a report write outside the workspace fails and creates no workspace file", async () => {
+  await step("a denied report write creates no workspace file", async () => {
     await user.reload();
     failedSession = world.sessionIds[0];
     await user.navigate(world.sessionUrls[0]);
     await user.see("composer", { editable: true });
-    // The conversation already uses the report witness model; the composer shows it.
-    await user.see({ text: "Report model" });
-    // A model list that opened while the conversation loaded is closed the way a person would.
-    if (await probe.has("Connect more providers")) await user.press("Escape");
+    await user.click({ role: "button", label: "Change model" });
+    await user.type({ role: "combobox", label: "Search all models" }, "Report model");
+    await user.click({ role: "option", label: /^Report model, Workspace proof/ });
     await user.type("composer", world.failedPrompt);
     await user.click("Run task");
-    await user.see({ text: world.failedReply }, { timeoutMs: 60_000 });
+    await user.see({ text: "Access an external folder?" }, { timeoutMs: 60_000 });
+    await user.click("Deny");
+    await user.see({ text: "The user rejected permission to use this specific tool call." }, { timeoutMs: 30_000 });
     const writes = await world.writes(failedSession);
     const content = await world.fileContent();
     evidence.recordAssertionEvidence("The engine refused the write and no report was saved", `write=${writes.join(",")}; workspace file=${content !== null}`, writes.includes("error") && content === null);
@@ -49,10 +50,9 @@ test("a person sees a failed report write as failed, and a saved report as saved
   await step("a successful retry saves the report in the workspace and still says Wrote", async () => {
     const successSession = world.sessionIds[1];
     await user.navigate(world.sessionUrls[1]);
-    // The conversation already uses the report witness model; the composer shows it.
-    await user.see({ text: "Report model" });
-    // A model list that opened while the conversation loaded is closed the way a person would.
-    if (await probe.has("Connect more providers")) await user.press("Escape");
+    await user.click({ role: "button", label: "Change model" });
+    await user.type({ role: "combobox", label: "Search all models" }, "Report model");
+    await user.click({ role: "option", label: /^Report model, Workspace proof/ });
     await user.type("composer", world.successPrompt);
     await user.click("Run task");
     await user.see({ text: world.successReply }, { timeoutMs: 60_000 });
@@ -62,8 +62,10 @@ test("a person sees a failed report write as failed, and a saved report as saved
     evidence.recordAssertionEvidence("The successful write and workspace file agree", `write=${writes.join(",")}; content matches=${content === world.content}`, writes.includes("completed") && content === world.content);
     expect(writes).toContain("completed");
     expect(content).toBe(world.content);
-    // OpenCode v2 tool rows do not show the resolved "Workspace destination:"
-    // yet (the earlier engine's metadata did); the saved file above is the witness.
+    await user.see({ text: "Workspace destination:" });
+    const destinations = await probe.dom("[data-workspace-file-resolution]");
+    expect(destinations.elements.some(row => row.text.includes(world.destination))).toBe(true);
+    evidence.recordAssertionEvidence("The relative write shows its actual workspace destination", destinations.elements.map(row => row.text).join("; "), destinations.elements.some(row => row.text.includes(world.destination)));
     await capture();
   });
 });

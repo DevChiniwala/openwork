@@ -60,7 +60,8 @@ one team member, and a second member outside that team, each in an isolated real
 desktop. The admin saves in Den. The test checks persisted and effective policy,
 UI restrictions, direct API bypass attempts, browser requests and uploads, and
 real engine command execution with independent file witnesses. Run the journey
-using the full feature commit as `OPENWORK_EVAL_REF` and `OPENWORK_EVAL_DAYTONA_REF` for remote placement.
+with `OPENWORK_EVAL_ENGINE=v1` and `OPENWORK_EVAL_ENGINE=v2`, using the full feature
+commit as `OPENWORK_EVAL_REF` and `OPENWORK_EVAL_DAYTONA_REF` for remote placement.
 
 A passing evaluator response alone is not proof that an action was blocked.
 

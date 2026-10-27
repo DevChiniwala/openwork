@@ -177,11 +177,11 @@ test("active engines block the copy and existing v2 chats are left untouched", {
   } finally { await engine?.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-test("default boot copies earlier history before v2 serves it", { skip: !bin, timeout: 60_000 }, async () => {
+test("default boot copies history and selects healthy v2 despite legacy off policy", { skip: !bin, timeout: 60_000 }, async () => {
   if (!bin) return;
   const directory = await mkdtemp(join(tmpdir(), "openwork-default-history-"));
   const overrides = { OPENWORK_RUNTIME_DB: join(directory, "runtime.sqlite"), OPENCODE_DB: join(directory, "v1.db"),
-    OPENCODE_DISABLE_MODELS_FETCH: "1" };
+    OPENWORK_ENGINE_V2_PREVIEW: "", OPENCODE_DISABLE_MODELS_FETCH: "1" };
   const previous = new Map(Object.keys(overrides).map(key => [key, process.env[key]]));
   let preview: ReturnType<typeof createEngineV2Preview> | undefined;
   try {
@@ -191,31 +191,27 @@ test("default boot copies earlier history before v2 serves it", { skip: !bin, ti
     const config: ServerConfig = { host: "127.0.0.1", port: 0, token: "test", hostToken: "test", configPath: join(directory, "server.json"),
       approval: { mode: "auto", timeoutMs: 1000 }, corsOrigins: [], workspaces: [], authorizedRoots: [directory], readOnly: false,
       startedAt: Date.now(), tokenSource: "generated", hostTokenSource: "generated", logFormat: "json", logRequests: false };
-    preview = createEngineV2Preview({ config, deferStart: true });
+    preview = createEngineV2Preview({ config, deferStart: true, autoUpgradeIdle: async () => true });
+    preview.setForcePolicy({ upgrade: false });
     preview.start();
+    preview.setForcePolicy({ upgrade: false });
+    assert.equal(preview.status().chatRouting, false, "v1 remains selected while copying");
     const deadline = Date.now() + 45_000;
-    while (preview.status().historyImportPending || !preview.connection()) {
+    while (!preview.status().chatRouting) {
       assert.notEqual(preview.status().migration.state, "error", preview.status().migration.error);
-      assert.ok(Date.now() < deadline, "v2 serves after the automatic copy");
-      if (preview.status().historyImportPending) assert.equal(preview.connection(), undefined, "v2 does not serve while copying");
+      assert.ok(Date.now() < deadline, "the default automatic migration selects v2");
       await new Promise(resolve => setTimeout(resolve, 20));
     }
-    assert.equal(preview.status().historyImportPending, false);
+    assert.equal(preview.status().running, true);
+    assert.equal(preview.status().engineOrigin, "forced");
     assert.equal(preview.status().migration.state, "completed");
     assert.equal(preview.status().migration.imported, 1);
     assert.ok(preview.status().migration.backupPath, "automatic migration retains its pre-copy backup");
     assert.equal(await digest(source), before, "the original v1 history is never modified");
+    preview.setForcePolicy({ upgrade: false });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(preview.status().chatRouting, true, "a late legacy off response cannot revert migration");
     assert.ok(preview.connection());
-    await preview.stop();
-    // A restart finds nothing new to copy and serves v2 straight away.
-    preview = createEngineV2Preview({ config, deferStart: true });
-    preview.start();
-    while (!preview.connection()) {
-      assert.equal(preview.status().migration.state, "completed", "nothing is copied again");
-      assert.ok(Date.now() < deadline, "v2 restarts without copying again");
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
-    assert.equal(preview.status().migration.imported, 1, "the earlier receipt is kept");
     assert.equal(readEngineV2PreviewState(config).automaticHistoryCopy, undefined);
     assert.equal(readEngineV2PreviewState(config).autoUpgradeRetry, undefined);
   } finally {
@@ -230,12 +226,13 @@ test("default boot copies earlier history before v2 serves it", { skip: !bin, ti
 test("closing OpenWork pauses a copy and startup resumes it before serving v2", { skip: !bin, timeout: 60_000 }, async () => {
   if (!bin) return;
   const directory = await mkdtemp(join(tmpdir(), "openwork-history-lifecycle-"));
-  const previous = { db: process.env.OPENWORK_RUNTIME_DB, source: process.env.OPENCODE_DB };
+  const previous = { db: process.env.OPENWORK_RUNTIME_DB, source: process.env.OPENCODE_DB, preview: process.env.OPENWORK_ENGINE_V2_PREVIEW };
   let preview: ReturnType<typeof createEngineV2Preview> | undefined;
   try {
     const source = await fixture(directory, 8192);
     process.env.OPENWORK_RUNTIME_DB = join(directory, "runtime.sqlite");
     process.env.OPENCODE_DB = source;
+    delete process.env.OPENWORK_ENGINE_V2_PREVIEW;
     const config: ServerConfig = { host: "127.0.0.1", port: 0, token: "test", hostToken: "test", configPath: join(directory, "server.json"),
       approval: { mode: "auto", timeoutMs: 1000 }, corsOrigins: [], workspaces: [], authorizedRoots: [directory], readOnly: false,
       startedAt: Date.now(), tokenSource: "generated", hostTokenSource: "generated", logFormat: "json", logRequests: false };
@@ -265,57 +262,13 @@ test("closing OpenWork pauses a copy and startup resumes it before serving v2", 
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     assert.equal(preview.status().migration.state, "completed", preview.status().migration.error);
-    while (!preview.connection()) {
-      assert.ok(Date.now() < deadline, "v2 serves once the saved copy finishes");
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
+    assert.ok(preview.connection());
     assert.equal(readEngineV2PreviewState(config).v1HistoryCopyStartedAt, undefined);
     assert.equal(readEngineV2PreviewState(config).historyCopyResult?.state, "completed");
   } finally {
     await preview?.stop();
-    for (const [key, value] of [["OPENWORK_RUNTIME_DB", previous.db], ["OPENCODE_DB", previous.source]]) {
+    for (const [key, value] of [["OPENWORK_RUNTIME_DB", previous.db], ["OPENCODE_DB", previous.source], ["OPENWORK_ENGINE_V2_PREVIEW", previous.preview]]) {
       if (value === undefined) delete process.env[String(key)]; else process.env[String(key)] = value;
-    }
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("history that cannot be copied keeps the original, records a retry and still serves v2", { skip: !bin, timeout: 60_000 }, async () => {
-  if (!bin) return;
-  const directory = await mkdtemp(join(tmpdir(), "openwork-history-unreadable-"));
-  const source = join(directory, "v1.db");
-  const overrides = { OPENWORK_RUNTIME_DB: join(directory, "runtime.sqlite"), OPENCODE_DB: source, OPENCODE_DISABLE_MODELS_FETCH: "1" };
-  const previous = new Map(Object.keys(overrides).map(key => [key, process.env[key]]));
-  let preview: ReturnType<typeof createEngineV2Preview> | undefined;
-  try {
-    const db = await openHistoryDatabase(source);
-    try {
-      // A chat without an absolute folder is invalid history: never guess, never drop it.
-      db.exec("CREATE TABLE session (id TEXT PRIMARY KEY, title TEXT, directory TEXT, parent_id TEXT, time_created INTEGER)");
-      db.prepare("INSERT INTO session VALUES (?, ?, ?, NULL, 1)").run("ses_invalid", "Invalid", "relative/folder");
-    } finally { db.close(); }
-    const before = await digest(source);
-    Object.assign(process.env, overrides);
-    const config: ServerConfig = { host: "127.0.0.1", port: 0, token: "test", hostToken: "test", configPath: join(directory, "server.json"),
-      approval: { mode: "auto", timeoutMs: 1000 }, corsOrigins: [], workspaces: [], authorizedRoots: [directory], readOnly: false,
-      startedAt: Date.now(), tokenSource: "generated", hostTokenSource: "generated", logFormat: "json", logRequests: false };
-    const errors: string[] = [];
-    preview = createEngineV2Preview({ config, deferStart: true, historyImportError: (error) => errors.push(error) });
-    preview.start();
-    const deadline = Date.now() + 45_000;
-    while (!preview.connection()) {
-      assert.ok(Date.now() < deadline, "v2 serves new chats even when earlier history cannot be copied");
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
-    assert.equal(preview.status().migration.state, "error");
-    assert.equal(errors.length, 1);
-    assert.equal(await digest(source), before, "the original history is never modified");
-    const retry = readEngineV2PreviewState(config).autoUpgradeRetry;
-    assert.equal(retry?.attempts, 1, "the next start backs off before trying again");
-  } finally {
-    await preview?.stop();
-    for (const [key, value] of previous) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
     await rm(directory, { recursive: true, force: true });
   }

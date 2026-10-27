@@ -721,7 +721,7 @@ jobs:
       - name: Build Electron app
         shell: bash
         env:
-          # TARGET tells prepare-sidecar.mjs which architecture's opencode2 binary
+          # TARGET tells prepare-sidecar.mjs which architecture's opencode binary
           # to download (critical for cross-arch builds like x64 on arm64 mac).
           TARGET: ${{ matrix.target_triple }}
         run: pnpm --filter @openwork/desktop build:electron
@@ -1293,6 +1293,7 @@ jobs:
           test -x "$package/bin/openwork-server.mjs"
           test -f "$package/bin/platform.mjs"
           test -f "$package/dist/openwork-server.mjs"
+          test -f "$package/dist/pdfium.wasm"
           test -f "$package/dist/opencode-plugins/openwork-extensions-preview.js"
           test -f "$package/web/index.html"
           test ! -e "$package/dist/bin"

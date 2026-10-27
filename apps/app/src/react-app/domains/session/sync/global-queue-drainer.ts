@@ -4,11 +4,11 @@ import { markTaskRunStart } from "@/app/lib/analytics";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { ensureProviderListQuery } from "@/react-app/infra/provider-list-query";
 import { sendWithModelUnavailableRetry } from "./model-unavailable-retry";
-import { createPromptMessageID, isPromptAdmissionUnknown, readPromptAdmission } from "@/app/lib/opencode";
+import { createClient, createPromptMessageID, isPromptAdmissionUnknown, readPromptAdmission } from "@/app/lib/opencode";
 import { shellInSession } from "@/app/lib/opencode-session";
 import { composeNativeSessionSnapshot, getNativeSession } from "@/app/lib/opencode-session-native";
 import { hasTerminalSessionReply, sendSessionCommand, sessionHasPendingSubmission, sessionWorkHeld, submitAfterInterruption } from "@/app/lib/opencode-interruption";
-import { createClientV2 } from "@/app/lib/opencode-v2-adapter";
+import { createClientV2, isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
 import type { ComposerDraft, ModelRef } from "@/app/types";
 import { isAutoModel } from "@/react-app/domains/models/model-catalog";
 import { AutoAccessRejected, autoAccessWallFromError, preflightAutoSubmission } from "@/app/lib/inference-access";
@@ -116,10 +116,11 @@ async function performQueuedDraftSend(
   const sessionModelSelection = getSessionModelSelection(sessionId);
   const sendModel = sessionModelSelection?.model ?? context.model ?? readStoredDefaultModelSafely();
   const sendVariant = sessionModelSelection ? sessionModelSelection.variant : context.variant;
-  const opencodeClient = createClientV2(
+  const createEngineClient = isOpencodeV2BaseUrl(context.opencodeBaseUrl) ? createClientV2 : createClient;
+  const opencodeClient = createEngineClient(
     context.opencodeBaseUrl,
     context.workspaceRoot || undefined,
-    { token: context.openworkToken },
+    { token: context.openworkToken, mode: "openwork" },
   );
 
   if (context.isCurrent?.() === false) return "cancelled";
@@ -239,8 +240,8 @@ function armObservationProbe(watched: WatchedSession) {
     void (async () => {
       const phase = getQueuedDrainState(watched.sessionId).phase;
       if (phase.kind === "admission_unknown") {
-        const client = createClientV2(watched.context.opencodeBaseUrl, watched.context.workspaceRoot || undefined, {
-          token: watched.context.openworkToken,
+        const client = createClient(watched.context.opencodeBaseUrl, watched.context.workspaceRoot || undefined, {
+          token: watched.context.openworkToken, mode: "openwork",
         });
         const admission = await readPromptAdmission(client, watched.sessionId, phase.messageID);
         if (watchedSessions.get(watched.sessionId) !== watched) return;

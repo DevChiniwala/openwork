@@ -165,14 +165,14 @@ export function chatContinuity(app: Surface, workspaceId: string) {
           const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
           const path = new URL(url, location.href).pathname;
           const prompt = method === "POST"
-            ? path.match(/\/opencode2\/api\/session\/([^/]+)\/(?:prompt|prompt_async)$/)
+            ? path.match(/\/(?:opencode|opencode2\/api)\/session\/([^/]+)\/(?:prompt|prompt_async)$/)
             : null;
           if (prompt?.[1]) {
             const sessionId = decodeURIComponent(prompt[1]);
             state.promptPosts[sessionId] = (state.promptPosts[sessionId] ?? 0) + 1;
           }
           const history = method === "GET"
-            ? path.match(/\/opencode2\/api\/session\/([^/]+)\/message$/) : null;
+            ? path.match(/\/(?:opencode|opencode2\/api)\/session\/([^/]+)\/message$/) : null;
           if (history?.[1]) state.historyReads.push({
             sessionId: decodeURIComponent(history[1]), at: Date.now(), limit: new URL(url, location.href).searchParams.get("limit"),
           });
@@ -370,7 +370,7 @@ export function chatContinuity(app: Surface, workspaceId: string) {
           const path = new URL(request instanceof Request ? request.url : String(request), location.href).pathname;
           const method = args[1]?.method ?? (request instanceof Request ? request.method : "GET");
           if (method === "GET" && path === "/workspaces") state.workspaceLists++;
-          if (method === "POST" && /\/opencode2\/api\/session$/.test(path)) {
+          if (method === "POST" && /\/(?:opencode|opencode2\/api)\/session$/.test(path)) {
             state.creates++;
             state.lastCreateAt = performance.now();
           }
@@ -399,8 +399,8 @@ export function chatContinuity(app: Surface, workspaceId: string) {
       if (!endpoint) throw new Error("History fault requires the desktop CDP endpoint");
       const origin = await evaluate(app.client, () => "http://127.0.0.1:" + localStorage.getItem("openwork.server.port"));
       const sessionIds = [sessionId, ...otherSessionIds];
-      const paths = sessionIds.flatMap(id => ["workspace", "w"].map(mount =>
-        `/${mount}/${encodeURIComponent(workspaceId)}/opencode2/api/session/${encodeURIComponent(id)}/message`));
+      const paths = sessionIds.flatMap(id => ["workspace", "w"].flatMap(mount => ["opencode", "opencode2/api"].map(engine =>
+        `/${mount}/${encodeURIComponent(workspaceId)}/${engine}/session/${encodeURIComponent(id)}/message`)));
       const socket = new WebSocket(endpoint);
       const ready = deferred();
       const commands = new Map<number, ReturnType<typeof deferred>>();

@@ -1,5 +1,6 @@
 import { cloudComputerActivityAt } from "./cloud-computer-activity.js";
-import { externalFetch, loopbackFetch } from "./server-fetch.js";
+import { externalFetch } from "./server-fetch.js";
+import { createWorkspaceOpencodeClient } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
 const DEFAULT_ACTIVITY_WINDOW_MS = 5 * 60_000;
@@ -29,8 +30,15 @@ export type WorkerActivityHeartbeatPayload = {
   openSessionCount: number;
 };
 
-/** How to reach the running OpenCode v2 engine (Basic auth `username:password`). */
-export type WorkerActivityEngineConnection = { url: string; username: string; password: string };
+export type EngineForcePolicy = { upgrade: boolean };
+
+/** Missing policy means an older Den, not an instruction to clear local policy. */
+export function readEngineForcePolicy(response: unknown): EngineForcePolicy | undefined {
+  if (!isRecord(response) || !isRecord(response.enginePolicy)) return undefined;
+  const policy = response.enginePolicy;
+  if (typeof policy.upgrade !== "boolean") return undefined;
+  return { upgrade: policy.upgrade };
+}
 
 type HeartbeatEnv = Record<string, string | undefined>;
 type HeartbeatFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -48,12 +56,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function parseSessionActivityAt(session: unknown): number | null {
-  // OpenCode v2 list rows may wrap the session in `info`.
-  const info = isRecord(session) && isRecord(session.info) ? session.info : session;
-  if (!isRecord(info) || !isRecord(info.time)) return null;
-  const updated = info.time.updated;
+  if (!isRecord(session) || !isRecord(session.time)) return null;
+  const updated = session.time.updated;
   if (typeof updated === "number" && Number.isFinite(updated) && updated > 0) return updated;
-  const created = info.time.created;
+  const created = session.time.created;
   if (typeof created === "number" && Number.isFinite(created) && created > 0) return created;
   return null;
 }
@@ -124,6 +130,7 @@ export async function postWorkerActivityHeartbeat(input: {
   sessions: readonly unknown[];
   fetchImpl?: HeartbeatFetch;
   now?: () => number;
+  onEnginePolicy?: (policy: EngineForcePolicy) => void | Promise<void>;
 }): Promise<WorkerActivityHeartbeatPayload | null> {
   if (!input.config.enabled) return null;
 
@@ -143,43 +150,23 @@ export async function postWorkerActivityHeartbeat(input: {
   });
 
   if (!response.ok) throw new Error(`heartbeat_failed:${response.status}`);
-  // Den may still return an `enginePolicy` field; it no longer applies, since
-  // OpenCode v2 is the only engine. Drain the body so the connection is reused.
-  await response.body?.cancel().catch(() => undefined);
+  // Older Dens may return an empty body. An explicit false clears forced
+  // upgrade policy; a missing policy leaves bootstrap flags unchanged.
+  const body: unknown = await response.json().catch(() => undefined);
+  const policy = readEngineForcePolicy(body);
+  if (policy) await input.onEnginePolicy?.(policy);
   return payload;
 }
 
-/**
- * The most recent sessions (up to 200 per folder) of every local workspace,
- * read natively from OpenCode v2. Empty while the engine is not running.
- */
-export async function listOpenV2Sessions(
-  config: Pick<ServerConfig, "workspaces">,
-  connection: WorkerActivityEngineConnection | undefined,
-  fetchImpl: HeartbeatFetch = loopbackFetch,
-): Promise<readonly unknown[]> {
-  if (!connection) return [];
-  const authorization = `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`;
-  const sessions = new Map<string, unknown>();
-  const local = config.workspaces.filter((workspace) => workspace.workspaceType === "local");
-  for (const workspace of local) {
-    const url = new URL("/api/session", connection.url);
-    url.searchParams.set("limit", "200");
-    url.searchParams.set("location[directory]", workspace.path);
-    const response = await fetchImpl(url.toString(), {
-      headers: { Authorization: authorization },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error(`opencode_request_failed:${response.status}`);
-    const payload: unknown = await response.json();
-    if (!isRecord(payload) || !Array.isArray(payload.data)) throw new Error("opencode_invalid_response");
-    for (const row of payload.data) {
-      const info = isRecord(row) && isRecord(row.info) ? row.info : row;
-      const id = isRecord(info) && typeof info.id === "string" ? info.id : undefined;
-      if (id) sessions.set(id, row);
-    }
-  }
-  return [...sessions.values()];
+async function listOpenSessions(config: ServerConfig): Promise<readonly unknown[]> {
+  const workspace = config.workspaces[0];
+  if (!workspace) return [];
+  const opencode = createWorkspaceOpencodeClient(config, workspace);
+  const result = await opencode.session.list({ limit: 200 });
+  if (result.data != null) return result.data;
+  if (result.error === undefined) throw new Error("opencode_empty_response");
+  const upstreamStatus = result.response?.status;
+  throw new Error(upstreamStatus === undefined ? "opencode_request_failed" : `opencode_request_failed:${upstreamStatus}`);
 }
 
 function errorMessage(error: unknown): string {
@@ -189,16 +176,15 @@ function errorMessage(error: unknown): string {
 export function startWorkerActivityHeartbeat(
   config: ServerConfig,
   logger: WorkerActivityHeartbeatLogger,
-  options: {
-    /** The running OpenCode v2 engine, or undefined while it is not running. */
-    engineConnection: () => WorkerActivityEngineConnection | undefined;
+  options?: {
     env?: HeartbeatEnv;
     fetchImpl?: HeartbeatFetch;
     listSessions?: () => Promise<readonly unknown[]>;
     now?: () => number;
+    onEnginePolicy?: (policy: EngineForcePolicy) => void | Promise<void>;
   },
 ): WorkerActivityHeartbeatHandle | null {
-  const heartbeatConfig = resolveWorkerActivityHeartbeatConfig(options.env);
+  const heartbeatConfig = resolveWorkerActivityHeartbeatConfig(options?.env);
   if (!heartbeatConfig.enabled) return null;
 
   logger.log("info", "Worker activity heartbeat enabled", {
@@ -207,7 +193,7 @@ export function startWorkerActivityHeartbeat(
     activeWindowMs: heartbeatConfig.activeWindowMs,
   });
 
-  const listSessions = options.listSessions ?? (() => listOpenV2Sessions(config, options.engineConnection()));
+  const listSessions = options?.listSessions ?? (() => listOpenSessions(config));
   let inFlight: Promise<void> | undefined;
   const runHeartbeat = (): Promise<void> => {
     if (inFlight) return inFlight;
@@ -215,8 +201,9 @@ export function startWorkerActivityHeartbeat(
       .then((sessions) => postWorkerActivityHeartbeat({
         config: heartbeatConfig,
         sessions,
-        fetchImpl: options.fetchImpl,
-        now: options.now,
+        fetchImpl: options?.fetchImpl,
+        now: options?.now,
+        onEnginePolicy: options?.onEnginePolicy,
       }))
       .then(() => undefined)
       .catch((error) => {

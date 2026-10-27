@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { OpenworkServerClient } from "@/app/lib/openwork-server";
+import { isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
 import { useOrgRestrictions } from "@/react-app/domains/cloud/desktop-config-provider";
 import { liveProviderSyncStatusQueryKey, usesLiveProviderSync } from "./live-provider-sync";
 
@@ -8,7 +9,7 @@ import { liveProviderSyncStatusQueryKey, usesLiveProviderSync } from "./live-pro
 export function useLiveProviderSync(client: OpenworkServerClient | null, baseUrl: string) {
   const config = useOrgRestrictions();
   const enabled = config.liveProviderSync === true;
-  const v2 = Boolean(baseUrl);
+  const v2 = isOpencodeV2BaseUrl(baseUrl);
   const status = useQuery({
     queryKey: liveProviderSyncStatusQueryKey(baseUrl),
     queryFn: () => client?.getEngineV2PreviewStatus() ?? null,

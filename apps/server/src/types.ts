@@ -95,6 +95,15 @@ export interface ServerConfig {
   token: string;
   hostToken: string;
   configPath?: string;
+  opencodeBaseUrl?: string;
+  /**
+   * Bootstrap snapshot of supplied global/workspace engine URLs, before managed URL hydration.
+   * External engines do not share this host's history database; never auto-select local v2 for them.
+   */
+  externalOpencode?: boolean;
+  opencodeDirectory?: string;
+  opencodeUsername?: string;
+  opencodePassword?: string;
   approval: ApprovalConfig;
   corsOrigins: string[];
   /**
@@ -114,9 +123,19 @@ export interface ServerConfig {
   localManagedMcpVaultKey?: LocalManagedMcpVaultKeyProvider;
   /** In-process Desktop confirmation; never configured through HTTP, files or the engine environment. */
   driveFileApproval?: (request: DriveFileApprovalRequest) => Promise<boolean>;
-  /** Desktop only; never enabled by remote clients. */
+  /** Desktop-owned managed engines only; never enabled by remote clients. */
   resumeInterruptedTasks?: boolean;
   anonymousInference?: { desktop: DesktopFreeHost };
+  /**
+   * Set by OpenWork Desktop or a hosted web bootstrap for a brand-new install (no earlier
+   * OpenWork state on disk). The server then starts on this engine unless an
+   * engine choice is already saved or OpenCode v1 history exists.
+   */
+  freshInstallEngine?: "v2";
+  /** Automatic v1-to-v2 migration is on by default; false is an explicit local opt-out. */
+  engineAutoUpgrade?: boolean;
+  /** @deprecated Legacy rollout marker, ignored. Never reverts a migrated instance. */
+  engineForcePolicy?: boolean;
 }
 
 export interface Capabilities {

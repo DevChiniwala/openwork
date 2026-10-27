@@ -65,16 +65,17 @@ shows this conversation in the sidebar.
 
 ## Engine and model
 
-Every call goes through the workspace's OpenCode v2 mount
-(`/workspace/:id/opencode2/api`), the engine the app's chats run on. The
-`engine` option is kept for source compatibility and always means v2.
+By default (`engine: "auto"`) the client asks the server once which OpenCode
+engine its chats use (`GET /experimental/engine-v2-preview/status`), so a
+thread lands where the app reads it. A server without that route is v1; any
+other failed lookup throws a retryable `HeadlessThreadError` instead of
+guessing. Pass `engine: "v1"` or `"v2"` to skip the lookup.
 
 When a call names no model and there is no `defaultModel`, the client reads the
-workspace default (`GET /workspace/:id/default-model`). A new thread without
-any model throws `model_required` before creating anything; a turn on an
-existing thread reuses the session's model. A turn's `messageId` becomes the
-native prompt id, which the engine admits once, so a retried turn never runs
-twice.
+workspace default (`GET /workspace/:id/default-model`). v1 without any model
+lets the engine choose; v2 throws `model_required` before creating anything.
+v2 assigns its own message ids, so a `messageId` cannot make a v2 turn
+idempotent: waits use the pre-turn message count instead.
 
 ## Contract
 

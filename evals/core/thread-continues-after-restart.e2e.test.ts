@@ -39,28 +39,28 @@ for (const { title, mode } of cases) {
     user = user.on(world.app);
     probe = probe.on(world.app);
     agent = agent.on(world.app);
-    const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/opencode2/api`;
+    const v2 = world.engine === "v2";
+    const mount = `/workspace/${encodeURIComponent(world.workspace.workspaceId)}/${v2 ? "opencode2/api" : "opencode"}`;
     const read = async (path: string): Promise<unknown> => {
       const response = await probe.desktopApi(`${mount}${path}`);
       expect(response.status).toBe(200);
-      return record(response.body).data;
+      return v2 ? record(response.body).data : response.body;
     };
     const messages = async () => {
-      const value = await read(`/session/${world.session.sessionId}/context`);
+      const value = await read(`/session/${world.session.sessionId}/${v2 ? "context" : "message?limit=100"}`);
       if (!Array.isArray(value)) throw new Error("Expected engine messages");
       return value.map((entry: unknown) => {
         const message = record(entry);
-        // OpenCode v2 keeps assistant output in `content` and a user turn's words
-        // in `text`; other context entries (such as compaction) carry neither.
-        const parts = Array.isArray(message.content) ? message.content
-          : typeof message.text === "string" ? [{ type: "text", text: message.text }] : [];
-        return { id: String(message.id), role: String(message.type), parts: parts.map(record) };
+        const info = v2 ? message : record(message.info);
+        const parts = v2 ? message.content : message.parts;
+        if (!Array.isArray(parts)) throw new Error("Expected message parts");
+        return { id: String(info.id), role: String(info[v2 ? "type" : "role"]), parts: parts.map(record) };
       });
     };
     const userTexts = (items: Awaited<ReturnType<typeof messages>>) => items.filter((message) => message.role === "user")
       .map((message) => message.parts.filter((part) => part.type === "text" && typeof part.text === "string").map((part) => String(part.text)).join(""));
     const active = async () => {
-      const statuses = record(await read("/session/active"));
+      const statuses = record(await read(v2 ? "/session/active" : "/session/status"));
       const status = statuses[world.session.sessionId];
       return status !== undefined && ["running", "busy", "retry"].includes(String(record(status).type));
     };

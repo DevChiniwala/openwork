@@ -47,8 +47,7 @@ export interface TestRunSummary {
 export type TraceStage = "world" | "body";
 export type TraceChannel = "seed" | "seed:raw" | "user" | "agent" | "probe" | "probe:raw" | "vision" | "step";
 export type TestOutcome = "passed" | "failed" | "skipped" | "unknown";
-/** Engine label kept only so records written before OpenCode v1 was removed still parse. */
-export type LegacyEvalEngine = "v1" | "v2";
+export type EvalEngine = "v1" | "v2";
 
 export interface TraceEntry {
   seq: number;
@@ -80,8 +79,7 @@ export interface TestRunRecord {
   closedAt: string;
   gitSha?: string;
   sandboxRef?: string;
-  /** Only present on records written before OpenCode v1 was removed. */
-  engine?: LegacyEvalEngine;
+  engine: EvalEngine;
   branch?: string;
   summary: TestRunSummary;
   artifacts: TestArtifact[];
@@ -318,9 +316,12 @@ function parseRecord(value: unknown, legacy: boolean): TestRunRecord | null {
   const specFile = typeof value.specFile === "string" ? value.specFile : undefined;
   const gitSha = typeof value.gitSha === "string" ? value.gitSha : undefined;
   const sandboxRef = typeof value.sandboxRef === "string" ? value.sandboxRef : undefined;
-  // Records written before OpenCode v1 was removed may name the engine they ran on.
-  if (value.engine !== undefined && value.engine !== "v1" && value.engine !== "v2") return null;
-  const engine: LegacyEvalEngine | undefined = value.engine;
+  const engine: EvalEngine | null = value.engine === undefined || value.engine === "v1"
+    ? "v1"
+    : value.engine === "v2"
+      ? "v2"
+      : null;
+  if (engine === null) return null;
   const branch = typeof value.branch === "string" ? value.branch : undefined;
   const trace: TraceEntry[] = [];
   if (value.trace !== undefined) {

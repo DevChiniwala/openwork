@@ -7,11 +7,10 @@ import type {
   ProviderListResponse,
   Session,
 } from "@opencode-ai/sdk/v2/client";
-import type { OpencodeV2Client } from "./lib/opencode-v2-adapter";
+import type { createClient } from "./lib/opencode";
 import type { OpencodeConfigFile, WorkspaceInfo } from "./lib/desktop-types";
 
-/** The OpenCode engine client. OpenCode v2 is the only engine. */
-export type Client = OpencodeV2Client;
+export type Client = ReturnType<typeof createClient>;
 
 export type ProviderListItem = ProviderListResponse["all"][number];
 

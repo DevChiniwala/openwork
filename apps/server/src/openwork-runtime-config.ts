@@ -4,14 +4,35 @@ import { materializeLegacyFastProviders } from "@openwork/types/cloud-model-fast
 import { isManagedPolicyPlugin } from "./managed-policy-plugin.js";
 import { ORGANIZATION_PROVIDER_ID, organizationProviderGate } from "./organization-provider-gate.js";
 /**
- * The effective runtime OpenCode configuration (agent definition, providers,
- * MCP servers, permissions), saved as a server-managed file for diagnostics
- * and the runtime-config view. OpenCode v2 receives its configuration from
- * managed-opencode-v2.ts and the provider/MCP mirrors instead.
+ * Runtime OpenCode configuration injected via a server-managed config file
+ * passed to the engine as OPENCODE_CONFIG.
+ *
+ * This is the single source of truth for the openwork agent definition,
+ * plugins, and any other config that should be injected at runtime rather
+ * than written to the user's own config files. Both cli.ts and embedded.ts
+ * use this.
+ *
+ * The engine re-reads the OPENCODE_CONFIG file from disk on every instance
+ * rebuild (e.g. /instance/dispose), so the file is synchronized on every
+ * runtime-DB write — unlike the previous OPENCODE_CONFIG_CONTENT env var,
+ * which was frozen at spawn and reverted MCP state on each dispose.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  openworkExtensionsPreviewPluginPath,
+  openworkCapabilitiesKnowledgePluginPath,
+  openworkAnthropicAdaptiveThinkingPluginPath,
+  openworkAnthropicToolSchemaPluginPath,
+  openworkTitleRecoveryPluginPath,
+  openworkGatewayQuotaPluginPath,
+  openworkOfficeAttachmentsPluginPath,
+  openworkSpreadsheetsPluginPath,
+  openworkChromeDevtoolsPluginPath,
+  openworkComputerUsePluginPath,
+  openworkPdfAttachmentsPluginPath,
+} from "./openwork-extensions-plugin-path.js";
 import type { ServerConfig } from "./types.js";
 import { runtimeStorageDir } from "./runtime-db.js";
 import {
@@ -81,9 +102,24 @@ export function buildOpenworkRuntimeConfigObjectFromSnapshot(
         },
       },
     },
-    // OpenWork's own engine plugins are registered by OpenCode v2's generated
-    // config (managed-opencode-v2.ts); only user plugins are listed here.
-    plugin: runtimePluginList(runtimeConfig).filter((plugin) => !isManagedPolicyPlugin(plugin)),
+    plugin: [
+      openworkChromeDevtoolsPluginPath(),
+      openworkComputerUsePluginPath(),
+      // Registration order is prompt order: the knowledge plugin appends the
+      // operating rules first, then the extensions plugin adds app-control
+      // mechanics, live Connect steering, and the remote skill and Automation
+      // catalogs, so rules precede state and state precedes data.
+      openworkCapabilitiesKnowledgePluginPath(),
+      openworkExtensionsPreviewPluginPath(),
+      openworkOfficeAttachmentsPluginPath(),
+      openworkSpreadsheetsPluginPath(),
+      openworkPdfAttachmentsPluginPath(),
+      openworkAnthropicAdaptiveThinkingPluginPath(),
+      openworkAnthropicToolSchemaPluginPath(),
+      openworkTitleRecoveryPluginPath(),
+      openworkGatewayQuotaPluginPath(),
+      ...runtimePluginList(runtimeConfig).filter((plugin) => !isManagedPolicyPlugin(plugin)),
+    ],
     ...(disabledProviders.length ? { disabled_providers: disabledProviders } : {}),
     mcp: Object.fromEntries(Object.entries(runtimeMcpMap(runtimeConfig))
       .filter(([name]) => !name.startsWith(CONNECT_MCP_SERVER_NAME_PREFIX))),

@@ -22,7 +22,6 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) 
   if (path.startsWith("/api/experimental/mcp/") && request.method === "PUT") {
     const body = await request.json();
     mutations.push({ method: "PUT", name, config: body.config });
-    if (name.includes("private-workspace")) return new Response(null, { status: 503 });
     registered.set(name, body.config);
     return new Response(null, { status: 204 });
   }
@@ -47,6 +46,7 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
     XDG_CACHE_HOME: join(root, "cache"),
     OPENWORK_RUNTIME_DB: join(root, "runtime.sqlite"),
     OPENWORK_OPENCODE2_BIN: binary,
+    OPENWORK_ENGINE_V2_PREVIEW: "sidecar",
   };
   const previous = new Map(Object.keys(environment).map(key => [key, process.env[key]]));
   Object.assign(process.env, environment);
@@ -60,12 +60,12 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
   // Connect alone is told that the v2 engine lists organization skills natively.
   const connect = (value: typeof remote) => ({ ...value, protocol: "auto",
     headers: { ...value.headers, "x-openwork-mcp-client-capabilities": "native-skills-v1" } });
-  const preview = createEngineV2Preview({ config, deferStart: true, waits: { workspaceProviderReadyMs: 0 } });
+  const preview = createEngineV2Preview({ config, deferStart: true });
   try {
     await mkdir(environment.XDG_CONFIG_HOME);
     await writeFile(binary, fakeEngine, { mode: 0o700 });
     await writeGlobalRuntimeOpencodeConfig(config, () => ({ mcp: { "openwork-cloud": remote, generic: remote } }));
-    preview.start();
+    await preview.setEnabled(true);
     const deadline = Date.now() + 10_000;
     while (!preview.status().running && !preview.status().lastError && Date.now() < deadline) {
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -100,25 +100,6 @@ test("V2 reconciliation scopes protocol auto to managed Connect and fingerprints
       { method: "DELETE", name: "openwork-cloud" },
       { method: "PUT", name: "openwork-cloud", config: connect(rotated) },
     ], "mapped credential changes replace Connect, while unsupported generic fields do not change its fingerprint");
-
-    const privateName = "/Users/synthetic/private-workspace/mcp-server";
-    await writeGlobalRuntimeOpencodeConfig(config, () => ({ mcp: { [privateName]: remote } }));
-    await preview.syncWorkspaceMcp("workspace", directory);
-    const warning = preview.status().lastWarning;
-    assert.ok(warning, "a rejected MCP registration is still reported in status");
-    assert.match(warning, /An MCP connection needs upkeep; requests can continue\.$/);
-    assert.ok(!warning.includes(privateName), "client-readable status must not expose local paths from raw upkeep warnings");
-    assert.ok(!warning.includes("503"), "raw upstream diagnostics stay out of the public warning");
-
-    // This fixture has no /api/provider catalog, forcing the real bounded
-    // readiness timeout whose raw warning contains the requested directory.
-    const privateDirectory = join(root, "private-workspace");
-    await preview.ensureWorkspaceReady(privateDirectory);
-    const providerWarning = preview.status().lastWarning;
-    assert.ok(providerWarning);
-    assert.match(providerWarning, /Provider catalog refresh did not finish in time; serving the engine's catalog\.$/);
-    assert.ok(!providerWarning.includes(privateDirectory), "provider timeout status must not expose the workspace directory");
-    assert.ok(!providerWarning.includes(root), "status must not expose the host's temporary storage path");
   } finally {
     await preview.stop();
     for (const [key, value] of previous) {

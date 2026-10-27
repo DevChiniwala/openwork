@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { test } from "node:test"
 
-test("Daytona image bakes only pinned v2, with integrity verification", () => {
+test("Daytona image bakes pinned v2 with integrity verification and asserts both engines", () => {
   const dockerfile = readFileSync(new URL("../../den-worker-runtime/Dockerfile.daytona-snapshot", import.meta.url), "utf8")
   assert.match(dockerfile, /COPY --from=openwork-builder \/src\/constants\.json/)
   assert.match(dockerfile, /a\.version!==c\.opencodeV2Version/)
@@ -12,12 +12,10 @@ test("Daytona image bakes only pinned v2, with integrity verification", () => {
   assert.match(dockerfile, /actual!==a\.platforms\[process\.argv\[1\]\]\.integrity/)
   assert.match(dockerfile, /install -m 0755 "\$tmpdir\/package\/bin\/opencode" \/usr\/local\/bin\/opencode2/)
   assert.match(dockerfile, /ENV OPENWORK_OPENCODE2_BIN=\/usr\/local\/bin\/opencode2/)
-  // The retired engine is neither installed nor asserted.
-  assert.doesNotMatch(dockerfile, /OPENCODE_VERSION|OPENCODE_DOWNLOAD_URL|\/usr\/local\/bin\/opencode(?!2)|&& opencode --version/)
-  assert.match(dockerfile, /! command -v opencode \\/)
+  assert.match(dockerfile, /&& opencode --version/)
   assert.match(dockerfile, /\$OPENWORK_OPENCODE2_BIN" --version/)
   assert.match(dockerfile, /actual!==expected/)
   assert.match(dockerfile, /replace\(\/\^opencode v\?\//)
   // Baking a binary must not silently enable org policy evaluation in all images.
-  assert.doesNotMatch(dockerfile, /ENV OPENWORK_(ENGINE_AUTO_UPGRADE|ENGINE_FORCE_POLICY|FRESH_INSTALL_ENGINE|OPENCODE_BIN)=/)
+  assert.doesNotMatch(dockerfile, /ENV OPENWORK_(ENGINE_AUTO_UPGRADE|ENGINE_FORCE_POLICY|FRESH_INSTALL_ENGINE)=/)
 })

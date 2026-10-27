@@ -105,6 +105,60 @@ function turnMessages(sessionID: string, parts: ReturnType<typeof delegatedTool>
 }
 
 describe("native OpenCode session operations", () => {
+  test("native pages replay opaque cursors through the SDK, including retries, and use headers for exact-limit exhaustion", async () => {
+    const cursor = "opaque+/=%25?older&owner=one";
+    const older = [{ info: { ...messages[0]!.info, id: "msg_older" }, parts: [] }];
+    let olderAttempts = 0;
+    await withSessionFetch((request) => {
+      const url = new URL(request.url);
+      expect(request.headers.get("Authorization")).toBe(`Bearer ${endpoint.token}`);
+      expect(request.method).toBe("GET");
+      if (url.pathname.endsWith(`/session/${session.id}`)) return Response.json(session);
+      expect(`${url.origin}${url.pathname}`).toBe(`${endpoint.opencodeBaseUrl}/session/${session.id}/message`);
+      expect(url.searchParams.get("limit")).toBe("1");
+      if (url.searchParams.has("before")) {
+        expect(url.searchParams.get("before")).toBe(cursor);
+        olderAttempts += 1;
+        return olderAttempts === 1 ? Response.json({ code: "engine_reloading" }, { status: 503 }) : Response.json(older);
+      }
+      return Response.json(messages, { headers: {
+        "X-Next-Cursor": cursor,
+        Link: '<http://internal-engine/session/foreign/message?before=wrong>; rel="next"',
+      } });
+    }, async (requests) => {
+      const newest = await composeNativeSessionHistory(endpoint, session.id, { limit: 1 });
+      expect(newest.pagination).toEqual({ nextCursor: cursor, limit: 1 });
+      const previous = await composeNativeSessionHistoryWithRetry("owner", () => ({ owner: "owner", endpoint, sessionId: session.id }), {
+        limit: 1, before: newest.pagination?.nextCursor ?? undefined,
+      }, { waitForSnapshotRetry: async () => {} });
+      expect(previous).toEqual({ session, messages: older, pagination: { before: cursor, nextCursor: null, limit: 1 } });
+      expect(olderAttempts).toBe(2);
+      expect(requests.filter((request) => new URL(request.url).pathname.endsWith("/message"))).toHaveLength(3);
+    });
+  });
+
+  test("native empty pages exhaust and activity snapshots retain boundedness without marking full reads as pages", async () => {
+    await withSessionFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname.endsWith(`/session/${session.id}`)) return Response.json(session);
+      if (url.pathname.endsWith("/todo")) return Response.json(todos);
+      if (url.pathname.endsWith("/status")) return Response.json({});
+      if (url.searchParams.has("before")) return Response.json([]);
+      return Response.json(messages, { headers: { "X-Next-Cursor": "older" } });
+    }, async () => {
+      expect((await composeNativeSessionHistory(endpoint, session.id, { before: "older", limit: 1 })).pagination)
+        .toEqual({ before: "older", nextCursor: null, limit: 1 });
+      const bounded = await composeNativeSessionSnapshot(endpoint, session.id, { limit: 1 });
+      expect(bounded.pagination).toEqual({ nextCursor: "older", limit: 1 });
+      expect(bounded.todos).toEqual(todos);
+      expect(bounded.status).toEqual({ type: "idle" });
+      const full = await composeNativeSessionSnapshot(endpoint, session.id);
+      expect(full.messages).toEqual(messages);
+      expect(full.pagination).toBeUndefined();
+      expect((await composeNativeSessionHistory(endpoint, session.id, { limit: 0 })).pagination).toBeUndefined();
+    });
+  });
+
   test("v2 history normalizes descending pages chronologically so forks use the following message across page boundaries", async () => {
     const target = { ...endpoint, opencodeBaseUrl: endpoint.opencodeBaseUrl.replace("opencode", "opencode2") };
     const cursors: Array<string | null> = [];
@@ -165,6 +219,14 @@ describe("native OpenCode session operations", () => {
       expect(bodies).toEqual([{ before: "msg_next" }, {}]);
       expect([atMessage.id, whole.id]).toEqual(["ses_fork_1", "ses_fork_2"]);
       expect(atMessage.parentID).toBe(session.id);
+    });
+  });
+
+  test("native repeated cursors fail instead of advertising an endless older page", async () => {
+    await withSessionFetch((request) => Response.json(new URL(request.url).pathname.endsWith("/message") ? messages : session,
+      { headers: { "X-Next-Cursor": "same" } }), async () => {
+      await expect(composeNativeSessionHistory(endpoint, session.id, { before: "same", limit: 1 }))
+        .rejects.toThrow("cursor did not advance");
     });
   });
 
@@ -376,7 +438,7 @@ describe("native OpenCode session operations", () => {
     expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
 
-  test.each(["opencode2"])("%s wrapper cancels failed-attempt siblings without aborting a retry on late completion", async (engine) => {
+  test.each(["opencode", "opencode2"])("%s wrapper cancels failed-attempt siblings without aborting a retry on late completion", async (engine) => {
     const target = { ...endpoint, opencodeBaseUrl: endpoint.opencodeBaseUrl.replace("opencode", engine) };
     const caller = new AbortController();
     const firstMessages = Promise.withResolvers<Response>();
@@ -423,7 +485,7 @@ describe("native OpenCode session operations", () => {
     });
   });
 
-  test.each(["opencode2"])("%s wrapper classifies permanent, malformed, unknown and transient failures without writes", async (engine) => {
+  test.each(["opencode", "opencode2"])("%s wrapper classifies permanent, malformed, unknown and transient failures without writes", async (engine) => {
     const target = { ...endpoint, opencodeBaseUrl: endpoint.opencodeBaseUrl.replace("opencode", engine) };
     for (const failure of ["missing", "malformed", "unknown", "network", "warmup"]) {
       for (const saved of [false, true]) {
@@ -461,7 +523,7 @@ describe("native OpenCode session operations", () => {
     }
   });
 
-  test.each(["opencode2"])("%s wrapper preserves a caller's abort reason across all saved-message siblings", async (engine) => {
+  test.each(["opencode", "opencode2"])("%s wrapper preserves a caller's abort reason across all saved-message siblings", async (engine) => {
     const target = { ...endpoint, opencodeBaseUrl: endpoint.opencodeBaseUrl.replace("opencode", engine) };
     const caller = new AbortController();
     const reason = { cancelledBy: "native-history-audit" };
@@ -622,7 +684,7 @@ describe("native OpenCode session operations", () => {
     expect(receivedEndpoint).toEqual(endpoint);
   });
 
-  test.each(["opencode2"])("%s newest session/messages reads need no status or todos", async (engine) => {
+  test.each(["opencode", "opencode2"])("%s newest session/messages reads need no status or todos", async (engine) => {
     const target = { ...endpoint, opencodeBaseUrl: endpoint.opencodeBaseUrl.replace("opencode", engine) };
     const controller = new AbortController();
     const history = Array.from({ length: 30 }, (_, index) => ({
@@ -684,7 +746,7 @@ describe("native OpenCode session operations", () => {
     expect(await snapshotPromise).toEqual({ session, messages, todos, status: { type: "idle" } });
   });
 
-  test.each(["opencode2"])("%s previews request the newest bounded messages and leave full reads uncapped", async (engine) => {
+  test.each(["opencode", "opencode2"])("%s previews request the newest bounded messages and leave full reads uncapped", async (engine) => {
     const target = { ...endpoint, opencodeBaseUrl: endpoint.opencodeBaseUrl.replace("opencode", engine) };
     const history = Array.from({ length: 30 }, (_, index) => ({
       info: { ...messages[0]!.info, id: `msg_${index}`, time: { created: index } },
@@ -721,7 +783,7 @@ describe("native OpenCode session operations", () => {
     });
   });
 
-  test.each(["opencode2"])("%s reads only saved IDs in requested order and skips a deleted anchor", async (engine) => {
+  test.each(["opencode", "opencode2"])("%s reads only saved IDs in requested order and skips a deleted anchor", async (engine) => {
     const target = { ...endpoint, opencodeBaseUrl: endpoint.opencodeBaseUrl.replace("opencode", engine) };
     const controller = new AbortController();
     const ids: readonly string[] = ["msg_z", "msg_a", "msg_m", "msg_z"];

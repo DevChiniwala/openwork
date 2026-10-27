@@ -41,6 +41,10 @@ export type EngineInfo = {
   projectDir: string | null;
   hostname: string | null;
   port: number | null;
+  opencodeUsername: string | null;
+  opencodePassword: string | null;
+  opencodeBinPath: string | null;
+  opencodeBinSource: string | null;
   pid: number | null;
   lastStdout: string | null;
   lastStderr: string | null;
@@ -97,12 +101,27 @@ export type OpenworkServerInfo = {
   clientToken: string | null;
   ownerToken: string | null;
   hostToken: string | null;
+  managedOpencodeBinPath: string | null;
+  managedOpencodeBinSource: string | null;
   /** Structured server log on disk, or null when the server runs without a file sink. */
   logFilePath: string | null;
   pid: number | null;
   lastStdout: string | null;
   lastStderr: string | null;
   managedOpencodeExecution: OpencodeExecutionSnapshot | null;
+};
+
+export type EngineDoctorResult = {
+  found: boolean;
+  inPath: boolean;
+  resolvedPath: string | null;
+  resolvedSource: string | null;
+  version: string | null;
+  supportsServe: boolean;
+  notes: string[];
+  serveHelpStatus: number | null;
+  serveHelpStdout: string | null;
+  serveHelpStderr: string | null;
 };
 
 export type WorkspaceList = {
@@ -552,6 +571,7 @@ export type DesktopCommandMap = {
    * whether "onboarding" should preserve desktop workspace state.
    */
   resetOpenworkState: { args: [mode?: "onboarding" | "all"]; result: unknown };
+  opencodeMcpAuth: { args: [action: string, name: string]; result: ExecResult };
 
   // Window / OS utilities (dunder commands)
   __showContextMenu: { args: [request: NativeContextMenuRequest]; result: string | null };

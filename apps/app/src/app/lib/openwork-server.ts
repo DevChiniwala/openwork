@@ -17,7 +17,6 @@ import {
 import { desktopFetch, desktopFetchViaMain, desktopFetchAgentContextDiagnostics } from "./desktop";
 import { isOpenworkGatewayRuntime } from "./gateway-runtime";
 import { isDesktopRuntime } from "./runtime-env";
-import { mapV2McpStatuses } from "./opencode-v2-mcp-status";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
 import type { DenResourceSnapshot } from "./den-types";
 import type { CloudImportedMarketplace, CloudImportedPlugin, CloudImportedProvider } from "../cloud/import-state";
@@ -128,14 +127,49 @@ function parseEngineV2Migration(value: unknown): EngineV2MigrationStatus | undef
     error: "error" in value && typeof value.error === "string" ? value.error : undefined };
 }
 
+/** Work an engine switch or migration would interrupt, as counts only. */
+export interface EngineActivityCount {
+  verdict: "idle" | "busy" | "unknown";
+  busySessions: number;
+  waitingRequests: number;
+}
+
+export interface EngineActivity {
+  v1: EngineActivityCount;
+  /** Null while the v2 sidecar is not running. */
+  v2: EngineActivityCount | null;
+}
+
+function parseEngineActivityCount(value: unknown): EngineActivityCount | null {
+  if (!value || typeof value !== "object" || !("verdict" in value)) return null;
+  const verdict = value.verdict;
+  if (verdict !== "idle" && verdict !== "busy" && verdict !== "unknown") return null;
+  const count = (key: "busySessions" | "waitingRequests") => {
+    const raw: unknown = key in value ? Reflect.get(value, key) : 0;
+    return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
+  };
+  return { verdict, busySessions: count("busySessions"), waitingRequests: count("waitingRequests") };
+}
+
+function parseEngineActivity(value: unknown): EngineActivity {
+  const v1 = value && typeof value === "object" && "v1" in value ? parseEngineActivityCount(value.v1) : null;
+  if (!v1) throw new Error("Invalid engine activity response.");
+  const v2 = value && typeof value === "object" && "v2" in value ? parseEngineActivityCount(value.v2) : null;
+  return { v1, v2 };
+}
+
 export interface EngineV2PreviewStatus {
   enabled: boolean;
   running: boolean;
   chatRouting: boolean;
   /** Effective server ownership of the live provider catalog. Older servers omit it. */
   liveProviderSync?: boolean;
-  /** Chats saved before OpenCode v2 are being copied; the engine serves chats once this clears. */
-  historyImportPending?: boolean;
+  /** Ownership of the engine selection; older servers omit these fields. */
+  engineOrigin?: "fresh" | "manual" | "forced" | "reverted";
+  engineChangedAt?: string;
+  engineForced?: boolean;
+  /** The host is preparing a forced upgrade; engine ownership has not moved yet. */
+  forceUpgradePending?: boolean;
   version?: string;
   pid?: number;
   binSource?: string;
@@ -149,7 +183,6 @@ export interface EngineV2PreviewStatus {
   catalogModelIds: string[];
   lastMirroredAt?: string;
   lastError?: string;
-  lastWarning?: string;
 }
 
 /**
@@ -214,8 +247,12 @@ function parseEngineV2PreviewStatus(value: unknown): EngineV2PreviewStatus {
     migration: parseEngineV2Migration("migration" in value ? value.migration : undefined),
     ...("v1HistoryAvailable" in value && typeof value.v1HistoryAvailable === "boolean"
       ? { v1HistoryAvailable: value.v1HistoryAvailable } : {}),
-    ...("historyImportPending" in value && typeof value.historyImportPending === "boolean"
-      ? { historyImportPending: value.historyImportPending } : {}),
+    ...("engineOrigin" in value && (value.engineOrigin === "fresh" || value.engineOrigin === "manual"
+      || value.engineOrigin === "forced" || value.engineOrigin === "reverted") ? { engineOrigin: value.engineOrigin } : {}),
+    ...("engineChangedAt" in value && typeof value.engineChangedAt === "string" ? { engineChangedAt: value.engineChangedAt } : {}),
+    ...("engineForced" in value && typeof value.engineForced === "boolean" ? { engineForced: value.engineForced } : {}),
+    ...("forceUpgradePending" in value && typeof value.forceUpgradePending === "boolean"
+      ? { forceUpgradePending: value.forceUpgradePending } : {}),
     enabled: value.enabled,
     running: value.running,
     chatRouting: "chatRouting" in value && typeof value.chatRouting === "boolean" ? value.chatRouting : false,
@@ -230,7 +267,6 @@ function parseEngineV2PreviewStatus(value: unknown): EngineV2PreviewStatus {
     catalogModelIds: value.catalogModelIds,
     lastMirroredAt: "lastMirroredAt" in value && typeof value.lastMirroredAt === "string" ? value.lastMirroredAt : undefined,
     lastError: "lastError" in value && typeof value.lastError === "string" ? value.lastError : undefined,
-    lastWarning: "lastWarning" in value && typeof value.lastWarning === "string" ? value.lastWarning : undefined,
   };
 }
 
@@ -486,6 +522,32 @@ export type OpenworkAuthorizedFoldersResponse = {
   folders: string[];
   hiddenCount: number;
   workspaceRoot: string;
+};
+
+export type OpenworkPermissionAction = "allow" | "ask" | "deny";
+export type OpenworkPermissionSource = "engine" | "global" | "openwork" | "workspace";
+export type OpenworkEffectivePermissionKey =
+  | "shell"
+  | "edit"
+  | "web"
+  | "mcp"
+  | "outside_folders"
+  | "env_files"
+  | "doom_loop";
+
+export type OpenworkEffectivePermissionRow = {
+  key: OpenworkEffectivePermissionKey;
+  permission: string;
+  action: OpenworkPermissionAction;
+  rule: { permission: string; pattern: string; action: OpenworkPermissionAction } | null;
+  source: OpenworkPermissionSource | null;
+  exceptions: number;
+};
+
+export type OpenworkEffectivePermissionsResponse = {
+  agent: string;
+  rows: OpenworkEffectivePermissionRow[];
+  files: { workspace: string; global: string };
 };
 
 export type OpenworkAuthorizedFoldersUpdateResponse = {
@@ -1698,6 +1760,11 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
         token,
         timeoutMs: timeouts.config,
       })),
+    /** The host owns idle checks, bounded retries, migration and forced-only revert. */
+    setEngineV2ForcePolicy: async (policy: { upgrade: boolean }): Promise<EngineV2PreviewStatus> =>
+      parseEngineV2PreviewStatus(await requestJson<unknown>(baseUrl, "/experimental/engine-v2-preview/force", {
+        token, hostToken, method: "POST", body: policy, timeoutMs: timeouts.config,
+      })),
     getWorkspaceDefaultModel: async (workspaceId: string): Promise<WorkspaceDefaultModelState> =>
       parseWorkspaceDefaultModelState(await requestJson<unknown>(
         baseUrl,
@@ -1710,10 +1777,34 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
         `/workspace/${encodeURIComponent(workspaceId)}/default-model`,
         { token, hostToken, method: "PUT", body: { model }, timeoutMs: timeouts.config },
       )),
-    /** Try again copying chats saved before OpenCode v2. */
-    migrateOpencodeHistory: async (): Promise<EngineV2PreviewStatus> =>
+    switchOpencodeEngine: async (engine: "v1" | "v2"): Promise<EngineV2PreviewStatus> =>
+      parseEngineV2PreviewStatus(await requestJson<unknown>(baseUrl, "/experimental/engine-v2-preview", {
+        token, method: "PUT", body: { enabled: engine === "v2", chatRouting: engine === "v2" }, timeoutMs: timeouts.config,
+      })),
+    getEngineActivity: async (): Promise<EngineActivity> =>
+      parseEngineActivity(await requestJson<unknown>(baseUrl, "/experimental/engine-v2-preview/activity", {
+        token,
+        timeoutMs: timeouts.config,
+      })),
+    /** Rejects with `engine_migration_active_sessions` (409) while v1 tasks run, unless allowed. */
+    migrateOpencodeHistory: async (options: { allowActiveSessions?: boolean } = {}): Promise<EngineV2PreviewStatus> =>
       parseEngineV2PreviewStatus(await requestJson<unknown>(baseUrl, "/experimental/engine-v2-preview/migrate", {
         token, hostToken, method: "POST", timeoutMs: timeouts.config,
+        body: { confirm: true, ...(options.allowActiveSessions ? { allowActiveSessions: true } : {}) },
+      })),
+    setEngineV2PreviewEnabled: async (enabled: boolean): Promise<EngineV2PreviewStatus> =>
+      parseEngineV2PreviewStatus(await requestJson<unknown>(baseUrl, "/experimental/engine-v2-preview", {
+        token,
+        method: "PUT",
+        body: { enabled },
+        timeoutMs: timeouts.config,
+      })),
+    setEngineV2PreviewChatRouting: async (chatRouting: boolean): Promise<EngineV2PreviewStatus> =>
+      parseEngineV2PreviewStatus(await requestJson<unknown>(baseUrl, "/experimental/engine-v2-preview", {
+        token,
+        method: "PUT",
+        body: { chatRouting },
+        timeoutMs: timeouts.config,
       })),
     setConnectState: (connectEnabled: boolean) => requestJson<OpenworkConnectState>(baseUrl, "/experimental/connect/state", { token, hostToken, method: "PUT", body: { connectEnabled }, timeoutMs: timeouts.config }),
     callExtensionAction: (payload: OpenworkExtensionActionCall) =>
@@ -1834,6 +1925,12 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
       requestJson<WorkspaceRunModeUpdate>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/permissions/mode`, {
         token, hostToken, method: "PUT", body: { mode }, timeoutMs: 60_000,
       }),
+    getEffectivePermissions: (workspaceId: string) =>
+      requestJson<OpenworkEffectivePermissionsResponse>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/permissions/effective`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
     listAuthorizedFolders: (workspaceId: string) =>
       requestJson<OpenworkAuthorizedFoldersResponse>(
         baseUrl,
@@ -2016,12 +2113,8 @@ export function createOpenworkServerClient(options: { baseUrl: string; token?: s
         `/workspace/${workspaceId}/mcp`,
         { token, hostToken },
       ),
-    getMcpStatus: async (workspaceId: string): Promise<McpStatusMap> => {
-      const payload = await requestJson<unknown>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/opencode2/api/mcp`, { token, hostToken });
-      const statuses = mapV2McpStatuses(payload);
-      if (!statuses) throw new OpenworkServerError(502, "invalid_response", "Invalid MCP status response");
-      return statuses;
-    },
+    getMcpStatus: (workspaceId: string) =>
+      requestJson<McpStatusMap>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/opencode/mcp`, { token, hostToken }),
     listMcpApps: (workspaceId: string) =>
       requestJson<{ servers: OpenworkMcpAppCatalogServer[] }>(
         baseUrl,

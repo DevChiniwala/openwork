@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, realpath } from "node:fs/promises";
 import { browserScript } from "@openwork/cdp";
 import type { Seed } from "@openwork/env";
 import { readDefaultDesktopPolicy } from "./desktop-policies.ts";
@@ -10,9 +9,9 @@ import { denForAppWeb, signedInAppWeb } from "./signed-in-app-web.ts";
 
 /**
  * The owner of "Acme", signed in to a real Den in the real app (in a browser)
- * on the OpenCode v2 engine. Personal providers are allowed and mirror without
- * a rollout override. Provider credentials live in a world-owned data folder;
- * nothing in this computer's own OpenCode profile is read.
+ * on the OpenCode v2 engine, with the bundled OpenCode v1 catalog behind it.
+ * Personal providers are allowed and mirror without a rollout override.
+ * Nothing in this computer's own OpenCode profile is read.
  */
 export async function v2LocalProviderMirror(seed: Seed) {
   const folder = seed.tmpPath("acme");
@@ -21,14 +20,10 @@ export async function v2LocalProviderMirror(seed: Seed) {
   const { den, webPort } = await denForAppWeb(seed, { org: { name: "Acme", admin: { name: "Acme Admin" } } });
   const token = randomUUID();
   const hostToken = randomUUID();
-  // The server keeps this computer's provider credentials in <data>/opencode/auth.json.
-  const dataHome = seed.tmpPath("acme-data");
-  await mkdir(join(dataHome, "opencode"), { recursive: true });
-  const authPath = join(dataHome, "opencode", "auth.json");
   const { app, workspace } = await signedInAppWeb(seed, {
-    den, webPort, name: "v2-local-provider-mirror", workspacePath, headless: true,
+    den, webPort, name: "v2-local-provider-mirror", workspacePath, engine: "v2", headless: true,
     // Exercise the real policy sync without waiting its production five-minute interval.
-    env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken, XDG_DATA_HOME: dataHome, OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "1000" },
+    env: { OPENWORK_TOKEN: token, OPENWORK_HOST_TOKEN: hostToken, OPENWORK_CLOUD_PROVIDER_SYNC_INTERVAL_MS: "1000" },
   });
   const organizationId = await seededOrganizationId(seed, den.admin);
   if (!organizationId) throw new Error("Could not resolve the seeded organization");
@@ -68,20 +63,15 @@ export async function v2LocalProviderMirror(seed: Seed) {
   };
 
   /**
-   * A ChatGPT sign-in saved on this computer before: an OAuth entry in the
-   * credential file beside the saved API keys, then the workspace's supported
-   * engine reload so the server re-reads its providers. The tokens are
-   * synthetic and never sent anywhere.
+   * A ChatGPT sign-in as OpenCode v1 stores it: an OAuth entry written through
+   * the same engine credential route a provider sign-in ends with. The tokens
+   * are synthetic and never sent anywhere.
    */
   const signInWithChatGpt = async () => {
-    let saved: unknown = {};
-    try { saved = JSON.parse(await readFile(authPath, "utf8")); } catch { saved = {}; }
-    const entries = isRecord(saved) ? saved : {};
-    await writeFile(authPath, JSON.stringify({ ...entries, openai: {
-      type: "oauth", refresh: "synthetic-refresh", access: "synthetic-access", expires: Date.now() + 86_400_000,
-    } }), { mode: 0o600 });
-    const reloaded = await request(`/workspace/${encodeURIComponent(workspace.workspaceId)}/engine/reload`, { method: "POST" });
-    if (reloaded.status >= 300) throw new Error(`Reloading providers after the ChatGPT sign-in failed: HTTP ${reloaded.status}`);
+    const saved = await request(`/workspace/${encodeURIComponent(workspace.workspaceId)}/opencode/auth/openai`, {
+      method: "PUT", body: { type: "oauth", refresh: "synthetic-refresh", access: "synthetic-access", expires: Date.now() + 86_400_000 },
+    });
+    if (saved.status >= 300) throw new Error(`Seeding the ChatGPT sign-in failed: HTTP ${saved.status}`);
   };
 
   // This proof connects its first provider through Settings. Do not create a

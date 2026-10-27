@@ -1,8 +1,8 @@
 FROM node:24.22.1-bookworm-slim
 
-# Use an openwork-server release that runs OpenCode v2 itself (no separate
-# engine binary to install).
 ARG OPENWORK_SERVER_VERSION=0.18.4
+ARG OPENCODE_VERSION=1.17.11
+ARG OPENCODE_DOWNLOAD_URL=
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -15,10 +15,24 @@ RUN apt-get update \
 
 RUN npm install -g "openwork-server@${OPENWORK_SERVER_VERSION}"
 
-# No engine is baked here: the npm package carries its own pinned OpenCode v2
-# artifact manifest, and the server downloads that exact archive, checks its
-# integrity, and caches it under OPENWORK_DATA_DIR (the /data volume) on first
-# start. Set OPENWORK_OPENCODE2_BIN to use a binary you provide instead.
+RUN set -eux; \
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in \
+    amd64) asset="opencode-linux-x64-baseline.tar.gz" ;; \
+    arm64) asset="opencode-linux-arm64.tar.gz" ;; \
+    *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
+  esac; \
+  url="$OPENCODE_DOWNLOAD_URL"; \
+  if [ -z "$url" ]; then \
+    url="https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/${asset}"; \
+  fi; \
+  tmpdir="$(mktemp -d)"; \
+  curl -fsSL "$url" -o "$tmpdir/$asset"; \
+  tar -xzf "$tmpdir/$asset" -C "$tmpdir"; \
+  binary="$(find "$tmpdir" -type f -name opencode | head -n 1)"; \
+  test -n "$binary"; \
+  install -m 0755 "$binary" /usr/local/bin/opencode; \
+  rm -rf "$tmpdir"
 
 # Persistent directories (mount volumes here on PaaS/SSH).
 # The data path deliberately keeps its historical name: existing deployments
@@ -38,5 +52,5 @@ VOLUME ["/workspace", "/data"]
 
 # Defaults:
 # - OpenWork server is published intentionally via --host 0.0.0.0
-# - OpenCode v2 is run by openwork-server and stays internal
-CMD ["/bin/sh", "-lc", "plugin_dir=\"$(npm root -g)/openwork-server/dist/opencode-plugins\"; test -d \"$plugin_dir\"; export OPENWORK_EXTENSIONS_PLUGIN_DIR=\"$plugin_dir\"; exec openwork-server --workspace \"${OPENWORK_WORKSPACE:-/workspace}\" --host 0.0.0.0 --port \"${OPENWORK_PORT:-8787}\" --cors \"${OPENWORK_CORS_ORIGINS:-*}\" --approval \"${OPENWORK_APPROVAL_MODE:-manual}\""]
+# - OpenCode is managed by openwork-server and stays internal
+CMD ["/bin/sh", "-lc", "plugin_dir=\"$(npm root -g)/openwork-server/dist/opencode-plugins\"; test -d \"$plugin_dir\"; export OPENWORK_MANAGE_OPENCODE=1 OPENWORK_OPENCODE_BIN=/usr/local/bin/opencode OPENWORK_EXTENSIONS_PLUGIN_DIR=\"$plugin_dir\"; exec openwork-server --workspace \"${OPENWORK_WORKSPACE:-/workspace}\" --host 0.0.0.0 --port \"${OPENWORK_PORT:-8787}\" --cors \"${OPENWORK_CORS_ORIGINS:-*}\" --approval \"${OPENWORK_APPROVAL_MODE:-manual}\""]

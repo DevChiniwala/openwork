@@ -1,5 +1,4 @@
 /** Dependency-free mirrors of the remote-session wire contract. Timestamps are epoch milliseconds. */
-/** OpenCode v2 is the only engine. "v1" stays readable so journals and reports from older runners still parse; current runners never produce it. */
 export type Engine = "v1" | "v2"
 export type CreationMode = "idempotent" | "at_most_once"
 export type SendReplayMode = "idempotent" | "at_most_once"

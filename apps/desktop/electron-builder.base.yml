@@ -18,6 +18,7 @@ extraResources:
     to: opencode-plugins
     filter:
       - "*.js"
+      - "*.wasm"
   - from: ../../packages/docs
     to: openwork-docs
     filter:
@@ -30,6 +31,8 @@ asarUnpack:
   - "**/*.exe"
   - "**/*.dll"
   - "**/*.node"
+  # External tar cannot read an archive through Electron's virtual ASAR paths.
+  - server/dist/opencode-plugin-deps-*.tgz
   - node_modules/.pnpm/@lydell+node-pty*/**
   - node_modules/node-pty/**
   # Blender loads computer use's script bridge from a real file.
@@ -58,8 +61,11 @@ mac:
     - from: resources/sidecars
       to: sidecars
       filter:
+        - opencode
         - opencode2
+        - opencode-aarch64-apple-darwin
         - opencode2-aarch64-apple-darwin
+        - opencode-x86_64-apple-darwin
         - opencode2-x86_64-apple-darwin
         - versions.json
         - versions.json-aarch64-apple-darwin
@@ -83,8 +89,11 @@ linux:
     - from: resources/sidecars
       to: sidecars
       filter:
+        - opencode
         - opencode2
+        - opencode-aarch64-unknown-linux-gnu
         - opencode2-aarch64-unknown-linux-gnu
+        - opencode-x86_64-unknown-linux-gnu
         - opencode2-x86_64-unknown-linux-gnu
         - versions.json
         - versions.json-aarch64-unknown-linux-gnu
@@ -109,8 +118,11 @@ win:
     - from: resources/sidecars
       to: sidecars
       filter:
+        - opencode.exe
         - opencode2.exe
+        - opencode-aarch64-pc-windows-msvc.exe
         - opencode2-aarch64-pc-windows-msvc.exe
+        - opencode-x86_64-pc-windows-msvc.exe
         - opencode2-x86_64-pc-windows-msvc.exe
         - versions.json
         - versions.json-aarch64-pc-windows-msvc

@@ -17,11 +17,7 @@ Desktop server log (OTLP JSON, one record per request):
 ~/Library/Application Support/com.differentai.openwork/logs/openwork-server.log{,.1}
 ```
 
-Engine (OpenCode v2): the server keeps no separate engine log file. When the
-engine fails or exits, `GET /experimental/engine-v2-preview/status` reports
-`lastError` with the tail of its output; engine requests appear in the server
-log above under `/workspace/<id>/opencode2/...`. Requests to the removed
-`/opencode/*` routes answer 410 `opencode_v1_removed`.
+Engine log: `~/.local/share/opencode/log/opencode.log`.
 
 Tally 5xx by route, then compare against the same route family that did
 **not** fail. A failure rate on one route and zero on its siblings isolates the

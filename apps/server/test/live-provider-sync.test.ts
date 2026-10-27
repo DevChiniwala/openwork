@@ -148,6 +148,8 @@ test("late signed-in hydration activates once; runtime kill does not resume an o
     assert.equal(engine.status().liveProviderSync, true);
     await engine.setLiveProviderSync(false);
     assert.equal(engine.status().liveProviderSync, true, "effective owner is frozen despite a killed rollout");
+    await engine.setChatRouting(false);
+    assert.equal(engine.status().liveProviderSync, false, "v1 selection always uses the old path");
   } finally { await engine.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 

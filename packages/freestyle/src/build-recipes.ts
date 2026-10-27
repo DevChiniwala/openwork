@@ -1,42 +1,5 @@
-import { readFileSync } from "node:fs";
 import type { PreviewWorld } from "./index.ts";
 import { browserRecipe } from "./browser-recipe.ts";
-
-type OpencodeV2Artifact = { url: string; integrity: string };
-
-function opencodeV2Artifact(manifest: unknown, key: string): OpencodeV2Artifact {
-  const platforms = typeof manifest === "object" && manifest !== null && "platforms" in manifest ? manifest.platforms : null;
-  const entry = typeof platforms === "object" && platforms !== null && key in platforms ? Reflect.get(platforms, key) : null;
-  const url = typeof entry === "object" && entry !== null && "url" in entry ? entry.url : null;
-  const integrity = typeof entry === "object" && entry !== null && "integrity" in entry ? entry.integrity : null;
-  if (typeof url !== "string" || !/^https:\/\/registry\.npmjs\.org\//.test(url) || typeof integrity !== "string" || !/^sha512-[A-Za-z0-9+/=]+$/.test(integrity)) {
-    throw new Error(`No verified OpenCode v2 artifact for ${key}`);
-  }
-  return { url, integrity };
-}
-
-/**
- * Bakes the server's pinned, integrity-checked OpenCode v2 into the shared
- * tools layer (as `opencode2` on PATH, the server's second resolution step),
- * so a preview never downloads its engine at boot. The URL and integrity are
- * part of the recipe text, so a new pin builds a new tools layer.
- */
-export function opencodeV2Recipe(): string {
-  const manifest: unknown = JSON.parse(readFileSync(new URL("../../../apps/server/src/opencode-v2-artifacts.json", import.meta.url), "utf8"));
-  const x64 = opencodeV2Artifact(manifest, "linux-x64-baseline");
-  const arm64 = opencodeV2Artifact(manifest, "linux-arm64");
-  return `case "$(uname -m)" in
-  x86_64|amd64) opencode2_url='${x64.url}'; opencode2_integrity='${x64.integrity}' ;;
-  aarch64|arm64) opencode2_url='${arm64.url}'; opencode2_integrity='${arm64.integrity}' ;;
-  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
-esac
-opencode2_tmp="$(mktemp -d)"
-node --input-type=module -e 'import { createHash } from "node:crypto"; import { writeFileSync } from "node:fs"; const [url, integrity, target] = process.argv.slice(1); const response = await fetch(url); if (!response.ok) throw new Error("OpenCode v2 download failed: " + response.status); const bytes = Buffer.from(await response.arrayBuffer()); if ("sha512-" + createHash("sha512").update(bytes).digest("base64") !== integrity) throw new Error("OpenCode v2 archive integrity mismatch"); writeFileSync(target, bytes)' "$opencode2_url" "$opencode2_integrity" "$opencode2_tmp/opencode2.tgz"
-tar -xzf "$opencode2_tmp/opencode2.tgz" -C "$opencode2_tmp" package/bin/opencode
-install -m 0755 "$opencode2_tmp/package/bin/opencode" /usr/local/bin/opencode2
-rm -rf "$opencode2_tmp"
-/usr/local/bin/opencode2 --version`;
-}
 
 /** Workbot's VM runs Den on its own MySQL/Redis, the runner and Workbot: no desktop, browser or OpenCode. */
 const WORKBOT_TOOLS = `corepack enable
@@ -62,11 +25,10 @@ printf '<!doctype html><meta http-equiv="refresh" content="0; url=vnc.html?autoc
 ${world === "acme-web" ? `systemctl enable --now mysql redis-server
 mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password'; FLUSH PRIVILEGES;"` : ""}` : ""}
 mkdir -p /opt/openwork-preview/tools
-${opencodeV2Recipe()}${world === "desktop" ? `
-printf 'allowBuilds:\\n  bun: true\\n' > /opt/openwork-preview/tools/pnpm-workspace.yaml
-pnpm --dir /opt/openwork-preview/tools add bun@1.3.14
-node /opt/openwork-preview/tools/node_modules/bun/install.js
-/opt/openwork-preview/tools/node_modules/.bin/bun --version` : ""}`;
+printf 'allowBuilds:\\n  opencode-ai: true\\n${world === "desktop" ? "  bun: true\\n" : ""}' > /opt/openwork-preview/tools/pnpm-workspace.yaml
+pnpm --dir /opt/openwork-preview/tools add opencode-ai@1.18.15${world === "desktop" ? " bun@1.3.14" : ""}
+node /opt/openwork-preview/tools/node_modules/opencode-ai/postinstall.mjs
+/opt/openwork-preview/tools/node_modules/.bin/opencode --version${world === "desktop" ? "\nnode /opt/openwork-preview/tools/node_modules/bun/install.js\n/opt/openwork-preview/tools/node_modules/.bin/bun --version" : ""}`;
 }
 
 export function dependencyRecipe(world: PreviewWorld): string {

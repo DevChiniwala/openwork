@@ -1,5 +1,6 @@
 import { browserScript, locate } from "@openwork/cdp";
 import { fileURLToPath } from "node:url";
+import { resolveEvalEngine } from "@openwork/env";
 import type { Den, Seed } from "@openwork/env";
 import { evalIn as rawEvalIn } from "@openwork/behaviors";
 import type { DenFetchResult, DenSession } from "@openwork/behaviors";
@@ -85,6 +86,7 @@ export function mcpCallBody(id: number, name: string, args: Record<string, unkno
 }
 
 export async function connectorBranding(seed: Seed) {
+  const engine = resolveEvalEngine();
   const proof = `Channel list ${crypto.randomUUID()}`;
   const prompt = "List three of my Slack channels.";
   const failurePrompt = "Read the three latest items in my Slack history.";
@@ -93,7 +95,7 @@ export async function connectorBranding(seed: Seed) {
   const toolArguments = { limit: 3 };
   const inputSchema = { type: "object", properties: { limit: { type: "integer" } }, required: ["limit"] };
   const search = (name: string) => ({ query: `Slack ${name}`, type: "mcp", limit: 1 });
-  const steps = (name: string) => [{
+  const steps = (name: string) => engine === "v2" ? [{
     tool: "execute",
     arguments: { code: `
       const found = await tools["openwork-cloud"].search_capabilities(${JSON.stringify(search(name))});
@@ -101,7 +103,10 @@ export async function connectorBranding(seed: Seed) {
       const catalog = result.matches ? result : JSON.parse(result.content[0].text);
       return await tools["openwork-cloud"].execute_capability({ name: catalog.matches[0].name, body: ${JSON.stringify(toolArguments)} });
     ` },
-  }];
+  }] : [
+    { tool: "search_capabilities", arguments: search(name) },
+    { tool: "execute_capability", arguments: { body: toolArguments }, argumentsFrom: "capability-search" },
+  ];
   const { den, webPort } = await denForAppWeb(seed, {
     org: { name: "Connector tool display", admin: { name: "Connector Admin" } },
     mocks: { connector: seed.mock({
@@ -139,7 +144,7 @@ export async function connectorBranding(seed: Seed) {
     } },
   });
   await seed.session(app);
-  return { app, den, prompt, failurePrompt, mutationPrompt, mutationProof, proof };
+  return { app, den, engine, prompt, failurePrompt, mutationPrompt, mutationProof, proof };
 }
 
 export async function connectorCatalogManagement(seed: Seed) {
@@ -474,12 +479,12 @@ async function configureWorkspaceModel(seed: Seed, input: {
     let healthy = false;
     while (Date.now() < deadline) {
       try {
-        const health = await fetch("http://127.0.0.1:" + port + "/workspace/" + encodeURIComponent(workspaceId) + "/opencode2/api/info", {
+        const health = await fetch("http://127.0.0.1:" + port + "/workspace/" + encodeURIComponent(workspaceId) + "/opencode/global/health", {
           headers: { Authorization: "Bearer " + token }, signal: AbortSignal.timeout(5_000),
         });
         if (health.ok) {
-          const info: unknown = await health.json();
-          if (info && typeof info === "object" && "version" in info && typeof info.version === "string") {
+          const readiness: unknown = await health.json();
+          if (readiness && typeof readiness === "object" && "healthy" in readiness && readiness.healthy === true) {
             healthy = true;
             break;
           }

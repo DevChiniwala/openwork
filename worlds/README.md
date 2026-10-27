@@ -102,8 +102,8 @@ previews on local and Daytona also pass the selected keys to the app, so one
 flag turns on an app setting on either placement:
 
 ```sh
-OPENWORK_LOG_FORMAT=json pnpm world up preview-desktop --place daytona \
-  --env OPENWORK_LOG_FORMAT --stage json-logs --detach
+OPENWORK_ENGINE_V2_PREVIEW=1 pnpm world up preview-desktop --place daytona \
+  --env OPENWORK_ENGINE_V2_PREVIEW --stage v2-check --detach
 ```
 
 The selected keys appear in the `appEnv` output. Freestyle refuses `--env` for

@@ -6,27 +6,26 @@ import {
   usesLiveProviderSync,
 } from "../src/react-app/domains/connections/provider-auth/live-provider-sync";
 
+const v1 = "http://localhost:4096";
 const v2 = "http://localhost:8787/opencode2";
 
 describe("live provider sync ownership", () => {
-  for (const liveProviderSync of [false, true]) {
-    test(`server rollout ${liveProviderSync}`, () => {
-      const live = usesLiveProviderSync({ baseUrl: v2,
-        status: { enabled: true, chatRouting: true, liveProviderSync } });
-      expect(live).toBe(liveProviderSync);
-      for (const reason of ["model_picker_open", "new_chat", "manual"]) {
-        expect(skipsLegacyProviderRefresh(reason, live)).toBe(liveProviderSync);
-      }
-      expect(shouldRefreshProvidersForReloadEvent(live)).toBe(!liveProviderSync);
-      for (const reason of ["app_launch", "sign_in", "app_resume"]) {
-        expect(skipsLegacyProviderRefresh(reason, live)).toBe(false);
-      }
-    });
+  for (const baseUrl of [v1, v2]) {
+    for (const liveProviderSync of [false, true]) {
+      test(`${baseUrl} server rollout ${liveProviderSync}`, () => {
+        const live = usesLiveProviderSync({ baseUrl,
+          status: { enabled: true, chatRouting: true, liveProviderSync } });
+        expect(live).toBe(baseUrl === v2 && liveProviderSync);
+        for (const reason of ["model_picker_open", "new_chat", "manual"]) {
+          expect(skipsLegacyProviderRefresh(reason, live)).toBe(baseUrl === v2 && liveProviderSync);
+        }
+        expect(shouldRefreshProvidersForReloadEvent(live)).toBe(!(baseUrl === v2 && liveProviderSync));
+        for (const reason of ["app_launch", "sign_in", "app_resume"]) {
+          expect(skipsLegacyProviderRefresh(reason, live)).toBe(false);
+        }
+      });
+    }
   }
-
-  test("an engine that is not known yet cannot own live sync", () => {
-    expect(usesLiveProviderSync({ baseUrl: "", status: { enabled: true, chatRouting: true, liveProviderSync: true } })).toBe(false);
-  });
 
   test("disabled V2 routing cannot own live sync", () => {
     expect(usesLiveProviderSync({ baseUrl: v2,

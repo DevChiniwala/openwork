@@ -1,4 +1,5 @@
 import { createHeadlessThreadClient, isHeadlessModelAccessError } from "@openwork/headless-threads"
+import { desktopEngineForcePolicy } from "./engine-force-policy.mjs"
 
 const EMPTY_USAGE = { inputTokens: null, outputTokens: null, costMicros: null }
 const RUNNER_WORK_POLL_MS = 60_000
@@ -148,9 +149,9 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-/** Reads the optional engine and model a headless thread may carry. OpenCode v2 is the only engine. */
+/** Reads the optional engine and model a headless thread may carry. */
 export function remoteSessionThreadIdentity(thread) {
-  const engine = thread?.engine === "v2" ? thread.engine : undefined
+  const engine = thread?.engine === "v1" || thread?.engine === "v2" ? thread.engine : undefined
   const raw = isRecord(thread?.model) ? thread.model : null
   const model = raw && typeof raw.providerId === "string" && raw.providerId && typeof raw.modelId === "string" && raw.modelId
     ? {
@@ -171,18 +172,21 @@ function messageText(message) {
 }
 
 /**
- * Reads the pending permission or question (a v2 form) for a session through
- * the same engine proxy routes the desktop UI and task recovery already use.
+ * Reads the pending permission or question for a session through the same
+ * engine proxy routes the desktop UI and task recovery already use.
  * Returns undefined when the probe could not be read.
  */
-export async function readRemoteSessionWaitingFor(local, workspaceId, sessionId, fetchImpl, signal) {
-  const session = `/workspace/${encodeURIComponent(workspaceId)}/opencode2/api/session/${encodeURIComponent(sessionId)}`
-  const [permissionPath, questionPath] = [`${session}/permission`, `${session}/form`]
+export async function readRemoteSessionWaitingFor(local, workspaceId, sessionId, engine, fetchImpl, signal) {
+  const workspace = `/workspace/${encodeURIComponent(workspaceId)}`
+  const session = encodeURIComponent(sessionId)
+  const [permissionPath, questionPath] = engine === "v2"
+    ? [`${workspace}/opencode2/api/session/${session}/permission`, `${workspace}/opencode2/api/session/${session}/form`]
+    : [`${workspace}/opencode/permission`, `${workspace}/opencode/question`]
   const list = async (requestPath) => {
     const payload = await requestJson(fetchImpl, local.baseUrl, local.token, requestPath, { signal })
     const rows = isRecord(payload) && "data" in payload ? payload.data : payload
     if (!Array.isArray(rows)) throw new Error("Invalid pending request list")
-    return rows.filter((row) => isRecord(row))
+    return rows.filter((row) => isRecord(row) && (engine === "v2" || row.sessionID === sessionId))
   }
   try {
     const [permissions, questions] = await Promise.all([list(permissionPath), list(questionPath)])
@@ -270,7 +274,7 @@ export async function watchRemoteSession(input) {
         observation = { status: "silent", messageCount: Array.isArray(snapshot?.messages) ? snapshot.messages.length : 0 }
       } else {
         const waitingFor = running
-          ? await readRemoteSessionWaitingFor(local, input.workspaceId, input.sessionId, fetchImpl, input.signal)
+          ? await readRemoteSessionWaitingFor(local, input.workspaceId, input.sessionId, input.engine, fetchImpl, input.signal)
           : null
         observation = remoteSessionObservation(snapshot, waitingFor)
       }
@@ -502,7 +506,7 @@ export async function executeRemoteSessionRequest(assignment, options) {
     const snapshot = await client.getThreadSnapshot(assignment.sessionId, { signal: options.signal })
     const running = snapshot?.status?.type === "busy" || snapshot?.status?.type === "retry"
     const waitingFor = running
-      ? await readRemoteSessionWaitingFor(local, assignment.workspaceId, assignment.sessionId, fetchImpl, options.signal)
+      ? await readRemoteSessionWaitingFor(local, assignment.workspaceId, assignment.sessionId, assignment.engine ?? undefined, fetchImpl, options.signal)
       : null
     return { action: "read", result: remoteSessionTranscriptPage(snapshot, assignment.input, waitingFor ?? null) }
   }
@@ -593,12 +597,13 @@ export async function requestJson(fetchImpl, baseUrl, token, requestPath, option
   return payload
 }
 
-export function createWorkspaceSessionClient(local, workspaceId, fetchImpl, requireModelAvailability = false) {
+export function createWorkspaceSessionClient(local, workspaceId, fetchImpl, requireModelAvailability = false, engine = undefined) {
   return createHeadlessThreadClient({
     baseUrl: local.baseUrl,
     workspaceId,
     token: local.token,
     requireModelAvailability,
+    ...(engine ? { engine } : {}),
     // Automation run receipts own recovery; desktop restart must not independently
     // resume an occurrence that its scheduler may already have settled or retried.
     fetch: (input, init) => {
@@ -810,6 +815,23 @@ async function mapBounded(items, limit, task) {
   return results
 }
 
+function modelsFromV1Providers(payload) {
+  const providers = Array.isArray(payload?.all) ? payload.all : []
+  const connected = Array.isArray(payload?.connected) ? new Set(payload.connected) : null
+  const models = []
+  for (const provider of providers) {
+    const providerId = trimmedText(provider?.id, 160)
+    if (!providerId || (connected && !connected.has(providerId))) continue
+    const entries = provider?.models && typeof provider.models === "object" ? Object.entries(provider.models) : []
+    for (const [key, model] of entries) {
+      const modelId = trimmedText(model?.id, 160) ?? trimmedText(key, 160)
+      if (!modelId) continue
+      models.push({ providerId, modelId, name: trimmedText(model?.name, 200) ?? modelId })
+    }
+  }
+  return models
+}
+
 function modelsFromV2Catalog(payload) {
   const items = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
   return items.flatMap((model) => {
@@ -847,6 +869,8 @@ export async function collectDesktopInventory(options) {
   })
   const optional = (requestPath) => localRequest(requestPath).catch(() => null)
   const listed = await localRequest("/workspaces")
+  const status = await optional("/experimental/engine-v2-preview/status")
+  const engine = status?.enabled === true && status?.chatRouting === true ? "v2" : "v1"
   const items = (Array.isArray(listed?.items) ? listed.items : [])
     .filter((item) => typeof item?.id === "string" && item.id)
     .slice(0, INVENTORY_WORKSPACE_LIMIT)
@@ -854,14 +878,14 @@ export async function collectDesktopInventory(options) {
     const base = `/workspace/${encodeURIComponent(item.id)}`
     const [defaults, catalog] = await Promise.all([
       optional(`${base}/default-model`),
-      optional(`${base}/opencode2/api/model`),
+      optional(engine === "v2" ? `${base}/opencode2/api/model` : `${base}/opencode/provider`),
     ])
-    const models = modelsFromV2Catalog(catalog)
+    const models = engine === "v2" ? modelsFromV2Catalog(catalog) : modelsFromV1Providers(catalog)
     return {
       workspaceId: String(item.id).slice(0, 240),
       name: trimmedText(item.displayName, 120) ?? trimmedText(item.name, 120) ?? "Workspace",
       active: item.id === listed?.activeId,
-      engine: "v2",
+      engine,
       defaultModel: defaultModelFrom(defaults),
       models: models.slice(0, INVENTORY_MODEL_LIMIT),
     }
@@ -1182,11 +1206,35 @@ export function createDesktopAutomationRunner(options) {
       // Decoding claims is not signature verification. Require a successful
       // authenticated Den call before replaying any journalled native effects.
       state.credentialValidated = true
+      if (isCurrent(state)) {
+        const policy = desktopEngineForcePolicy(payload)
+        if (policy) applyEnginePolicyInBackground(policy)
+      }
       return payload
     } catch (error) {
       if ([401, 403].includes(error?.status)) rejectCredential(state, error.status)
       throw error
     }
+  }
+
+  // The engine policy rides on work responses but must never fail them: while
+  // the local server starts (or if it rejects the write) the runner still has
+  // to find Automations. Every poll re-sends it, because a restarted local
+  // server forgets the last instruction; one write runs at a time, and each
+  // distinct failure is logged once.
+  let enginePolicyInFlight = false
+  let lastEnginePolicyError = null
+  const applyEnginePolicyInBackground = (policy) => {
+    if (enginePolicyInFlight || typeof options.onEnginePolicy !== "function") return
+    enginePolicyInFlight = true
+    Promise.resolve()
+      .then(() => options.onEnginePolicy(policy))
+      .then(() => { lastEnginePolicyError = null }, (error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        if (message !== lastEnginePolicyError) console.warn(`[automation-runner] engine policy not applied yet: ${message}`)
+        lastEnginePolicyError = message
+      })
+      .finally(() => { enginePolicyInFlight = false })
   }
 
   const getSessionRunner = (state) => {
@@ -1594,9 +1642,7 @@ export function createDesktopAutomationRunner(options) {
       startRemoteSessionWatch(state, assignment.commandId, {
         sessionId: assignment.sessionId,
         workspaceId: assignment.workspaceId,
-        // Den may still echo "v1" for a session an older runner created; this
-        // runner only drives v2 and never reports another engine.
-        engine: "v2",
+        engine: assignment.engine ?? undefined,
         model: followUp.model,
       }, followUp.turn)
     }

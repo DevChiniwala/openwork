@@ -17,6 +17,8 @@ RUN pnpm install --frozen-lockfile --trust-lockfile --filter openwork-server... 
 FROM node:24.22.1-bookworm-slim
 
 ARG OPENWORK_SERVER_VERSION
+ARG OPENCODE_VERSION
+ARG OPENCODE_DOWNLOAD_URL=
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl tar unzip \
@@ -27,33 +29,35 @@ COPY --from=openwork-builder /src/apps/server/dist/opencode-plugins /opt/openwor
 COPY --from=openwork-builder /src/constants.json /usr/local/constants.json
 COPY packaging/docker/microsandbox-entrypoint.sh /usr/local/bin/microsandbox-entrypoint.sh
 
-COPY --from=openwork-builder /src/apps/server/src/opencode-v2-artifacts.json /tmp/opencode-v2-artifacts.json
-
-# Bake the same pinned, integrity-checked OpenCode v2 artifact the server would
-# download, so the sandbox never fetches an engine at boot.
 RUN set -eux; \
   test -n "$OPENWORK_SERVER_VERSION"; \
+  test -n "$OPENCODE_VERSION"; \
   arch="$(dpkg --print-architecture)"; \
   case "$arch" in \
-    amd64) platform="linux-x64-baseline" ;; \
-    arm64) platform="linux-arm64" ;; \
+    amd64) asset="opencode-linux-x64-baseline.tar.gz" ;; \
+    arm64) asset="opencode-linux-arm64.tar.gz" ;; \
     *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
   esac; \
-  url="$(node -e 'const c=require("/usr/local/constants.json"); const a=require("/tmp/opencode-v2-artifacts.json"); if(a.version!==c.opencodeV2Version) throw new Error("OpenCode v2 artifact pin mismatch"); process.stdout.write(a.platforms[process.argv[1]].url)' "$platform")"; \
+  url="$OPENCODE_DOWNLOAD_URL"; \
+  if [ -z "$url" ]; then \
+    url="https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/${asset}"; \
+  fi; \
   tmpdir="$(mktemp -d)"; \
-  curl -fsSL "$url" -o "$tmpdir/opencode2.tgz"; \
-  node -e 'const fs=require("node:fs"); const crypto=require("node:crypto"); const a=require("/tmp/opencode-v2-artifacts.json"); const actual="sha512-"+crypto.createHash("sha512").update(fs.readFileSync(process.argv[2])).digest("base64"); if(actual!==a.platforms[process.argv[1]].integrity) throw new Error("OpenCode v2 archive integrity mismatch")' "$platform" "$tmpdir/opencode2.tgz"; \
-  tar -xzf "$tmpdir/opencode2.tgz" -C "$tmpdir" package/bin/opencode; \
-  install -m 0755 "$tmpdir/package/bin/opencode" /usr/local/bin/opencode2; \
+  curl -fsSL "$url" -o "$tmpdir/$asset"; \
+  tar -xzf "$tmpdir/$asset" -C "$tmpdir"; \
+  binary="$(find "$tmpdir" -type f -name opencode | head -n 1)"; \
+  test -n "$binary"; \
+  install -m 0755 "$binary" /usr/local/bin/opencode; \
   chmod +x /usr/local/bin/microsandbox-entrypoint.sh; \
-  rm -rf "$tmpdir" /tmp/opencode-v2-artifacts.json
-
-ENV OPENWORK_OPENCODE2_BIN=/usr/local/bin/opencode2
+  rm -rf "$tmpdir"
 
 RUN test -f /opt/openwork/opencode-plugins/openwork-extensions-preview.js \
-  && test -f /opt/openwork/opencode-plugins/openwork-context-v2.js \
+  && test -f /opt/openwork/opencode-plugins/openwork-capabilities-knowledge.js \
+  && test -f /opt/openwork/opencode-plugins/openwork-office-attachments.js \
+  && test -f /opt/openwork/opencode-plugins/openwork-anthropic-adaptive-thinking.js \
+  && test -f /opt/openwork/opencode-plugins/openwork-anthropic-tool-schema.js \
   && test "$(openwork-server --version)" = "$OPENWORK_SERVER_VERSION" \
-  && "$OPENWORK_OPENCODE2_BIN" --version | node -e 'const fs=require("node:fs"); const expected=require("/usr/local/constants.json").opencodeV2Version; const actual=fs.readFileSync(0,"utf8").trim().replace(/^opencode v?/, ""); if(actual!==expected) throw new Error(`OpenCode v2 version mismatch: ${actual}`)'
+  && opencode --version
 
 ENV OPENWORK_EXTENSIONS_PLUGIN_DIR=/opt/openwork/opencode-plugins
 ENV OPENWORK_DATA_DIR=/data/openwork-server

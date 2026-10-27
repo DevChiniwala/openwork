@@ -93,6 +93,8 @@ function pickEngineInfo(info: EngineInfo | null) {
     hostname: info.hostname,
     port: info.port,
     pid: info.pid,
+    opencodeBinPath: info.opencodeBinPath,
+    opencodeBinSource: info.opencodeBinSource,
     lastStdout: info.lastStdout,
     lastStderr: info.lastStderr,
     execution: pickExecution(info.execution),
@@ -126,6 +128,7 @@ function collectSecretValues(input: DiagnosticsBundleInputs) {
   addSecretValue(secrets, input.hostInfo?.clientToken);
   addSecretValue(secrets, input.hostInfo?.ownerToken);
   addSecretValue(secrets, input.hostInfo?.hostToken);
+  addSecretValue(secrets, input.engineInfo?.opencodePassword);
   return secrets;
 }
 

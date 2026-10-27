@@ -14,6 +14,7 @@ export * from "./litellm.ts";
 export * from "./litellm-provider.ts";
 export * from "./network-world.ts";
 export * from "./daytona-k3s.ts";
+export * from "./eval-engine.ts";
 export * from "./eval-ref.ts";
 export * from "./inference.ts";
 export { requestBrowserTask, requestComputerProgram } from "./browser-task.ts";

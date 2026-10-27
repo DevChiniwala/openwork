@@ -31,7 +31,7 @@ export async function prepareOpencodeV2(sidecarDir, target) {
   const staging = await mkdtemp(join(sidecarDir, ".opencode2-"));
   try {
     const archive = join(staging, "binary.tgz");
-    // Use the system download transport, which honors the OS proxy and CA setup.
+    // Use the same system download transport as the v1 sidecar preparation.
     execFileSync(process.platform === "win32" ? "curl.exe" : "curl", ["--fail", "--silent", "--show-error", "--connect-timeout", "20", "--max-time", "300", "--retry", "2", "--retry-all-errors", "--retry-max-time", "600", "--output", archive, artifact.url]);
     const bytes = await readFile(archive);
     if (`sha512-${createHash("sha512").update(bytes).digest("base64")}` !== artifact.integrity) throw new Error("OpenCode v2 archive integrity mismatch");

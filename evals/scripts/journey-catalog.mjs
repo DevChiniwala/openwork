@@ -15,11 +15,11 @@ const PACKAGED_BINARY = { env: ['OPENWORK_EVAL_ELECTRON_BINARY'] };
 const definitions = {
   'v2-chat-recovery.proof.test.ts': {
     cases: ['RECOVERY-01', 'REMOVAL-01', 'REVERT-01', 'HEARTBEAT-01', 'RECONNECT-01'].map(id => ({
-      id, optIns: ['OPENWORK_EVAL_E2E_TESTS'], example: { placement: '--local' },
+      id, engines: ['v2'], optIns: ['OPENWORK_EVAL_E2E_TESTS'], example: { placement: '--local', engine: 'v2' },
     })),
   },
   'agent-connection-journey.e2e.test.ts': {
-    cases: [{ id: 'AGENT-VIS-04', optIns: ['OPENWORK_EVAL_E2E_TESTS'], example: { placement: '--local' } }],
+    cases: [{ id: 'AGENT-VIS-04', engines: ['v1', 'v2'], optIns: ['OPENWORK_EVAL_E2E_TESTS'], example: { placement: '--local', engine: 'v1' } }],
   },
   'app-smoke.e2e.test.ts': { name: 'Open a working desktop', critical: true },
   // Installs a newer signed build from a loopback feed through Squirrel.Mac; only packaged-smoke-macos provides both builds.

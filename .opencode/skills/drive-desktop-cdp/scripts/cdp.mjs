@@ -109,13 +109,13 @@ async function waitIdle(timeoutSeconds) {
 }
 
 // Saving a provider key through the app's own endpoint makes the OpenWork
-// server mirror providers into the engine. The token never leaves the page.
+// server mirror providers into the v2 engine. The token never leaves the page.
 const refreshProviders = () => evaluate(`(async () => {
   const workspace = ${WORKSPACE};
   const port = localStorage.getItem("openwork.server.port");
   const token = localStorage.getItem("openwork.server.token");
   if (!workspace || !port || !token) throw new Error("Need an open local workspace");
-  const response = await fetch("http://127.0.0.1:" + port + "/workspace/" + workspace + "/opencode2/auth/fault-lab", {
+  const response = await fetch("http://127.0.0.1:" + port + "/workspace/" + workspace + "/opencode/auth/fault-lab", {
     method: "PUT",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: JSON.stringify({ type: "api", key: "fault" }),

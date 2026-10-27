@@ -8,7 +8,7 @@ VM. It does not move the normal test suite or use real model credentials.
 
 ```sh
 pnpm --filter @openwork/review-app build
-pnpm evals:e2e web-checkpoint-fork --local --surface web --checkpoints
+pnpm evals:e2e web-checkpoint-fork --local --engine v1 --surface web --checkpoints
 # Any spec: tag its test { tags: ["checkpoints"] } and run it with --local --checkpoints.
 # Or open a standalone world, using the merged world/source API:
 pnpm world up ./packages/freestyle/worlds/evidence-web.ts --place freestyle --source app-web=sha:<full-pushed-sha>
@@ -80,7 +80,7 @@ than invoking ACME session renewal.
 
 Preparation reuses four private, immutable layers:
 
-1. **Tools**: OS packages, package manager and the pinned, integrity-checked OpenCode v2 engine, keyed by the install recipe.
+1. **Tools**: OS packages, package manager and OpenCode, keyed by the install recipe.
 2. **Dependencies**: all workspace manifests, both lockfiles, package manager
    configuration and patches. Application source and lifecycle hooks are excluded
    during installation; only explicit registry dependency rebuilds run. Manifest

@@ -174,21 +174,6 @@ export async function readMigrationSessions(database: string): Promise<Migration
 }
 
 /**
- * How many chats the earlier engine saved. A database without its session
- * table (never used for chats) has none; any other unreadable database throws.
- */
-export async function countV1Chats(database: string): Promise<number> {
-  const db = typeof process.versions.bun === "string"
-    ? new (await import("bun:sqlite")).Database(database, { readonly: true })
-    : new (await importNodeSqlite()).DatabaseSync(database, { readOnly: true });
-  try {
-    const table: unknown = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session'").get();
-    if (!isRecord(table)) return 0;
-  } finally { db.close(); }
-  return (await readMigrationSessions(database)).length;
-}
-
-/**
  * Whether v1 has a chat created at or after `since` (ms): one that no finished
  * migration copied, so v2 cannot open it. A missing or unreadable database has none.
  */
@@ -392,101 +377,6 @@ export async function migrateOpencodeV1History(options: MigrationRequest & {
     status.error = error instanceof Error ? error.message : "History copy stopped. Retry to resume.";
     report();
   } finally { try { await converter?.close(); } finally { await ownership?.release(); } }
-}
-
-/**
- * After a failed copy (not one paused by closing OpenWork), return v2's own
- * history to the state it had before the copy wrote to it and lift the
- * pending-copy fence, so OpenCode v2 can serve new chats meanwhile.
- *
- * Target writes happen only in the `copying` stage, after a backup of the
- * target was recorded, and OpenCode v2 stays closed from that backup until
- * here, so restoring it loses nothing. The conversion checkpoint is kept so
- * the next attempt resumes; it takes a fresh backup before copying again.
- * A copying stage without a recorded backup keeps its fence and files.
- */
-export async function releaseFailedHistoryCopy(options: { storageDir: string; targetDatabase: string }): Promise<void> {
-  const path = join(options.storageDir, "history-copy", "checkpoint.json");
-  const checkpoint = await checkpointAt(path);
-  const ownership = await acquireHistoryCopyLock(options.targetDatabase);
-  try {
-    // A `completed` stage already holds every copied chat; only the fence remains.
-    if (checkpoint?.phase === "copying") {
-      if (!checkpoint.backupPath) {
-        throw new Error("The interrupted history copy has no backup to restore. Its files were preserved; retry to resume.");
-      }
-      const temporary = `${options.targetDatabase}.restore`;
-      await rm(temporary, { force: true });
-      await snapshotV1Database(checkpoint.backupPath, temporary);
-      await rm(`${options.targetDatabase}-wal`, { force: true });
-      await rm(`${options.targetDatabase}-shm`, { force: true });
-      await rename(temporary, options.targetDatabase);
-      const { backupPath: _restored, ...rest } = checkpoint;
-      const next: Checkpoint = { ...rest, phase: "copying" };
-      await writeFile(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 });
-      await rename(`${path}.tmp`, path);
-    }
-    await ownership.complete();
-  } finally { await ownership.release(); }
-}
-
-/** Hash the earlier engine's chat content through SQLite (including the WAL), not file timestamps.
- * Engine probes legitimately update project bookkeeping while no chat changes.
- */
-export async function historyRevision(database: string): Promise<string> {
-  const db = typeof process.versions.bun === "string"
-    ? new (await import("bun:sqlite")).Database(database, { readonly: true })
-    : new (await importNodeSqlite()).DatabaseSync(database, { readOnly: true });
-  try {
-    const hash = createHash("sha256");
-    db.exec("BEGIN");
-    let chunks = 0;
-    for (const table of ["session", "message", "part"]) {
-      const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((column: unknown) => {
-        if (typeof column !== "object" || column === null || !("name" in column) || typeof column.name !== "string") {
-          throw new Error("Could not inspect OpenCode v1 history columns.");
-        }
-        return column.name;
-      });
-      for (const row of db.prepare(`SELECT id FROM ${table} ORDER BY id`).iterate()) {
-        if (typeof row !== "object" || row === null || !("id" in row) || typeof row.id !== "string") {
-          throw new Error("Could not inspect OpenCode v1 history identity.");
-        }
-        for (const name of columns) {
-          const column = `"${name.replaceAll('"', '""')}"`;
-          const value: unknown = db.prepare(`SELECT typeof(${column}) AS kind,
-            length(CAST(${column} AS BLOB)) AS bytes FROM ${table} WHERE id = ?`).get(row.id);
-          if (typeof value !== "object" || value === null || !("kind" in value) || !("bytes" in value)) {
-            throw new Error("Could not inspect OpenCode v1 history content.");
-          }
-          const bytes = typeof value.bytes === "number" ? value.bytes : 0;
-          hash.update(JSON.stringify([table, row.id, name, value.kind, bytes]));
-          // Never materialize an entire large tool payload in the server heap.
-          const slice = db.prepare(`SELECT substr(CAST(${column} AS BLOB), ?, ?) AS chunk FROM ${table} WHERE id = ?`);
-          for (let offset = 1; offset <= bytes; offset += 512 * 1024) {
-            const part: unknown = slice.get(offset, 512 * 1024, row.id);
-            if (typeof part !== "object" || part === null || !("chunk" in part) || !(part.chunk instanceof Uint8Array)) {
-              throw new Error("Could not read OpenCode v1 history content.");
-            }
-            hash.update(part.chunk);
-            if (++chunks % 100 === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
-          }
-        }
-      }
-    }
-    return hash.digest("hex");
-  } finally { db.close(); }
-}
-
-export interface HistoryCopyRetry {
-  attempts: number;
-  retryAt: number;
-}
-
-/** Failed copies back off across starts, from one minute to one day. */
-export function historyCopyRetry(attempts: number, now = Date.now()): HistoryCopyRetry {
-  const next = Math.min(Math.max(0, attempts) + 1, 32);
-  return { attempts: next, retryAt: now + Math.min(60_000 * 2 ** (next - 1), 86_400_000) };
 }
 
 export type MigrationProcessRequest = MigrationRequest;

@@ -11,6 +11,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Archive,
+  ArchiveRestore,
   Blocks,
   CalendarDays,
   Clock3,
@@ -412,6 +413,12 @@ function useSessionMenuActions({
     type: "item", id: "move-to-group", label: t("session_management.move_to_group"), icon: <Tag className="size-4" />,
     submenu: groupActions, submenuClassName: { dropdown: "w-52" },
   });
+  if (ctx.onArchiveSession && !ctx.archiveDisabledReason) actions.push({
+    type: "item", id: "archive",
+    label: isArchived ? t("session_management.unarchive_session") : t("session_management.archive_session"),
+    icon: isArchived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />,
+    onSelect: () => ctx.onArchiveSession?.(sessionId, !isArchived),
+  });
   if (ctx.onOpenDeleteSession) actions.push({ type: "separator" }, {
     type: "item", id: "delete", label: t("workspace_list.delete_session"), icon: <Trash2 className="size-4" />, variant: "destructive",
     onSelect: () => ctx.onOpenDeleteSession?.(sessionId),
@@ -447,7 +454,7 @@ type SessionHoverQuickActionsProps = {
   relativeTime: string | null;
 };
 
-/** Pin → relative time — same trailing slot as status dots (Paper hover). */
+/** Pin → Archive → relative time — same trailing slot as status dots (Paper hover). */
 function SessionHoverQuickActions({
   className,
   sessionId,
@@ -455,6 +462,7 @@ function SessionHoverQuickActions({
   isArchived,
   relativeTime,
 }: SessionHoverQuickActionsProps) {
+  const ctx = useSidebarContext();
   const store = useSessionManagementStore;
 
   return (
@@ -477,6 +485,21 @@ function SessionHoverQuickActions({
       >
         {isPinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
       </Button>
+      {ctx.onArchiveSession && !ctx.archiveDisabledReason ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-5 text-muted-foreground hover:bg-transparent hover:text-foreground"
+          aria-label={isArchived ? t("session_management.unarchive_session") : t("session_management.archive_session")}
+          data-testid={`session-archive-${sessionId}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            ctx.onArchiveSession?.(sessionId, !isArchived);
+          }}
+        >
+          {isArchived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+        </Button>
+      ) : null}
       {relativeTime ? (
         <span className={SESSION_ROW_METADATA_CLASS}>
           {relativeTime}
@@ -589,6 +612,8 @@ export type AppSidebarProps = {
   onCreateSplitTaskInWorkspace: (workspaceId: string) => void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
+  onArchiveSession?: (sessionId: string, archived: boolean) => void;
+  archiveDisabledReason?: string;
   onOpenCreateGroupModal?: (workspaceId: string) => void;
   onOpenRenameWorkspace: (workspaceId: string) => void;
   onRevealWorkspace: (workspaceId: string) => void;
@@ -699,6 +724,8 @@ export function AppSidebar(props: AppSidebarProps) {
     onCreateSplitTaskInWorkspace: props.onCreateSplitTaskInWorkspace,
     onOpenRenameSession: props.onOpenRenameSession,
     onOpenDeleteSession: props.onOpenDeleteSession,
+    onArchiveSession: props.onArchiveSession,
+    archiveDisabledReason: props.archiveDisabledReason,
     onOpenCreateGroupModal: props.onOpenCreateGroupModal,
     onOpenRenameWorkspace: props.onOpenRenameWorkspace,
     onRevealWorkspace: props.onRevealWorkspace,

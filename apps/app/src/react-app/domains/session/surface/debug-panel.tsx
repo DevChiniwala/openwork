@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { appBuildInfo } from "@/app/lib/desktop";
-import { unwrap } from "@/app/lib/opencode";
-import { createClientV2 } from "@/app/lib/opencode-v2-adapter";
+import { createClient, unwrap } from "@/app/lib/opencode";
+import { createClientV2, isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import { toast } from "@/components/ui/sonner";
 import type { OpenworkServerClient } from "@/app/lib/openwork-server";
@@ -94,7 +94,9 @@ export function SessionDebugPanel(props: {
     refetchInterval: dismissed ? false : 15_000,
     queryFn: async ({ signal }) => {
       if (!props.client) throw new Error("No workspace runtime");
-      const engine = createClientV2(props.opencodeBaseUrl, undefined, { token: props.openworkToken });
+      const engine = isOpencodeV2BaseUrl(props.opencodeBaseUrl)
+        ? createClientV2(props.opencodeBaseUrl, undefined, { token: props.openworkToken })
+        : createClient(props.opencodeBaseUrl, undefined, { mode: "openwork", token: props.openworkToken });
       const started = performance.now();
       const [server, opencode] = await Promise.allSettled([
         props.client.health(),

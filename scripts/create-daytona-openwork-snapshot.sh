@@ -35,8 +35,7 @@ SNAPSHOT_DISK="${DAYTONA_SNAPSHOT_DISK:-8}"
 LOCAL_IMAGE_TAG="${DAYTONA_LOCAL_IMAGE_TAG:-openwork-daytona-snapshot:${SNAPSHOT_NAME//[^a-zA-Z0-9_.-]/-}}"
 
 OPENWORK_SERVER_VERSION="${OPENWORK_SERVER_VERSION:-$(node -e 'const fs=require("fs"); const pkg=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(pkg.version));' "$ROOT_DIR/apps/server/package.json")}"
-# The Dockerfile bakes the pinned, integrity-checked OpenCode v2 from constants.json.
-OPENCODE_V2_VERSION="$(node -e 'const fs=require("fs"); const parsed=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(parsed.opencodeV2Version || "").trim());' "$ROOT_DIR/constants.json")"
+OPENCODE_VERSION="$(node -e 'const fs=require("fs"); const parsed=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(parsed.opencodeVersion || "").trim().replace(/^v/, ""));' "$ROOT_DIR/constants.json")"
 OPENWORK_GIT_SHA="${OPENWORK_GIT_SHA:-$(git -C "$ROOT_DIR" rev-parse HEAD)}"
 
 # The image is always linux/amd64 because that is what Daytona runs. The
@@ -51,7 +50,7 @@ esac
 
 echo "Building local image $LOCAL_IMAGE_TAG" >&2
 echo "- openwork-server@$OPENWORK_SERVER_VERSION" >&2
-echo "- opencode2@$OPENCODE_V2_VERSION" >&2
+echo "- opencode@$OPENCODE_VERSION" >&2
 echo "- runtime asserts: $RUNTIME_ASSERTS (host $(uname -m))" >&2
 
 docker buildx build \
@@ -59,6 +58,7 @@ docker buildx build \
   -t "$LOCAL_IMAGE_TAG" \
   -f "$DOCKERFILE" \
   --build-arg "OPENWORK_SERVER_VERSION=$OPENWORK_SERVER_VERSION" \
+  --build-arg "OPENCODE_VERSION=$OPENCODE_VERSION" \
   --build-arg "OPENWORK_GIT_SHA=$OPENWORK_GIT_SHA" \
   --build-arg "RUNTIME_ASSERTS=$RUNTIME_ASSERTS" \
   --load \

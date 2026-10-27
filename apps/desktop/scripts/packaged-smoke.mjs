@@ -48,6 +48,7 @@ async function bootPackagedDesktop(name, binary, timeout) {
       ...process.env,
       OPENWORK_EVAL_ELECTRON_BINARY: binary,
       OPENWORK_EVAL_ELECTRON_RESOURCES_PREPARED: "1",
+      OPENWORK_EVAL_ENGINE: "v1",
       OPENWORK_EVAL_SURFACES_DIR: join(output, "profiles", name),
       // Profiles are removed when a journey ends; keep each main-process log
       // outside them so CI can upload it.
@@ -73,7 +74,7 @@ try {
   const archive = join(resources, "app.asar");
   if (!existsSync(archive)) throw new Error(`Missing packaged archive: ${archive}`);
   accessSync(binary, constants.X_OK);
-  const sidecar = join(resources, "sidecars/opencode2");
+  const sidecar = join(resources, "sidecars/opencode");
   accessSync(sidecar, constants.X_OK);
   run("sidecar", sidecar, ["--version"], 10_000, {}, output);
   const embedded = pathToFileURL(join(archive, "server/dist/embedded.js")).href;
@@ -81,7 +82,7 @@ try {
     `const server = await import(${JSON.stringify(embedded)}); if (typeof server.startEmbeddedServer !== "function") throw new Error("Missing embedded server export");`],
   15_000, { ELECTRON_RUN_AS_NODE: "1", NODE_PATH: "", NODE_OPTIONS: "" }, output);
   run("engine-cold-start", binary, ["--test", join(repo, "apps/desktop/test/engine-cold-start.test.mjs")],
-    75_000, {
+    45_000, {
       ELECTRON_RUN_AS_NODE: "1", NODE_PATH: "", NODE_OPTIONS: "",
       OPENWORK_TEST_EMBEDDED_MODULE_URL: embedded,
       OPENWORK_TEST_ENGINE_BIN: sidecar,

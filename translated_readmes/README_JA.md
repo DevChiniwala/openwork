@@ -125,9 +125,8 @@ pnpm dev:ui
 
 ```bash
 sudo pacman -S --needed webkit2gtk-4.1
+curl -fsSL https://opencode.ai/install | bash -s -- --version "$(node -e "const fs=require('fs'); const parsed=JSON.parse(fs.readFileSync('constants.json','utf8')); process.stdout.write(String(parsed.opencodeVersion||'').trim().replace(/^v/,''));")" --no-modify-path
 ```
-
-OpenCodeを別途インストールする必要はありません。OpenWorkサーバーが `constants.json` で固定されたOpenCode v2を取得し、整合性を検証してから実行します。
 
 ## アーキテクチャ（概要）
 
@@ -175,7 +174,7 @@ pnpm dev:ui
 pnpm typecheck
 pnpm build
 pnpm build:ui
-pnpm test:boot
+pnpm test:e2e
 ```
 
 ## トラブルシューティング
@@ -203,7 +202,7 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 openwork
 
 - 変更を行う前に、`AGENTS.md`、`VISION.md`、`PRINCIPLES.md`、`PRODUCT.md`、`ARCHITECTURE.md` を確認してプロダクトの目標を理解してください。
 - リポジトリ内で作業する前に、Node.js、`pnpm`、Rustツールチェーン、および `opencode` がインストールされていることを確認してください。
-- チェックアウトごとに `pnpm install` を実行し、PRを作成する前に `pnpm typecheck` と `pnpm test:boot`（または対象のスクリプトサブセット）で変更を検証してください。
+- チェックアウトごとに `pnpm install` を実行し、PRを作成する前に `pnpm typecheck` と `pnpm test:e2e`（または対象のスクリプトサブセット）で変更を検証してください。
 - PRを作成する際は `.github/pull_request_template.md` を使用し、実行したコマンド、結果、手動検証手順、およびエビデンスを含めてください。
 - CIが失敗した場合は、PRの本文でコード関連のリグレッションか外部/環境/認証のブロッカーかを分類してください。
 - 新しいPRDは `AGENTS.md` に記載されている `.opencode/skills/prd-conventions/SKILL.md` の規約に従い、`apps/app/pr/<name>.md` に追加してください。

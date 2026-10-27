@@ -54,6 +54,7 @@ function nativeFixture() {
   let interrupts = 0
   let active = false
   let pendingPermission = false
+  let routing = "v2"
   let autoReply = false
   let loseCreateResponse = false
   let localToken = "local-credential"
@@ -65,8 +66,9 @@ function nativeFixture() {
     const headers = new Headers(init.headers)
     calls.push({ path: url.pathname, method, body, headers })
     if (url.pathname === "/workspaces") return response({ activeId: "workspace_fixture", items: [{ id: "workspace_fixture" }] })
+    if (url.pathname === "/experimental/engine-v2-preview/status") return response({ enabled: routing === "v2", chatRouting: routing === "v2" })
     if (url.pathname.endsWith("/default-model")) return response({ model: { providerID: "fixture", modelID: "fixture-model" } })
-    if (url.pathname.includes("/opencode/")) return response({ code: "opencode_v1_removed", message: "This OpenCode engine was removed." }, 410)
+    if (url.pathname.includes("/opencode/")) return response({ message: "missing session" }, 404)
     const prefix = "/workspace/workspace_fixture/opencode2/api"
     if (!url.pathname.startsWith(prefix)) return response({ message: "unexpected native path" }, 404)
     const path = url.pathname.slice(prefix.length)
@@ -102,7 +104,7 @@ function nativeFixture() {
   return {
     calls, messages, fetchImpl, getLocalRuntime: async () => ({ baseUrl: "http://localhost:8787", token: localToken }),
     get created() { return created }, get sessionId() { return sessionId }, get interrupts() { return interrupts },
-    set pendingPermission(value) { pendingPermission = value },
+    set pendingPermission(value) { pendingPermission = value }, set routing(value) { routing = value },
     set active(value) { active = value }, set autoReply(value) { autoReply = value },
     set loseCreateResponse(value) { loseCreateResponse = value }, set localToken(value) { localToken = value },
   }
@@ -204,7 +206,7 @@ test("native adapter creates an empty visible session before a stable initial pr
   assert.equal(native.created, 1)
 })
 
-test("V2 forwards stable create id and verifies metadata before any prompt", async () => {
+test("V2 forwards stable create id and verifies metadata; V1 never receives those options", async () => {
   const native = nativeFixture()
   const client = createHeadlessThreadClient({
     baseUrl: "http://localhost:8787", token: "fixture-token", workspaceId: "workspace_fixture", engine: "v2", fetch: native.fetchImpl,
@@ -219,7 +221,12 @@ test("V2 forwards stable create id and verifies metadata before any prompt", asy
   assert.deepEqual(create.body.metadata, input.metadata)
   await assert.rejects(client.createThread({ ...input, metadata: { ...input.metadata, owner: "wrong_account" }, prompt: "must not run" }), { code: "creation_identity_mismatch" })
   assert.equal(native.calls.some((call) => call.path.endsWith("/prompt")), false)
-  assert.equal(native.calls.some((call) => call.path.includes("/opencode/")), false)
+  const v1 = createHeadlessThreadClient({
+    baseUrl: "http://localhost:8787", token: "fixture-token", workspaceId: "workspace_fixture", engine: "v1", fetch: native.fetchImpl,
+  })
+  const before = native.calls.length
+  await assert.rejects(v1.createThread(input), { code: "invalid_payload" })
+  assert.equal(native.calls.length, before)
   const adapter = createDesktopSessionAdapter({ ...native, creationOwner: "account_partition_fixture" })
   assert.equal(adapter.creation, "at_most_once")
   const receipt = await adapter.create(command("command_scoped"), new AbortController().signal)
@@ -260,7 +267,7 @@ test("native observation never uses the previous answer for a follow-up and neve
   assert.equal(page.historyScope, "full")
 })
 
-test("native stop compares the current turn; a restarted adapter reads v2 with fresh credentials", async () => {
+test("native stop compares the current turn; restart probes the original owning engine", async () => {
   const native = nativeFixture()
   const adapter = createDesktopSessionAdapter(native)
   const signal = new AbortController().signal
@@ -270,6 +277,7 @@ test("native stop compares the current turn; a restarted adapter reads v2 with f
   assert.equal(native.interrupts, 0)
   assert.deepEqual(await adapter.stop(receipt, { messageId: null }, signal), { stopped: false, reason: null })
   assert.equal(native.interrupts, 0)
+  native.routing = "v1"
   native.localToken = "rotated-local-credential"
   const restarted = createDesktopSessionAdapter(native)
   assert.equal((await restarted.observe(receipt, signal)).engine, "v2")
@@ -382,6 +390,45 @@ test("ambiguous native creation is journaled before effects and is not duplicate
   assert.equal(completed.at(-1).status, "failed")
 })
 
+test("V1 uncertain prompt admission fails without automatic replay", async (t) => {
+  const root = await privateDirectory(t)
+  const native = nativeFixture()
+  native.routing = "v1"
+  let prompts = 0
+  const messages = []
+  const fetchImpl = async (input, init = {}) => {
+    const url = new URL(String(input))
+    if (!url.pathname.includes("/opencode/")) return native.fetchImpl(input, init)
+    const path = url.pathname.split("/opencode")[1]
+    const respond = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } })
+    if (path === "/session" && init.method === "POST") return respond({ id: "session_fixture", title: "Remote fixture" })
+    if (path === "/session/session_fixture") return respond({ id: "session_fixture", title: "Remote fixture" })
+    if (path === "/session/session_fixture/message") return respond(messages)
+    if (path === "/session/session_fixture/todo") return respond([])
+    if (path === "/session/status") return respond({ session_fixture: { type: "idle" } })
+    if (path === "/session/session_fixture/prompt_async") {
+      prompts += 1
+      const body = JSON.parse(init.body)
+      messages.push({ info: { id: body.messageID, role: "user" }, parts: body.parts })
+      throw new TypeError("fetch failed after prompt admission")
+    }
+    throw new Error(`Unexpected V1 route ${path}`)
+  }
+  const completed = []
+  const store = createDesktopSessionJournal(root, desktopSessionRunnerPartition(denBaseUrl, account))
+  const runner = createSessionRunner({
+    adapter: createDesktopSessionAdapter({ getLocalRuntime: native.getLocalRuntime, fetchImpl }), store,
+    transport: { complete: async (_id, body) => { completed.push(body) }, report: async () => {}, completeRequest: async () => {} },
+  })
+  const signal = new AbortController().signal
+  const result = await runner.accept(command(), signal)
+  assert.equal(result.status, "failed")
+  assert.equal(result.error.code, "ambiguous_send")
+  await runner.reconcile(signal)
+  assert.equal(prompts, 1)
+  assert.equal(completed[0].error.code, "ambiguous_send")
+})
+
 test("decoded claims alone never unlock native journal replay before Den authenticates the bearer", async (t) => {
   const root = await privateDirectory(t)
   const native = nativeFixture()
@@ -431,26 +478,28 @@ test("scheduled Automation execution stays independent with a recovery-capable t
   assert.deepEqual(disk.commands, [])
 })
 
-test("a retired engine policy on work responses is ignored and never stops the runner from finding work", async (t) => {
+test("an engine policy the local server cannot take yet never stops the runner from finding work", async (t) => {
   const root = await privateDirectory(t)
   const native = nativeFixture()
   const den = runnerFixture(native)
-  // Older Den deployments still attach an engine policy to work responses.
+  // Work responses carry the engine policy; the local server is still starting.
   const fetchImpl = async (input, init = {}) => {
     const response = await den.fetchImpl(input, init)
     if (new URL(String(input)).pathname !== "/v1/automation-runner/work") return response
     return new Response(JSON.stringify({ ...(await response.json()), enginePolicy: { upgrade: true } }), { status: response.status })
   }
+  const policies = []
   const runner = createDesktopAutomationRunner({
     fetchImpl, getLocalRuntime: native.getLocalRuntime, getJournalRoot: () => root,
     remoteSessionFirstTurnWindowMs: 0,
     remoteSessionWatch: { fastPollMs: 10, slowPollMs: 10 },
     remoteSessionRequestPoll: { pollMs: 10 },
     waitBeforeReconnect: (_ms, signal) => new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true })),
+    onEnginePolicy: async (policy) => { policies.push(policy); throw new Error("OpenWork engine policy service unavailable") },
   })
   t.after(() => runner.stop())
   configure(runner, legacyCapabilities)
   await eventually(() => den.calls.some((call) => call.path.endsWith("/complete")))
   assert.ok(den.calls.some((call) => call.path.endsWith("/claim")), "the Automation was still claimed")
-  assert.equal(native.calls.some((call) => call.path.startsWith("/experimental/")), false, "no engine policy was written locally")
+  assert.deepEqual(policies[0], { upgrade: true }, "the policy was still offered to the local server")
 })
