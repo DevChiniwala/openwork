@@ -19,9 +19,10 @@ name: Dry run on a copy of production data
 #
 # Needs, on the prod-data-dry-run environment:
 #   secrets PLANETSCALE_DRY_RUN_TOKEN_ID and PLANETSCALE_DRY_RUN_TOKEN: a
-#   service token limited to the Den database with read_branch, create_branch,
-#   delete_branch, restore_production_branch_backups and connect_branch (never
-#   connect_production_branch), and Data Branching enabled for the organization.
+#   service token limited to the Den database with read_database, read_branch,
+#   create_branch, delete_branch, connect_branch, read_backups and
+#   restore_production_branch_backup (never connect_production_branch or
+#   delete_production_branch).
 #   variable PLANETSCALE_DRY_RUN_DATABASE: the Den database name.
 
 on:
@@ -59,7 +60,7 @@ jobs:
     env:
       PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_DRY_RUN_TOKEN_ID }}
       PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_DRY_RUN_TOKEN }}
-      PLANETSCALE_ORG: ben-prologe
+      PLANETSCALE_ORG: different-ai
       SOURCE_BRANCH: main
       DATABASE: ${{ vars.PLANETSCALE_DRY_RUN_DATABASE }}
       BRANCH: dry-run-${{ github.run_id }}-${{ github.run_attempt }}

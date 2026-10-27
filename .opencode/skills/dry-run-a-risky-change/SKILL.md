@@ -93,12 +93,12 @@ the job ends, also on failure or cancel. The PlanetScale MCP cannot do this
 
 What the workflow needs (set once, by a person, never pasted in chat): on the
 `prod-data-dry-run` environment, a PlanetScale service token limited to the
-Den database with `read_branch`, `create_branch`, `delete_branch`,
-`restore_production_branch_backups` and `connect_branch` (never
-`connect_production_branch`) as `PLANETSCALE_DRY_RUN_TOKEN_ID` /
+Den database with `read_database`, `read_branch`, `create_branch`,
+`delete_branch`, `connect_branch`, `read_backups` and
+`restore_production_branch_backup` (never `connect_production_branch` or
+`delete_production_branch`) as `PLANETSCALE_DRY_RUN_TOKEN_ID` /
 `PLANETSCALE_DRY_RUN_TOKEN`, the database name as variable
-`PLANETSCALE_DRY_RUN_DATABASE`, and Data Branching enabled for the PlanetScale
-organization. A restored branch costs as much as the production branch while
+`PLANETSCALE_DRY_RUN_DATABASE`, and a restored branch costs as much as the production branch while
 it exists.
 
 Guards the workflow already applies: manual runs only, a required reviewer,
