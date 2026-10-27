@@ -47,7 +47,7 @@ test("a contractor's agent asks before commands, runs the ones the team allows, 
       ["skill", "*", "deny"],
       ["mcp", "*", "deny"],
     ].map(([action, resource, effect]) => ({ action, resource, effect, source: "Contractors" }));
-    evidence.recordAssertionEvidence(`rules Riley's OpenWork enforces (${world.engine})`, describeRules(rules), JSON.stringify(rules) === JSON.stringify(expected));
+    evidence.recordAssertionEvidence("rules Riley's OpenWork enforces", describeRules(rules), JSON.stringify(rules) === JSON.stringify(expected));
     expect(rules).toEqual(expected);
     await user.screenshot();
   });
@@ -165,7 +165,7 @@ test("a contractor's agent asks before commands, runs the ones the team allows, 
     await world.prepareTurn(prompt, `Skill unavailable. ${randomUUID()}`, loadSkill(folderSkills.blocked.name));
     await user.type("composer", prompt);
     await user.click("Run task");
-    // v2 may offer no skill tool at all, so the scripted model ends the turn with an error instead of a reply.
+    // The engine may offer no skill tool at all, so the scripted model ends the turn with an error instead of a reply.
     await probe.eventually(async () => (await world.mock.agentRequests({ promptMarker: prompt })).some((request) => request.kind === "final" || request.kind === "error"),
       { within: 120_000, label: "the blocked-skill turn ends", until: Boolean });
     await user.notSee({ text: folderSkills.blocked.marker });
@@ -184,25 +184,25 @@ test("a contractor's agent asks before commands, runs the ones the team allows, 
     await user.screenshot();
   });
 
-  const restartedCommand = "printf '%s' 'saved after the restart' > 'restart-note.txt'";
+  const reloadedCommand = "printf '%s' 'saved after the reload' > 'reload-note.txt'";
 
-  await step("before: Riley's engine restarts with the Contractors rules already stored, and starts", async () => {
-    const restarted = await world.restartEngine();
-    evidence.recordAssertionEvidence(`the ${world.engine} engine after a restart with stored rules`, restarted.running ? "running" : `not running: ${restarted.error ?? "unknown"}`, restarted.running);
-    expect(restarted.running).toBe(true);
-    // Reopen the app after the fixture swaps engine routing, matching the
-    // quit-and-reopen scenario instead of retaining the stopped engine's state.
+  await step("before: Riley's engine reloads with the Contractors rules already stored, and keeps running", async () => {
+    const reloaded = await world.reloadEngine();
+    evidence.recordAssertionEvidence("the engine after a reload with stored rules", reloaded.running ? "running" : `not running: ${reloaded.error ?? "unknown"}`, reloaded.running);
+    expect(reloaded.running).toBe(true);
+    // Reopen the app after the reload, matching the quit-and-reopen scenario
+    // instead of retaining state from before the reload.
     await user.reload();
     await user.see("composer", { editable: true, timeoutMs: 120_000 });
     await user.screenshot();
   });
 
-  await step("after: the restarted engine still blocks printf before it runs", async () => {
-    await turn("Save a note after the restart.", [shell(restartedCommand)]);
-    const call = await settled(world.shellTool, (input) => input.command === restartedCommand);
-    const wrote = await world.wrote("restart-note.txt");
+  await step("after: the reloaded engine still blocks printf before it runs", async () => {
+    await turn("Save a note after the reload.", [shell(reloadedCommand)]);
+    const call = await settled(world.shellTool, (input) => input.command === reloadedCommand);
+    const wrote = await world.wrote("reload-note.txt");
     const told = reason(call);
-    evidence.recordAssertionEvidence("printf after the restart", `note written: ${wrote}; the agent was told: ${told || "(nothing)"}`,
+    evidence.recordAssertionEvidence("printf after the reload", `note written: ${wrote}; the agent was told: ${told || "(nothing)"}`,
       !wrote && call?.status === "error" && told.includes('"printf *" is blocked for Contractors'));
     expect(wrote).toBe(false);
     expect(call?.status).toBe("error");

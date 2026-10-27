@@ -3,20 +3,19 @@ import { join } from "node:path";
 import { createNativeConnector, denFetch } from "@openwork/behaviors";
 import { localMysqlIsRunning, localRedisIsRunning, SkipError, type Place, type Seed } from "@openwork/env";
 import { startMockGoogle } from "@openwork/labs";
-import { engineParity } from "./engine-parity.ts";
-import { parityRecord } from "./engine-gateway-parity.ts";
+import { engineWorkspace, responseRecord } from "./engine-workspace.ts";
 
 function text(value: unknown): string {
   if (typeof value !== "string") throw new Error("Expected string response field");
   return value;
 }
 
-/** Real app, server, v2 engine and Den gateway; only Google and inference are synthetic. */
+/** Real app, server, engine and Den gateway; only Google and inference are synthetic. */
 export async function engineDriveUpload(seed: Seed, context: { place: Place }) {
   if (process.env.OPENWORK_EVAL_DEN_API_URL) throw new SkipError("owned local Den for loopback Google witnesses");
   if (!await localMysqlIsRunning() || !await localRedisIsRunning()) throw new SkipError("local MySQL and Redis");
   await using setup = new AsyncDisposableStack();
-  const base = setup.use(await engineParity(seed, context));
+  const base = setup.use(await engineWorkspace(seed, context));
   const mailboxes = { selected: "drive-selected@test.example", other: "drive-default@test.example" };
   const google = setup.use(await startMockGoogle({ accounts: Object.values(mailboxes), port: 0 }));
   const preload = new URL("../packages/labs/src/gmail-draft-egress.mjs", import.meta.url);
@@ -31,7 +30,7 @@ export async function engineDriveUpload(seed: Seed, context: { place: Place }) {
     const connector = await createNativeConnector(den.admin, { providerKey: "google-workspace", name, clientId: "fixture-client", clientSecret: "synthetic-secret", features: ["driveFile"] });
     const start = await denFetch(member!, `/v1/mcp-connections/${connector.id}/connect/start`, { headers: { authorization: `Bearer ${member!.token}` } });
     if (!start.response.ok) throw new Error(`Google OAuth start HTTP ${start.response.status}`);
-    const url = new URL(text(parityRecord(start.body).authorizeUrl));
+    const url = new URL(text(responseRecord(start.body).authorizeUrl));
     if (url.origin !== google.apiUrl) throw new Error("Refusing non-witness Google OAuth");
     url.searchParams.set("prompt", "consent select_account");
     const chooser = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(10_000) });
@@ -43,9 +42,8 @@ export async function engineDriveUpload(seed: Seed, context: { place: Place }) {
   const selectedId = await connect("Drive Selected", mailboxes.selected);
   const issued = await denFetch(member, "/v1/mcp/token", { method: "POST", headers: { authorization: `Bearer ${member.token}` }, body: JSON.stringify({ scopes: ["mcp:read", "mcp:write"] }) });
   if (!issued.response.ok) throw new Error(`MCP token HTTP ${issued.response.status}`);
-  const token = text(parityRecord(issued.body).token);
-  const workspace = /\/workspace\/([^/]+)\/session/.exec(await base.route())?.[1];
-  if (!workspace) throw new Error("Missing Drive upload workspace");
+  const token = text(responseRecord(issued.body).token);
+  const workspace = await base.workspaceId();
   const connected = await base.request(`/workspace/${workspace}/mcp/openwork-cloud/reconcile`, "POST", {
     config: { type: "remote", url: `${den.ref.apiUrl}/mcp/agent`, enabled: true, oauth: false, headers: { Authorization: `Bearer ${token}` } }, trigger: "drive-upload-fixture",
   });

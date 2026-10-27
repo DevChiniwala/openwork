@@ -1,12 +1,16 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { opencodeDataDirs } from "@openwork/paths";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { opencodeCacheDirs, opencodeDataDirs } from "@openwork/paths";
 import { ORGANIZATION_PROVIDER_ID } from "./organization-provider-gate.js";
+import { resolveOpencodeModelsUrl } from "./opencode-models-url.js";
 import { loopbackFetch } from "./server-fetch.js";
-import type { ServerConfig } from "./types.js";
 
-/** Where the running OpenCode v1 engine answers, with its Basic credentials. */
-type EngineV1Connection = Pick<ServerConfig, "opencodeBaseUrl" | "opencodeUsername" | "opencodePassword">;
+/**
+ * Built-in provider metadata by provider id, in the models.dev shape
+ * (`npm`, `api`, `env`, `models`). Reads never fail: an unavailable catalog
+ * is empty and its providers are reported as `metadata`.
+ */
+export type LocalProviderCatalog = () => Promise<ReadonlyMap<string, unknown>>;
 
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 
@@ -15,7 +19,7 @@ const record = (value: unknown): value is Record<string, unknown> => value !== n
  * - `policy`: the organization allows only its own providers.
  * - `oauth`: a sign-in (such as ChatGPT) that needs the engine's own sign-in flow.
  * - `unsupported`: no built-in v2 adapter, or an endpoint the mirror does not trust.
- * - `metadata`: OpenCode v1 did not describe it in a shape the mirror can translate.
+ * - `metadata`: the model catalog did not describe it in a shape the mirror can translate.
  * - `credentials`: its declared credential is missing.
  */
 export type EngineV2SkippedProviderReason = "policy" | "oauth" | "unsupported" | "metadata" | "credentials";
@@ -32,8 +36,16 @@ export interface LocalProviderAuth {
   signIns: Set<string>;
 }
 
-/** Only the active v1 profile, never another installation's fallback directory. */
-export async function readLocalProviderAuth(path = join(opencodeDataDirs()[0], "auth.json")): Promise<LocalProviderAuth> {
+/**
+ * API keys people saved on this computer. OpenWork owns this file: the
+ * pre-v2 engine wrote it, so existing keys keep working without an import.
+ * Only the active profile, never another installation's fallback directory.
+ */
+export function localProviderAuthPath(): string {
+  return join(opencodeDataDirs()[0], "auth.json");
+}
+
+export async function readLocalProviderAuth(path = localProviderAuthPath()): Promise<LocalProviderAuth> {
   let value: unknown;
   try { value = JSON.parse(await readFile(path, "utf8")); } catch (error) {
     if (record(error) && error.code === "ENOENT") return { apiKeys: new Map(), signIns: new Set() };
@@ -55,6 +67,103 @@ export async function readLocalProviderAuth(path = join(opencodeDataDirs()[0], "
 /** OAuth credentials need their native authorization flow and are not API keys. */
 export async function readLocalProviderApiKeys(path?: string): Promise<Map<string, string>> {
   return (await readLocalProviderAuth(path)).apiKeys;
+}
+
+async function readAuthFile(path: string): Promise<Record<string, unknown>> {
+  try {
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!record(value)) throw new Error("Could not read local provider credentials");
+    return value;
+  } catch (error) {
+    if (record(error) && error.code === "ENOENT") return {};
+    // Never replace a file we could not understand: it may hold other sign-ins.
+    throw new Error("Could not read local provider credentials");
+  }
+}
+
+let authWrites: Promise<unknown> = Promise.resolve();
+
+/**
+ * Save or remove one provider's credential, keeping every other entry
+ * (including sign-ins this version cannot use) byte-for-byte. Writes are
+ * serialized and atomic, and the file stays private to this user.
+ */
+export function writeLocalProviderAuth(providerId: string, auth: { type: "api"; key: string } | null, path = localProviderAuthPath()): Promise<void> {
+  const id = providerId.trim();
+  if (!id || ORGANIZATION_PROVIDER_ID.test(id)) return Promise.reject(new Error("This provider is managed by your organization"));
+  const write = authWrites.then(async () => {
+    const current = await readAuthFile(path);
+    if (auth === null) {
+      if (!Object.hasOwn(current, id)) return;
+      delete current[id];
+    } else {
+      current[id] = { type: "api", key: auth.key };
+    }
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    const temporary = `${path}.${process.pid}.tmp`;
+    try {
+      await writeFile(temporary, `${JSON.stringify(current, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      await chmod(temporary, 0o600);
+      await rename(temporary, path);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  });
+  authWrites = write.catch(() => undefined);
+  return write;
+}
+
+const CATALOG_TTL_MS = 60 * 60 * 1000;
+
+function catalogEntries(value: unknown): Map<string, unknown> {
+  return new Map(record(value) ? Object.entries(value).filter(([, provider]) => record(provider)) : []);
+}
+
+/**
+ * The same model catalog OpenCode v2 reads (`OPENCODE_MODELS_URL`), cached in
+ * `cachePath` for offline starts. When neither is available, the catalog an
+ * earlier engine cached on this computer is used.
+ */
+export function createLocalProviderCatalog(options: { cachePath: string; env?: NodeJS.ProcessEnv; fetch?: typeof loopbackFetch }): LocalProviderCatalog {
+  let cached: { at: number; entries: ReadonlyMap<string, unknown> } | undefined;
+  let pending: Promise<ReadonlyMap<string, unknown>> | undefined;
+  const env = options.env ?? process.env;
+  const readFirst = async (paths: string[]): Promise<Map<string, unknown>> => {
+    for (const path of paths) {
+      try {
+        const entries = catalogEntries(JSON.parse(await readFile(path, "utf8")));
+        if (entries.size > 0) return entries;
+      } catch { /* try the next cache */ }
+    }
+    return new Map();
+  };
+  const load = async (): Promise<ReadonlyMap<string, unknown>> => {
+    if (!env.OPENCODE_DISABLE_MODELS_FETCH) {
+      try {
+        const base = (await resolveOpencodeModelsUrl({ env })).replace(/\/+$/, "");
+        const response = await (options.fetch ?? loopbackFetch)(`${base}/api.json`, { signal: AbortSignal.timeout(10_000) });
+        if (response.ok) {
+          const text = await response.text();
+          const entries = catalogEntries(JSON.parse(text));
+          if (entries.size > 0) {
+            await mkdir(dirname(options.cachePath), { recursive: true });
+            await writeFile(`${options.cachePath}.tmp`, text, { encoding: "utf8", mode: 0o600 });
+            await rename(`${options.cachePath}.tmp`, options.cachePath);
+            return entries;
+          }
+        }
+      } catch { /* offline: use a cached catalog */ }
+    }
+    return readFirst([options.cachePath, ...opencodeCacheDirs({ env }).map((directory) => join(directory, "models.json"))]);
+  };
+  return async () => {
+    if (cached && Date.now() - cached.at < CATALOG_TTL_MS) return cached.entries;
+    pending ??= load().then((entries) => {
+      if (entries.size > 0) cached = { at: Date.now(), entries };
+      return entries;
+    }).finally(() => { pending = undefined; });
+    return pending;
+  };
 }
 
 type Normalized = { definition: Record<string, unknown> } | { reason: "metadata" };
@@ -86,10 +195,10 @@ function modelsDevModel(id: string, model: Record<string, unknown>, api: Record<
 }
 
 /**
- * Translate a GET /provider entry into the models.dev shape the v2 mirror
- * maps. OpenCode v1 1.18+ answers with Provider.Info: no top-level `npm` or
- * `api`; each model carries `api: { id, url, npm }` and `capabilities`. Older
- * engines answer in the models.dev shape, which is kept.
+ * Translate a catalog entry into the models.dev shape the v2 mirror maps.
+ * The model catalog already uses that shape, which is kept. The pre-v2
+ * engine's Provider.Info shape (no top-level `npm` or `api`; each model
+ * carries `api: { id, url, npm }` and `capabilities`) is still translated.
  *
  * Catalog responses are never a source of credentials or destinations: the
  * provider's `key`, `options` (which can hold `apiKey`, `baseURL`, a sign-in
@@ -137,13 +246,13 @@ export interface LocalProviderOptions {
 }
 
 /**
- * Providers connected in OpenCode v1 (auth.json) that have no OpenWork
+ * Providers connected on this computer (auth.json) that have no OpenWork
  * runtime definition, resolved with trusted built-in metadata from the
- * running v1 engine. Organization providers are mirrored from their own
+ * model catalog. Organization providers are mirrored from their own
  * definitions and are not part of this list.
  */
 export async function resolveLocalProviders(
-  config: EngineV1Connection,
+  catalog: LocalProviderCatalog,
   auth: LocalProviderAuth,
   configured: Record<string, unknown>,
   options: LocalProviderOptions = {},
@@ -158,18 +267,11 @@ export async function resolveLocalProviders(
       resolved.push({ id, status: "skipped", reason: "oauth" });
     } else wanted.push(id);
   }
-  if (!wanted.length || !config.opencodeBaseUrl) return resolved;
-  const url = new URL("/provider", config.opencodeBaseUrl);
-  const response = await loopbackFetch(url.toString(), { headers: {
-    Authorization: `Basic ${Buffer.from(`${config.opencodeUsername}:${config.opencodePassword}`).toString("base64")}`,
-  }, signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error("Could not read locally connected provider metadata");
-  const value: unknown = await response.json();
-  const catalog = new Map((record(value) && Array.isArray(value.all) ? value.all : []).flatMap(provider =>
-    record(provider) && typeof provider.id === "string" ? [[provider.id, provider] as const] : []));
+  if (!wanted.length) return resolved;
+  const entries = await catalog();
   for (const id of wanted) {
     const apiKey = auth.apiKeys.get(id) ?? "";
-    const entry = catalog.get(id);
+    const entry = entries.get(id);
     const normalized = normalizeLocalProviderDefinition(entry);
     resolved.push("definition" in normalized
       ? { id, status: "ready", definition: normalized.definition, apiKey }
@@ -180,12 +282,12 @@ export async function resolveLocalProviders(
 
 /** The mirror's view: definitions to map, and what will not reach the engine. */
 export async function localProviderDefinitions(
-  config: EngineV1Connection,
+  catalog: LocalProviderCatalog,
   auth: LocalProviderAuth,
   configured: Record<string, unknown>,
   options: LocalProviderOptions = {},
 ): Promise<{ providers: Record<string, unknown>; skipped: EngineV2SkippedProvider[] }> {
-  const resolved = await resolveLocalProviders(config, auth, configured, options);
+  const resolved = await resolveLocalProviders(catalog, auth, configured, options);
   return {
     providers: Object.fromEntries(resolved.flatMap(provider => provider.status === "ready" ? [[provider.id, provider.definition]] : [])),
     skipped: resolved.flatMap(provider => provider.status === "skipped" ? [{ id: provider.id, reason: provider.reason }] : []),

@@ -127,7 +127,7 @@ export function useSessionHistoryPages(input: {
   initial: OpenworkSessionHistory | null;
   initialBaseline?: UIMessage[];
   saved: SessionScrollState;
-  readSnapshot: (signal: AbortSignal, window?: OpeningHistoryWindow, options?: { desktopTransport: "main" }) => Promise<OpenworkSessionHistory>;
+  readSnapshot: (signal: AbortSignal, window?: OpeningHistoryWindow) => Promise<OpenworkSessionHistory>;
   complete: boolean;
 }) {
   const client = useQueryClient();
@@ -271,7 +271,7 @@ export function useSessionHistoryPages(input: {
       publish({ ...state, pages: state.pages.map((page, position) => position === index ? opening : page) }, false, input.initialBaseline, [opening]);
     }
   }, [client, historyKey, input.initial, input.initialBaseline, input.complete, input.saved, input.sessionId, input.owner, install, publish, scope]);
-  const load = useCallback(async (requestedDirection: Direction | "restore", options?: { desktopTransport: "main" }, rejectCancelled = false): Promise<void> => {
+  const load = useCallback(async (requestedDirection: Direction | "restore", rejectCancelled = false): Promise<void> => {
     if (requestedDirection === "restore" && scope.restoreCancelled) return;
     const direction = requestedDirection === "restore" ? "older" : requestedDirection;
     if (direction === "latest" && scope.request && scope.active && currentScope.current === scope) {
@@ -305,7 +305,7 @@ export function useSessionHistoryPages(input: {
         queryKey, signal: controller.signal, sessionId: input.sessionId,
         read: (signal) => {
           readSignal = signal;
-          return input.readSnapshot(signal, { limit, ...(before === null ? {} : { before }) }, options);
+          return input.readSnapshot(signal, { limit, ...(before === null ? {} : { before }) });
         },
       });
       if (rejectCancelled && readSignal?.aborted) throw new CancelledError();
@@ -371,7 +371,7 @@ export function useSessionHistoryPages(input: {
       }
     }
   }, [client, historyKey, pageKey, input.complete, input.owner, input.readSnapshot, input.sessionId, publish, readSource, scope]);
-  const refreshForStop = useCallback(async (options?: { desktopTransport: "main" }) => {
+  const refreshForStop = useCallback(async () => {
     if (!scope.active || currentScope.current !== scope) throw new CancelledError();
     const pending = scope.request;
     pending?.abort();
@@ -379,7 +379,7 @@ export function useSessionHistoryPages(input: {
     if (!scope.active || currentScope.current !== scope) throw new CancelledError();
     if (scope.request === pending) scope.request = null;
     const before = scope.state;
-    await load("refresh", options, true);
+    await load("refresh", true);
     if (!scope.active || currentScope.current !== scope || scope.state === before || !scope.snapshot) throw new CancelledError();
     return scope.snapshot;
   }, [client, load, pageKey, scope]);
@@ -469,9 +469,9 @@ export function useSessionHistoryPages(input: {
     }
     render((value) => value + 1);
   }, [scope]);
-  const readLatestForSend = useCallback(async (options?: { desktopTransport: "main" }) => {
+  const readLatestForSend = useCallback(async () => {
     cancelRestore();
-    await load("latest", options);
+    await load("latest");
     if (!scope.active || currentScope.current !== scope) throw new CancelledError();
     const latest = scope.state?.pages.at(-1);
     if (!latest || latest.pagination.before !== undefined || scope.state?.bridge.length) throw new Error("Latest conversation history is unavailable.");

@@ -111,6 +111,7 @@ Skills own mechanics; this README owns the map and vocabulary.
 | Author a spec | `write-a-spec` | Add a step to a core journey in `evals/core`, or a proof in `evals/proofs`. |
 | Run tests | `run-tests` | Run a selected spec; the CLI chooses and reports placement. |
 | Failing or red run | `diagnose-a-red-run` | Classify a failure before changing code. |
+| Slow CI or slow spec | `speed-up-ci` | Measure time to green, find where a job's seconds go, land one measured speedup at a time. |
 | Design notes on a PR | `fix-design-notes` | Read the design notes in the Evidence preview check, fix what they found, prove the note is gone. |
 | Missing secret or environment variable | `get-env-var` | Load a required team secret into the shell. |
 | Drive the app by hand over CDP | `drive-desktop-cdp` | Check a UI change in `dev-app-web --browser` (headless) or, when the desktop shell matters, a desktop window. |
@@ -151,16 +152,15 @@ judging is deferred by default; add `--with-llm-vision` to judge inline. Use
 existing evidence. Without a placement flag, the CLI probes Daytona auth and
 prints `placement: <daytona|local> (<reason>)` for the placement asserted in the
 runtime environment. `--local` and `--daytona` override inherited placement;
-transport, engine, and surface selectors are never inferred as source opt-ins.
+transport and surface selectors are never inferred as source opt-ins.
 
-Registered cases select a concrete world and can select their engine without
-raw environment variables. `CONT-01` and `SWITCH-10` are fixed headless app-web
-worlds. Use `pnpm evals:e2e --list` to see the registered cases. The legacy
+Registered cases select a concrete world without raw environment variables.
+Use `pnpm evals:e2e --list` to see the registered cases and their commands. The legacy
 `--surface` selector is migration validation only: it cannot change a declared
 world's implementation, and selecting Electron for either case is rejected.
 
 ```bash
-pnpm evals:e2e streamed-markdown-answer --local --engine v2 --case CONT-01
+pnpm evals:e2e v2-chat-recovery --local --case RECOVERY-01
 ```
 
 A focused web case avoids legacy Den/Electron suite preparation, but still
@@ -550,10 +550,11 @@ Without a placement flag, the CLI uses Daytona when `daytona snapshot list`
 succeeds and local otherwise, then prints the placement and reason. `--daytona`
 requires Daytona; `--local` forces local.
 
-Use `--engine v1|v2` for a named spec. A registered `--case` selects its concrete
-world; the migrated cases use headless app-web on either placement. Legacy cases
-in files run without `--case` retain their existing environment-driven behavior.
-The test-evidence header records the selected engine.
+Every test runs on OpenCode v2, the only engine; there is no engine selector.
+`--engine v2` is accepted and ignored so older commands keep working, and any
+other value is an error. A registered `--case` selects its concrete world.
+Evidence records written before OpenCode v1 was removed may still carry an
+`engine` field; readers accept it, and new records omit it.
 
 Use direct CDP tools only to explore or debug. Convert repeatable coverage into
 a testkit test.

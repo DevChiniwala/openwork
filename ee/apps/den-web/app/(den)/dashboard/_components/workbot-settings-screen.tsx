@@ -23,6 +23,7 @@ import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { providerIconSlug } from "./library-models";
 import { useSaveWorkbotModel, useTestWorkbotDefaultModel, useWorkbotSettings } from "./workbot-settings-data";
 import { WorkbotProactiveSection } from "./workbot-proactive-section";
+import { WorkbotProactiveHealthSection } from "./workbot-proactive-health";
 
 /** The name Workbot introduces itself with: the organization's brand name, unless it is unset or OpenWork. */
 function workbotName(metadata: string | null): string {
@@ -291,6 +292,9 @@ export function WorkbotSettingsScreen() {
           ) : null}
           {proactive && orgId ? (
             <WorkbotProactiveSection orgId={orgId} canManage={canManage} connectorsHref={getMcpConnectionsRoute(orgSlug)} />
+          ) : null}
+          {proactive && orgId && orgFeatureEnabled(orgContext, "workbotAgentHealthView") ? (
+            <WorkbotProactiveHealthSection orgId={orgId} />
           ) : null}
           {!canManage && settings ? (
             <p className="flex items-center gap-2 px-1 text-[13px] text-gray-500">

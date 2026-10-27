@@ -10,19 +10,25 @@ const RECOVERY_MAX_BACKOFF_MS = 5 * 60_000;
 /** A new prompt is watched this long for an interruption worth resuming. */
 const OBSERVING_WINDOW_MS = 30_000;
 const MAX_TASKS = 1_000;
-const recordSchema = z.object({
+// Journals written before OpenCode v2 became the only engine may hold "v1"
+// records; they parse, and are dropped on load because v1 no longer runs.
+const persistedRecordSchema = z.object({
   workspaceId: z.string(), directory: z.string(), sessionId: z.string(),
   engine: z.enum(["v1", "v2"]),
   phase: z.enum(["observing", "running", "blocked", "claimed"]),
   userId: z.string().nullable(), shutdown: z.boolean(),
 });
-type RecoveryRecord = z.infer<typeof recordSchema>;
+type PersistedRecoveryRecord = z.infer<typeof persistedRecordSchema>;
+type RecoveryRecord = PersistedRecoveryRecord & { engine: "v2" };
 type Engine = RecoveryRecord["engine"];
-const store = createWorkspaceKvStore<RecoveryRecord[]>({
+const store = createWorkspaceKvStore<PersistedRecoveryRecord[]>({
   tableName: "desktop_task_recovery", valueColumn: "state_json",
-  parse: (json) => z.array(recordSchema).max(MAX_TASKS).parse(JSON.parse(json)),
+  parse: (json) => z.array(persistedRecordSchema).max(MAX_TASKS).parse(JSON.parse(json)),
   serialize: JSON.stringify,
 });
+function isV2Record(record: PersistedRecoveryRecord): record is RecoveryRecord {
+  return record.engine === "v2";
+}
 const RECOVERY_PROMPT = "Continue the interrupted task from the current state. First inspect the conversation and workspace to verify which actions already completed. Preserve completed work, do not repeat side effects, and finish only what remains. Stop and ask if an earlier action's outcome cannot be verified.";
 
 /** One desktop server owns this journal; no transcript, prompt, or credentials are persisted. */
@@ -31,8 +37,8 @@ export async function createTaskRecovery(
   request: (request: Request) => Promise<Response>,
   beforeResume: () => Promise<void> = async () => {},
   options: {
-    /** False while an engine is stopped (v2 after switching back to v1): its records wait instead of polling 503s. */
-    engineAvailable?: (engine: Engine) => boolean;
+    /** False while OpenCode v2 is not running: records wait instead of polling 503s. */
+    engineAvailable?: () => boolean;
   } = {},
 ) {
   const records = new Map<string, RecoveryRecord>();
@@ -45,7 +51,7 @@ export async function createTaskRecovery(
   const key = (record: Pick<RecoveryRecord, "workspaceId" | "engine" | "sessionId">) =>
     JSON.stringify([record.workspaceId, record.engine, record.sessionId]);
   for (const record of await store.get(config, "desktop") ?? []) {
-    if (record.phase !== "running") continue;
+    if (record.phase !== "running" || !isV2Record(record)) continue;
     records.set(key(record), record);
     startup.add(key(record));
   }
@@ -81,7 +87,7 @@ export async function createTaskRecovery(
     failures.set(recordKey, { count, retryAt: Date.now() + delay });
   };
   const call = async (record: RecoveryRecord, path: string, body?: unknown) => {
-    const mount = `/workspace/${encodeURIComponent(record.workspaceId)}/${record.engine === "v2" ? "opencode2/api" : "opencode"}`;
+    const mount = `/workspace/${encodeURIComponent(record.workspaceId)}/opencode2/api`;
     const req = new Request(`http://127.0.0.1:${config.port}${mount}${path}`, {
       method: body === undefined ? "GET" : "POST",
       headers: { authorization: `Bearer ${config.token}`, "content-type": "application/json" },
@@ -100,50 +106,40 @@ export async function createTaskRecovery(
         }
         if (body !== undefined) { await response.body?.cancel(); return null; }
         const payload: unknown = await response.json();
-        return record.engine === "v2" && isRecord(payload) ? payload.data : payload;
+        return isRecord(payload) ? payload.data : payload;
       }),
       new Promise<never>((_, reject) => req.signal.addEventListener("abort", () => reject(new Error("Recovery request timed out")), { once: true })),
     ]);
   };
   const observe = async (record: RecoveryRecord) => {
-    const v2 = record.engine === "v2";
     const sessionPath = `/session/${encodeURIComponent(record.sessionId)}`;
-    const [session, statuses, messages, permissions, questions, nativePermissions] = await Promise.all([
-      call(record, sessionPath), call(record, v2 ? "/session/active" : "/session/status"),
-      call(record, `${sessionPath}/${v2 ? "context" : "message?limit=100"}`),
-      call(record, v2 ? `${sessionPath}/permission` : "/permission"),
+    const [session, statuses, messages, permissions, questions] = await Promise.all([
+      call(record, sessionPath), call(record, "/session/active"),
+      call(record, `${sessionPath}/context`),
+      call(record, `${sessionPath}/permission`),
       // Only this session's forms decide `blocked`; the workspace-wide list
       // pages every conversation the engine has and fails with any of them.
-      call(record, v2 ? `${sessionPath}/form` : "/question"),
-      v2 ? [] : call(record, `/api${sessionPath}/permission`),
+      call(record, `${sessionPath}/form`),
     ]);
     if (!isRecord(session) || !isRecord(statuses) || !Array.isArray(messages)
       || !Array.isArray(permissions) || !Array.isArray(questions)) throw new Error("Invalid recovery snapshot");
-    const extraPermissions = isRecord(nativePermissions) ? nativePermissions.data : nativePermissions;
-    if (!Array.isArray(extraPermissions)) throw new Error("Invalid native permission snapshot");
     const info = isRecord(session.info) ? session.info : session;
-    const history = messages.flatMap((message: unknown) => {
-      if (!isRecord(message)) return [];
-      const item = v2 ? message : message.info;
-      return isRecord(item) ? [item] : [];
-    });
-    const user = [...history].reverse().find((message) => message[v2 ? "type" : "role"] === "user");
+    const history = messages.filter(isRecord);
+    const user = [...history].reverse().find((message) => message.type === "user");
     const assistant = history.slice(user ? history.indexOf(user) + 1 : history.length)
-      .reverse().find((message) => message[v2 ? "type" : "role"] === "assistant");
+      .reverse().find((message) => message.type === "assistant");
     const status = statuses[record.sessionId];
     const active = isRecord(status) && ["busy", "retry", "running"].includes(String(status.type));
     // A delegated task can be waiting on a child permission while the root
     // remains busy. Do not resume its parent independently of that child.
-    const delegated = messages.some((message: unknown) => {
-      if (!isRecord(message)) return false;
-      const item = v2 ? message : message.info;
-      if (!user || !isRecord(item) || history.indexOf(item) <= history.indexOf(user)) return false;
-      const parts = v2 ? message.content : message.parts;
+    const delegated = history.some((message) => {
+      if (!user || history.indexOf(message) <= history.indexOf(user)) return false;
+      const parts = message.content;
       return Array.isArray(parts) && parts.some((part: unknown) => isRecord(part) && part.type === "tool"
-        && ["task", "subagent"].includes(String(v2 ? part.name : part.tool))
+        && ["task", "subagent"].includes(String(part.name))
         && isRecord(part.state) && ["pending", "running"].includes(String(part.state.status)));
     });
-    const blocked = delegated || [...permissions, ...extraPermissions, ...questions].some((item: unknown) => isRecord(item) && item.sessionID === record.sessionId);
+    const blocked = delegated || [...permissions, ...questions].some((item: unknown) => isRecord(item) && item.sessionID === record.sessionId);
     const archived = isRecord(info.time) && typeof info.time.archived === "number" && info.time.archived > 0;
     const completed = assistant && isRecord(assistant.time) && typeof assistant.time.completed === "number";
     const aborted = assistant && isRecord(assistant.error) && assistant.error.name === "MessageAbortedError";
@@ -204,16 +200,7 @@ export async function createTaskRecovery(
     nextLaunch = Date.now() + RECOVERY_INTERVAL_MS;
     await persist();
     if (!current(record)) return;
-    const model = snapshot.user?.model;
-    if (record.engine === "v1" && (!isRecord(model) || typeof model.providerID !== "string" || typeof model.modelID !== "string")) {
-      remove(record); await persist(); return;
-    }
-    await call(record, `/session/${encodeURIComponent(record.sessionId)}/${record.engine === "v2" ? "prompt" : "prompt_async"}`,
-      record.engine === "v2" ? { text: RECOVERY_PROMPT } : {
-        parts: [{ type: "text", text: RECOVERY_PROMPT }], model,
-        ...(typeof snapshot.user?.agent === "string" ? { agent: snapshot.user.agent } : {}),
-        ...(typeof snapshot.user?.variant === "string" ? { variant: snapshot.user.variant } : {}),
-      });
+    await call(record, `/session/${encodeURIComponent(record.sessionId)}/prompt`, { text: RECOVERY_PROMPT });
     if (!current(record)) return;
     record.phase = "observing"; record.userId = null; record.shutdown = false;
     observingSince.set(key(record), Date.now());
@@ -224,7 +211,7 @@ export async function createTaskRecovery(
     if (ticking) return ticking;
     const now = Date.now();
     const batch = [...records.values()].filter((record) => {
-      if (options.engineAvailable && !options.engineAvailable(record.engine)) return false;
+      if (options.engineAvailable && !options.engineAvailable()) return false;
       const failure = failures.get(key(record));
       return !failure || failure.retryAt <= now;
     });
@@ -244,7 +231,7 @@ export async function createTaskRecovery(
     owns: (request: Request) => ownedRequests.has(request),
     async forward(workspace: WorkspaceInfo, engine: Engine, path: string, req: Request, send: () => Promise<Response>) {
       if (workspace.workspaceType !== "local" || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return send();
-      const match = path.replace(/^\/opencode2\/api|^\/opencode/, "").match(/^\/session\/([^/]+)(.*)$/);
+      const match = path.replace(/^\/opencode2\/api/, "").match(/^\/session\/([^/]+)(.*)$/);
       if (!match) return send();
       const sessionId = decodeURIComponent(match[1]);
       const suffix = match[2];
@@ -268,7 +255,7 @@ export async function createTaskRecovery(
         phase: "observing", userId: null, shutdown: false };
       const previous = records.get(key(record));
       if (previous) remove(previous);
-      const admission = req.method === "POST" && ["/prompt_async", "/prompt", "/command"].includes(suffix)
+      const admission = req.method === "POST" && ["/prompt", "/command"].includes(suffix)
         && req.headers.get("x-openwork-task-recovery") !== "off";
       if (!stopped && admission && records.size < MAX_TASKS) {
         records.set(key(record), record);

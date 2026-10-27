@@ -322,7 +322,7 @@ pnpm dev:den:mysql:down
 
 ## Pre-baked Micro-Sandbox Image
 
-For micro-sandbox work, use the pre-baked image that compiles `openwork-server` from source and downloads the pinned `opencode` binary during `docker build`.
+For micro-sandbox work, use the pre-baked image that compiles `openwork-server` from source and bakes the pinned OpenCode v2 engine (`opencodeV2Version` in `constants.json`, checked against `apps/server/src/opencode-v2-artifacts.json`) during `docker build`, so the sandbox never downloads an engine at boot.
 
 Build it from the repo root:
 
@@ -363,7 +363,7 @@ This is a minimal packaging template to run the OpenWork Host contract in a sing
 It runs:
 
 - `openwork-server` published on `0.0.0.0:8787` (the only published surface)
-- Managed `opencode` launched internally by `openwork-server`
+- The OpenCode v2 engine, run internally by `openwork-server`. The image does not bake it: on first start the server downloads the release its npm package pins, verifies the archive's integrity, and caches it on the `/data` volume. Set `OPENWORK_OPENCODE2_BIN` to use your own binary.
 
 ### Local run (compose)
 
@@ -392,9 +392,9 @@ Optional:
 Persistence:
 
 - Workspace is mounted at `/workspace`
-- Host data dir is mounted at `/data` (OpenCode caches + OpenWork server config/tokens)
+- Host data dir is mounted at `/data` (the verified OpenCode v2 engine + OpenWork server config/tokens)
 
 ### Notes
 
-- OpenCode is not exposed directly; access it via the OpenWork proxy (`/opencode/*`).
+- OpenCode is not exposed directly; access it via the OpenWork proxy (`/workspace/<id>/opencode2/*`).
 - For PaaS, replace `./workspace:/workspace` with a volume or a checkout strategy (git clone on boot).

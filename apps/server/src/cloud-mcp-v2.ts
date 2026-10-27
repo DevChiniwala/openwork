@@ -2,14 +2,18 @@ import type { CloudMcpNativeEngineResolver, CloudMcpRuntimeRegistrar } from "./c
 import type { EngineV2Preview } from "./engine-v2-preview.js";
 import artifacts from "./opencode-v2-artifacts.json" with { type: "json" };
 
-/** Bind each health request to the selected local engine. */
-export function createNativeCloudMcpResolver(preview: Pick<EngineV2Preview, "status" | "connection">): CloudMcpNativeEngineResolver {
-  return (workspace) => {
-    if (!preview.status().chatRouting) return undefined;
-    const connection = preview.connection();
+/**
+ * Bind each health request to the local OpenCode v2 engine. Returns undefined
+ * while the engine is not running (starting, or copying history), which health
+ * reports as a retryable not-ready state.
+ */
+export function createNativeCloudMcpResolver(preview: Pick<EngineV2Preview, "connection">): CloudMcpNativeEngineResolver {
+  return () => {
+    if (!preview.connection()) return undefined;
     return {
       version: artifacts.version,
       request: async (path, directory, method = "GET") => {
+        const connection = preview.connection();
         if (!connection) throw new Error("OpenCode v2 is not running. Reconnect before checking OpenWork Connect.");
         const url = new URL(path, connection.url);
         if (directory) url.searchParams.set("location[directory]", directory);
@@ -25,10 +29,9 @@ export function createNativeCloudMcpResolver(preview: Pick<EngineV2Preview, "sta
   };
 }
 
-export function createRoutedCloudMcpRegistrar(preview: Pick<EngineV2Preview, "status" | "connection" | "syncWorkspaceMcp">, v1: CloudMcpRuntimeRegistrar): CloudMcpRuntimeRegistrar {
-  const nativeEngineForWorkspace = createNativeCloudMcpResolver(preview);
-  return async (config, workspace, onlyNames, options) => {
-    if (!nativeEngineForWorkspace(workspace)) return v1(config, workspace, onlyNames, options);
+/** Register a folder's runtime MCP servers with OpenCode v2. */
+export function createRoutedCloudMcpRegistrar(preview: Pick<EngineV2Preview, "syncWorkspaceMcp">): CloudMcpRuntimeRegistrar {
+  return async (_config, workspace, onlyNames, options) => {
     const names = onlyNames ?? ["openwork-cloud"];
     try {
       // The folder's reconciler registers changed config and restarts only

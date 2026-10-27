@@ -63,7 +63,7 @@ control.
 
 ## Proof
 
-`evals/specs/secure-keys-in-chat.e2e.test.ts` runs on engines v1 and v2. It
+`evals/specs/secure-keys-in-chat.e2e.test.ts` runs on OpenCode v2. It
 covers the MCP key, a rejected key, the AI Gateway provider key, a Vertex
 service-account key file, the refused legacy LLM provider key, the den-web
 saved and Replace row. It also checks that no key

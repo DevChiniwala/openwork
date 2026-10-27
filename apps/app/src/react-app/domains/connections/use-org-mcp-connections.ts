@@ -12,8 +12,7 @@ import {
 import { connectionNeedsReconnect, isNativeProviderConnectionId } from "./native-provider-connections";
 import { openMemberApiKeyDialog } from "./member-api-key-dialog";
 
-// Mirrors the poll-until-connected pattern used for local MCP OAuth
-// (mcp-auth-modal.tsx) — the external server's redirect completes on a
+// Poll until connected: the external server's redirect completes on a
 // background browser tab/window, so the desktop app finds out by polling
 // Den for the connection's `connectedForMe` flag rather than any callback
 // into the app itself.

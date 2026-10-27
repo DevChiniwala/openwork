@@ -32,6 +32,9 @@ export type WorkbotDirectMessageTarget =
   | { ok: true; connectionId: DenTypeId<"externalMcpConnection">; slackUserId: string }
   | { ok: false; reason: Exclude<WorkbotDirectMessageFailure, "slack_error"> }
 
+/** The member's linked Slack user on an installation Workbot can send from. */
+export type WorkbotSlackMember = Extract<WorkbotDirectMessageTarget, { ok: true }>
+
 type ReadyInstallation = { connectionId: DenTypeId<"externalMcpConnection">; teamId: string }
 
 export type WorkbotDirectMessageDeps = {
@@ -104,11 +107,20 @@ export async function resolveWorkbotDirectMessageTarget(
 
 /** DMs the member from the Workbot Slack app's bot. Plain text (Slack mrkdwn), links not unfurled. */
 export async function sendWorkbotDirectMessage(
-  input: { organizationId: string; userId: string; text: string },
+  input: { organizationId: string; userId: string; text: string; threadTs?: string },
   deps: WorkbotDirectMessageDeps = defaultWorkbotDirectMessageDeps,
 ): Promise<WorkbotDirectMessageResult> {
   const target = await resolveWorkbotDirectMessageTarget(input, deps)
   if (!target.ok) return target
+  return sendWorkbotDirectMessageTo(target, input, deps)
+}
+
+/** The same DM to a member already resolved, optionally as a reply in one of its threads. */
+export async function sendWorkbotDirectMessageTo(
+  target: WorkbotSlackMember,
+  message: { text: string; threadTs?: string },
+  deps: Pick<WorkbotDirectMessageDeps, "botToken" | "slack"> = defaultWorkbotDirectMessageDeps,
+): Promise<WorkbotDirectMessageResult> {
   const token = await deps.botToken(target.connectionId)
   if (!token) return { ok: false, reason: "slack_app_not_installed" }
   const slack = deps.slack(token)
@@ -116,7 +128,13 @@ export async function sendWorkbotDirectMessage(
     const opened = z.object({ channel: z.object({ id: z.string() }) }).safeParse(await slack("conversations.open", { users: target.slackUserId }))
     if (!opened.success) return { ok: false, reason: "slack_error", code: "dm_unavailable" }
     const posted = z.object({ ts: z.string() }).safeParse(
-      await slack("chat.postMessage", { channel: opened.data.channel.id, text: input.text, unfurl_links: false, unfurl_media: false }),
+      await slack("chat.postMessage", {
+        channel: opened.data.channel.id,
+        text: message.text,
+        ...(message.threadTs ? { thread_ts: message.threadTs } : {}),
+        unfurl_links: false,
+        unfurl_media: false,
+      }),
     )
     if (!posted.success) return { ok: false, reason: "slack_error", code: "post_unconfirmed" }
     return { ok: true, channelId: opened.data.channel.id, messageTs: posted.data.ts }

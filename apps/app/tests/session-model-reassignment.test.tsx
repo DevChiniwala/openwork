@@ -25,13 +25,12 @@ const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 afterAll(async () => { Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", previousAct); await GlobalRegistrator.unregister(); });
 
-async function mount(options: { archived?: boolean; busy?: boolean; v1?: boolean; deny?: boolean; wrongReadback?: boolean } = {}) {
+async function mount(options: { archived?: boolean; busy?: boolean; deny?: boolean; wrongReadback?: boolean } = {}) {
   useSessionModelStore.getState().setModel("ses_target", { providerID: "rebind", modelID: "model-a" });
   const writes: unknown[] = [];
   let model = { providerID: "rebind", id: "model-a", variant: "default" };
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const path = new URL(request.url).pathname;
-    if (path === "/experimental/engine-v2-preview/status") return NativeResponse.json({ enabled: !options.v1, running: !options.v1, chatRouting: !options.v1, mirroredProviderIds: [], skippedProviderIds: [], catalogModelIds: [] });
     if (path.endsWith("/api/model/default")) return NativeResponse.json({ data: {} });
     if (path.endsWith("/api/model")) return NativeResponse.json({ data: [{ id: "model-a", providerID: "rebind", name: "Model A" }, { id: "model-b", providerID: "rebind", name: "Model B" }] });
     if (path.endsWith("/api/provider")) return NativeResponse.json({ data: [{ id: "rebind", name: "Recovery witness" }] });
@@ -57,13 +56,13 @@ async function mount(options: { archived?: boolean; busy?: boolean; v1?: boolean
   const workspaces: RouteWorkspace[] = ["one", "two"].map(id => ({ id, name: id, displayNameResolved: id, path: `/tmp/${id}`, preset: "starter", workspaceType: "local" }));
   const endpointForWorkspace = (workspace: RouteWorkspace | null | undefined): ResolvedWorkspaceEndpoint | null => workspace ? {
     baseUrl, token: "fixture", workspaceId: workspace.id, isRemote: false, client,
-    mountedBaseUrl: `${baseUrl}/workspace/${workspace.id}`, opencodeBaseUrl: `${baseUrl}/workspace/${workspace.id}/opencode`,
+    mountedBaseUrl: `${baseUrl}/workspace/${workspace.id}`, opencodeBaseUrl: `${baseUrl}/workspace/${workspace.id}/opencode2`,
   } : null;
   function Register() {
     useSessionControlActions({ workspaces, selectedWorkspaceId: "one", selectedWorkspaceRoot: "/tmp/one", selectedSessionId: null,
       sessionsByWorkspaceId: { two: [{ id: "ses_target" }] }, canCreateTask: false, openworkClient: client, opencodeClient: null, endpointForWorkspace,
       navigateToSession: () => { throw new Error("Must not navigate"); }, navigateToSessionRoot: () => { throw new Error("Must not navigate"); },
-      createTaskInWorkspace: () => null, openModelPicker: () => { throw new Error("Must not open picker"); }, refreshRouteState: () => {}, archiveSession: async () => ({ kind: "done" }),
+      createTaskInWorkspace: () => null, openModelPicker: () => { throw new Error("Must not open picker"); }, refreshRouteState: () => {},
     });
     return null;
   }
@@ -80,15 +79,15 @@ async function mount(options: { archived?: boolean; busy?: boolean; v1?: boolean
   } };
 }
 
-test("nonselected v2 workspace routes to its native engine and normalizes the default effort", async () => {
+test("nonselected workspace routes to its native engine and normalizes the default effort", async () => {
   const fixture = await mount();
   expect(await fixture.run({ variant: null })).toMatchObject({ ok: true, result: { ok: true, workspaceId: "two", model: { providerId: "rebind", modelId: "model-b", variant: null } } });
   expect(fixture.writes).toEqual([{ model: { providerID: "rebind", id: "model-b", variant: "default" } }]);
   expect(useSessionModelStore.getState().bySessionId.ses_target).toEqual({ model: { providerID: "rebind", modelID: "model-b" }, variant: null });
 });
 for (const [options, message] of [
-  [{ archived: true }, "Archived sessions"], [{ busy: true }, "Working sessions"], [{ v1: true }, "requires the OpenCode v2"],
-] satisfies Array<[{ archived?: boolean; busy?: boolean; v1?: boolean }, string]>) {
+  [{ archived: true }, "Archived sessions"], [{ busy: true }, "Working sessions"],
+] satisfies Array<[{ archived?: boolean; busy?: boolean }, string]>) {
   test(`rejects ${message} before any model mutation`, async () => {
     const fixture = await mount(options);
     expect(await fixture.run()).toMatchObject({ ok: false, error: expect.stringContaining(message) });

@@ -161,6 +161,46 @@ function gatewayError(status: number, code: string, message: string, extra: Json
   return Response.json({ error: { message, type: status >= 500 ? "api_error" : "invalid_request_error", code, ...extra } }, { status })
 }
 
+/** A sanitized, actionable response for generic upstream credential rejection. */
+export function genericProviderAuthError(input: {
+  status: 401 | 403
+  providerId: string
+  providerName: string
+  credentialMode: "org" | "member"
+  requestId: string
+}) {
+  const denied = input.status === 403
+  const message = input.credentialMode === "member"
+    ? denied
+      ? `${input.providerName} denied access for your credential. Ask your administrator to check provider permissions, or replace your credential if it has changed.`
+      : `${input.providerName} rejected your credential. Sign in again or replace your credential in AI Gateway.`
+    : denied
+      ? `${input.providerName} denied access for your organization's provider credential. Ask your administrator to check the ${input.providerName} connection in AI Gateway.`
+      : `${input.providerName} rejected your organization's API credential. Ask your administrator to check the ${input.providerName} connection in AI Gateway.`
+  const errorCode = denied ? "provider_permission_denied" : "provider_authentication_failed"
+  const response = Response.json({ error: {
+    source: "openwork_gateway",
+    message,
+    type: "invalid_request_error",
+    code: errorCode,
+    provider_id: input.providerId,
+  } }, { status: input.status })
+  response.headers.set("x-openwork-request-id", input.requestId)
+  return { response, errorCode }
+}
+
+function displayProviderName(providerId: string) {
+  const knownNames: Record<string, string> = {
+    openrouter: "OpenRouter",
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    deepseek: "DeepSeek",
+    google: "Google",
+    mistral: "Mistral",
+  }
+  return knownNames[providerId.toLowerCase()] ?? providerId.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
 function readBaseUrl(provider: GatewayProvider, catalog: CatalogProvider | null, family: ProtocolFamily) {
   // Revalidate persisted overrides at runtime; self-hosted origins require an
   // explicit operator allowlist even when den-api accepted the configuration.
@@ -1101,6 +1141,20 @@ export function registerGatewayRoutes(api: Hono<GatewayEnv>, input: GatewayRoute
         lifetime.dispose()
         await upstream.body?.cancel().catch(() => {})
         return response
+      }
+
+      if (upstream.status === 401 || upstream.status === 403) {
+        const result = genericProviderAuthError({
+          status: upstream.status,
+          providerId: provider.id,
+          providerName: displayProviderName(provider.provider_id),
+          credentialMode: selection.row.credentialSet.credential_mode,
+          requestId: openworkRequestId,
+        })
+        void recorder.finish({ status: upstream.status, outcome: "upstream_error", errorCode: result.errorCode, upstreamRequestId: upstreamRequestId(upstream.headers) })
+        lifetime.dispose()
+        await upstream.body?.cancel().catch(() => {})
+        return result.response
       }
 
       const responseHeaders = relayHeaders(upstream, openworkRequestId)

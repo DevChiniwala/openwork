@@ -60,12 +60,12 @@ describe("V2 native provider catalog events", () => {
     }
   });
 
-  for (const mode of ["off", "unknown", "v1"]) {
+  for (const mode of ["off", "unknown"]) {
     test(`native/reconnect notifications leave ${mode} behavior unchanged`, async () => {
       const queryClient = new QueryClient();
-      const eventScope = mode === "v1" ? { ...scope, baseUrl: "http://localhost:4096" } : scope;
+      const eventScope = scope;
       if (mode !== "unknown") queryClient.setQueryData(liveProviderSyncStatusQueryKey(eventScope.baseUrl), {
-        enabled: true, chatRouting: true, liveProviderSync: mode === "v1",
+        enabled: true, chatRouting: true, liveProviderSync: false,
       });
       const invalidate = spyOn(queryClient, "invalidateQueries");
       try {
@@ -143,11 +143,11 @@ describe("V2 native provider catalog events", () => {
     try {
       const client = createClientV2(baseUrl, directory, {});
       await ensureProviderCatalogQuery(queryClient, { ...scope, client });
-      // V2 lists models, defaults, and providers to build the compatible catalog.
-      expect(fetch).toHaveBeenCalledTimes(3);
+      // Models, defaults and usable providers, plus the server's connect catalog.
+      expect(fetch).toHaveBeenCalledTimes(4);
       expect(queryClient.getQueryState(providerCatalogQueryKey(scope))?.isInvalidated).toBe(false);
       await ensureProviderCatalogQuery(queryClient, { ...scope, client });
-      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(fetch).toHaveBeenCalledTimes(4);
     } finally {
       fetch.mockRestore();
       queryClient.clear();

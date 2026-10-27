@@ -24,9 +24,9 @@ import { noteActivationRunStarted } from "../domains/cloud/activation/use-activa
 import { buildDiagnosticsBundleJson } from "@/app/lib/diagnostics-bundle";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { canCreateWorkspaces } from "@/app/lib/workspace-creation-policy";
-import { createClient, isPromptAdmissionUnknown, unwrap } from "@/app/lib/opencode";
+import { isPromptAdmissionUnknown, unwrap } from "@/app/lib/opencode";
 import { sendWithModelUnavailableRetry } from "@/react-app/domains/session/sync/model-unavailable-retry";
-import { createClientV2, isOpencodeV2BaseUrl, v2AcknowledgementText, V2_SESSION_ARCHIVE_UNAVAILABLE } from "@/app/lib/opencode-v2-adapter";
+import { createClientV2, v2AcknowledgementText } from "@/app/lib/opencode-v2-adapter";
 import { abortSessionSafe, forkSession, listCommands, revertSession, shellInSession, unrevertSession } from "@/app/lib/opencode-session";
 import { composeNativeSessionHistory } from "@/app/lib/opencode-session-native";
 import { prefetchOpeningSessionHistory, sessionHistoryIdentity, sessionHistoryRuntimeOwner, useSessionHistoryRuntimeOwners } from "@/react-app/domains/session/surface/session-history";
@@ -35,7 +35,6 @@ import { useSessionManagementStore as sessionManagementStore } from "@/react-app
 import { getSessionDescendantIds } from "@/react-app/domains/session/sidebar/utils";
 import { buildOpenworkWorkspaceBaseUrl } from "@/app/lib/openwork-server";
 import {
-  resolveEngineRootEndpoint,
   resolveWorkspaceEndpoint,
   type ResolvedWorkspaceEndpoint,
 } from "@/app/lib/workspace-endpoint";
@@ -279,7 +278,6 @@ import {
 } from "./cloud-workspace-status";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { useSessionControlActions } from "@/react-app/domains/session/control/session-control-actions";
-import { useSessionArchive } from "@/react-app/domains/session/sidebar/use-session-archive";
 import { openComposerConfigure, isLibraryAgent, type ComposerSettingsSection } from "@/react-app/domains/settings/library";
 import {
   globalExtensionsRoute,
@@ -559,7 +557,6 @@ export function SessionRoute() {
     selectedWorkspaceError,
     routeNotFoundMessage,
     endpointForWorkspace,
-    endpointForSessionWorkspace,
     refreshRouteState,
     reloadWorkspaceSessions,
     rememberPendingCreatedSession,
@@ -630,7 +627,6 @@ export function SessionRoute() {
     locationKey: location.key,
     navigationGeneration: routeNavigationRef.current.generation,
   };
-  const archiveDisabledReason = isOpencodeV2BaseUrl(opencodeBaseUrl) ? V2_SESSION_ARCHIVE_UNAVAILABLE : undefined;
   const canPrefetchSelectedWorkspace = Boolean(opencodeClient && selectedWorkspaceEndpoint && !selectedWorkspaceError);
   const prefetchRuntimeWorkspaceId = selectedWorkspaceEndpoint?.workspaceId;
   const cancelOpeningPrefetchRef = useRef<(() => void) | undefined>(undefined);
@@ -957,7 +953,7 @@ export function SessionRoute() {
       workspaceId: workspace.id,
       workspaceTitle: workspaceLabel(workspace),
       workspace,
-      endpoint: endpointForSessionWorkspace(workspace),
+      endpoint: endpointForWorkspace(workspace),
       connectionError: connection?.status === "error" ? connection.message : errorsByWorkspaceId[workspace.id]?.trim(),
     });
     if (runtime.status === "unavailable") return [];
@@ -986,23 +982,6 @@ export function SessionRoute() {
     });
   const newTaskBehavior = useMemo(() => getModelBehaviorSummary(newTaskModel?.providerID ?? "",
     newTaskModel ? providerCatalog[newTaskModel.providerID]?.[newTaskModel.modelID] : undefined, newTaskVariant), [newTaskModel, newTaskVariant, providerCatalog]);
-  // Same as Settings: a member who signed in before creating a workspace
-  // still has the local server's managed engine, so organization providers
-  // sync at sign-in instead of racing the first chat's workspace creation.
-  const engineRootEndpoint = useMemo(
-    () => (isDesktopRuntime() && !loading && workspaces.length === 0
-      ? resolveEngineRootEndpoint({ baseUrl, token })
-      : null),
-    [baseUrl, loading, token, workspaces.length],
-  );
-  const providerAuthClient = useMemo(() => {
-    if (opencodeClient || !engineRootEndpoint) return opencodeClient;
-    return createClient(engineRootEndpoint.opencodeBaseUrl, undefined, { token: engineRootEndpoint.token, mode: "openwork" });
-  }, [engineRootEndpoint, opencodeClient]);
-  const engineRootServer = useMemo(
-    () => (engineRootEndpoint && client ? { baseUrl, token, client } : null),
-    [baseUrl, client, engineRootEndpoint, token],
-  );
   const {
     store: sessionProviderAuthStore,
     snapshot: sessionProviderAuthSnapshot,
@@ -1011,8 +990,8 @@ export function SessionRoute() {
     refreshCloudProviderSync,
     liveProviderSync,
   } = useSessionProviderAuth({
-    opencodeClient: providerAuthClient,
-    opencodeBaseUrl: opencodeBaseUrl || (engineRootEndpoint?.opencodeBaseUrl ?? ""),
+    opencodeClient,
+    opencodeBaseUrl,
     providers,
     providerDefaults,
     providerConnectedIds,
@@ -1021,7 +1000,6 @@ export function SessionRoute() {
     selectedWorkspaceEndpoint,
     selectedWorkspaceRoot,
     selectedWorkspaceId,
-    engineRootServer,
     localServerHostToken: openworkServerHostInfoState?.hostToken?.trim() ?? "",
     localServerGeneration: openworkServerHostInfoState?.generation ?? null,
     setProviders,
@@ -1207,11 +1185,11 @@ export function SessionRoute() {
   // person can actually use. Never re-enable Zen here; that races Disconnect.
   const opencodeZenBlocked = checkDesktopRestriction({ restriction: "allowZenModel" });
   useEffect(() => {
-    if (!opencodeZenBlocked || !providerAuthClient || !selectedWorkspaceId) return;
+    if (!opencodeZenBlocked || !opencodeClient || !selectedWorkspaceId) return;
     void sessionProviderAuthStore.ensureProjectProviderDisabledState("opencode", true).catch((error: unknown) => {
       console.warn("[opencode-zen] failed to disable OpenCode Zen in the engine", error);
     });
-  }, [opencodeZenBlocked, providerAuthClient, selectedWorkspaceId, selectedWorkspaceRoot, sessionProviderAuthStore]);
+  }, [opencodeZenBlocked, opencodeClient, selectedWorkspaceId, selectedWorkspaceRoot, sessionProviderAuthStore]);
   useEffect(() => {
     if (!opencodeZenBlocked) return;
     const current = local.prefs.defaultModel;
@@ -1546,11 +1524,9 @@ export function SessionRoute() {
       let disabledProviders: string[] = [];
       try {
         disabledProviders = await readManagedDisabledProviders({
-          opencodeClient,
           openworkClient: disabledProvidersEndpointClient,
           workspaceId: disabledProvidersWorkspaceId,
           workspaceType: disabledProvidersWorkspaceType,
-          directory: selectedWorkspaceRoot || undefined,
         });
         if (!cancelled) setDisabledProviderIds(disabledProviders);
       } catch {
@@ -1739,13 +1715,6 @@ export function SessionRoute() {
             skipGate: true,
             send: async () => {
               assertCurrent();
-              const promptClient = draft.mode === "shell" || draft.command || isOpencodeV2BaseUrl(opencodeBaseUrl)
-                ? opencodeClient
-                : createClient(opencodeBaseUrl, selectedWorkspaceRoot || undefined,
-                  { token: selectedWorkspaceServerToken, mode: "openwork" }, { desktopTransport: "main" });
-              if (unwrap(await promptClient.session.get({ sessionID: targetSessionId })).time.archived) {
-                throw new Error("This session is archived. Restore it before sending.");
-              }
               assertCurrent();
               await sendWithRevertRollback({
                 assertCurrent,
@@ -1823,7 +1792,6 @@ export function SessionRoute() {
                     workspaceId: selectedWorkspaceId,
                     cacheKey: targetSessionId,
                     runtimeKey: environmentRuntimeKey,
-                    desktopTransport: isOpencodeV2BaseUrl(opencodeBaseUrl) ? undefined : "main",
                   });
                   assertCurrent();
                   onPrepared?.(v2AcknowledgementText(parts));
@@ -1837,9 +1805,9 @@ export function SessionRoute() {
                       ...(sendVariant ? { variant: sendVariant } : {}),
                       system,
                     },
-                    send: (request) => promptClient.session.promptAsync(request),
+                    send: (request) => opencodeClient.session.promptAsync(request),
                     refreshModels: () => ensureProviderListQuery(getReactQueryClient(), {
-                      client: promptClient,
+                      client: opencodeClient,
                       baseUrl: opencodeBaseUrl,
                       directory: selectedWorkspaceRoot,
                       force: true,
@@ -2031,7 +1999,7 @@ export function SessionRoute() {
       workspaceId: session.workspaceId,
       workspaceTitle,
       workspace: candidateWorkspace,
-      endpoint: endpointForSessionWorkspace(candidateWorkspace),
+      endpoint: endpointForWorkspace(candidateWorkspace),
       connectionError: connection?.status === "error" ? connection.message : workspaceError,
     });
     if (paneEndpoint.status === "unavailable") return paneEndpoint;
@@ -2063,11 +2031,10 @@ export function SessionRoute() {
     }
 
     const workspaceRoot = paneEndpoint.workspaceRoot;
-    const createEngineClient = isOpencodeV2BaseUrl(endpoint.opencodeBaseUrl) ? createClientV2 : createClient;
-    const workspaceOpencodeClient = createEngineClient(
+    const workspaceOpencodeClient = createClientV2(
       endpoint.opencodeBaseUrl,
       workspaceRoot || undefined,
-      { token: endpoint.token, mode: "openwork" },
+      { token: endpoint.token },
     );
     const scopedSurface = {
       ...surfaceProps,
@@ -2127,13 +2094,6 @@ export function SessionRoute() {
             skipGate: true,
             send: async () => {
               assertCurrent();
-              const promptClient = draft.mode === "shell" || draft.command || isOpencodeV2BaseUrl(endpoint.opencodeBaseUrl)
-                ? workspaceOpencodeClient
-                : createClient(endpoint.opencodeBaseUrl, workspaceRoot || undefined,
-                  { token: endpoint.token, mode: "openwork" }, { desktopTransport: "main" });
-              if (unwrap(await promptClient.session.get({ sessionID: targetSessionId })).time.archived) {
-                throw new Error("This session is archived. Restore it before sending.");
-              }
               assertCurrent();
               await sendWithRevertRollback({
                 assertCurrent,
@@ -2196,7 +2156,6 @@ export function SessionRoute() {
                     workspaceId: workspace.id,
                     cacheKey: targetSessionId,
                     runtimeKey: environmentRuntimeKey,
-                    desktopTransport: isOpencodeV2BaseUrl(endpoint.opencodeBaseUrl) ? undefined : "main",
                   });
                   assertCurrent();
                   onPrepared?.(v2AcknowledgementText(parts));
@@ -2210,9 +2169,9 @@ export function SessionRoute() {
                       ...(sendVariant ? { variant: sendVariant } : {}),
                       system,
                     },
-                    send: (request) => promptClient.session.promptAsync(request),
+                    send: (request) => workspaceOpencodeClient.session.promptAsync(request),
                     refreshModels: () => ensureProviderListQuery(getReactQueryClient(), {
-                      client: promptClient,
+                      client: workspaceOpencodeClient,
                       baseUrl: endpoint.opencodeBaseUrl,
                       directory: workspaceRoot,
                       force: true,
@@ -2306,7 +2265,7 @@ export function SessionRoute() {
     };
   }, [
     client,
-    endpointForSessionWorkspace,
+    endpointForWorkspace,
     engineReloadVersion,
     environmentRuntimeKey,
     errorsByWorkspaceId,
@@ -3008,29 +2967,6 @@ export function SessionRoute() {
     modelPicker.setOpen(true);
   }, [selectedSessionId]);
 
-  const { archiveSession, archiveDialog } = useSessionArchive({
-    workspaces,
-    sessionsByWorkspaceId,
-    endpointForWorkspace,
-    selectedWorkspaceId,
-    selectedSessionId,
-    navigateToWorkspaceSession,
-    reloadWorkspaceSessions,
-    draftScope: sessionDraftScope,
-    onArchivedChange: (workspaceId, sessionId, archived) => {
-      setSessionsByWorkspaceId(current => {
-        const sessions = current[workspaceId];
-        if (!sessions) return current;
-        return { ...current, [workspaceId]: sessions.map(session => session.id === sessionId
-          ? { ...session, time: { ...session.time, archived: archived ? Date.now() : 0 } }
-          : session) };
-      });
-    },
-  });
-  const handleArchiveSession = async (sessionId: string, archived: boolean) => {
-    await archiveSession(sessionId, archived);
-  };
-
   useSessionControlActions({
     workspaces,
     sessionsByWorkspaceId,
@@ -3040,7 +2976,6 @@ export function SessionRoute() {
     canCreateTask,
     openworkClient: client,
     opencodeClient,
-    archiveDisabledReason,
     endpointForWorkspace,
     navigateToSession: navigateToSessionForControl,
     navigateToSessionRoot: navigateToSessionRootForControl,
@@ -3050,7 +2985,6 @@ export function SessionRoute() {
     },
     openModelPicker: openModelPickerForControl,
     refreshRouteState,
-    archiveSession,
   });
 
   const seedUnavailableModelControlAction = useMemo<OpenworkControlAction | null>(() => {
@@ -3661,10 +3595,10 @@ export function SessionRoute() {
         // OpenCode directory. Chat-first creation still needs a session for
         // its supplied prompt; ordinary creation lands on the New task state.
         const session = createdOnServer && sessionBaseUrl && sessionToken && (firstTaskPrompt || firstTaskAttachments.length > 0)
-          ? await createClient(
-              `${(buildOpenworkWorkspaceBaseUrl(sessionBaseUrl, targetWorkspaceId) ?? sessionBaseUrl).replace(/\/+$/, "")}/opencode`,
+          ? await createClientV2(
+              `${(buildOpenworkWorkspaceBaseUrl(sessionBaseUrl, targetWorkspaceId) ?? sessionBaseUrl).replace(/\/+$/, "")}/opencode2`,
               workspacePath || undefined,
-              { token: sessionToken, mode: "openwork" },
+              { token: sessionToken },
             ).session.create({ directory: workspacePath || undefined })
               .then((result) => unwrap(result))
           : null;
@@ -4148,8 +4082,6 @@ export function SessionRoute() {
             }
           : undefined
       }
-      onArchiveSession={opencodeClient ? handleArchiveSession : undefined}
-      archiveDisabledReason={archiveDisabledReason}
       statusBar={{
         // No per-session loading state here: the account row renders only
         // app-scoped facts. Session loading lives in the pane; an unresolved
@@ -4208,7 +4140,6 @@ export function SessionRoute() {
       onTitleChange={setRenameWorkspaceTitle}
     />
     <CommandPalette
-      engineClient={client}
       open={commandPaletteOpen}
       onClose={() => setCommandPaletteOpen(false)}
       developerMode={developerMode}
@@ -4272,7 +4203,6 @@ export function SessionRoute() {
       selectedAgent={selectedAgent}
       onSelectAgent={setSelectedAgent}
     />
-    {archiveDialog}
     <SessionSearchDialog
       open={sessionSearchOpen}
       onClose={() => setSessionSearchOpen(false)}
@@ -4327,7 +4257,6 @@ export function SessionRoute() {
         if (!opencodeClient) return;
         try {
           const current = await readManagedDisabledProviders({
-            opencodeClient,
             openworkClient: disabledProvidersEndpointClient,
             workspaceId: disabledProvidersWorkspaceId,
             workspaceType: disabledProvidersWorkspaceType,
@@ -4336,7 +4265,6 @@ export function SessionRoute() {
             ? current.filter((id: string) => id !== providerId)
             : [...current, providerId];
           const result = await updateManagedDisabledProviders({
-            opencodeClient,
             openworkClient: disabledProvidersEndpointClient,
             workspaceId: disabledProvidersWorkspaceId,
             workspaceType: disabledProvidersWorkspaceType,

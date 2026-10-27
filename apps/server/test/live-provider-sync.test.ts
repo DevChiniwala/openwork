@@ -148,8 +148,6 @@ test("late signed-in hydration activates once; runtime kill does not resume an o
     assert.equal(engine.status().liveProviderSync, true);
     await engine.setLiveProviderSync(false);
     assert.equal(engine.status().liveProviderSync, true, "effective owner is frozen despite a killed rollout");
-    await engine.setChatRouting(false);
-    assert.equal(engine.status().liveProviderSync, false, "v1 selection always uses the old path");
   } finally { await engine.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -186,21 +184,24 @@ test("Gateway-only live mode performs no old catalog reads or push/readiness wai
   assert.equal(reads, 1);
 });
 
-test("unreachable Den disables only the live rollout in cached policy", async () => {
+test("unreachable Den disables rollout grants but keeps model access in cached policy", async () => {
   const dir = await mkdtemp(join(tmpdir(), "openwork-live-fresh-policy-"));
   const previous = process.env.OPENWORK_RUNTIME_DB;
   process.env.OPENWORK_RUNTIME_DB = join(dir, "runtime.sqlite");
   let unavailable = false;
   const server = await serve({ hostname: "127.0.0.1", port: 0, fetch: () => unavailable
     ? new Response(null, { status: 500 })
-    : Response.json({ liveProviderSync: true, allowCustomProviders: false }) });
+    : Response.json({ liveProviderSync: true, nativeAffordanceCodeMode: true, allowCustomProviders: false }) });
   const policy = managedDesktopPolicy(config(dir));
   try {
     await policy.setSession({ ...session, baseUrl: `http://127.0.0.1:${server.port}` });
-    assert.equal((await policy.current())?.liveProviderSync, true);
+    const current = await policy.current();
+    assert.equal(current?.liveProviderSync, true);
+    assert.equal(current?.nativeAffordanceCodeMode, true);
     unavailable = true;
     const fallback = await policy.current();
     assert.equal(fallback?.liveProviderSync, false);
+    assert.equal(fallback?.nativeAffordanceCodeMode, false);
     assert.equal(fallback?.allowCustomProviders, false);
   } finally {
     await server.stop();

@@ -20,8 +20,6 @@ export const MCP_REPLY = "The report is saved; the note service timed out.";
 export const APP_CONNECTION_ERROR = "Streamable HTTP POST: connection or protocol negotiation failed";
 
 export async function appConnectionErrorsWorld(seed: Seed) {
-  // Compact connection errors are standard on v2, including when CI defaults to v1.
-  const engine = "v2";
   const { den, webPort } = await denForAppWeb(seed);
   const providerId = "connection-proof";
   const modelId = "report";
@@ -40,7 +38,7 @@ export async function appConnectionErrorsWorld(seed: Seed) {
     ] },
   ] });
   const { app, workspace } = await signedInAppWeb(seed, {
-    den, webPort, engine, env: process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}, name: "app-connection-errors", workspacePath: seed.tmpPath("app-connection-errors"), mocks: { agent: mock },
+    den, webPort, env: process.env.OPENWORK_OPENCODE2_BIN ? { OPENWORK_OPENCODE2_BIN: process.env.OPENWORK_OPENCODE2_BIN } : {}, name: "app-connection-errors", workspacePath: seed.tmpPath("app-connection-errors"), mocks: { agent: mock },
   });
   const witness = app.mocks.agent;
   if (!witness) throw new Error("The report model witness did not start");
@@ -49,7 +47,7 @@ export async function appConnectionErrorsWorld(seed: Seed) {
     mcp: { "openwork": { type: "remote", url: witness.mcpUrl, enabled: true, oauth: false } },
     provider: { [providerId]: { npm: "@ai-sdk/openai-compatible", name: "Report model",
       options: { baseURL: `${witness.url}/v1`, apiKey: "sk-connection-proof" }, models: { [modelId]: { name: "Report model" } } } },
-  }, engine);
+  });
   const session = await seed.session(app, { title: "App connection errors" });
   const registration = await addInitScript(app.client, browserScript(() => {
     const original = window.fetch.bind(window);
@@ -82,8 +80,8 @@ export async function appConnectionErrorsWorld(seed: Seed) {
   }, []));
   await reload(app);
   return {
-    app, workspace, session, engine,
-    // Test-owned OS connectivity hint; requests still reach the local v2 engine.
+    app, workspace, session,
+    // Test-owned OS connectivity hint; requests still reach the local engine.
     offline: (value: boolean) => seed.evalIn(app, browserScript((value) => {
       if (!window.__appConnectionFault) throw new Error("The connectivity fault is not installed");
       window.__appConnectionFault.setOffline(value);

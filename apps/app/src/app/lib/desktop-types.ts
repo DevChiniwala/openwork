@@ -24,7 +24,6 @@ export type {
   DesktopFetchInit,
   DesktopFetchResult,
   DesktopStartupTimings,
-  EngineDoctorResult,
   EngineInfo,
   EvalRelaunchResult,
   ExecResult,

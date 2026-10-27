@@ -75,6 +75,11 @@ import {
   type RemoteSessionAction,
 } from "./remote-session-capabilities.js"
 import { DEN_MCP_WRITE_SCOPE } from "./scopes.js"
+import {
+  executeSlackSendAsBot,
+  isSlackSendAsBotCapabilityName,
+  searchSlackSendAsBotCapability,
+} from "./slack-send-as-bot.js"
 import { headlessRunTokenId } from "./headless-run-token.js"
 import {
   compareCapabilityMatches,
@@ -88,7 +93,7 @@ import {
 import { externalToolContent } from "./tool-content.js"
 import { capabilityCallInput, capabilityToolMatch, type CapabilityToolMatch } from "./capability-tool.js"
 
-export const CAPABILITY_SOURCE_KINDS = ["catalog", "native", "externalMcp", "marketplace", "builtinSkill", "remoteSession", "admin"] as const
+export const CAPABILITY_SOURCE_KINDS = ["catalog", "native", "externalMcp", "marketplace", "builtinSkill", "remoteSession", "slackSendAsBot", "admin"] as const
 export type CapabilitySourceKind = (typeof CAPABILITY_SOURCE_KINDS)[number]
 
 /**
@@ -107,6 +112,7 @@ export type ParsedCapability =
   | { kind: "marketplace"; name: string; configObjectId: string; pluginId: string }
   | { kind: "builtinSkill"; name: string }
   | { kind: "remoteSession"; name: string; action: RemoteSessionAction }
+  | { kind: "slackSendAsBot"; name: string }
   | { kind: "admin"; name: string; toolName: string }
 
 export type ExecuteCapabilityToolResult = {
@@ -143,6 +149,8 @@ export type CapabilityRegistryContext = {
   managedDeploymentsEnabled: boolean
   /** `remote-session:status`, rolled out with the desktop's remote sub-agents. */
   remoteSessionStatusEnabled: boolean
+  /** `slack_send_as_bot` (feature `slackSendAsBot`); it also needs a member and the write scope. */
+  slackSendAsBotEnabled: boolean
   resolvePlatformAdmin: () => Promise<boolean>
   resolveNamespaceContext: () => Promise<CodemodeConnectionNamespaceContext>
   /** Set only by MCP transports: direct service mutations are audited for this caller (src/audit/service-actions.ts). */
@@ -161,7 +169,7 @@ export type CapabilityRegistryContextInput = {
   redirectUriBase: string
   generatedArtifactViewsEnabled: boolean
   /** Effective features of the organization (see features.ts). */
-  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionSubagents" | "managedDeployments">>
+  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionSubagents" | "managedDeployments" | "slackSendAsBot">>
   /** MCP transports pass the verified caller; route and Automation contexts omit it (their route records the request). */
   audit?: McpAuditPrincipal | null
   /**
@@ -199,6 +207,7 @@ export function createCapabilityRegistryContext(input: CapabilityRegistryContext
     generatedArtifactViewsEnabled: input.generatedArtifactViewsEnabled,
     managedDeploymentsEnabled: input.organizationFeatures.managedDeployments === true,
     remoteSessionStatusEnabled: input.organizationFeatures.remoteSessionSubagents === true,
+    slackSendAsBotEnabled: input.organizationFeatures.slackSendAsBot === true,
     resolvePlatformAdmin,
     resolveNamespaceContext,
     audit: input.audit ?? null,
@@ -235,6 +244,14 @@ export function workflowExecutionAudit(ctx: Pick<CapabilityRegistryContext, "aud
   return (configObjectId, run) => runMcpServiceAction("workflow.execute", principal, serviceAuditResourceId(configObjectId), run, {
     result: workflowExecutionAuditStatus, error: serviceErrorStatus,
   })
+}
+
+/**
+ * Whether this caller may see and run slack_send_as_bot: the feature on, an active member, and a token that may
+ * write. Read-only tokens (Your agent's background turns) never list it.
+ */
+export function slackSendAsBotAvailable(ctx: Pick<CapabilityRegistryContext, "slackSendAsBotEnabled" | "member" | "principal">): boolean {
+  return ctx.slackSendAsBotEnabled && ctx.member !== null && ctx.principal.scopes.has(DEN_MCP_WRITE_SCOPE)
 }
 
 const remoteSessionAuditActions: Partial<Record<RemoteSessionAction, AuditServiceActionName>> = {
@@ -491,7 +508,8 @@ function parsedForKind<K extends CapabilitySourceKind>(parsed: ParsedCapability,
 
 const catalogSource: CapabilitySource = {
   kind: "catalog",
-  parseName: (name) => name.includes(":") ? null : { kind: "catalog", name },
+  // Every name without a colon is a Den operation, except the Den-native capabilities named like tools.
+  parseName: (name) => name.includes(":") || isSlackSendAsBotCapabilityName(name) ? null : { kind: "catalog", name },
   search: async (ctx, query, limit) => {
     if (!ctx.sourceFilter.api) return []
     return searchCapabilities(
@@ -777,6 +795,35 @@ const remoteSessionSource: CapabilitySource = {
   },
 }
 
+const slackSendAsBotSource: CapabilitySource = {
+  kind: "slackSendAsBot",
+  parseName: (name) => isSlackSendAsBotCapabilityName(name) ? { kind: "slackSendAsBot", name } : null,
+  // Listed with Den's own operations and next to the Slack connection's tools.
+  search: async (ctx, query) => {
+    if (!(ctx.sourceFilter.api || ctx.sourceFilter.mcp) || !slackSendAsBotAvailable(ctx)) return []
+    return searchSlackSendAsBotCapability(query)
+  },
+  // Not in Code Mode scripts in v1: each message is one explicit call the person can see.
+  enumerate: () => Promise.resolve([]),
+  execute: async (ctx, parsed, input) => {
+    if (!parsedForKind(parsed, "slackSendAsBot") || !ctx.slackSendAsBotEnabled) return unknownCapabilityResult(input.name)
+    const run = () => executeSlackSendAsBot({
+      organizationId: ctx.organizationId,
+      userId: ctx.principal.userId,
+      member: ctx.member !== null,
+      hasWriteScope: ctx.principal.scopes.has(DEN_MCP_WRITE_SCOPE),
+      body: input.body,
+    })
+    if (!ctx.audit) return run()
+    try {
+      return await runMcpServiceAction("slack_assistant.bot_message.send", ctx.audit, null, run, { result: toolResultStatus })
+    } catch (error) {
+      if (error instanceof AuditUnavailableError) return auditUnavailableToolResult()
+      throw error
+    }
+  },
+}
+
 const adminSource: CapabilitySource = {
   kind: "admin",
   parseName: (name) => {
@@ -827,6 +874,7 @@ export const CAPABILITY_SOURCES: Record<CapabilitySourceKind, CapabilitySource> 
   marketplace: marketplaceSource,
   builtinSkill: builtinSkillSource,
   remoteSession: remoteSessionSource,
+  slackSendAsBot: slackSendAsBotSource,
   admin: adminSource,
 }
 

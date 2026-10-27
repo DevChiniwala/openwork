@@ -638,18 +638,22 @@ async function requestOk(input: {
   }
 }
 
+/**
+ * The instance's runtime provider configuration. Read from the OpenWork
+ * server itself: the OpenCode engine no longer exposes its own config route.
+ */
 async function readRuntimeManagedProviders(input: {
   fetchImpl: FetchImpl
   instanceUrl: string
-  clientToken: string
+  hostToken: string
 }) {
   const payload = await requestJson({
     fetchImpl: input.fetchImpl,
     label: "engine_config_read",
-    url: `${input.instanceUrl}/opencode/config`,
+    url: `${input.instanceUrl}/runtime-config/providers`,
     init: {
       method: "GET",
-      headers: bearerHeaders(input.clientToken),
+      headers: hostTokenHeaders(input.hostToken),
     },
   })
   const provider = isRecord(payload.provider) ? payload.provider : null
@@ -937,7 +941,7 @@ function looksLikeJsonObject(body: string): boolean {
 async function verifyRuntimeProviders(input: {
   fetchImpl: FetchImpl
   instanceUrl: string
-  clientToken: string
+  hostToken: string
   providerIds: string[]
 }) {
   if (input.providerIds.length === 0) {
@@ -947,10 +951,10 @@ async function verifyRuntimeProviders(input: {
   const payload = await requestJson({
     fetchImpl: input.fetchImpl,
     label: "provider_readback",
-    url: `${input.instanceUrl}/opencode/config`,
+    url: `${input.instanceUrl}/runtime-config/providers`,
     init: {
       method: "GET",
-      headers: bearerHeaders(input.clientToken),
+      headers: hostTokenHeaders(input.hostToken),
     },
   })
   const provider = isRecord(payload.provider) ? payload.provider : null
@@ -1180,7 +1184,7 @@ export async function materializeCloudWorkerProviders(input: {
       readRuntimeManagedProviders({
         fetchImpl,
         instanceUrl,
-        clientToken: tokens.clientToken,
+        hostToken: tokens.hostToken,
       }),
       readEnvSnapshot({
         fetchImpl,
@@ -1232,7 +1236,7 @@ export async function materializeCloudWorkerProviders(input: {
       await verifyRuntimeProviders({
         fetchImpl,
         instanceUrl,
-        clientToken: tokens.clientToken,
+        hostToken: tokens.hostToken,
         providerIds: desiredProviderIds,
       })
     } catch (error) {

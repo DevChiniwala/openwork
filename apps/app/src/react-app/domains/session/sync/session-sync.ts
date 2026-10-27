@@ -7,13 +7,15 @@ import { readGatewayUsageScope } from "@/app/lib/gateway-usage-scope";
 import { refreshGatewayUsageAfterCompletion } from "../../cloud/gateway-usage-refresh";
 import { gatewayUsageQueryPrefix } from "../../cloud/gateway-usage-state";
 import { mergeReplyMetadata, replyModelFromInfo } from "./reply-model";
+import { providerCredentialScope, useProviderCredentialHealth } from "../../connections/provider-auth/credential-health";
+import { isProviderCredentialRejection } from "./session-error";
 import { closeSessionBrowserTabs } from "@/app/lib/desktop";
 import { captureAnalyticsEvent, takeTaskRunStart } from "@/app/lib/analytics";
 import { trackTaskCompleted, trackTaskFailed } from "@/app/lib/den-telemetry";
 import { noteActivationRunCompleted } from "../../cloud/activation/use-activation";
 import { observeModelsTaskEvent } from "@/app/lib/models-task-analytics";
-import { createClient, unwrap } from "@/app/lib/opencode";
-import { createClientV2, isOpencodeV2BaseUrl } from "@/app/lib/opencode-v2-adapter";
+import { unwrap } from "@/app/lib/opencode";
+import { createClientV2 } from "@/app/lib/opencode-v2-adapter";
 import { perfNow, recordPerfLog } from "@/app/lib/perf-log";
 import { isGeneratedSessionTitle } from "@/app/lib/session-title";
 import { normalizeEvent } from "@/app/utils";
@@ -138,7 +140,7 @@ type SyncEntry = {
   statusReconcileFailures: number;
   runActiveObservedAt: Map<string, number>;
   assistantMessageCompletedAt: Map<string, number>;
-  gatewayUsageRuns: Map<string, { scope: number; key: string; providerId: string | null; completed: boolean }>;
+  gatewayUsageRuns: Map<string, { scope: number; key: string; providerId: string | null; completed: boolean; startedAt: number; failed: boolean; responseCompleted: boolean }>;
   nativeSequenceBySession: Map<string, { sequence: number; revision: number }>;
   nativeSequenceRevision: number;
   nativeTerminalSessions: Set<string>;
@@ -158,8 +160,8 @@ type DeltaFlushScheduler = (
 ) => () => void;
 
 let gatewayUsageRunSequence = 0;
-function newGatewayUsageRun(key: string): { scope: number; key: string; providerId: string | null; completed: boolean } {
-  return { scope: readGatewayUsageScope().generation, key, providerId: null, completed: false };
+function newGatewayUsageRun(key: string): { scope: number; key: string; providerId: string | null; completed: boolean; startedAt: number; failed: boolean; responseCompleted: boolean } {
+  return { scope: readGatewayUsageScope().generation, key, providerId: null, completed: false, startedAt: 0, failed: false, responseCompleted: false };
 }
 
 function gatewayUsageProviderId(value: unknown): string | null {
@@ -188,13 +190,6 @@ const activeSessionStatusReconcileIntervalMs = 250;
 const activeSessionStatusReconcileMaxBackoffMs = 15_000;
 
 type SessionStatusSource = "stream" | "connect-reconcile" | "active-reconcile" | "snapshot";
-
-/** Which OpenCode engine a sync entry (or a status read) belongs to. */
-export type SessionSyncEngine = "v1" | "v2";
-
-function syncEngine(baseUrl: string): SessionSyncEngine {
-  return isOpencodeV2BaseUrl(baseUrl) ? "v2" : "v1";
-}
 
 /**
  * Keep the fast cadence until the read is flagged degraded (a transient blip
@@ -265,9 +260,7 @@ type SessionStatusFetcher = (
 ) => Promise<Record<string, SessionStatus>>;
 
 function createSyncClient(baseUrl: string, openworkToken: string) {
-  return isOpencodeV2BaseUrl(baseUrl)
-    ? createClientV2(baseUrl, undefined, { token: openworkToken })
-    : createClient(baseUrl, undefined, { token: openworkToken, mode: "openwork" });
+  return createClientV2(baseUrl, undefined, { token: openworkToken });
 }
 
 const defaultSyncSubscriptionFactory: SyncSubscriptionFactory = async (baseUrl, openworkToken, signal) => {
@@ -1047,7 +1040,6 @@ function stringField(record: Record<string, unknown>, key: string): string {
  */
 function applyBackgroundShellEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent) {
   const store = useBackgroundShellStore.getState();
-  if (!isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
   const props = eventRecord(event);
   if (event.type === SHELL_CREATED_EVENT) {
     const shell = readEngineShell(props);
@@ -1130,7 +1122,6 @@ function rememberHistoryBackgroundShells(workspaceId: string, snapshot: Openwork
  * this read is the source of truth on connect, revalidation and session open.
  */
 async function reconcileBackgroundShells(entry: SyncEntry, scope: "all" | string) {
-  if (!isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
   const controller = new AbortController();
   entry.backgroundShellReads.add(controller);
   const startedAt = Date.now();
@@ -1202,7 +1193,14 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
       entry.nativeTerminalSessions.delete(sessionId);
       applySessionRunStatus(entry, workspaceId, sessionId, { type: "busy" });
       const usageRun = entry.gatewayUsageRuns.get(sessionId);
-      if (usageRun) usageRun.providerId = gatewayUsageProviderId(event.properties);
+      if (usageRun) {
+        usageRun.providerId = gatewayUsageProviderId(event.properties);
+        const props = event.properties;
+        const timestamp = props && typeof props === "object" && "timestamp" in props ? props.timestamp : undefined;
+        // Receiving/reconciling a busy run is not its start time. Unknown or
+        // replayed starts cannot provide evidence about a replacement key.
+        if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0) usageRun.startedAt = timestamp;
+      }
     } else if (event.type === "session.execution.progress") {
       clearSessionRetry(entry, workspaceId, sessionId);
     } else if (event.type === "session.execution.failed") {
@@ -1308,6 +1306,13 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
     if (sessionId) {
       const sessionError = sessionErrorFromProperties(event.properties);
       const errorPresentation = presentOpencodeSessionError(sessionError);
+      const credentialRun = entry.gatewayUsageRuns.get(sessionId);
+      if (credentialRun) {
+        credentialRun.failed = true;
+        if (credentialRun.providerId && isProviderCredentialRejection(sessionError)) {
+          useProviderCredentialHealth.getState().observe(workspaceId, credentialRun.providerId, "rejected", credentialRun.startedAt);
+        }
+      }
       if (errorPresentation.gatewayUsage) void queryClient.invalidateQueries({ queryKey: gatewayUsageQueryPrefix });
       const errorText = describeOpencodeSessionError(sessionError);
       const runStartedAt = takeTaskRunStart(sessionId);
@@ -1474,9 +1479,13 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
       return;
     }
     const usageRun = entry.gatewayUsageRuns.get(info.sessionID);
-    if (usageRun && info.role === "assistant") usageRun.providerId = gatewayUsageProviderId(info) ?? usageRun.providerId;
+    if (usageRun && info.role === "assistant") {
+      usageRun.providerId = gatewayUsageProviderId(info) ?? usageRun.providerId;
+      if (usageRun.startedAt === 0 && typeof info.time?.created === "number" && info.time.created > 0) usageRun.startedAt = info.time.created;
+    }
     useSessionActivityStore.getState().markMessageRole(workspaceId, info.sessionID, info.id, info.role);
     if (info.role === "assistant" && typeof info.time?.completed === "number") {
+      if (usageRun && !("error" in info && info.error)) usageRun.responseCompleted = true;
       const observedAt = perfNow();
       entry.assistantMessageCompletedAt.set(info.sessionID, observedAt);
       const runActiveAt = entry.runActiveObservedAt.get(info.sessionID);
@@ -1777,12 +1786,10 @@ function startSync(input: SyncOptions, entry: SyncEntry) {
     // cached idle: the server may have started or finished work while the
     // stream was down.
     onConnected: (signal) => {
-      // v2's event feed has no replay. Catch up messages even when the run
+      // The event feed has no replay. Catch up messages even when the run
       // stayed busy (or was already idle) across the missing interval.
-      if (isOpencodeV2BaseUrl(input.baseUrl)) {
-        for (const sessionId of new Set([...entry.trackedSessionRefs.keys(), ...entry.retainedSessionTimers.keys()])) {
-          reconcileSessionMessages(entry, sessionId);
-        }
+      for (const sessionId of new Set([...entry.trackedSessionRefs.keys(), ...entry.retainedSessionTimers.keys()])) {
+        reconcileSessionMessages(entry, sessionId);
       }
       void reconcileSessionRunStatuses(entry, input, signal, "connect-reconcile");
     },
@@ -1822,10 +1829,9 @@ function applySessionRunStatus(
   const snapshotStartedAt = options.snapshotStartedAt;
   const store = useSessionActivityStore.getState();
   const previousRecord = store.recordsByWorkspaceId[workspaceId]?.[sessionId];
-  const v2 = isOpencodeV2BaseUrl(entry.input.baseUrl);
   // /active only says running. Preserve the richer stream retry across polls
   // from independent clients until actual execution progress or a terminal.
-  if (v2 && snapshotStartedAt !== undefined && status.type === "busy") {
+  if (snapshotStartedAt !== undefined && status.type === "busy") {
     if (entry.nativeTerminalSessions.has(sessionId)) {
       if (options.source !== "connect-reconcile") return;
       entry.nativeTerminalSessions.delete(sessionId);
@@ -1844,9 +1850,10 @@ function applySessionRunStatus(
 
   const live = isLiveStatus(status);
   if (live && (!wasLive || !entry.gatewayUsageRuns.has(sessionId))) {
+    useProviderCredentialHealth.getState().bindWorkspace(workspaceId, providerCredentialScope(entry.input.baseUrl));
     entry.gatewayUsageRuns.set(sessionId, newGatewayUsageRun(`${workspaceId}:${sessionId}:run:${++gatewayUsageRunSequence}`));
   }
-  if (v2 && !live) {
+  if (!live) {
     store.replaceWaitingRequests(workspaceId, sessionId, "permission",
       (getReactQueryClient().getQueryData<PendingPermission[]>(permissionKey(workspaceId, sessionId)) ?? []).map((permission) => permission.id));
   }
@@ -1859,13 +1866,13 @@ function applySessionRunStatus(
   }
 
   const tracked = isTrackedSession(entry, sessionId);
-  if (tracked || v2) getReactQueryClient().setQueryData(statusKey(workspaceId, sessionId), status);
+  getReactQueryClient().setQueryData(statusKey(workspaceId, sessionId), status);
   if (!live) {
     // A level-triggered idle response is as authoritative as the SSE edge.
     // Converge through the same terminal path so a missed status event also
     // flushes final deltas and refreshes any final persisted message parts.
     const runStartedAt = takeTaskRunStart(sessionId);
-    if (runStartedAt !== null && (options.completed ?? !v2)) {
+    if (runStartedAt !== null && (options.completed ?? false)) {
       captureAnalyticsEvent("task_run_completed", {
         duration_ms: Date.now() - runStartedAt,
       });
@@ -1876,11 +1883,14 @@ function applySessionRunStatus(
     }
     const shouldRecordTerminal = wasLive || runStartedAt !== null;
     const shouldConvergeTerminal = shouldRecordTerminal || options.terminalEvent === true;
-    if (shouldConvergeTerminal && (options.completed ?? !v2)) {
+    if (shouldConvergeTerminal && (options.completed ?? false)) {
       const usageRun = entry.gatewayUsageRuns.get(sessionId) ?? newGatewayUsageRun(`${workspaceId}:${sessionId}:terminal:${entry.nativeSequenceBySession.get(sessionId)?.sequence ?? "unknown"}`);
       entry.gatewayUsageRuns.set(sessionId, usageRun);
       if (!usageRun.completed) {
         usageRun.completed = true;
+        if (usageRun.providerId && !usageRun.failed && (options.completed === true || usageRun.responseCompleted)) {
+          useProviderCredentialHealth.getState().observe(workspaceId, usageRun.providerId, "verified", usageRun.startedAt);
+        }
         if (usageRun.providerId === null || usageRun.providerId.startsWith("ipr_")) {
           refreshGatewayUsageAfterCompletion(usageRun.scope, usageRun.key);
         }
@@ -1919,7 +1929,6 @@ function applySessionRunStatus(
 }
 
 function clearSessionRetry(entry: SyncEntry, workspaceId: string, sessionId: string) {
-  if (!isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
   const status = getReactQueryClient().getQueryData<SessionStatus>(statusKey(workspaceId, sessionId));
   if (status?.type === "retry") applySessionRunStatus(entry, workspaceId, sessionId, { type: "busy" });
 }
@@ -1935,7 +1944,7 @@ function cancelMessageReconciles(entry: SyncEntry, sessionId?: string) {
 
 /** Coalesce missed fragments into scoped native reads, never another prompt. */
 async function reconcileSessionMessages(entry: SyncEntry, sessionId: string, messageId?: string): Promise<void> {
-  if (!isOpencodeV2BaseUrl(entry.input.baseUrl) || !isTrackedSession(entry, sessionId)) return;
+  if (!isTrackedSession(entry, sessionId)) return;
   const key = JSON.stringify([sessionId, messageId ?? null]);
   const pending = entry.messageReconciles.get(key);
   if (pending) { pending.dirty = true; return pending.finished; }
@@ -1954,6 +1963,7 @@ async function reconcileSessionMessages(entry: SyncEntry, sessionId: string, mes
       if (messages.some(({ info, parts }) => info.sessionID !== sessionId || (messageId && info.id !== messageId)
         || parts.some((part) => part.sessionID !== sessionId || part.messageID !== info.id))) return;
       const workspaceId = entry.input.workspaceId;
+      observeProviderCredentialMessages(workspaceId, messages);
       const queryClient = getReactQueryClient();
       flushSessionDeltas(entry, workspaceId, sessionId);
       queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, sessionId), (current = []) => applyRevertCursor(
@@ -1995,7 +2005,6 @@ async function reconcileSessionMessages(entry: SyncEntry, sessionId: string, mes
 }
 
 async function reconcileSessionQuestions(entry: SyncEntry, sessionId: string) {
-  if (!isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
   entry.questionReconciles.get(sessionId)?.abort();
   const controller = new AbortController();
   entry.questionReconciles.set(sessionId, controller);
@@ -2015,7 +2024,6 @@ async function reconcileSessionQuestions(entry: SyncEntry, sessionId: string) {
 }
 
 async function reconcileSessionPermissions(entry: SyncEntry, sessionId: string) {
-  if (!isOpencodeV2BaseUrl(entry.input.baseUrl)) return;
   entry.permissionReconciles.get(sessionId)?.abort();
   const controller = new AbortController();
   entry.permissionReconciles.set(sessionId, controller);
@@ -2055,15 +2063,9 @@ async function reconcileSessionRunStatuses(
   // Capture one revision instead of copying every historical sequence on each
   // poll. A same-clock native edge still invalidates this read for its session.
   const sequenceRevision = entry.nativeSequenceRevision;
-  // Activity records are keyed by workspace and session, not by engine. While
-  // another engine's sync is in use for this workspace (chats were switched to
-  // it), the rest of the workspace's records belong to that engine: this
-  // engine's status read cannot settle them. It still settles what it tracks.
-  const workspaceRecordsOwned = !hasActiveOtherEngineSync(entry);
   if (source === "connect-reconcile") {
     const records = useSessionActivityStore.getState().recordsByWorkspaceId[input.workspaceId] ?? {};
-    const candidates = workspaceRecordsOwned ? Object.keys(records) : [];
-    for (const sessionId of new Set([...candidates, ...entry.trackedSessionRefs.keys(), ...entry.retainedSessionTimers.keys()])) {
+    for (const sessionId of new Set([...Object.keys(records), ...entry.trackedSessionRefs.keys(), ...entry.retainedSessionTimers.keys()])) {
       void reconcileSessionPermissions(entry, sessionId);
       void reconcileSessionQuestions(entry, sessionId);
       void refreshSessionTodos(input.workspaceId, sessionId);
@@ -2102,7 +2104,7 @@ async function reconcileSessionRunStatuses(
   for (const [sessionId, status] of Object.entries(statuses)) {
     if (source === "connect-reconcile" || isLiveStatus(status)) sessionIds.add(sessionId);
   }
-  const knownSessionIds = source === "connect-reconcile" && workspaceRecordsOwned
+  const knownSessionIds = source === "connect-reconcile"
     ? Object.keys(records)
     : [...entry.trackedSessionRefs.keys(), ...entry.retainedSessionTimers.keys()];
   for (const sessionId of knownSessionIds) {
@@ -2159,32 +2161,6 @@ function scheduleActiveSessionStatusReconciliation(entry: SyncEntry) {
   }, activeSessionStatusReconcileDelayMs(entry.statusReconcileFailures));
 }
 
-/** Another engine's sync for the same workspace is referenced by a live owner. */
-function hasActiveOtherEngineSync(entry: SyncEntry) {
-  const engine = syncEngine(entry.input.baseUrl);
-  for (const other of syncs.values()) {
-    if (other === entry || other.refs <= 0 || other.input.workspaceId !== entry.input.workspaceId) continue;
-    if (syncEngine(other.input.baseUrl) !== engine) return true;
-  }
-  return false;
-}
-
-/**
- * Chat routing moved this workspace to another engine. A released entry that
- * only retained sessions would keep polling the engine the app no longer
- * shows, and its idle reads would settle conversations (including migrated
- * ones, which keep their ids) that now run on the other engine. Switching
- * back reconnects and reconciles a fresh entry.
- */
-function retireOtherEngineSyncs(input: SyncOptions) {
-  const engine = syncEngine(input.baseUrl);
-  for (const [key, entry] of syncs) {
-    if (entry.refs > 0 || entry.input.workspaceId !== input.workspaceId) continue;
-    if (syncEngine(entry.input.baseUrl) === engine) continue;
-    disposeWorkspaceSync(key, entry);
-  }
-}
-
 /**
  * A restored network (or a wake that brings it back) should not wait out
  * retry backoff or the next watchdog tick: reconnect any parked stream with
@@ -2223,7 +2199,6 @@ if (typeof window !== "undefined") {
 
 export function ensureWorkspaceSessionSync(input: SyncOptions) {
   const key = syncKey(input);
-  retireOtherEngineSyncs(input);
   const existing = syncs.get(key);
   if (existing) {
     existing.input = input;
@@ -2351,8 +2326,7 @@ export function seedSessionStatus(
   workspaceId: string,
   sessionId: string,
   incomingStatus: SessionStatus,
-  /** `engine` is the engine the status was read from; only its syncs adopt the run. */
-  options: { snapshotStartedAt: number; engine?: SessionSyncEngine },
+  options: { snapshotStartedAt: number },
 ) {
   const queryClient = getReactQueryClient();
   const { snapshotStartedAt } = options;
@@ -2384,10 +2358,6 @@ export function seedSessionStatus(
   if (isLiveStatus(status)) {
     for (const entry of syncs.values()) {
       if (entry.input.workspaceId !== workspaceId) continue;
-      // Another engine's sync cannot validate this run: its status read does
-      // not list it, so it would settle a live run as idle, invalidate the
-      // transcript, and adopt it again from the refetch on every poll.
-      if (options.engine && syncEngine(entry.input.baseUrl) !== options.engine) continue;
       trackLiveSession(entry, sessionId, status, "snapshot");
     }
   }
@@ -2415,15 +2385,32 @@ async function refreshSessionTodos(workspaceId: string, sessionId: string) {
   await queryClient.invalidateQueries({ queryKey });
 }
 
+/** Durable messages recover authentication evidence even when the new task's
+ * first lifecycle events arrived before its chat route attached to the stream. */
+export function observeProviderCredentialMessages(workspaceId: string, messages: ReadonlyArray<{
+  info: { role: string; providerID?: string; time?: { created?: number; completed?: number }; finish?: string; error?: unknown };
+}>) {
+  for (const { info } of messages) {
+    if (info.role !== "assistant" || !info.providerID || !info.time?.created) continue;
+    const observedAt = info.time.completed ?? info.time.created;
+    if (info.error && isProviderCredentialRejection(info.error)) {
+      useProviderCredentialHealth.getState().observe(workspaceId, info.providerID, "rejected", info.time.created, observedAt);
+    } else if (!info.error && info.time.completed && info.finish && !["error", "aborted"].includes(info.finish)) {
+      useProviderCredentialHealth.getState().observe(workspaceId, info.providerID, "verified", info.time.created, observedAt);
+    }
+  }
+}
+
 export function seedSessionState(
   workspaceId: string,
   snapshot: OpenworkSessionHistory,
-  options: { preview?: boolean; engine?: SessionSyncEngine } = {},
+  options: { preview?: boolean } = {},
 ) {
   // A reverted window cannot establish which messages are still visible.
   if (options.preview && snapshot.session.revert?.messageID) return;
   const queryClient = getReactQueryClient();
   const key = transcriptKey(workspaceId, snapshot.session.id);
+  observeProviderCredentialMessages(workspaceId, snapshot.messages);
   const projected = snapshotToUIMessages(snapshot);
   let incoming = projected;
   // Commit against the old text before merging a cumulative snapshot, never
@@ -2471,7 +2458,6 @@ export function seedSessionState(
   if (snapshot.status !== undefined && typeof snapshotStartedAt === "number") {
     seedSessionStatus(workspaceId, snapshot.session.id, snapshot.status, {
       snapshotStartedAt,
-      engine: options.engine,
     });
   }
 
@@ -2505,9 +2491,7 @@ export function seedSessionState(
     discoverTaskSessions(entry, snapshot.session.id);
     // Opening a conversation (or refreshing it after a run) reads which of its
     // background commands still run, now that its run state is seeded.
-    if (!options.engine || syncEngine(entry.input.baseUrl) === options.engine) {
-      void reconcileBackgroundShells(entry, snapshot.session.id);
-    }
+    void reconcileBackgroundShells(entry, snapshot.session.id);
   }
 }
 

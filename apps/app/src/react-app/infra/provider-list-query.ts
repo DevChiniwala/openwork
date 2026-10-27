@@ -11,7 +11,7 @@ import type { ConfigProvidersResponse, ProviderListResponse } from "@opencode-ai
 export const PROVIDER_LIST_CACHE_MS = 5 * 60 * 1000;
 // Connected providers only: what pickers, availability checks and defaults read.
 const PROVIDER_LIST_QUERY_ROOT = ["opencode-provider-list"] as const;
-// Every provider the engine knows (~6 MB on v1), for connecting a new one.
+// Usable providers plus every provider that can be connected, for connecting a new one.
 const PROVIDER_CATALOG_QUERY_ROOT = ["opencode-provider-catalog"] as const;
 const SAVED_PROVIDER_LIST_PREFIX = "openwork.providerList.v1:";
 
@@ -78,10 +78,7 @@ export function providerListFromConnected(value: ConfigProvidersResponse): Provi
   return { all, connected: all.map((provider) => provider.id), default: value.default ?? {} };
 }
 
-/**
- * Connected providers only. On v1 `/config/providers` answers in a few
- * milliseconds with ~30 KB, where `/provider` sends the whole ~6 MB catalog.
- */
+/** Connected providers only; `provider.list` adds the connect catalog. */
 export async function fetchProviderList(input: {
   client: Client;
   baseUrl?: string | null;

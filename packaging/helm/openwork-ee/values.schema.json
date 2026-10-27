@@ -61,6 +61,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "nativeAffordanceCodeMode": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "OpenWork commands in Code Mode: Let assistants compose OpenWork queries and sidebar commands in Code Mode using the same checked app actions. Renders DEN_FEATURE_NATIVE_AFFORDANCE_CODE_MODE."
+            },
             "libraryConnectorNavigation": {
               "enum": [
                 "",
@@ -111,16 +121,6 @@
               ],
               "description": "Native dictation: Dictate editable prompts in OpenWork and Workbot using native desktop dictation or live browser speech recognition. Renders DEN_FEATURE_NATIVE_DICTATION."
             },
-            "organizationGrants": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Organization control panel and grants: Platform admins control complimentary access and grant organizations extra or unlimited Free Auto usage, with optional expiration. Renders DEN_FEATURE_ORGANIZATION_GRANTS."
-            },
             "sandboxOrgs": {
               "enum": [
                 "",
@@ -141,6 +141,16 @@
               ],
               "description": "Connect: an MCP server for each connection: Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools. Renders DEN_FEATURE_CONNECTION_MCP_SERVERS."
             },
+            "slackSendAsBot": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: Slack messages from the OpenWork bot: Chats and Automations can send a Slack message from the OpenWork app instead of as the member: a DM that notifies them (\"ping me when this is done\") or a channel post that names whose agent sent it. Needs the OpenWork app in Slack; limited to 20 messages a day per member. Renders DEN_FEATURE_SLACK_SEND_AS_BOT."
+            },
             "liveProviderSync": {
               "enum": [
                 "",
@@ -160,16 +170,6 @@
                 false
               ],
               "description": "Managed deployments: Organization admins install OpenWork in their own AWS account or Google Cloud project and see its health and updates in OpenWork, and agents connected to OpenWork can create and follow those deployments. Renders DEN_FEATURE_MANAGED_DEPLOYMENTS."
-            },
-            "enterprisePlan": {
-              "enum": [
-                "",
-                "true",
-                "false",
-                true,
-                false
-              ],
-              "description": "Enterprise plan billing: Platform admins start a Stripe-billed Enterprise plan for an organization, with a custom price and a minimum number of users. Enterprise organizations invite people without the Free plan user limit and see their Enterprise plan on the Billing page. Renders DEN_FEATURE_ENTERPRISE_PLAN."
             },
             "workbotDocuments": {
               "enum": [
@@ -211,6 +211,16 @@
               ],
               "description": "Workbot: Your agent: Every member gets a background agent that reads their Gmail and Google Calendar each morning and about every three hours in working hours, and sends them one short DM from the Workbot Slack app only when something needs them. Admins turn it on and choose what it tells people about in Manage › Workbot; members turn it off, snooze it or mute a kind of message. It only reads and never sends, accepts or edits anything for them. Renders DEN_FEATURE_WORKBOT_PROACTIVE."
             },
+            "workbotAgentHealthView": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: Your agent health in Manage › Workbot: Admins see, for the last 7 days and per responsibility, how many checks members' agents ran, the share that stayed quiet, how many messages they sent and how many members muted it. Counts only, no member names or content. Needs Workbot: Your agent. Renders DEN_FEATURE_WORKBOT_AGENT_HEALTH_VIEW."
+            },
             "workbotIncludedModels": {
               "enum": [
                 "",
@@ -240,6 +250,26 @@
                 false
               ],
               "description": "Calendar: desktop app: Members see a Calendar in the desktop app with their Automations next to meetings from their connected Google or Outlook calendar. Renders DEN_FEATURE_AUTOMATION_CALENDAR."
+            },
+            "automationIntervalSchedules": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Automations: every few hours: Members and their agents can schedule an Automation to run every few hours, for example every 3 hours between 9:00 and 18:00 on weekdays, instead of once a day or once a week. Renders DEN_FEATURE_AUTOMATION_INTERVAL_SCHEDULES."
+            },
+            "automationCalendarTriggers": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Automations: before or after meetings: Members and their agents can run a Cloud Automation a set time before or after each meeting on their Google Calendar, for example 5 minutes after every meeting with people outside the organization. Renders DEN_FEATURE_AUTOMATION_CALENDAR_TRIGGERS."
             },
             "computerUse": {
               "enum": [
@@ -351,6 +381,26 @@
               ],
               "description": "Self-serve Enterprise: Owners can buy Enterprise by card at the planned per-person price. Renders DEN_FEATURE_SELF_SERVE_ENTERPRISE."
             },
+            "gatewayProviderAuthErrors": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "AI Gateway: rejected provider credentials in chat: When a provider rejects your organization's AI Gateway credential, the chat says which provider rejected it and asks you to contact your administrator, with a request ID for support, instead of sending you to your own model settings. Renders DEN_FEATURE_GATEWAY_PROVIDER_AUTH_ERRORS."
+            },
+            "providerCredentialStatus": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Desktop: honest AI provider key status: AI Providers says \"Not checked yet\" for a key that has not answered a chat, and \"Key not accepted\" with Replace key (or ask your admin, for organization providers) after the provider rejects it, instead of always \"Ready to use\". Renders DEN_FEATURE_PROVIDER_CREDENTIAL_STATUS."
+            },
             "sessionTokenHashing": {
               "enum": [
                 "",
@@ -360,6 +410,16 @@
                 false
               ],
               "description": "Hashed sign-in sessions: Den keeps only a one-way hash of each sign-in session token, so a copy of the database cannot sign anyone in. New sessions are stored hashed and older ones convert the next time they are used; turn on only once every Den replica runs a release that reads both forms. Renders DEN_FEATURE_SESSION_TOKEN_HASHING."
+            },
+            "lastUsedSignIn": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Remember last sign-in method: People who last signed in with a password, Google or GitHub skip the email step next time: Den web lists the sign-in methods with a Last used badge, and Single sign-on returns to the email step. Signing in with SSO forgets the method. Renders DEN_FEATURE_LAST_USED_SIGN_IN."
             },
             "gatewayDashboard": {
               "enum": [
@@ -1212,6 +1272,26 @@
               "description": "Retired: no longer a feature switch. Ignored."
             },
             "orgPrompts": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "enterprisePlan": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Retired: no longer a feature switch. Ignored."
+            },
+            "organizationGrants": {
               "enum": [
                 "",
                 "true",

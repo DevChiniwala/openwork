@@ -5,16 +5,15 @@ import { engineDriveUpload } from "../worlds/engine-drive-upload.ts";
 
 const test = spec.world(engineDriveUpload, { timeout: 480_000,
   resources: { surfaces: ["appWeb"], services: ["den", "mock"] },
-  needs: { placement: "local", env: ["OPENWORK_EVAL_ENGINE"] },
+  needs: { placement: "local" },
 });
 
 test("V2-DRIVE-UPLOAD: a member approves each workspace file the native model puts in their selected Drive account", async ({ world, user, probe, step, evidence }) => {
-  expect(world.engine).toBe("v2");
   // A minimal .docx header; the witness compares bytes, not Office structure.
   const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...new TextEncoder().encode(randomUUID())]);
   const name = "proposal.docx";
   await world.writeWorkspaceFile(name, bytes);
-  await probe.eventually(() => probe.composer(), { within: 60_000, label: "model ready", until: state => state.selectedModelLabel.includes("Big Pickle") && !state.modelUnavailable });
+  await probe.eventually(() => probe.composer(), { within: 60_000, label: "model ready", until: state => state.selectedModelLabel.includes("Witness model") && !state.modelUnavailable });
   const driveCopies = async () => ({
     selected: await world.google.driveUploadsFor(world.mailboxes.selected, { timeoutMs: 1_000 }),
     other: await world.google.driveUploadsFor(world.mailboxes.other, { timeoutMs: 1_000 }),

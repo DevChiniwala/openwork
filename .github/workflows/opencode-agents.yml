@@ -15,6 +15,12 @@ on:
         required: true
         type: number
 
+# The OpenCode CLI is a CI agent tool here (`opencode run --agent ...`), not
+# the product engine, so its version is pinned in this workflow rather than in
+# constants.json (which pins only the product's OpenCode v2 engine).
+env:
+  OPENCODE_CLI_VERSION: "1.18.33"
+
 jobs:
   triage-issue:
     if: inputs.target == 'issue'
@@ -35,8 +41,7 @@ jobs:
 
       - name: Install opencode
         run: |
-          version="$(node -e "const fs=require('fs'); const parsed=JSON.parse(fs.readFileSync('constants.json','utf8')); process.stdout.write(String(parsed.opencodeVersion||'').trim().replace(/^v/,''));")"
-          curl -fsSL https://opencode.ai/install | bash -s -- --version "$version" --no-modify-path
+          curl -fsSL https://opencode.ai/install | bash -s -- --version "$OPENCODE_CLI_VERSION" --no-modify-path
 
       - name: Triage issue
         env:
@@ -71,8 +76,7 @@ jobs:
 
       - name: Install opencode
         run: |
-          version="$(node -e "const fs=require('fs'); const parsed=JSON.parse(fs.readFileSync('constants.json','utf8')); process.stdout.write(String(parsed.opencodeVersion||'').trim().replace(/^v/,''));")"
-          curl -fsSL https://opencode.ai/install | bash -s -- --version "$version" --no-modify-path
+          curl -fsSL https://opencode.ai/install | bash -s -- --version "$OPENCODE_CLI_VERSION" --no-modify-path
 
       - name: Build prompt
         env:

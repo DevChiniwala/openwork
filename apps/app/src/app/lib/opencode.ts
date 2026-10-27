@@ -358,7 +358,11 @@ export function unwrap<T>(result: FieldsResult<T>): NonNullable<T> {
   throw new Error(message || "Unknown error");
 }
 
-export function createClient(baseUrl: string, directory?: string, auth?: OpencodeAuth, options?: { desktopTransport: "main" }) {
+/**
+ * The SDK client `createClientV2` builds its compatibility surface on. Use
+ * `createClientV2` everywhere else: OpenCode v2 is the only engine.
+ */
+export function createClient(baseUrl: string, directory?: string, auth?: OpencodeAuth) {
   const headers: Record<string, string> = {};
   if (!isDesktopRuntime()) {
     const authHeader = resolveAuthHeader(auth);
@@ -368,7 +372,7 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
   }
 
   const fetchImpl = isDesktopRuntime()
-    ? createDesktopFetch(auth, options?.desktopTransport === "main" ? desktopFetchViaMain : desktopFetch)
+    ? createDesktopFetch(auth, desktopFetch)
     : (input: RequestInfo | URL, init?: RequestInit) => {
         const timeoutMs = requestIsStreaming(input, init) ? 0 : DEFAULT_OPENCODE_REQUEST_TIMEOUT_MS;
         return fetchWithTimeout(globalThis.fetch, input, init, timeoutMs);
@@ -464,30 +468,4 @@ export async function readPromptAdmission(client: ReturnType<typeof createClient
   const status = statuses.data[sessionID];
   if (status && status.type !== "idle") return "unknown";
   return messages.data.some(({ info }) => info.id === messageID) ? "unknown" : "absent";
-}
-
-export async function waitForHealthy(
-  client: ReturnType<typeof createClient>,
-  options?: { timeoutMs?: number; pollMs?: number },
-) {
-  const timeoutMs = options?.timeoutMs ?? 10_000;
-  const pollMs = options?.pollMs ?? 250;
-
-  const start = Date.now();
-  let lastError: string | null = null;
-
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const health = unwrap(await client.global.health());
-      if (health.healthy) {
-        return health;
-      }
-      lastError = "Server reported unhealthy";
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : "Unknown error";
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
-
-  throw new Error(lastError ?? "Timed out waiting for server health");
 }

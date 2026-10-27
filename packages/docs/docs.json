@@ -159,6 +159,7 @@
             "group": "Overview",
             "pages": [
               "ai-gateway/overview",
+              "ai-gateway/provider-support",
               "ai-gateway/compare-litellm-bifrost",
               "ai-gateway/litellm",
               "ai-gateway/how-requests-flow",

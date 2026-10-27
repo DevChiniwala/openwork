@@ -91,8 +91,6 @@ const todoSchema = z
 
 export const threadMessagesSchema = z.array(messageSchema);
 export const threadTodosSchema = z.array(todoSchema);
-export const threadStatusesSchema = z.record(z.string(), threadStatusSchema);
-export const abortResultSchema = z.boolean();
 
 export const threadSnapshotSchema = z.object({
   session: sessionSchema,

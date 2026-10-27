@@ -1,4 +1,4 @@
-import { startupPhase, withStartupPhase } from "./startup-log.mjs";
+import { withStartupPhase } from "./startup-log.mjs";
 import { randomUUID, X509Certificate } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -264,47 +264,6 @@ export function resolveOpenworkServerConfigPath(env = process.env) {
   return openworkServerConfigPath({ env });
 }
 
-/**
- * Files any earlier OpenWork Desktop run leaves behind. If none exist when the
- * app starts, this is a brand-new install, not an update.
- * @param {{ userDataDir: string, serverConfigPath: string, env?: NodeJS.ProcessEnv }} input
- * @returns {string[]}
- */
-export function openworkInstallMarkerPaths({ userDataDir, serverConfigPath, env = process.env }) {
-  const serverDir = path.dirname(serverConfigPath);
-  const runtimeDb = env.OPENWORK_RUNTIME_DB?.trim() ? path.resolve(env.OPENWORK_RUNTIME_DB.trim()) : path.join(serverDir, "runtime.sqlite");
-  return [
-    serverConfigPath,
-    runtimeDb,
-    path.join(path.dirname(runtimeDb), "engine-v2-preview.json"),
-    env.OPENWORK_SERVER_TOKEN_STORE_PATH?.trim() ? path.resolve(env.OPENWORK_SERVER_TOKEN_STORE_PATH.trim()) : path.join(userDataDir, "openwork-server-tokens.json"),
-    env.OPENWORK_SERVER_STATE_PATH?.trim() ? path.resolve(env.OPENWORK_SERVER_STATE_PATH.trim()) : path.join(userDataDir, "openwork-server-state.json"),
-    path.join(userDataDir, "openwork-workspaces.json"),
-    path.join(userDataDir, "workspace-state.json"),
-    path.join(userDataDir, "app-recovery.v1.json"),
-  ];
-}
-
-/**
- * Migrate existing v1 installs in the background by default, independently of
- * Den rollout policy. Explicit local engine/migration overrides always win.
- * @returns {boolean | undefined}
- */
-export function resolveDesktopEngineAutoUpgrade(env = process.env) {
-  if (env.OPENWORK_ENGINE_V2_PREVIEW?.trim() || env.OPENWORK_ENGINE_AUTO_UPGRADE !== undefined) return undefined;
-  return true;
-}
-
-/**
- * Fresh installs can select v2 immediately; existing profiles migrate safely.
- * @param {{ markerPaths: string[], exists?: (filePath: string) => boolean, env?: NodeJS.ProcessEnv }} input
- * @returns {"v2" | undefined}
- */
-export function resolveFreshInstallEngine({ markerPaths, exists = existsSync, env = process.env }) {
-  if (env.OPENWORK_ENGINE_V2_PREVIEW?.trim()) return undefined;
-  return markerPaths.some((filePath) => exists(filePath)) ? undefined : "v2";
-}
-
 export function seedWorkspacePathsForEmbeddedServer(workspacePaths, serverConfigExists) {
   return serverConfigExists ? [] : workspacePaths;
 }
@@ -406,10 +365,6 @@ function createEngineState() {
     hostname: null,
     port: null,
     baseUrl: null,
-    opencodeUsername: null,
-    opencodePassword: null,
-    opencodeBinPath: null,
-    opencodeBinSource: null,
     managedByServer: false,
     managedPid: null,
     managedIsAlive: null,
@@ -438,10 +393,6 @@ export function snapshotEngineState(state) {
     projectDir: state.projectDir,
     hostname: state.hostname,
     port: state.port,
-    opencodeUsername: state.opencodeUsername,
-    opencodePassword: state.opencodePassword,
-    opencodeBinPath: state.opencodeBinPath,
-    opencodeBinSource: state.opencodeBinSource,
     pid: state.managedByServer ? state.managedPid ?? null : child?.pid ?? null,
     lastStdout: state.lastStdout,
     lastStderr: state.lastStderr,
@@ -476,8 +427,6 @@ function createOpenworkServerState() {
     clientToken: null,
     ownerToken: null,
     hostToken: null,
-    managedOpencodeBinPath: null,
-    managedOpencodeBinSource: null,
     lastStdout: null,
     lastStderr: null,
     managedOpencodeExecution: null,
@@ -496,8 +445,6 @@ export function snapshotOpenworkServerState(state) {
     clientToken: state.clientToken,
     ownerToken: state.ownerToken,
     hostToken: state.hostToken,
-    managedOpencodeBinPath: state.managedOpencodeBinPath,
-    managedOpencodeBinSource: state.managedOpencodeBinSource,
     logFilePath: state.logFilePath ?? null,
     pid: child?.pid ?? null,
     lastStdout: state.lastStdout,
@@ -535,25 +482,22 @@ export function resolveOpenworkServerReuse({
  * runtime it already stopped: snapshotOpenworkServerState would report
  * running:true with a dead baseUrl and assertOpenworkServerReady would pass
  * against it. Keeps accumulated output for diagnostics and the project dir so
- * a retry via engineRestart still knows its workspace. The engine state only
- * resets when this start owned the engine (manageOpencode) — an external
- * engine keeps running regardless of the server's fate.
+ * a retry via engineRestart still knows its workspace. The server owns the
+ * engine, so the engine state always resets with it.
  */
-export function resetRuntimeStatesAfterFailedServerStart(openworkServerStateRef, engineStateRef, options = {}) {
+export function resetRuntimeStatesAfterFailedServerStart(openworkServerStateRef, engineStateRef) {
   const serverStdout = openworkServerStateRef.lastStdout;
   const serverStderr = openworkServerStateRef.lastStderr;
   Object.assign(openworkServerStateRef, createOpenworkServerState());
   openworkServerStateRef.lastStdout = serverStdout;
   openworkServerStateRef.lastStderr = serverStderr;
-  if (options.manageOpencode === true) {
-    const engineStdout = engineStateRef.lastStdout;
-    const engineStderr = engineStateRef.lastStderr;
-    const projectDir = engineStateRef.projectDir;
-    Object.assign(engineStateRef, createEngineState());
-    engineStateRef.lastStdout = engineStdout;
-    engineStateRef.lastStderr = engineStderr;
-    engineStateRef.projectDir = projectDir;
-  }
+  const engineStdout = engineStateRef.lastStdout;
+  const engineStderr = engineStateRef.lastStderr;
+  const projectDir = engineStateRef.projectDir;
+  Object.assign(engineStateRef, createEngineState());
+  engineStateRef.lastStdout = engineStdout;
+  engineStateRef.lastStderr = engineStderr;
+  engineStateRef.projectDir = projectDir;
 }
 
 function assertOpenworkServerReady(snapshot) {
@@ -612,7 +556,7 @@ function binaryFileNames(baseName, platform = process.platform, arch = process.a
 export function bundledEngineEnv(sidecarDirs, { required = false, platform = process.platform, arch = process.arch } = {}) {
   /** @type {NodeJS.ProcessEnv} */
   const env = {};
-  for (const [base, key] of [["opencode", "OPENWORK_OPENCODE_BIN"], ["opencode2", "OPENWORK_OPENCODE2_BIN"]]) {
+  for (const [base, key] of [["opencode2", "OPENWORK_OPENCODE2_BIN"]]) {
     const candidates = sidecarDirs.flatMap((directory) =>
       binaryFileNames(base, platform, arch).map((name) => path.resolve(directory, name)));
     const binary = candidates.find((candidate) => {
@@ -1469,11 +1413,6 @@ export function createRuntimeManager({
   }
 
   const userDataDir = app.getPath("userData");
-  // Decided once, before this process writes any OpenWork state, so a server
-  // restart in the same session does not mistake its own files for an update.
-  const freshInstallEngine = resolveFreshInstallEngine({
-    markerPaths: openworkInstallMarkerPaths({ userDataDir, serverConfigPath: resolveOpenworkServerConfigPath(process.env) }),
-  });
   const sidecarDirs = [
     path.join(desktopRoot, "resources", "sidecars"),
     process.resourcesPath ? path.join(process.resourcesPath, "sidecars") : null,
@@ -1500,10 +1439,6 @@ export function createRuntimeManager({
     const override = process.env.OPENWORK_SERVER_STATE_PATH?.trim();
     if (override) return path.resolve(override);
     return path.join(userDataDir, "openwork-server-state.json");
-  }
-
-  function managedOpencodeWorkdir() {
-    return path.join(userDataDir, "managed-opencode-workdir");
   }
 
   async function loadTokenStore() {
@@ -1656,59 +1591,6 @@ export function createRuntimeManager({
     }]);
   }
 
-  function resolveBinaryInfo(baseName, extraPaths = []) {
-    for (const directory of [...sidecarDirs, ...extraPaths]) {
-      for (const fileName of binaryFileNames(baseName)) {
-        const candidate = path.join(directory, fileName);
-        if (existsSync(candidate)) {
-          return { path: candidate, source: "bundled" };
-        }
-      }
-    }
-
-    const pathEntries = (enrichedPath([], process.env.PATH) ?? "")
-      .split(path.delimiter)
-      .filter(Boolean);
-    for (const entry of pathEntries) {
-      for (const fileName of binaryFileNames(baseName)) {
-        const candidate = path.join(entry, fileName);
-        if (existsSync(candidate)) {
-          return { path: candidate, source: "path" };
-        }
-      }
-    }
-
-    if (baseName === "opencode") {
-      for (const candidate of [
-        path.join(app.getPath("home"), ".opencode", "bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
-        path.join("/opt/homebrew/bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
-        path.join("/usr/local/bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
-        path.join("/usr/bin", process.platform === "win32" ? "opencode.exe" : "opencode"),
-      ]) {
-        if (existsSync(candidate)) {
-          return { path: candidate, source: "known-location" };
-        }
-      }
-    }
-
-    return null;
-  }
-
-  function resolveBinary(baseName, extraPaths = []) {
-    return resolveBinaryInfo(baseName, extraPaths)?.path ?? null;
-  }
-
-  function resolveOpencodeBinary(opencodeBinPath) {
-    const end = startupPhase("engine.v1.resolve");
-    try { const result = resolveOpencodeBinaryInner(opencodeBinPath); end(); return result; }
-    catch (error) { end(true); throw error; }
-  }
-
-  function resolveOpencodeBinaryInner(opencodeBinPath) {
-    const explicitPath = typeof opencodeBinPath === "string" ? opencodeBinPath.trim() : "";
-    return explicitPath ? { path: explicitPath, source: "custom" } : resolveBinaryInfo("opencode");
-  }
-
   function resolveDockerCandidates() {
     const candidates = [];
     const seen = new Set();
@@ -1783,22 +1665,6 @@ export function createRuntimeManager({
       .map((line) => line.trim())
       .filter((name) => name && (name.startsWith(legacyOpenworkContainerPrefix) || name.startsWith("openwork-dev-") || name.startsWith("openwrk-")))
       .sort();
-  }
-
-  async function runShellCommand(program, args, options = {}) {
-    const result = spawnSync(program, args, {
-      encoding: "utf8",
-      cwd: options.cwd,
-      env: options.env,
-      shell: false,
-      windowsHide: true,
-      timeout: options.timeoutMs,
-    });
-    return {
-      status: typeof result.status === "number" ? result.status : -1,
-      stdout: result.stdout ?? "",
-      stderr: result.stderr ?? "",
-    };
   }
 
   function killProcessId(pid, signal = "SIGTERM") {
@@ -1898,7 +1764,7 @@ export function createRuntimeManager({
     try {
       return await withStartupPhase("server.start", () => startOpenworkServerInner(options));
     } catch (error) {
-      resetRuntimeStatesAfterFailedServerStart(openworkServerState, engineState, options);
+      resetRuntimeStatesAfterFailedServerStart(openworkServerState, engineState);
       throw error;
     }
   }
@@ -1918,19 +1784,10 @@ export function createRuntimeManager({
 
     const host = "127.0.0.1";
 
-    const managedOpencode = options.manageOpencode ? resolveOpencodeBinary(options.opencodeBinPath) : null;
-    openworkServerState.managedOpencodeBinPath = managedOpencode?.path ?? null;
-    openworkServerState.managedOpencodeBinSource = managedOpencode?.source ?? null;
-    if (options.manageOpencode) {
-      engineState.opencodeBinPath = managedOpencode?.path ?? null;
-      engineState.opencodeBinSource = managedOpencode?.source ?? null;
-    }
-
-    // The embedded server resolves v2 independently of v1. Give both engines
-    // absolute bundled paths before loading it, never a PATH/cache download.
-    // Keep triple-name support for dev and older packaged layouts.
+    // The embedded server runs the OpenCode engine itself. Packaged apps give
+    // it the absolute bundled binary before loading it, never a PATH/cache
+    // download. Keep triple-name support for dev and older packaged layouts.
     const engineEnv = bundledEngineEnv(sidecarDirs, { required: app.isPackaged });
-    if (managedOpencode) engineEnv.OPENWORK_OPENCODE_BIN = managedOpencode.path;
     const serverEnv = await buildChildEnv(engineEnv);
     Object.assign(process.env, serverEnv);
 
@@ -1950,7 +1807,7 @@ export function createRuntimeManager({
     const portSelection = await resolveOpenworkPort(host, activeWorkspace, currentPort);
     const tokens = await loadServerCredentials();
 
-    // One call: resolve config, spawn managed OpenCode, start HTTP server.
+    // One call: resolve config, start the HTTP server and its engine.
     // Dev must prefer apps/server/dist; build output also stages a packaged
     // copy under apps/desktop/server for electron-builder.
     const devPath = path.resolve(__runtimeDir, "..", "..", "server", "dist", "embedded.js");
@@ -1984,22 +1841,11 @@ export function createRuntimeManager({
       workspaces: workspacePaths,
       token: tokens.clientToken,
       hostToken: tokens.hostToken,
-      opencodeBaseUrl: options.opencodeBaseUrl ?? undefined,
-      opencodeDirectory: activeWorkspace || undefined,
-      manageOpencode: options.manageOpencode === true,
       resumeInterruptedTasks: true,
-      opencodeBin: managedOpencode?.path ?? undefined,
-      opencodeCwd: managedOpencodeWorkdir(),
       localManagedMcpVaultKey,
       anonymousInference,
-      freshInstallEngine,
-      engineAutoUpgrade: resolveDesktopEngineAutoUpgrade(),
     });
     inProcessServer = handle;
-    openworkServerState.managedOpencodeExecution = handle.managedOpencodeExecution ?? null;
-    engineState.managedByServer = Boolean(handle.managedOpencode);
-    engineState.managedPid = handle.managedOpencode?.pid ?? null;
-    engineState.managedIsAlive = handle.managedOpencode?.isAlive ?? null;
 
     const boundPort = handle.port;
     const baseUrl = handle.url;
@@ -2014,11 +1860,10 @@ export function createRuntimeManager({
     openworkServerState.hostToken = tokens.hostToken;
 
     // No health check needed -- startServer() resolves only after the listener is bound.
-    let workspaceList = null;
     let ownerToken = tokens.ownerToken?.trim() || null;
     if (ownerToken) {
       try {
-        workspaceList = await fetchJson(`${baseUrl}/workspaces`, {
+        await fetchJson(`${baseUrl}/workspaces`, {
           headers: { Authorization: `Bearer ${ownerToken}` },
         }, 5000);
       } catch {
@@ -2030,29 +1875,7 @@ export function createRuntimeManager({
     if (ownerToken) {
       await persistServerOwnerToken(ownerToken);
     }
-    if (ownerToken) {
-      try {
-        const list = workspaceList ?? await fetchJson(`${baseUrl}/workspaces`, {
-          headers: { Authorization: `Bearer ${ownerToken}` },
-        }, 5000);
-        const first = Array.isArray(list?.items) ? list.items[0] : undefined;
-        const opencode = first?.opencode;
-        if (opencode?.baseUrl) {
-          engineState.runtime = DIRECT_RUNTIME;
-          engineState.projectDir = opencode.directory ?? activeWorkspace ?? null;
-          engineState.hostname = new URL(opencode.baseUrl).hostname;
-          engineState.port = Number(new URL(opencode.baseUrl).port) || null;
-          engineState.baseUrl = opencode.baseUrl;
-          engineState.opencodeUsername = opencode.username ?? null;
-          engineState.opencodePassword = opencode.password ?? null;
-          engineState.execution = handle.managedOpencodeExecution ?? null;
-          engineState.child = null;
-          engineState.childExited = false;
-        }
-      } catch (error) {
-        appendOutput(openworkServerState, "lastStderr", `OpenWork server workspace probe: ${error instanceof Error ? error.message : String(error)}\n`);
-      }
-    }
+    adoptServerEngine(handle, activeWorkspace || engineState.projectDir);
     if (!portSelection.preferredPort || boundPort === portSelection.preferredPort) {
       await persistPreferredOpenworkPort(activeWorkspace, boundPort);
     }
@@ -2094,11 +1917,6 @@ export function createRuntimeManager({
     try {
       openworkServer = await startOpenworkServer({
         workspacePaths: options.workspacePaths,
-        opencodeBaseUrl: engineState.baseUrl,
-        opencodeUsername: engineState.opencodeUsername,
-        opencodePassword: engineState.opencodePassword,
-        manageOpencode: options.manageOpencode === true,
-        opencodeBinPath: options.opencodeBinPath,
       });
     } catch (error) {
       appendOutput(engineState, "lastStderr", `OpenWork server: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -2108,20 +1926,23 @@ export function createRuntimeManager({
     assertOpenworkServerReady(openworkServer);
   }
 
-  function adoptManagedEngineConnection() {
-    const config = inProcessServer?.config;
-    const baseUrl = String(config?.opencodeBaseUrl ?? "").trim();
-    if (!baseUrl || !inProcessServer?.managedOpencode?.isAlive?.()) return;
-    const url = new URL(baseUrl);
+  /**
+   * The embedded server owns the OpenCode engine and is the only way to reach
+   * it (`/workspace/:id/opencode2/*`), so the engine is reported as running for
+   * exactly as long as that server handle is live, at the server's address.
+   */
+  function adoptServerEngine(handle, projectDir) {
+    const url = new URL(handle.url);
     engineState.runtime = DIRECT_RUNTIME;
+    engineState.projectDir = projectDir || null;
     engineState.hostname = url.hostname;
     engineState.port = Number(url.port) || null;
-    engineState.baseUrl = baseUrl;
-    engineState.opencodeUsername = config.opencodeUsername ?? null;
-    engineState.opencodePassword = config.opencodePassword ?? null;
-    engineState.execution = inProcessServer.managedOpencodeExecution ?? null;
+    engineState.baseUrl = handle.url;
+    engineState.managedByServer = true;
+    engineState.managedPid = null;
+    engineState.managedIsAlive = () => inProcessServer === handle;
     engineState.child = null;
-    engineState.childExited = false;
+    engineState.childExited = true;
   }
 
   async function engineStart(projectDir, options = {}) {
@@ -2172,9 +1993,7 @@ export function createRuntimeManager({
           engineState.projectDir = safeProjectDir;
           await persistPreferredOpenworkPort(safeProjectDir, openworkServerState.port);
         }
-        // A server started before any workspace existed never learned its
-        // engine connection from a workspace; adopt it from the server.
-        if (!engineState.baseUrl) adoptManagedEngineConnection();
+        if (!engineState.baseUrl && inProcessServer) adoptServerEngine(inProcessServer, safeProjectDir);
         return snapshotEngineState(engineState);
       }
     }
@@ -2207,8 +2026,6 @@ export function createRuntimeManager({
       await ensureOpenwork({
         projectDir: safeProjectDir,
         workspacePaths,
-        manageOpencode: true,
-        opencodeBinPath: options.opencodeBinPath,
       });
 
       lifecycleState = "healthy";
@@ -2244,9 +2061,6 @@ export function createRuntimeManager({
   }
 
   async function engineInfo() {
-    if (inProcessServer?.managedOpencode) {
-      engineState.managedPid = inProcessServer.managedOpencode.pid ?? null;
-    }
     return { ...snapshotEngineState(engineState), lifecycleState };
   }
 
@@ -2254,7 +2068,6 @@ export function createRuntimeManager({
     return {
       lifecycleState,
       engine: await engineInfo(),
-      enginePool: inProcessServer?.managedOpencodePool?.() ?? null,
       openworkServer: snapshotOpenworkServerState(openworkServerState),
     };
   }
@@ -2271,51 +2084,13 @@ export function createRuntimeManager({
     const workspacePaths = prioritizeWorkspacePaths(engineState.projectDir, await listLocalWorkspacePaths(), {
       platform: workspacePlatform,
     });
-    const shouldManageOpencode = Boolean(
-      openworkServerState.managedOpencodeBinPath || engineState.opencodeBinPath || !engineState.baseUrl,
-    );
-    const info = await startOpenworkServer({
-      workspacePaths,
-      opencodeBaseUrl: shouldManageOpencode ? null : engineState.baseUrl,
-      opencodeUsername: shouldManageOpencode ? null : engineState.opencodeUsername,
-      opencodePassword: shouldManageOpencode ? null : engineState.opencodePassword,
-      manageOpencode: shouldManageOpencode,
-      opencodeBinPath: engineState.opencodeBinPath ?? openworkServerState.managedOpencodeBinPath,
-    });
-    // The server now runs its managed engine even before the first
-    // workspace exists. Report that runtime as healthy so a later
-    // engineStart(firstWorkspace) retargets it — the same join a workspace
-    // switch uses — instead of tearing the running engine down.
-    if (inProcessServer?.managedOpencode?.isAlive?.()) lifecycleState = "healthy";
+    const info = await startOpenworkServer({ workspacePaths });
+    // The server runs its engine even before the first workspace exists.
+    // Report that runtime as healthy so a later engineStart(firstWorkspace)
+    // retargets it — the same join a workspace switch uses — instead of
+    // tearing the running engine down.
+    if (inProcessServer) lifecycleState = "healthy";
     return info;
-  }
-
-  async function opencodeMcpAuth(projectDir, serverName) {
-    const safeProjectDir = String(projectDir ?? "").trim();
-    const safeServerName = String(serverName ?? "").trim();
-    if (!safeProjectDir) {
-      throw new Error("project_dir is required");
-    }
-    if (!safeServerName) {
-      throw new Error("server_name is required");
-    }
-
-    const program = resolveBinary("opencode");
-    if (!program) {
-      throw new Error("Failed to locate opencode.");
-    }
-
-    const result = await runShellCommand(program, ["mcp", "auth", safeServerName], {
-      cwd: safeProjectDir,
-      env: await buildChildEnv(),
-      timeoutMs: 120_000,
-    });
-    return {
-      ok: result.status === 0,
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
   }
 
   async function sandboxCleanupOpenworkContainers() {
@@ -2352,7 +2127,6 @@ export function createRuntimeManager({
     engineInfo,
     openworkServerInfo,
     openworkServerRestart: (options) => withRuntimeLifecycle(() => openworkServerRestart(options)),
-    opencodeMcpAuth,
     sandboxCleanupOpenworkContainers,
   };
 }

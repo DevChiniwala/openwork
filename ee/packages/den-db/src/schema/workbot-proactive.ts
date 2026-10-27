@@ -1,4 +1,4 @@
-import { index, int, mysqlTable, timestamp, varchar } from "drizzle-orm/mysql-core"
+import { index, int, mysqlTable, primaryKey, timestamp, varchar } from "drizzle-orm/mysql-core"
 import { compatJsonColumn, denTypeIdColumn, encryptedMediumTextColumn } from "../columns"
 
 /** A member's own choices for their agent, within what the organization allows. */
@@ -57,4 +57,23 @@ export const AgentDeliveryTable = mysqlTable(
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
   },
   (t) => [index("agent_delivery_member").on(t.memberId, t.createdAt)],
+)
+
+/**
+ * Daily counters per organization and responsibility, for the admin's health view: how many passes asked about it,
+ * how many of those stayed quiet for it, and how many messages it produced. Counts only, no member or content.
+ * `day` is the UTC date.
+ */
+export const AgentCheckTable = mysqlTable(
+  "agent_check",
+  {
+    organizationId: denTypeIdColumn("organization", "organization_id").notNull(),
+    day: varchar("day", { length: 10 }).notNull(),
+    responsibility: varchar("responsibility", { length: 32 }).notNull(),
+    checks: int("checks").notNull().default(0),
+    quiet: int("quiet").notNull().default(0),
+    sent: int("sent").notNull().default(0),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "agent_check_pk", columns: [t.organizationId, t.day, t.responsibility] })],
 )

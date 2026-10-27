@@ -5,7 +5,7 @@ description: Make the desktop's model provider fail on demand (connection refuse
 
 # Fake model faults
 
-Real provider errors come from the engine (the opencode sidecar), not from the window, so CDP network throttling cannot produce them. This skill points test providers at failures instead.
+Real provider errors come from the engine (the OpenCode v2 sidecar), not from the window, so CDP network throttling cannot produce them. This skill points test providers at failures instead.
 
 ## Set up
 
@@ -36,6 +36,6 @@ A DNS timeout (`getaddrinfo ETIMEOUT`) and the "OpenWork Cloud is temporarily un
 
 ```bash
 python3 $F/fault-providers.py remove
-CDP_URL=… node .opencode/skills/drive-desktop-cdp/scripts/cdp.mjs eval '(async()=>{const w=(location.hash.match(/#\/workspace\/([^/]+)/)||[])[1];const r=await fetch("http://127.0.0.1:"+localStorage.getItem("openwork.server.port")+"/workspace/"+w+"/opencode/auth/fault-lab",{method:"DELETE",headers:{Authorization:"Bearer "+localStorage.getItem("openwork.server.token")}});return r.status})()'
+CDP_URL=… node .opencode/skills/drive-desktop-cdp/scripts/cdp.mjs eval '(async()=>{const w=(location.hash.match(/#\/workspace\/([^/]+)/)||[])[1];const r=await fetch("http://127.0.0.1:"+localStorage.getItem("openwork.server.port")+"/workspace/"+w+"/opencode2/auth/fault-lab",{method:"DELETE",headers:{Authorization:"Bearer "+localStorage.getItem("openwork.server.token")}});return r.status})()'
 kill %1   # the fault server
 ```

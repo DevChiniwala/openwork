@@ -9,7 +9,7 @@
  */
 import type { Session } from "@opencode-ai/sdk/v2/client";
 import type { Client, ModelRef } from "../types";
-import { isOpencodeV2Client } from "./opencode-v2-adapter";
+import type { OpencodeV2Client } from "./opencode-v2-adapter";
 import { unwrap } from "./opencode";
 
 export type AbortSessionLogContext = {
@@ -151,18 +151,14 @@ export async function setSessionArchived(
  *
  * OpenCode v2 persists this through the canonical `/api/session/:id/model`
  * endpoint, so future sends and reopened sessions use the replacement binding.
- * Older clients have no equivalent standalone mutation and fail closed.
  */
 export async function setSessionModel(
-  client: Client,
+  client: OpencodeV2Client,
   sessionID: string,
   model: ModelRef,
   variant?: string | null,
   options?: { signal?: AbortSignal },
 ): Promise<void> {
-  if (!isOpencodeV2Client(client)) {
-    throw new Error("Session model reassignment requires the OpenCode v2 session API.");
-  }
   const response = await client.session.setModel({
     sessionID,
     model: { providerID: model.providerID, modelID: model.modelID },

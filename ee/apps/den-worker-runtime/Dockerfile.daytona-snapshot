@@ -40,8 +40,6 @@ RUN set -eux; \
 FROM node:24.22.1-bookworm-slim
 
 ARG OPENWORK_SERVER_VERSION=0.18.1
-ARG OPENCODE_VERSION
-ARG OPENCODE_DOWNLOAD_URL=
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl tar unzip \
@@ -78,26 +76,6 @@ COPY --from=openwork-builder /tmp/openwork-server /usr/local/bin/openwork-server
 COPY --from=openwork-builder /src/apps/app/dist /opt/openwork/web
 COPY --from=openwork-builder /src/apps/server/dist/opencode-plugins /opt/openwork/opencode-plugins
 
-RUN set -eux; \
-  test -n "$OPENCODE_VERSION"; \
-  arch="$(dpkg --print-architecture)"; \
-  case "$arch" in \
-    amd64) asset="opencode-linux-x64-baseline.tar.gz" ;; \
-    arm64) asset="opencode-linux-arm64.tar.gz" ;; \
-    *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
-  esac; \
-  url="$OPENCODE_DOWNLOAD_URL"; \
-  if [ -z "$url" ]; then \
-    url="https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/${asset}"; \
-  fi; \
-  tmpdir="$(mktemp -d)"; \
-  curl -fsSL "$url" -o "$tmpdir/$asset"; \
-  tar -xzf "$tmpdir/$asset" -C "$tmpdir"; \
-  binary="$(find "$tmpdir" -type f -name opencode | head -n 1)"; \
-  test -n "$binary"; \
-  install -m 0755 "$binary" /usr/local/bin/opencode; \
-  rm -rf "$tmpdir"
-
 # Bake the same pinned, integrity-checked v2 artifact the server would install.
 # No package lifecycle scripts and no runtime downloads, even after a restore.
 COPY --from=openwork-builder /src/constants.json /tmp/openwork-constants.json
@@ -126,12 +104,9 @@ ENV OPENWORK_OPENCODE2_BIN=/usr/local/bin/opencode2
 ARG RUNTIME_ASSERTS=1
 RUN if [ "$RUNTIME_ASSERTS" = "1" ]; then \
     test -f /opt/openwork/opencode-plugins/openwork-extensions-preview.js \
-    && test -f /opt/openwork/opencode-plugins/openwork-capabilities-knowledge.js \
-    && test -f /opt/openwork/opencode-plugins/openwork-office-attachments.js \
-    && test -f /opt/openwork/opencode-plugins/openwork-anthropic-adaptive-thinking.js \
-    && test -f /opt/openwork/opencode-plugins/openwork-anthropic-tool-schema.js \
+    && test -f /opt/openwork/opencode-plugins/openwork-context-v2.js \
     && test "$(openwork-server --version)" = "$OPENWORK_SERVER_VERSION" \
-    && opencode --version \
+    && ! command -v opencode \
     && "$OPENWORK_OPENCODE2_BIN" --version | node -e 'const fs=require("node:fs"); const expected=require("/tmp/openwork-constants.json").opencodeV2Version; const actual=fs.readFileSync(0,"utf8").trim().replace(/^opencode v?/, ""); if(actual!==expected) throw new Error(`OpenCode v2 version mismatch: ${actual}`)'; \
   else \
     echo "RUNTIME_ASSERTS disabled (cross-build); binaries must be verified on target hardware"; \

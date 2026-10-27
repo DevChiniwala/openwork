@@ -16,8 +16,8 @@ export interface HeadlessThreadModel {
   variant?: string;
 }
 
-/** The OpenCode engine a thread runs on. */
-export type HeadlessThreadEngine = "v1" | "v2";
+/** The OpenCode engine a thread runs on. OpenCode v2 is the only engine. */
+export type HeadlessThreadEngine = "v2";
 
 export type HeadlessThreadStatus =
   | { type: "idle" }
@@ -235,8 +235,8 @@ export interface HeadlessThreadClientOptions {
    */
   defaultModel?: HeadlessThreadModel;
   /**
-   * The engine to drive. `auto` (the default) asks the server once which
-   * engine its chats use, so headless threads land where the app reads them.
+   * Kept for source compatibility; every value drives OpenCode v2, the only
+   * engine the server runs.
    */
   engine?: HeadlessThreadEngine | "auto";
   requireModelAvailability?: boolean;

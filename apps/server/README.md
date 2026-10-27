@@ -20,10 +20,9 @@ openwork-server web --open
 ```
 
 `openwork-server web` serves the OpenWork web UI and API from one origin and
-runs a server-managed OpenCode engine. The npm package bundles the UI and the
-OpenCode plugins; on first run it downloads the exact OpenCode version this
-release was tested with into `~/.openwork/openwork-server/engines/` and reuses
-it afterwards. Updating is `npm i -g openwork-server@latest`; the server prints
+runs a server-managed OpenCode v2 engine. The npm package bundles the UI and the
+OpenCode plugins; on first run it downloads the exact, integrity-checked
+OpenCode v2 version this release was tested with and reuses it afterwards. Updating is `npm i -g openwork-server@latest`; the server prints
 a hint on boot when a newer release exists (`OPENWORK_NO_UPDATE_CHECK=1` to
 silence).
 
@@ -43,9 +42,13 @@ To reach it from other machines, keep the server on `127.0.0.1` and put a TLS
 proxy in front (e.g. `tailscale serve --bg --https=8787 http://127.0.0.1:8787`),
 then allow the proxy's name (e.g. `--allowed-hosts my-machine.tailnet.ts.net`).
 Browsers require a secure context for the UI on any non-localhost origin.
-Set `OPENWORK_OPENCODE_BIN` to use your own OpenCode install instead of the
-managed download; `/health` reports both the pinned `opencodeVersion` and the
-`opencodeInstalledVersion` actually running.
+Set `OPENWORK_OPENCODE2_BIN` (or put `opencode2` on `PATH`) to use your own
+OpenCode v2 install instead of the managed download; `/health` reports the
+pinned `opencodeVersion`.
+
+Chats saved by the earlier OpenCode engine (`opencode.db` in its data folder)
+are copied into OpenCode v2 automatically on start; the original database is
+only read. See `docs/opencode-engine-migration.md`.
 
 Or from source:
 
@@ -61,9 +64,8 @@ Add `--verbose` to print resolved config details on startup. Use `--version` to 
 
 ## Desktop task recovery
 
-The desktop enables `resumeInterruptedTasks` when embedding a server that owns
-its local engines. Standalone servers, attached engines, and read-only
-servers do not opt in. Recovery works with both OpenCode v1 and v2 and
+The desktop enables `resumeInterruptedTasks` when embedding a server.
+Standalone and read-only servers do not opt in. Recovery uses OpenCode v2 and
 does not depend on an open conversation tab.
 
 The `desktop_task_recovery` table in the existing runtime SQLite database stores
@@ -81,8 +83,7 @@ not re-prompted, and native active work also limits new recovery admissions.
 Completed, archived, manually stopped, approval/question-blocked, and active
 delegated work are excluded. New manual work invalidates the old recovery intent.
 Missing workspaces, changed directories, unavailable policy, and unverified
-snapshots never authorize a send. V1 requires the original user turn and model
-in its recent 100-message snapshot; v2 keeps the session's native model. A
+snapshots never authorize a send. OpenCode v2 keeps the session's native model. A
 continuation asks to inspect completed effects first, not rerun the original prompt.
 
 A send is claimed durably before admission. Lost acknowledgements are never
@@ -94,14 +95,14 @@ tools; uncertain earlier effects must be inspected or clarified before continuin
 
 Desktop Automation and remote-command requests opt out with
 `x-openwork-task-recovery: off`; their existing execution ownership is unchanged.
-Runtime journey verification for actual Electron restarts on both engines remains
+Runtime journey verification for actual Electron restarts remains
 separate from the focused coordinator and mocked-proxy tests.
 
 ## MCP App launch ownership
 
 An interactive host sends `context: { sessionId, readOnly, engine? }` with
 `POST /workspace/:id/mcp-apps/resolve`. `sessionId` is the originating conversation
-or `null` for a dashboard; `engine` is `v1` (default) or `v2`, never a provider URL.
+or `null` for a dashboard; `engine` is `v2` (an older client's `v1` is treated as `v2`), never a provider URL.
 An actionable response includes an opaque `app.launchId`. The host keeps the
 server endpoint and workspace that resolved it, rather than the currently
 selected workspace. No credential, configuration, or fingerprint is returned.
@@ -255,10 +256,12 @@ Requests expire after five seconds, and a server with no recent renderer poll
 returns an explicit no-window result. The external desktop UI MCP bridge remains
 available; in-app tools no longer discover or fall back to that bridge.
 
-OpenCode proxy:
+OpenCode v2 proxy:
 
-- `GET|POST|... /opencode/*`
-- `GET|POST|... /w/:id/opencode/*`
+- `GET|POST|... /workspace/:id/opencode2/*`
+
+The earlier engine's routes (`/opencode/*`, `/w/:id/opencode/*`,
+`/workspace/:id/opencode/*`) answer `410 opencode_v1_removed`.
 
 ## Approvals
 
@@ -276,23 +279,3 @@ Approvals endpoints:
 
 Set `OPENWORK_APPROVAL_MODE=auto` to auto-approve during local development.
 
-## Automatic title recovery
-
-The managed v1 engine ships a title-only compatibility plugin. If a provider
-returns HTTP 400 with `unsupported_value` or `unsupported_parameter` for
-`reasoning.effort`, `reasoning_effort`, `temperature`, or `top_p`, it makes at
-most one corrected request. It uses a reported supported effort or omits the
-rejected optional parameter so the same model can use its default. Provider,
-model, credentials, conversation content, and normal chat options stay intact.
-Access, quota, transport, and unrelated request errors do not trigger an added
-recovery request. The engine's own transport retry policy still applies.
-
-Engine log records with service `openwork.title` / message `Automatic title
-generation` contain only session/provider/model IDs, outcome, recovery attempt,
-HTTP status, and the rejected parameter name. `accepted_after_recovery` means
-the provider accepted the retry; `title_available` separately confirms a real
-title was observed in a session update. An accepted request with no title update
-within 60 seconds is `title_unconfirmed`, which can mean empty output, a stream
-failure, or missing persistence; it is not reported as success. The app's
-existing bounded placeholder probes and warning remain the user-facing safety
-net. Existing untitled conversations are not bulk-regenerated.

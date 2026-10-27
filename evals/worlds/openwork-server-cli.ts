@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, resolve } from "node:path";
-import { SkipError } from "@openwork/env";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 const serverRoot = join(repoRoot, "apps", "server");
@@ -57,14 +56,18 @@ export async function close(server: Server): Promise<void> {
   await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
 }
 
+/**
+ * A local OpenCode v2 binary to hand the server, or null to let the server
+ * resolve its own pinned, verified engine.
+ */
 export function engineBinary(): string | null {
-  const fromEnv = process.env.OPENWORK_OPENCODE_BIN?.trim();
+  const fromEnv = process.env.OPENWORK_OPENCODE2_BIN?.trim();
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
   const platform = process.platform === "darwin" ? "apple-darwin" : process.platform === "win32" ? "pc-windows-msvc" : "unknown-linux-gnu";
   const arch = process.arch === "arm64" ? "aarch64" : "x86_64";
-  const sidecar = join(repoRoot, "apps", "desktop", "resources", "sidecars", `opencode-${arch}-${platform}${process.platform === "win32" ? ".exe" : ""}`);
+  const sidecar = join(repoRoot, "apps", "desktop", "resources", "sidecars", `opencode2-${arch}-${platform}${process.platform === "win32" ? ".exe" : ""}`);
   if (existsSync(sidecar)) return sidecar;
-  const onPath = spawnSync(process.platform === "win32" ? "where" : "which", ["opencode"], { encoding: "utf8" });
+  const onPath = spawnSync(process.platform === "win32" ? "where" : "which", ["opencode2"], { encoding: "utf8" });
   const found = onPath.status === 0 ? onPath.stdout.split(/\r?\n/).find((line) => line.trim()) : undefined;
   return found ? found.trim() : null;
 }
@@ -124,7 +127,8 @@ export function bootServer(env: NodeJS.ProcessEnv, token: string, workspace: str
 export interface ManagedOpenworkServer {
   child: ChildProcess;
   base: string;
-  binary: string;
+  /** The engine binary handed to the server, or null when the server resolved its own. */
+  binary: string | null;
   workspaceId: string;
   engine(method: string, path: string, body?: unknown): Promise<unknown>;
   stop(): Promise<void>;
@@ -147,7 +151,6 @@ export async function bootManagedOpenworkServer(options: {
   preload?: string;
 }): Promise<ManagedOpenworkServer> {
   const binary = options.binary ?? engineBinary();
-  if (!binary) throw new SkipError("set OPENWORK_OPENCODE_BIN or install opencode");
 
   const home = join(options.scratch, "home");
   await mkdir(home, { recursive: true });
@@ -162,8 +165,7 @@ export async function bootManagedOpenworkServer(options: {
     XDG_DATA_HOME: join(home, ".local", "share"),
     XDG_CACHE_HOME: join(home, ".cache"),
     XDG_STATE_HOME: join(home, ".local", "state"),
-    OPENWORK_MANAGE_OPENCODE: "1",
-    OPENWORK_OPENCODE_BIN: binary,
+    ...(binary ? { OPENWORK_OPENCODE2_BIN: binary } : {}),
     ...options.env,
   };
 
@@ -200,7 +202,7 @@ export async function bootManagedOpenworkServer(options: {
     if (!workspaceId) throw new Error(`openwork-server reported no workspace: ${JSON.stringify(workspaces)}`);
 
     const engine = async (method: string, path: string, body?: unknown): Promise<unknown> => {
-      const response = await fetch(`${base}/workspace/${encodeURIComponent(workspaceId)}/opencode${path}`, {
+      const response = await fetch(`${base}/workspace/${encodeURIComponent(workspaceId)}/opencode2${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -217,7 +219,7 @@ export async function bootManagedOpenworkServer(options: {
     let ready = false;
     while (!ready && Date.now() < deadline) {
       try {
-        const response = await fetch(`${base}/workspace/${encodeURIComponent(workspaceId)}/opencode/session`, { headers, signal: AbortSignal.timeout(5_000) });
+        const response = await fetch(`${base}/workspace/${encodeURIComponent(workspaceId)}/opencode2/api/session`, { headers, signal: AbortSignal.timeout(5_000) });
         ready = response.ok;
       } catch {
         // keep polling

@@ -24,6 +24,7 @@ import { isDesktopRuntime } from "./runtime-env";
 import type { McpStatusMap, OpencodeEvent } from "../types";
 import { normalizeDirectoryPath } from "../utils";
 import { dispatchProviderCatalogChanged } from "./provider-events";
+import { mapV2McpStatuses } from "./opencode-v2-mcp-status";
 import { attachmentMarker, attachmentNoteFilenames, composeV2Prompt, splitV2Prompt, wrapPastedText, type PromptAttachment } from "./v2-prompt-context";
 import { readShowThinkingPreference } from "../../react-app/kernel/local-preferences-storage";
 import {
@@ -947,7 +948,7 @@ function mapV2Message(
         created,
         ...(completed === undefined ? {} : { completed }),
       },
-      ...(role === "assistant" ? mapV2ReplyModel(value) : {}),
+      ...(role === "assistant" ? { ...mapV2ReplyModel(value), finish: readString(value, "finish") } : {}),
       ...(role === "assistant" ? mapV2ReplyUsage(value) : {}),
       ...(role === "assistant" && error
         ? { error: mapV2SessionError(error) }
@@ -1138,9 +1139,11 @@ export function mapV2SessionError(value: unknown): UnknownError | ApiError {
   const reportedStatus = readNumber(data, "statusCode") ?? readNumber(data, "status");
   const statuses = [readNumber(value, "statusCode"), readNumber(value, "status"), readNumber(data, "status"),
     readNumber(readRecord(value, "response"), "status"), readNumber(readRecord(data, "response"), "status")];
-  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus;
-  const responseBody = readString(data, "responseBody");
-  if (statusCode !== undefined && responseBody !== undefined) {
+  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus ?? statuses.find((status) => status !== undefined);
+  const responseBody = readString(data, "responseBody") ?? readString(value, "responseBody");
+  // A body is optional evidence. Dropping an otherwise explicit HTTP status
+  // makes authentication failures indistinguishable from arbitrary text.
+  if (statusCode !== undefined) {
     const rawHeaders = readRecord(data, "responseHeaders");
     const responseHeaders: Record<string, string> = {};
     for (const [key, header] of Object.entries(rawHeaders ?? {})) {
@@ -1570,6 +1573,7 @@ export function translateV2Event(
     }
     return [{ type, properties: {
       ...properties, sequence: readNumber(value.durable, "seq"),
+      ...(type === "session.execution.started" ? { timestamp: readNumber(properties, "timestamp") ?? readNumber(value, "created") } : {}),
       ...(type === "session.execution.failed" ? {
         error: mapV2SessionError(properties.error),
       } : {}),
@@ -2116,27 +2120,7 @@ function failedResult<T>(transport: TransportResult): FieldsResult<T> {
   };
 }
 
-/**
- * Map the native v2 `/api/mcp` catalog (`[{ name, status: { status, error? } }]`)
- * onto the v1 name-keyed status map the rest of the app consumes. `pending`
- * servers are omitted so callers treat them as not-yet-known instead of failed.
- */
-export function mapV2McpStatuses(payload: unknown): McpStatusMap | null {
-  const entries = responseData(payload);
-  if (!Array.isArray(entries)) return null;
-  const statuses: McpStatusMap = {};
-  for (const entry of entries) {
-    const name = readString(entry, "name");
-    const detail = isRecord(entry) ? entry.status : undefined;
-    const status = readString(detail, "status");
-    if (!name || !status) continue;
-    const error = readString(detail, "error") ?? "MCP connection failed";
-    if (status === "connected" || status === "disabled" || status === "needs_auth") statuses[name] = { status };
-    else if (status === "failed" || status === "needs_client_registration") statuses[name] = { status, error };
-    else if (status !== "pending") statuses[name] = { status: "failed", error: `Unknown MCP status: ${status}` };
-  }
-  return statuses;
-}
+export { mapV2McpStatuses } from "./opencode-v2-mcp-status";
 
 type SessionCommandParameters = SessionParameters & {
   command: string;
@@ -2198,18 +2182,15 @@ function unsupportedResult<T>(baseUrl: string, operation: string, message?: stri
   };
 }
 
-export function isOpencodeV2BaseUrl(baseUrl: string): boolean {
-  try {
-    return new URL(baseUrl).pathname.replace(/\/+$/, "").endsWith("/opencode2");
-  } catch {
-    return baseUrl.replace(/\/+$/, "").endsWith("/opencode2");
-  }
-}
-
-const v2Clients = new WeakSet<ReturnType<typeof createClient>>();
-
-export function isOpencodeV2Client(client: ReturnType<typeof createClient>): client is OpencodeV2Client {
-  return v2Clients.has(client);
+/** The OpenWork server's `{ all: [{ id, name, env }] }` catalog of providers that accept an API key. */
+function readConnectableProviders(payload: unknown): Provider[] {
+  const all = isRecord(payload) && Array.isArray(payload.all) ? payload.all : [];
+  return all.flatMap((item): Provider[] => {
+    const id = readString(item, "id");
+    if (!id || !isRecord(item)) return [];
+    const env = Array.isArray(item.env) ? item.env.filter((entry): entry is string => typeof entry === "string") : [];
+    return [{ id, name: readString(item, "name") ?? id, source: "api", env, options: {}, models: {} }];
+  });
 }
 
 export type SetSessionModelParameters = {
@@ -2902,6 +2883,33 @@ export function createClientV2(
     });
   };
 
+  /**
+   * Every provider that can be connected, for the Connect-a-provider catalog:
+   * usable providers first, then the OpenWork server's catalog of providers
+   * that accept an API key (`GET /provider` under the engine mount). Only
+   * usable providers count as connected.
+   */
+  const listProviderCatalog = async (
+    parameters: DirectoryParameters = {},
+    options?: RequestOptions,
+  ): Promise<FieldsResult<ProviderListResponse>> => {
+    const [usable, catalog] = await Promise.all([
+      listProviders(parameters, options),
+      request("GET", "/provider", undefined, options?.signal).catch(() => null),
+    ]);
+    if (!usable.data) return usable;
+    const known = new Set(usable.data.all.map((provider) => provider.id));
+    const connectable = catalog?.response.ok ? readConnectableProviders(catalog.payload) : [];
+    return {
+      ...usable,
+      data: {
+        all: [...usable.data.all, ...connectable.filter((provider) => !known.has(provider.id))],
+        connected: usable.data.connected,
+        default: usable.data.default,
+      },
+    };
+  };
+
   const adapter = {
     global: {
       health: async (options?: RequestOptions): Promise<FieldsResult<{ healthy: boolean; version: string }>> => {
@@ -2917,8 +2925,7 @@ export function createClientV2(
     session,
     config: {
       get: async (): Promise<FieldsResult<Record<string, never>>> => localResult(baseUrl, "/api/config", {}),
-      // v2 only lists usable providers, so the connected list and the full
-      // provider list are the same read.
+      // Usable providers only: these are the connected providers.
       providers: async (
         parameters: DirectoryParameters = {},
         options?: RequestOptions,
@@ -2929,7 +2936,7 @@ export function createClientV2(
       },
     },
     provider: {
-      list: (parameters?: DirectoryParameters, options?: RequestOptions) => listProviders(parameters, options),
+      list: (parameters?: DirectoryParameters, options?: RequestOptions) => listProviderCatalog(parameters, options),
     },
     app: {
       agents: async (
@@ -3018,7 +3025,6 @@ export function createClientV2(
   Object.assign(compatibilityClient.find, adapter.find);
   Object.assign(compatibilityClient.mcp, adapter.mcp);
   Object.assign(compatibilityClient.event, adapter.event);
-  v2Clients.add(compatibilityClient);
   /**
    * Commands still running in this engine location, across conversations.
    * Exited commands are not listed, so this is the truth to resync against

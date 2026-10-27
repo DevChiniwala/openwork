@@ -2,7 +2,6 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
-import { inheritWorkspaceOpencodeConnection, resolveWorkspaceOpencodeConnection } from "../opencode-connection.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { defaultWorkspaceOpenworkConfig, ensureWorkspaceFiles } from "../workspace-init.js";
@@ -25,12 +24,6 @@ interface RegisterWorkspaceRoutesOptions {
   ensureWritable: (config: ServerConfig) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   serializeWorkspace: (workspace: ServerConfig["workspaces"][number]) => unknown;
-  /**
-   * Dispose-free re-attach of the workspace's runtime MCPs via the engine's
-   * dynamic push. The injected engine config file is workspace-independent,
-   * so activation never reloads or disposes an engine instance.
-   */
-  syncWorkspaceRuntimeMcp: (config: ServerConfig, workspace: WorkspaceInfo) => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,7 +103,6 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     ensureWritable,
     resolveWorkspace,
     serializeWorkspace,
-    syncWorkspaceRuntimeMcp,
   } = options;
 
   const resolveWorkspaceForRegistry = (id: string): Promise<WorkspaceInfo> => resolveWorkspace(config, id);
@@ -145,7 +137,6 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       path: workspacePath,
       preset,
       workspaceType: "local",
-      ...inheritWorkspaceOpencodeConnection(config),
     };
 
     config.workspaces = [workspace, ...config.workspaces.filter((entry) => entry.id !== workspace.id)];
@@ -216,7 +207,6 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     const body = queryPersist === undefined ? await readOptionalJsonBody(ctx.request) : {};
     const persist = queryPersist ?? (body.persist === true);
     if (persist) ensureWritable(config);
-    const wasActive = config.workspaces[0]?.id === workspace.id;
     config.workspaces = [
       workspace,
       ...config.workspaces.filter((entry) => entry.id !== workspace.id),
@@ -232,12 +222,8 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       summary: "Switched active workspace",
       timestamp: Date.now(),
     });
-    // The injected engine config file is workspace-independent, so activation
-    // never disposes or reloads an engine instance. Fire-and-forget re-attach
-    // of the activated workspace's runtime MCPs via the dynamic push.
-    if (!wasActive && workspace.workspaceType === "local" && resolveWorkspaceOpencodeConnection(config, workspace).baseUrl?.trim()) {
-      void syncWorkspaceRuntimeMcp(config, workspace).catch(() => undefined);
-    }
+    // OpenCode v2 attaches a folder's MCPs when the folder is first used, so
+    // activation never touches the engine.
     return jsonResponse({ activeId: workspace.id, workspace: serializeWorkspace(workspace), persisted });
   });
 

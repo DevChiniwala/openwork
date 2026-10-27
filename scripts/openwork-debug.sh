@@ -8,7 +8,7 @@
 #   status          same as snapshot
 #   tail            live tail pnpm dev + the /dev/log sink
 #   sink            print the dev log sink path
-#   kill-orphans    remove orphan openwork/opencode processes (ppid == launchd)
+#   kill-orphans    remove orphan openwork/opencode2 processes (ppid == launchd)
 #   diagnose-hang   classify Electron crash/hang/sidecar/app-state failures
 #   stop            full, layered teardown of the dev stack (no cache wipe)
 #   start           launch pnpm dev in the background with the log sink on
@@ -23,7 +23,7 @@
 #   1. pnpm dev / dev:electron supervisor  (parent supervisor)
 #   2. Electron main+helpers (node_modules/electron/...Electron.app)
 #   3. Vite                (node node_modules/.../vite)
-#   4. opencode sidecars and openwork-server helpers
+#   4. opencode2 sidecars and openwork-server helpers
 #
 # Cache/ephemeral state wiped by `reset`:
 #   - Vite dep pre-bundle cache: apps/app/node_modules/.vite
@@ -179,7 +179,7 @@ NODE
 
 snapshot() {
   echo "=== dev stack processes ==="
-  ps -Ao pid,ppid,command | awk '/node_modules\/electron\/dist\/Electron\.app\/Contents\/MacOS\/Electron|apps\/desktop\/scripts\/electron-dev\.mjs|apps\/desktop\/resources\/sidecars\/opencode( |\/)|openwork-server|vite|pnpm .*dev/ && !/awk/ && !/grep/' | sed -E 's#/Users/[^ ]*/#…/#g' | head -20
+  ps -Ao pid,ppid,command | awk '/node_modules\/electron\/dist\/Electron\.app\/Contents\/MacOS\/Electron|apps\/desktop\/scripts\/electron-dev\.mjs|apps\/desktop\/resources\/sidecars\/opencode2( |\/)|openwork-server|vite|pnpm .*dev/ && !/awk/ && !/grep/' | sed -E 's#/Users/[^ ]*/#…/#g' | head -20
 
   echo
   echo "=== openwork-server ==="
@@ -195,7 +195,7 @@ snapshot() {
 
   echo
   echo "=== orphans (parent == 1) ==="
-  ps -Ao pid,ppid,command | awk '$2 == 1 && $3 ~ /openwork-server|opencode( |\/)/' | head
+  ps -Ao pid,ppid,command | awk '$2 == 1 && $3 ~ /openwork-server|opencode2( |\/)/' | head
 
   echo
   echo "=== dev log sink ==="
@@ -223,7 +223,7 @@ tail_logs() {
 
 kill_orphans() {
   local pids
-  pids=$(ps -Ao pid,ppid,command | awk '$2 == 1 && $3 ~ /openwork-server|opencode( |\/)/ {print $1}')
+  pids=$(ps -Ao pid,ppid,command | awk '$2 == 1 && $3 ~ /openwork-server|opencode2( |\/)/ {print $1}')
   if [[ -z "$pids" ]]; then
     log "no orphans"
     return 0
@@ -407,7 +407,7 @@ stop() {
 
   # 5. Long-lived runtime helpers most likely to orphan after an unclean
   #    shutdown.
-  kill_by_pattern "apps/desktop/resources/sidecars/opencode( |/)"
+  kill_by_pattern "apps/desktop/resources/sidecars/opencode2( |/)"
   kill_by_pattern "openwork-server"
 
   # Safety net for stragglers we don't own directly.

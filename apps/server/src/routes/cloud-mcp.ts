@@ -1,4 +1,3 @@
-import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import {
   isTrustedCloudMcpEndpointForGlobalPersist,
   OPENWORK_CLOUD_MCP_NAME,
@@ -10,7 +9,6 @@ import {
   type CloudMcpNativeEngineResolver,
   type CloudMcpProviderModelContext,
   type CloudMcpRuntimeRegistrar,
-  type CloudMcpLiveStatusObserver,
 } from "../cloud-mcp-health.js";
 import { ApiError } from "../errors.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
@@ -18,7 +16,6 @@ import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
-type WorkspaceOpencodeClient = ReturnType<typeof createOpencodeClient>;
 
 export type RegisterCloudMcpRoutesOptions = {
   routes: Route[];
@@ -29,10 +26,9 @@ export type RegisterCloudMcpRoutesOptions = {
   requireClientScope: (ctx: RequestContext, required: TokenScope) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   resolveOpencodeDirectory: (workspace: WorkspaceInfo) => string | null;
-  createWorkspaceOpencodeClient: (config: ServerConfig, workspace: WorkspaceInfo) => WorkspaceOpencodeClient;
   registerRuntimeMcp: CloudMcpRuntimeRegistrar;
-  nativeEngineForWorkspace?: CloudMcpNativeEngineResolver;
-  refreshRegistrationFromLiveStatus?: CloudMcpLiveStatusObserver;
+  /** The local OpenCode v2 engine; undefined for a workspace while it starts. */
+  nativeEngineForWorkspace: CloudMcpNativeEngineResolver;
   serverMetadata?: CloudMcpServerMetadata;
 };
 
@@ -91,10 +87,8 @@ export function registerCloudMcpRoutes(options: RegisterCloudMcpRoutesOptions): 
     requireClientScope,
     resolveWorkspace,
     resolveOpencodeDirectory,
-    createWorkspaceOpencodeClient,
     registerRuntimeMcp,
     nativeEngineForWorkspace,
-    refreshRegistrationFromLiveStatus,
     serverMetadata,
   } = options;
 
@@ -108,10 +102,8 @@ export function registerCloudMcpRoutes(options: RegisterCloudMcpRoutesOptions): 
       providerModel: providerModelFromQuery(ctx.url),
       serverMetadata,
       probe: probeFromQuery(ctx.url),
-      createWorkspaceOpencodeClient,
-      nativeEngineForWorkspace,
-      refreshRegistrationFromLiveStatus,
-    });
+        nativeEngineForWorkspace,
+      });
     return jsonResponse(health);
   });
 
@@ -144,11 +136,9 @@ export function registerCloudMcpRoutes(options: RegisterCloudMcpRoutesOptions): 
       directory: resolveOpencodeDirectory(workspace),
       providerModel: providerModelFromBody(body),
       serverMetadata,
-      createWorkspaceOpencodeClient,
-      nativeEngineForWorkspace,
+        nativeEngineForWorkspace,
       registerRuntimeMcp,
-      refreshRegistrationFromLiveStatus,
-      trigger: typeof body.trigger === "string" ? body.trigger : undefined,
+        trigger: typeof body.trigger === "string" ? body.trigger : undefined,
     });
     return jsonResponse(result);
   });
@@ -173,11 +163,9 @@ export function registerCloudMcpRoutes(options: RegisterCloudMcpRoutesOptions): 
         directory: resolveOpencodeDirectory(workspace),
         providerModel: providerModelFromBody(body),
         serverMetadata,
-        createWorkspaceOpencodeClient,
-        nativeEngineForWorkspace,
+            nativeEngineForWorkspace,
         registerRuntimeMcp,
-        refreshRegistrationFromLiveStatus,
-      }));
+          }));
     }
     // Reconcile persists the account-global desired config (it reconfigures
     // Connect for every workspace). Collaborator scope suffices only for
@@ -194,11 +182,9 @@ export function registerCloudMcpRoutes(options: RegisterCloudMcpRoutesOptions): 
       body,
       providerModel: providerModelFromBody(body),
       serverMetadata,
-      createWorkspaceOpencodeClient,
-      nativeEngineForWorkspace,
+        nativeEngineForWorkspace,
       registerRuntimeMcp,
-      refreshRegistrationFromLiveStatus,
-    });
+      });
     return jsonResponse(health);
   });
 }

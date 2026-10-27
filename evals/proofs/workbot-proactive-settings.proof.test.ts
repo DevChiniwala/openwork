@@ -47,6 +47,8 @@ test("an owner sets up members' agents in Manage › Workbot; a member sees only
   await step("after: the policy and a new template version are saved for the whole organization", async () => {
     await owner.reload();
     await owner.see({ text: "Version 3" }, { timeoutMs: 60_000 });
+    await owner.see({ text: "Last 7 days" });
+    await owner.see({ text: "Stayed quiet" });
     const view = await settings();
     expect(view).toMatchObject({ slackReady: true, settings: { enabled: true, destination: "workbot_dm" } });
     expect(view.template).toMatchObject({ version: 3, instructions: "Ignore newsletters and automated alerts.", responsibilities: { waiting_on_you: false, morning_brief: true } });

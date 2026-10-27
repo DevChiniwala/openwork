@@ -9,20 +9,19 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
-import { desktopFetch } from "../../app/lib/desktop";
 import {
   getOpenworkGatewayOrigin,
   readOpenworkGatewayDenToken,
 } from "../../app/lib/gateway-runtime";
 import { isWebDeployment } from "../../app/lib/openwork-deployment";
-import { normalizeOpenworkServerUrl } from "../../app/lib/openwork-server";
+import { createOpenworkServerClient, normalizeOpenworkServerUrl } from "../../app/lib/openwork-server";
 import { isDesktopRuntime } from "../../app/utils";
 import { initialServerState, serverReducer } from "./server-provider-state";
 
 export function normalizeServerUrl(input: string): string | undefined {
-  return normalizeOpenworkServerUrl(input) ?? undefined;
+  // Older builds stored the engine proxy (`<server>/opencode`), which was removed.
+  return normalizeOpenworkServerUrl(input.trim().replace(/\/opencode\/?$/, "")) ?? undefined;
 }
 
 export function serverDisplayName(url: string): string {
@@ -47,7 +46,11 @@ function readStoredList(): string[] {
   try {
     const raw = window.localStorage.getItem("openwork.server.list");
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.flatMap((item) => {
+      const url = typeof item === "string" ? normalizeServerUrl(item) : undefined;
+      return url ? [url] : [];
+    }))];
   } catch {
     return [];
   }
@@ -74,23 +77,13 @@ function readOpenworkToken(): string {
   }
 }
 
-export function buildOpenworkHealthHeaders(url: string): Record<string, string> | undefined {
-  const token = readOpenworkToken();
-  return token && url.includes("/opencode") ? { Authorization: `Bearer ${token}` } : undefined;
-}
-
+/** The OpenWork server answers `/health`; the OpenCode engine sits behind it. */
 async function checkHealth(url: string): Promise<boolean> {
   if (!url) return false;
-  const headers = buildOpenworkHealthHeaders(url);
-  const client = createOpencodeClient({
-    baseUrl: url,
-    headers,
-    signal: AbortSignal.timeout(3000),
-    fetch: isDesktopRuntime() ? desktopFetch : undefined,
-  });
-  return client.global
+  const token = readOpenworkToken();
+  return createOpenworkServerClient({ baseUrl: url, token: token || undefined })
     .health()
-    .then((result) => result.data?.healthy === true)
+    .then((result) => result.ok === true)
     .catch(() => false);
 }
 
@@ -108,9 +101,9 @@ export function ServerProvider({ children, defaultUrl }: ServerProviderProps) {
     if (typeof window === "undefined") return;
 
     const gatewayOrigin = getOpenworkGatewayOrigin();
-    const fallback = normalizeServerUrl(gatewayOrigin ? `${gatewayOrigin}/opencode` : defaultUrl) ?? "";
+    const fallback = normalizeServerUrl(gatewayOrigin || defaultUrl) ?? "";
 
-    // Hosted web deployments served by OpenWork must reuse the OpenCode proxy
+    // Hosted web deployments served by OpenWork must reuse that server
     // rather than any persisted localhost target.
     const forceProxy =
       Boolean(gatewayOrigin) ||
@@ -149,11 +142,10 @@ export function ServerProvider({ children, defaultUrl }: ServerProviderProps) {
 
   useEffect(() => {
     if (!active) return;
-    if (isDesktopRuntime() && !active.includes("/opencode")) {
-      // Desktop React routes now talk to OpenWork server workspace-mounted
-      // `/opencode` URLs directly. Ignore old persisted raw OpenCode daemon
-      // URLs here; their ephemeral ports go stale across restarts and otherwise
-      // produce noisy `/global/health` connection-refused polling forever.
+    if (isDesktopRuntime()) {
+      // Desktop routes resolve the local OpenWork server themselves. Its
+      // ephemeral port goes stale across restarts, so polling a persisted URL
+      // here would only produce connection-refused noise.
       dispatchServer({ type: "healthy", healthy: undefined });
       return;
     }

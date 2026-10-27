@@ -26,7 +26,6 @@ declare global { interface Window { __v2Recovery?: RecoveryFault } }
  * No renderer state or product imports are used to arrange the race. */
 export async function v2ChatRecovery(seed: Seed, context: { place: Place }) {
   const world = await v2StreamReconnect(seed, context, false);
-  if (world.engine !== "v2") throw new Error("Chat recovery requires the v2 proof lane");
   const registration = await addInitScript(world.app.client, browserScript((sid, directory) => {
     const originalFetch = window.fetch.bind(window);
     const encoder = new TextEncoder();
