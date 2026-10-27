@@ -9,10 +9,10 @@ import { registerWorkbotRoutes } from "../src/server/routes.js"
 import type { AppEnv, Member } from "../src/server/auth.js"
 
 const config = loadConfig({ WORKBOT_PUBLIC_URL: "http://localhost:3020", WORKBOT_DEN_API_URL: "http://localhost:8790", WORKBOT_RUNNER_URL: "http://runner", WORKBOT_RUNNER_TOKEN: "r".repeat(32), WORKBOT_SESSION_SECRET: "s".repeat(32) })
-const member = (id: string, computer = true): Member => ({
+const member = (id: string, computer = true, browser = computer): Member => ({
   session: { id: `session_${id}`, userId: id, organizationId: "org", tokens: { accessToken: "synthetic", refreshToken: null, expiresAt: Date.now() + 60_000 }, createdAt: Date.now() },
   accessToken: "synthetic",
-  den: denSessionSchema.parse({ user: { id, name: "Member", email: `${id}@example.test` }, organization: { id: "org", name: "Workspace", brandAppName: null }, memberId: id, enabled: true, canSchedule: false, computer }),
+  den: denSessionSchema.parse({ user: { id, name: "Member", email: `${id}@example.test` }, organization: { id: "org", name: "Workspace", brandAppName: null }, memberId: id, enabled: true, canSchedule: false, computer, browser }),
 })
 
 test("an explicit desktop off value preserves side chats on an older runner", async () => {
@@ -54,7 +54,7 @@ test("Computer access uses the signed-in member's conversation and refuses a cal
   assert.equal(first?.url.pathname, `/v1/sessions/${workbotSessionId("org", "alice")}/desktop/viewer`)
   assert.equal(first?.owner, workbotOwner("org", "alice"))
   // A viewer refresh updates capability bits only: it must not overwrite the chat's time zone or instructions.
-  assert.deepEqual(calls.find(call => call.method === "PUT")?.body, { computer: true, desktop: true })
+  assert.deepEqual(calls.find(call => call.method === "PUT")?.body, { computer: true, desktop: true, desktopViews: ["browser", "computer"] })
   calls.length = 0
   assert.equal((await open({ view: "computer", sessionId: workbotSessionId("org", "bob") })).status, 400)
   assert.equal(calls.length, 0)
@@ -227,4 +227,37 @@ test("Computer asks to reconnect for other desktop failures", async t => {
   const response = await app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })
   // Other runner codes, including ones this Workbot doesn't know, keep the reconnect message.
   assert.deepEqual(await response.json(), { error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." })
+})
+
+test("the browser and the native desktop are separate rollouts", async t => {
+  let signed = member("alice", false, true)
+  const calls: { method: string; path: string; body: unknown }[] = []
+  const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } })
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    const parsed = new URL(url instanceof Request ? url.url : url)
+    calls.push({ method: init?.method ?? "GET", path: parsed.pathname, body: typeof init?.body === "string" ? JSON.parse(init.body) : null })
+    if (parsed.pathname.endsWith("/desktop/viewer")) return json({ state: "paused" })
+    if (init?.method === "PUT") return json({ id: parsed.pathname.split("/").at(-1) })
+    return json({ turns: [], messages: [], finalAssistantText: "" })
+  })
+  const app = new Hono<AppEnv>()
+  registerWorkbotRoutes(app, {
+    config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => signed.den },
+    member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
+  })
+  const open = (view: string) => app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view }) })
+  // Browser use only: the Browser view opens, the native desktop doesn't, and the runner is told so.
+  assert.equal((await open("browser")).status, 200)
+  assert.deepEqual(calls.find(call => call.method === "PUT")?.body, { computer: true, desktop: true, desktopViews: ["browser"] })
+  calls.length = 0
+  assert.equal((await open("computer")).status, 403)
+  assert.ok(!calls.some(call => call.path.endsWith("/desktop/viewer")))
+  // Computer use only: the reverse.
+  signed = member("alice", true, false)
+  calls.length = 0
+  assert.equal((await open("computer")).status, 200)
+  assert.deepEqual(calls.find(call => call.method === "PUT")?.body, { computer: true, desktop: true, desktopViews: ["computer"] })
+  assert.equal((await open("browser")).status, 403)
+  const me = await (await app.request("/v1/workbot/me")).json() as { computer: boolean; browser: boolean }
+  assert.deepEqual([me.computer, me.browser], [true, false])
 })

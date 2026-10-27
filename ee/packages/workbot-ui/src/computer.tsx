@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { WorkbotTeaching } from "./teaching";
 import { ScreencastViewer, type ScreencastPage } from "./screencast";
-import { errorMessage, workbotHost } from "./host";
+import { computerViews, errorMessage, workbotHost } from "./host";
 import type { WorkbotPage } from "./data";
 
 const viewerSchema = z.union([z.object({ state: z.literal("paused") }), z.object({ state: z.literal("connected"), url: z.string().url(), expiresAt: z.number(), paused: z.boolean() })]);
@@ -16,9 +16,13 @@ const button = "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg p
 
 type ComputerView = "browser" | "computer";
 
-/** Each view has its own path (/browser, /computer), so a reload or a shared link opens the same view. */
-function viewFromLocation(): ComputerView {
-  return typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/computer" ? "computer" : "browser";
+/**
+ * Each view has its own path (/browser, /computer), so a reload or a shared link opens the same view. A view this
+ * person doesn't have (each is its own rollout) opens the one they do.
+ */
+function viewFromLocation(views: ComputerView[]): ComputerView {
+  const asked: ComputerView = typeof window !== "undefined" && window.location.pathname.replace(/\/+$/, "") === "/computer" ? "computer" : "browser";
+  return views.includes(asked) ? asked : views[0] ?? asked;
 }
 
 /** A page Workbot opened has its own link, /browser/<id>: the Browser view with that page picked out. */
@@ -44,7 +48,8 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
   const recording = teaching !== undefined && teaching.phase !== "draft";
   const screen = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
-  const [view, setViewState] = useState<ComputerView>(viewFromLocation);
+  const views = computerViews(host);
+  const [view, setViewState] = useState<ComputerView>(() => viewFromLocation(views));
   const [page, setPage] = useState(pageFromLocation);
   const setView = (next: ComputerView) => {
     if (next === view) return;
@@ -52,7 +57,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
     setViewState(next); setPage(null);
   };
   useEffect(() => {
-    const sync = () => { if (/^\/(browser(\/[a-z0-9]{1,16})?|computer)\/?$/.test(window.location.pathname)) { setViewState(viewFromLocation()); setPage(pageFromLocation()); } };
+    const sync = () => { if (/^\/(browser(\/[a-z0-9]{1,16})?|computer)\/?$/.test(window.location.pathname)) { setViewState(viewFromLocation(computerViews(workbotHost()))); setPage(pageFromLocation()); } };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
@@ -101,7 +106,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
   return <section ref={container} className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Computer">
     <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--wb-hairline)] px-3 py-2 sm:px-6">
       <div className="flex items-center gap-1" role="group" aria-label="Computer view">
-        {(["browser", "computer"] as const).map(value => <button key={value} type="button" aria-pressed={view === value} disabled={recording} onClick={() => setView(value)} className={`${button} ${view === value ? "bg-[var(--wb-chip)]" : ""}`}>{value === "browser" ? "Browser" : "Computer"}</button>)}
+        {views.length > 1 && views.map(value => <button key={value} type="button" aria-pressed={view === value} disabled={recording} onClick={() => setView(value)} className={`${button} ${view === value ? "bg-[var(--wb-chip)]" : ""}`}>{value === "browser" ? "Browser" : "Computer"}</button>)}
       </div>
       <div className="flex items-center gap-1">
         <span className="mr-2 hidden text-[12px] text-[var(--wb-muted)] sm:inline" role="status">{paused ? "Paused" : error ? "Disconnected" : connected ? control ? "You have control" : "Live" : "Connecting…"}</span>
@@ -115,7 +120,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
     </div>
     {view === "browser" && pages.length > 0 ? <BrowserPages pages={pages} selected={page} /> : null}
     {view === "browser" && livePage && !paused && !error ? <LiveAddress page={livePage} /> : null}
-    {canTeach && host.browserDemonstrations === true && <div hidden={view !== "browser"} style={{ display: view === "browser" ? undefined : "none" }}><WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? async text => { if (!await action("continue")) throw new Error("Return browser control to Workbot before starting the run. Your inputs are still here."); await onRun(text); } : undefined} /></div>}
+    {canTeach && host.browserDemonstrations === true && views.includes("browser") && <div hidden={view !== "browser"} style={{ display: view === "browser" ? undefined : "none" }}><WorkbotTeaching suspended={paused} onTeachingChange={teachingChange} onTakeControl={() => setControl(true)} onRun={onRun ? async text => { if (!await action("continue")) throw new Error("Return browser control to Workbot before starting the run. Your inputs are still here."); await onRun(text); } : undefined} /></div>}
     <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#f5f6f7]">
       <div ref={screen} className={`relative h-full w-full ${paused || error ? "hidden" : ""}`} aria-label={`${view === "browser" ? "Browser" : "Computer"} live view`} />
       {!paused && !error && !connected ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">

@@ -2,7 +2,7 @@
 
 import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Pencil } from "lucide-react";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
-import { setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
+import { computerViews, setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
 import { OpenWorkMark } from "./mark";
 import { ChatsButton, ChatsDrawer, chatTitle, RemoveChatButton, SideChatTitle, useChatLocation } from "./chats";
 import {
@@ -193,7 +193,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const sentFrom = useRef(new Map<string, string>());
   const followed = useRef(new Set<string>());
   // The same move for Workbot's computer: open it and keep the conversation beside it. Null while it is on screen.
-  const navigateComputerFromChat = guided && host.computer === true && tab !== "computer"
+  const navigateComputerFromChat = guided && computerViews(host).length > 0 && tab !== "computer"
     ? () => { setTab("computer"); setRevealChat(count => count + 1); }
     : null;
   const [preview, setPreview] = useState<WorkbotAttachment | null>(null);
@@ -376,7 +376,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} />}
+            {computerVisited && computerViews(host).length > 0 && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
@@ -392,7 +392,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       </OpenDocumentContext.Provider>
     </OpenFileContext.Provider>;
   }
-  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && host.computer)) {
+  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && computerViews(host).length > 0)) {
     return (
       <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased">
         <WorkbotHeader
@@ -643,7 +643,7 @@ type WorkbotTab = WorkbotPaletteTab;
 
 /** The pages this person has, in the header's order. */
 function paletteTabs(host: WorkbotHost): WorkbotTab[] {
-  return ["home", ...(host.calendar ? ["calendar" as const] : []), ...(host.documents ? ["documents" as const] : []), ...(host.computer ? ["computer" as const] : [])];
+  return ["home", ...(host.calendar ? ["calendar" as const] : []), ...(host.documents ? ["documents" as const] : []), ...(computerViews(host).length ? ["computer" as const] : [])];
 }
 
 /** Puts the caret in the message box on screen (the Home composer, or the workspace chat's). */
@@ -672,7 +672,7 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
   const beforeLeaveRef = useRef(beforeLeave);
   beforeLeaveRef.current = beforeLeave;
   const [tab, setTabState] = useState<WorkbotTab>(tabFromLocation);
-  const computerEnabled = workbotHost().computer === true;
+  const computerEnabled = computerViews(workbotHost()).length > 0;
   useEffect(() => {
     if (!computerEnabled && tab === "computer") { window.history.replaceState(null, "", `/${preserveSearch ? window.location.search : ""}`); setTabState("home"); }
   }, [computerEnabled, tab, preserveSearch]);
@@ -1549,7 +1549,7 @@ function SurfaceCard({ surface, steps, live, others }: { surface: ComputerSurfac
   const latest = updates.at(-1) ?? null;
   const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
   const pages = steps.flatMap((step) => step.pages ?? []).filter((page, index, all) => all.findIndex((entry) => entry.id === page.id) === index);
-  const watchable = workbotHost().computer === true;
+  const watchable = computerViews(workbotHost()).includes(surface);
   const name = surface === "browser" ? "the browser" : "my computer";
   return (
     <WorkCard

@@ -1,9 +1,27 @@
 # Workbot's Computer tab
 
-Workbot's **Computer** tab appears after **Documents** when `workbot`,
-`computerUse`, and `remoteComputers` are enabled for the organization in
-`/admin`. It opens directly, without a consent screen. The combined testing
-branch also includes Documents; its `workbotDocuments` rollout remains independent.
+Workbot's **Computer** tab appears after **Documents** when `workbot` and
+`remoteComputers` are enabled for the organization in `/admin`, together with at
+least one of its two views. It opens directly, without a consent screen. The
+combined testing branch also includes Documents; its `workbotDocuments` rollout
+remains independent.
+
+Each view is its own rollout (both on `cloud` and `self_hosted`, owned by
+`reachjalil`):
+
+| Flag | What Workbot gets | Off |
+|---|---|---|
+| `browserUse` (default off) | The **Browser** view and the `desktop` tool's browser operations. Teaching browser tasks (`browserDemonstrations`) and the page stream (`browserLiveView`) need it too. | No Browser view; the model is offered only the native desktop, and the runner refuses browser calls. |
+| `computerUse` | The **Computer** view and the `desktop` tool's native-app operations (`computer_*`). | No Computer view; the model is offered only the browser, and the runner refuses native-app calls. |
+
+Workspaces that had Workbot's computer before the split keep the Computer view
+and get the Browser view once `browserUse` is turned on for them. Workbot tells
+the runner each chat's views (`desktopViews` on the session); a runner from
+before the split ignores the setting and offers both views until it is updated.
+Turning a flag off applies to the next viewer connection and the chat's next
+turn; a viewer already open can outlive it as described under Transport and
+rollout. `bash` and `look` are not views: every Workbot chat keeps them while
+the runner has a computer.
 
 The two views use one conversation computer:
 

@@ -22,11 +22,14 @@ import { stepStateSchema, type StepState } from "./steps.js"
 import { withoutAttachments } from "./tool-files.js"
 import {
   ACTIVE,
+  DESKTOP_VIEWS,
   attachmentSchema,
+  desktopViewSchema,
   messageSchema,
   repeatLimitsSchema,
   turnStatusSchema,
   type Attachment,
+  type DesktopView,
   type Execution,
   type Message,
   type RepeatLimits,
@@ -49,6 +52,7 @@ const sessionOptions = z.object({
   files: z.boolean().optional(),
   computer: z.boolean().optional(),
   desktop: z.boolean().optional(),
+  desktopViews: z.array(desktopViewSchema).optional(),
   reactions: z.boolean().optional(),
   tasks: z.boolean().optional(),
   documentNavigation: z.boolean().optional(),
@@ -96,6 +100,8 @@ export type Session = {
   files: boolean
   computer: boolean
   desktop: boolean
+  /** The desktop views this conversation may use (see DesktopView); null means all of them. */
+  desktopViews: DesktopView[] | null
   /** Whether the model may react to the person's message with an emoji (the caller shows it). */
   reactions: boolean
   /** Whether the conversation may hand work to background tasks (start_task) and keep talking meanwhile. */
@@ -127,6 +133,7 @@ export type SessionInput = {
   files?: boolean
   computer?: boolean
   desktop?: boolean
+  desktopViews?: DesktopView[] | null
   reactions?: boolean
   tasks?: boolean
   documentNavigation?: boolean
@@ -144,6 +151,7 @@ function optionsOf(input: {
   files?: boolean
   computer?: boolean
   desktop?: boolean
+  desktopViews?: DesktopView[] | null
   reactions?: boolean
   tasks?: boolean
   documentNavigation?: boolean
@@ -157,6 +165,7 @@ function optionsOf(input: {
     ...(input.files !== undefined ? { files: input.files } : {}),
     ...(input.computer !== undefined ? { computer: input.computer } : {}),
     ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
+    ...(input.desktopViews !== undefined ? { desktopViews: input.desktopViews ?? [...DESKTOP_VIEWS] } : {}),
     ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
     ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
     ...(input.documentNavigation !== undefined ? { documentNavigation: input.documentNavigation } : {}),
@@ -177,6 +186,8 @@ function serializeOptions(options: SessionOptions) {
     ...(options.files ? { files: true } : {}),
     ...(options.computer ? { computer: true } : {}),
     ...(options.desktop ? { desktop: true } : {}),
+    // Every view is the default, so only a narrower set is kept, in one order.
+    ...(options.desktopViews && !DESKTOP_VIEWS.every(view => options.desktopViews!.includes(view)) ? { desktopViews: DESKTOP_VIEWS.filter(view => options.desktopViews!.includes(view)) } : {}),
     ...(options.reactions ? { reactions: true } : {}),
     ...(options.tasks ? { tasks: true } : {}),
     ...(options.documentNavigation ? { documentNavigation: true } : {}),
@@ -540,6 +551,7 @@ export class Store {
       files: options.files ?? false,
       computer: options.computer ?? false,
       desktop: options.desktop ?? false,
+      desktopViews: options.desktopViews ?? null,
       reactions: options.reactions ?? false,
       tasks: options.tasks ?? false,
       documentNavigation: options.documentNavigation ?? false,

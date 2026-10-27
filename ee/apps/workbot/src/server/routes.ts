@@ -1,4 +1,4 @@
-import { createHeadlessRunnerClient, type RunnerLiveEvent } from "@openwork-ee/headless-protocol"
+import { createHeadlessRunnerClient, type RunnerDesktopView, type RunnerLiveEvent } from "@openwork-ee/headless-protocol"
 import {
   createWorkbot,
   toWorkbotPageEvent,
@@ -75,6 +75,11 @@ const MESSAGES_PER_WINDOW = 30
 const MESSAGE_WINDOW_MS = 10 * 60_000
 const RUN_TOKEN_TTL_MS = 60 * 60_000
 
+/** The views of Workbot's computer this person may use: the browser (`browserUse`) and the native apps (`computerUse`). */
+function desktopViewsOf(den: Pick<Member["den"], "browser" | "computer">): RunnerDesktopView[] {
+  return [...(den.browser ? ["browser" as const] : []), ...(den.computer ? ["computer" as const] : [])]
+}
+
 function actorOf(member: Member): WorkbotActor {
   const { den } = member
   const firstName = den.user.name?.trim().split(/\s+/)[0] ?? null
@@ -116,7 +121,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   const workbotFor = (member: Member) =>
     createWorkbot({
       client: runnerClientFor(member),
-      desktop: member.den.computer,
+      desktopViews: desktopViewsOf(member.den),
       canSchedule: async () => member.den.canSchedule,
       model: async () => member.den.model,
       // Gateway access is validated for this actor and model by Den when minting each turn, not by the runner catalog.
@@ -161,10 +166,10 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     const member = c.get("member")
     const allowed = async () => {
       const fresh = await den.session(member.accessToken)
-      return fresh.enabled && fresh.computer && fresh.browserDemonstrations && fresh.user.id === member.den.user.id
+      return fresh.enabled && fresh.browser && fresh.browserDemonstrations && fresh.user.id === member.den.user.id
         && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
     }
-    if (!member.den.enabled || !member.den.computer || !member.den.browserDemonstrations || !await allowed()) return c.json({ error: "feature_disabled" }, 403)
+    if (!member.den.enabled || !member.den.browser || !member.den.browserDemonstrations || !await allowed()) return c.json({ error: "feature_disabled" }, 403)
     const raw: unknown = await c.req.json().catch(() => null)
     const save = z.object({ action: z.literal("save"), demonstrationId: z.string().uuid(), name: z.string().trim().min(1).max(100), purpose: z.string().trim().min(1).max(1000) }).strict().safeParse(raw)
     const command = demonstrationCommandSchema.safeParse(raw)
@@ -213,8 +218,9 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       calendar: who.enabled && who.calendar === true,
       documents: who.enabled && who.documents === true,
       computer: who.enabled && who.computer,
-      browserDemonstrations: who.enabled && who.browserDemonstrations,
-      browserLiveView: who.enabled && who.computer && who.browserLiveView,
+      browser: who.enabled && who.browser,
+      browserDemonstrations: who.enabled && who.browser && who.browserDemonstrations,
+      browserLiveView: who.enabled && who.browser && who.browserLiveView,
       documentEditing: who.enabled && who.documents === true && who.documentEditing,
       nativeDictation: who.enabled && who.nativeDictation,
       workspaceAssistant: who.enabled && who.workspaceAssistant,
@@ -244,18 +250,21 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   app.post("/v1/workbot/computer/:operation", async (c) => {
     const member = c.get("member")
     c.header("Cache-Control", "no-store")
-    if (!member.den.enabled || !member.den.computer) return c.json({ error: "feature_disabled" }, 403)
+    if (!member.den.enabled || !desktopViewsOf(member.den).length) return c.json({ error: "feature_disabled" }, 403)
     const operation = c.req.param("operation")
     if (operation !== "viewer" && operation !== "action") return c.json({ error: "not_found" }, 404)
     const raw: unknown = await c.req.json().catch(() => null)
     const viewer = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean().default(false) }).strict().safeParse(raw)
     const action = z.object({ action: z.enum(["continue", "pause", "resume", "rebuild"]) }).strict().safeParse(raw)
     if (operation === "viewer" ? !viewer.success : !action.success) return c.json({ error: "invalid_request" }, 400)
+    // Each view is its own rollout: the browser (browserUse) and the native desktop apps (computerUse).
+    const view = viewer.success ? viewer.data.view : null
     const workbot = workbotFor(member)
     const client = runnerClientFor(member)
     const stillAllowed = async () => {
       const fresh = await den.session(member.accessToken)
-      return fresh.enabled && fresh.computer && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
+      const views = desktopViewsOf(fresh)
+      return fresh.enabled && (view ? views.includes(view) : views.length > 0) && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
     }
     try {
       if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
@@ -264,7 +273,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       if (!existing.ok && existing.status === 404) sessionId = await workbot.ensureComputer(actorOf(member))
       else {
         if (!existing.ok) return desktopFailure(c, operation, existing.error)
-        const updated = await client.putSession(sessionId, { computer: true, desktop: true })
+        const updated = await client.putSession(sessionId, { computer: true, desktop: true, desktopViews: desktopViewsOf(member.den) })
         if (!updated.ok) return desktopFailure(c, operation, updated.error)
       }
       // An outdated computer never connects or resumes and rebuilding is the only fix, so do it instead of asking. Not

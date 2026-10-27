@@ -2,7 +2,7 @@ import { readBrowserTeachingPrompt, readBrowserSkillRunPrompt, replaceBrowserTea
 import { createHash } from "node:crypto"
 import { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
 export { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
-import type { HeadlessRunnerClient, RunnerSavedFile } from "@openwork-ee/headless-protocol"
+import type { HeadlessRunnerClient, RunnerDesktopView, RunnerSavedFile } from "@openwork-ee/headless-protocol"
 import { AUTOMATION_CLOUD_DEFAULT_MODEL } from "@openwork/types/automations"
 import { readWorkbotContextPrompt, readWorkbotCorrectionPrompt, workbotContextPrompt, workbotCorrectionPrompt, WORKBOT_MAX_MESSAGE_CHARS, type WorkbotViewContext } from "@openwork/types/workbot-context"
 import { buildWorkbotTurns, GREETING_RUNNER_ID, interruptedTurnIds, threadBusy, WORKBOT_MESSAGE_PREFIX, type WorkbotTurn } from "./thread.js"
@@ -51,7 +51,8 @@ export type WorkbotFile = RunnerSavedFile
 export type WorkbotDeps = {
   /** The headless runner, or null when this deployment has none. */
   client: HeadlessRunnerClient | null
-  desktop?: boolean
+  /** The views of Workbot's visible desktop this person may use (`browser`, `computer` for native apps); none: no desktop. */
+  desktopViews?: RunnerDesktopView[]
   /** Whether Workbot may set up recurring work (Automations on the headless runner) for this organization. */
   canSchedule: (organizationId: string) => Promise<boolean>
   /**
@@ -349,12 +350,14 @@ async function ensureSession(actor: WorkbotActor, timeZone: string, deps: Workbo
   const guidedNavigation = workspaceAssistant && (await deps.guidedNavigation?.(actor.organizationId).catch(() => false) ?? false)
   const main = await sessionOf(actor, null, deps, { create: true })
   const mainInCell = WORKBOT_CELL_SESSION_ID.test(main)
+  const desktopViews = deps.desktopViews ?? []
   const common = {
     // Workbot keeps the person's files, works on its own computer, reacts to messages with an emoji and hands longer
     // work to background tasks; the runner offers each only on request.
     files: true,
     computer: true,
-    desktop: deps.desktop === true,
+    desktop: desktopViews.length > 0,
+    ...(desktopViews.length ? { desktopViews } : {}),
     reactions: true,
     tasks: true,
     documentNavigation: guidedNavigation,
@@ -363,7 +366,7 @@ async function ensureSession(actor: WorkbotActor, timeZone: string, deps: Workbo
   }
   const savedMain = await client.putSession(main, {
     title: `${name} · ${actor.firstName ?? "member"}`,
-    instructions: workbotInstructions({ name, organizationName: actor.organizationName, firstName: actor.firstName, timeZone, canSchedule, workspaceAssistant, guidedNavigation, browser: deps.desktop === true }),
+    instructions: workbotInstructions({ name, organizationName: actor.organizationName, firstName: actor.firstName, timeZone, canSchedule, workspaceAssistant, guidedNavigation, browser: desktopViews.includes("browser") }),
     ...common,
     ref: MAIN_CHAT_REF,
     // A chat in its own cell keeps memory with the owner, and is never kept without these settings.
@@ -375,7 +378,7 @@ async function ensureSession(actor: WorkbotActor, timeZone: string, deps: Workbo
   // found again through its owner and ref, so it is never kept without them (the main chat's id is derived).
   const sessionId = await sessionOf(actor, chat, deps, { create: true })
   const saved = await client.putSession(sessionId, {
-    instructions: workbotInstructions({ name, organizationName: actor.organizationName, firstName: actor.firstName, timeZone, canSchedule, workspaceAssistant, guidedNavigation, browser: deps.desktop === true, side: true }),
+    instructions: workbotInstructions({ name, organizationName: actor.organizationName, firstName: actor.firstName, timeZone, canSchedule, workspaceAssistant, guidedNavigation, browser: desktopViews.includes("browser"), side: true }),
     ...common,
     ref: chat,
     autoTitle: true,

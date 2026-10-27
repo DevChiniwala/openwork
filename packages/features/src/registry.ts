@@ -339,6 +339,18 @@ export const FEATURES = defineFeatures({
     default: false,
   },
 
+  browserUse: {
+    label: "Workbot: browser use",
+    description: "Workbot uses the browser on its cloud computer, with a Browser view people can watch and take over. Needs remote computers. Computer use separately controls Workbot's other desktop apps.",
+    category: "computerUse",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "reachjalil",
+    docs: "docs/computer-use/workbot.md",
+    deployments: everywhere,
+    default: false,
+  },
+
   browserDemonstrations: {
     label: "Workbot: teach browser tasks",
     description: "Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.",
