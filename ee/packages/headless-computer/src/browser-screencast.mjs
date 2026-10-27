@@ -96,7 +96,12 @@ export function streamBrowser(viewer, { endpoint = "http://127.0.0.1:9222", cont
       if (tab !== current || closed) return;
       let message;
       try { message = JSON.parse(String(event.data)); } catch { return; }
-      if (message.id !== undefined) { pending.get(message.id)?.(message.error ? null : message.result); pending.delete(message.id); return; }
+      if (message.id !== undefined) {
+        // A reply: settle the call that sent it, if this stream sent one with that id.
+        const settle = typeof message.id === "number" ? pending.get(message.id) : undefined;
+        if (typeof settle === "function") { pending.delete(message.id); settle(message.error ? null : message.result); }
+        return;
+      }
       // A page target's main frame shares the target's id.
       const main = message.params?.frameId === current.id || message.params?.frame?.id === current.id;
       if (message.method === "Page.frameStartedLoading" && main) { current.loading = true; publish(); return; }
