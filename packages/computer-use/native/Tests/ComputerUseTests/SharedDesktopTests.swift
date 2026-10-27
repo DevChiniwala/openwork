@@ -60,7 +60,7 @@ final class SharedDesktopTests: XCTestCase {
         var clock: TimeInterval = 10
         var lastInput: TimeInterval = 9
         do {
-            try await SharedDesktop.acquire(now: { clock }, focus: {
+            try await SharedDesktop.acquire(now: { clock }, buttonDown: { false }, focus: {
                 // The person presses a key while the window is coming forward.
                 clock += 0.1
                 lastInput = clock
@@ -73,12 +73,25 @@ final class SharedDesktopTests: XCTestCase {
     }
 
     @MainActor
+    func testAHeldButtonNeverLetsTheWindowComeForward() async throws {
+        var focused = false
+        do {
+            // A drag the person began in another app, held past the half-second wait.
+            try await SharedDesktop.acquire(now: { 10 }, buttonDown: { true }, focus: { focused = true }, interrupted: { _ in false })
+            XCTFail("The window came forward under a held button")
+        } catch let error as UseError {
+            XCTAssertEqual(error.code, "person_interrupted")
+        }
+        XCTAssertFalse(focused)
+    }
+
+    @MainActor
     func testInputBeforeTheWindowCameForwardDoesNotStopTheStep() async throws {
         var focused = false
-        try await SharedDesktop.acquire(now: { 10 }, focus: { focused = true }, interrupted: { 9.8 > $0 })
+        try await SharedDesktop.acquire(now: { 10 }, buttonDown: { false }, focus: { focused = true }, interrupted: { 9.8 > $0 })
         XCTAssertTrue(focused)
         do {
-            try await SharedDesktop.acquire(now: { 10 }, focus: {
+            try await SharedDesktop.acquire(now: { 10 }, buttonDown: { false }, focus: {
                 throw UseError("window_unavailable", "Closed", next: "human_takeover")
             }, interrupted: { _ in false })
             XCTFail("A failed focus was reported as success")

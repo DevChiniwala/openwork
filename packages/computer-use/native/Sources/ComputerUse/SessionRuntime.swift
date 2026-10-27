@@ -641,12 +641,15 @@ final class SessionRuntime {
     private func personInterrupted(since start: TimeInterval) -> Bool {
         Self.interruptions.contains { SharedDesktop.personInterrupted(inputAt: lastPersonInput($0), since: start) }
     }
+    /// A physical mouse button held down right now.
+    private func personHoldsButton() -> Bool {
+        [CGMouseButton.left, .right, .center].contains { CGEventSource.buttonState(.hidSystemState, button: $0) }
+    }
     /// In control mode, takes the next gap in the person's typing or a held button.
     private func takeGap(_ current: Session, deadline: TimeInterval? = nil) async throws {
         guard current.mode == .control else { return }
         try await SharedDesktop.takeGap(busy: {
-            let buttonDown = [CGMouseButton.left, .right, .center].contains { CGEventSource.buttonState(.hidSystemState, button: $0) }
-            return SharedDesktop.personBusy(keyAt: self.lastPersonInput(.keyDown), buttonDown: buttonDown,
+            SharedDesktop.personBusy(keyAt: self.lastPersonInput(.keyDown), buttonDown: self.personHoldsButton(),
                 now: ProcessInfo.processInfo.systemUptime)
         }, now: { self.now }, check: {
             try self.checkActive(current, deadline: deadline)
@@ -658,7 +661,7 @@ final class SessionRuntime {
         handBack.record(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
             target: current.app.pid, own: ProcessInfo.processInfo.processIdentifier, at: ProcessInfo.processInfo.systemUptime)
         do {
-            try await SharedDesktop.acquire(now: { ProcessInfo.processInfo.systemUptime },
+            try await SharedDesktop.acquire(now: { ProcessInfo.processInfo.systemUptime }, buttonDown: { self.personHoldsButton() },
                 focus: { try await self.focusTarget(current) }, interrupted: { self.personInterrupted(since: $0) })
         } catch let error as UseError where error.code == SharedDesktop.interrupted.code {
             // Their input may have landed in the agent's window: the front stays there,
