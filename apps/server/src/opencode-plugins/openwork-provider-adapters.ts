@@ -286,7 +286,7 @@ function automationContribution(): OpenworkFeatureContribution {
         arguments: [
           argument("name", "string", true, "Short Automation name, at most 120 characters."),
           argument("instructions", "string", true, "Self-contained instructions the Automation runs on its schedule."),
-          argument("schedule", "object", true, "once/daily/weekly schedule with an IANA timezone. Intervals are not supported."),
+          argument("schedule", "object", true, "Schedule with an IANA timezone: once {at}, daily {hour, minute}, weekly {daysOfWeek, hour, minute}, or interval {everyHours 1-24, optional daysOfWeek (0=Sunday), startHour, endHour} for every few hours on the hour, e.g. every 3 hours from 9 to 18. Interval needs the organization's every-few-hours schedules."),
           argument("model", "object", false, "Optional providerId and modelId. Omit to use the person's default."),
         ],
         effects: noEffects,

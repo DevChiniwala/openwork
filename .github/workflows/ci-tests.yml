@@ -164,6 +164,8 @@ jobs:
           bun test apps/server/test/windows-env-names.test.ts
       - name: Test the desktop reads Apps as large as Den builds them
         run: bun test apps/server/test/mcp-app-resource-cache.test.ts
+      - name: Test the agent's Automation listing reads every schedule kind
+        run: bun test apps/server/test/connect-automation-catalog.test.ts
       - name: Setup headless Chrome for locator regression
         uses: ./.github/actions/setup-browser
       - name: Run eval framework tests (spec lint and its fixtures)

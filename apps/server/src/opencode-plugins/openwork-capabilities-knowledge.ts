@@ -28,7 +28,7 @@ export function automationRuntimeKnowledge(runtimeProvider = process.env.DEN_RUN
   const shared = [
     "OpenWork has first-class Automations. Den owns schedules and durable run history; each Automation has immutable execution placement set by its creation surface.",
     "Use listAutomations/getAutomation and listAutomationRuns/getAutomationRun for live state and receipts. Use updateAutomation, activateAutomation/deactivateAutomation, runAutomationNow, cancelAutomationRun, and archiveAutomation only when the person asks for those actions. Deactivation stops future runs but does not cancel a run already in progress.",
-    "Schedules are once, daily, or weekly with an IANA timezone; there is no interval schedule or sub-daily cadence. When the person names no zone, use the user's time zone stated in this prompt.",
+    "Schedules are once, daily, weekly, or interval with an IANA timezone. Interval runs every everyHours (1-24) on the hour, counted from startHour each listed day and stopping before endHour, e.g. every 3 hours from 9 to 18 on weekdays. It needs the organization's every-few-hours schedules: if Den answers automation_interval_schedule_disabled, say so and offer a daily or weekly schedule; never imitate an interval with several daily Automations. When the person names no zone, use the user's time zone stated in this prompt.",
   ];
   if (runtimeProvider === "daytona") {
     return [
