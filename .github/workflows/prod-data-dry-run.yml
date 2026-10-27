@@ -1,8 +1,8 @@
 name: Dry run on a copy of production data
 
 # Runs one check from ee/apps/den-api/scripts/dry-run against a short-lived
-# PlanetScale branch restored from the latest production backup, then deletes
-# the branch. See .opencode/skills/dry-run-a-risky-change (level 3).
+# PlanetScale development branch seeded (Data Branching) from the latest
+# production backup, then deletes the branch. See .opencode/skills/dry-run-a-risky-change (level 3).
 #
 # Safety:
 # - Manual only (workflow_dispatch: people with write access). Never runs on
@@ -25,7 +25,7 @@ name: Dry run on a copy of production data
 #   service token limited to the Den database with read_database, read_branch,
 #   create_branch, delete_branch, connect_branch, read_backups and
 #   restore_production_branch_backup (never connect_production_branch or
-#   delete_production_branch).
+#   delete_production_branch), and Data Branching enabled on the database.
 #   variables PLANETSCALE_DRY_RUN_ORG and PLANETSCALE_DRY_RUN_DATABASE.
 
 on:
@@ -133,21 +133,24 @@ jobs:
           set -euo pipefail
           test -f "ee/apps/den-api/scripts/dry-run/$CHECK" || { echo "::error::ee/apps/den-api/scripts/dry-run/$CHECK not found on $GITHUB_REF_NAME"; exit 1; }
 
-      - name: Restore the latest production backup to a new branch
+      - name: Seed a development branch from the latest backup
         if: ${{ !inputs.cleanup_only }}
         env:
           PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_DRY_RUN_TOKEN_ID }}
           PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_DRY_RUN_TOKEN }}
         run: |
           set -euo pipefail
-          backup="$(pscale backup list "$DATABASE" "$SOURCE_BRANCH" --org "$PLANETSCALE_ORG" --format json \
-            | jq -r '[.[] | select(.state == "success")] | sort_by(.created_at) | last | .id // empty')"
-          if [ -z "$backup" ]; then
-            echo "::error::No successful backup of $SOURCE_BRANCH to restore"
+          # Data Branching seeds a development branch from the latest backup of
+          # the source branch. Restoring a production backup with --restore
+          # instead makes a production branch this token can neither connect
+          # to nor delete, so never use it here.
+          echo "Seeding $BRANCH from the latest backup of $SOURCE_BRANCH"
+          pscale branch create "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" --from "$SOURCE_BRANCH" --seed-data --wait > /dev/null
+          production="$(pscale branch show "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" --format json | jq -r '.production')"
+          if [ "$production" != "false" ]; then
+            echo "::error::$BRANCH came out as a production branch; stopping before any credential is created"
             exit 1
           fi
-          echo "Restoring the latest successful backup into $BRANCH"
-          pscale branch create "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" --restore "$backup" --wait > /dev/null
 
       - name: Create a branch password
         if: ${{ !inputs.cleanup_only }}
@@ -188,9 +191,13 @@ jobs:
           PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_DRY_RUN_TOKEN }}
         run: |
           set -euo pipefail
-          if pscale branch show "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" > /dev/null 2>&1; then
-            pscale branch delete "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" --force
+          if ! pscale branch show "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" > /dev/null 2>&1; then
+            echo "No branch to delete"
+            exit 0
+          fi
+          if pscale branch delete "$DATABASE" "$BRANCH" --org "$PLANETSCALE_ORG" --force; then
             echo "Deleted $BRANCH"
           else
-            echo "No branch to delete"
+            echo "::error::Could not delete $BRANCH. It holds a copy of production data: a database administrator must delete it in PlanetScale now."
+            exit 1
           fi

@@ -72,9 +72,11 @@ migrations, performance on real volume). Ask the person first and name the
 cost and the data involved.
 
 Use the **Dry run on a copy of production data** workflow
-(`.github/workflows/prod-data-dry-run.yml`). It restores the latest production
-backup into a `dry-run-*` branch, runs one check, and deletes the branch when
-the job ends, also on failure or cancel. The PlanetScale MCP cannot do this
+(`.github/workflows/prod-data-dry-run.yml`). It seeds a `dry-run-*` development
+branch from the latest production backup (Data Branching), runs one check, and
+deletes the branch when the job ends, also on failure or cancel. Never restore a
+production backup with `--restore`: that makes a production branch the token
+cannot connect to or delete. The PlanetScale MCP cannot do this
 (it has no branch or restore tools).
 
 1. Write the check in `ee/apps/den-api/scripts/dry-run/<name>.ts` on your
