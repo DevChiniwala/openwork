@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { fetchDesktopInventory, fetchDesktopSession } from "./desktop-credential-channel.ts"
 import { DenAuthError, isAllowedApiBaseUrl, isRecord, normalizeBaseUrl, type DenSession, type Fetch } from "./den.ts"
+import { joinDesktopSessionPoll } from "./desktop-session-poll.ts"
 import { subscribeSharedInventory } from "./inventory-events.ts"
 import { inventoryRetry } from "./inventory-retry.ts"
 import type { Json, PluginDefinition } from "./opencode.ts"
@@ -129,7 +130,6 @@ export function createDesktopProviderPlugin(deps: { fetch?: Fetch; now?: () => n
       let refreshController = new AbortController()
       let providers: readonly ProviderRecord[] = []
       let applied = digest(providers)
-      let polling = false
       let running: Promise<void> | null = null
       let queued = false
       let inventory: Inventory | null = null
@@ -224,74 +224,93 @@ export function createDesktopProviderPlugin(deps: { fetch?: Fetch; now?: () => n
         })
         return running
       }
+      // A slow or failed local check is not a sign-out. On unknown, keep the
+      // session, providers, cache and stream; the next tick asks again.
+      // Inference stays safe: the local bridge re-checks identity per request.
+      const applySession = async (check: SessionCheck) => {
+        if (lifetime.signal.aborted || check.kind === "unknown") return
+        const next = check.kind === "session" ? check.value : null
+        const nextKey = next ? digest({ apiBaseUrl: next.apiBaseUrl, identity: next.identity, orgId: next.orgId }) : ""
+        if (nextKey === key) {
+          if (session) session = next
+          // A failed reload is independent of the network subscription and remains retryable.
+          await publish(records(inventory)).catch(() => {})
+          return
+        }
+        epoch++
+        retry.reset()
+        refreshController.abort()
+        refreshController = new AbortController()
+        stream?.abort()
+        stream = null
+        session = next
+        key = nextKey
+        inventory = null
+        // Drop stale providers before reading cache or issuing any new-account request.
+        await publish([]).catch(() => {})
+        if (!next) {
+          await ctx.storage.remove(CACHE_KEY).catch(() => {})
+          return
+        }
+        const cached = parseInventory(await ctx.storage.get(CACHE_KEY).catch(() => undefined))
+        if (cached?.connectionKey === key && cached.gateway?.apiKey === "ow_local_catalog" && !lifetime.signal.aborted) {
+          inventory = cached
+          await publish(records(cached)).catch(() => {})
+        }
+        if (lifetime.signal.aborted) return
+        const controller = new AbortController()
+        stream = controller
+        // Re-resolve the handoff on reconnect, rather than retaining an expired token.
+        void subscribeSharedInventory({
+          identity: inventorySession(next),
+          unauthorized,
+          revoked,
+          fetch: inventoryFetch(next),
+          signal: AbortSignal.any([lifetime.signal, controller.signal]),
+          session: async () => {
+            await pollSession()
+            return controller.signal.aborted || !session ? null : inventorySession(session)
+          },
+          changed: () => { void refresh() },
+        })
+        void refresh()
+      }
+      // Checks are applied one at a time, in order; a burst collapses to the latest.
+      let pending: SessionCheck | null = null
+      let applying: Promise<void> | null = null
+      const receive = (check: SessionCheck) => {
+        if (lifetime.signal.aborted) return
+        pending = check
+        applying ??= (async () => {
+          while (pending && !lifetime.signal.aborted) {
+            const current = pending
+            pending = null
+            await applySession(current)
+          }
+        })().catch(() => {}).finally(() => {
+          applying = null
+          if (pending) receive(pending)
+        })
+      }
+      // This local-only check detects sign-out/account/org/token changes without
+      // polling Den inventory. One poll per process serves every Location.
+      const checkNow = joinDesktopSessionPoll(endpoint, capability, {
+        check: signal => checkDesktopSession(fetcher, endpoint, capability, signal),
+        receive,
+        intervalMs: deps.sessionIntervalMs ?? 1000,
+        signal: lifetime.signal,
+      })
       const pollSession = async () => {
-        if (polling || lifetime.signal.aborted) return
-        polling = true
-        try {
-          // This local-only check detects sign-out/account/org/token changes without polling Den inventory.
-          const check = await checkDesktopSession(fetcher, endpoint, capability, lifetime.signal)
-          if (lifetime.signal.aborted) return
-          // A slow or failed local check is not a sign-out. Keep the session,
-          // providers, cache and stream; the next tick asks again. Inference
-          // stays safe: the local bridge re-checks identity on every request.
-          if (check.kind === "unknown") return
-          const next = check.kind === "session" ? check.value : null
-          const nextKey = next ? digest({ apiBaseUrl: next.apiBaseUrl, identity: next.identity, orgId: next.orgId }) : ""
-          if (nextKey === key) {
-            if (session) session = next
-            // A failed reload is independent of the network subscription and remains retryable.
-            await publish(records(inventory)).catch(() => {})
-            return
-          }
-          epoch++
-          retry.reset()
-          refreshController.abort()
-          refreshController = new AbortController()
-          stream?.abort()
-          stream = null
-          session = next
-          key = nextKey
-          inventory = null
-          // Drop stale providers before reading cache or issuing any new-account request.
-          await publish([]).catch(() => {})
-          if (!next) {
-            await ctx.storage.remove(CACHE_KEY).catch(() => {})
-            return
-          }
-          const cached = parseInventory(await ctx.storage.get(CACHE_KEY).catch(() => undefined))
-          if (cached?.connectionKey === key && cached.gateway?.apiKey === "ow_local_catalog" && !lifetime.signal.aborted) {
-            inventory = cached
-            await publish(records(cached)).catch(() => {})
-          }
-          if (lifetime.signal.aborted) return
-          const controller = new AbortController()
-          stream = controller
-          // Re-resolve the handoff on reconnect, rather than retaining an expired token.
-          void subscribeSharedInventory({
-            identity: inventorySession(next),
-            unauthorized,
-            revoked,
-            fetch: inventoryFetch(next),
-            signal: AbortSignal.any([lifetime.signal, controller.signal]),
-            session: async () => {
-              await pollSession()
-              return controller.signal.aborted || !session ? null : inventorySession(session)
-            },
-            changed: () => { void refresh() },
-          })
-          void refresh()
-        } finally { polling = false }
+        await checkNow()
+        await applying
       }
       void pollSession()
-      const timer = setInterval(() => { void pollSession().catch(() => {}) }, deps.sessionIntervalMs ?? 1000)
-      timer.unref?.()
       return () => {
         epoch++
         retry.reset()
         lifetime.abort()
         refreshController.abort()
         stream?.abort()
-        clearInterval(timer)
       }
     },
   }

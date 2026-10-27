@@ -820,6 +820,57 @@ test("five desktop Locations share one session stream, fan out changes, and rele
   assert.equal(den.cancelled, 1, "last reference closed the stream")
 })
 
+test("five desktop Locations share one local session poll, all receive changes, and release independently", async () => {
+  const den = liveDen()
+  const endpoint = "http://127.0.0.1:1234/session"
+  let session: DenSession | null = { apiBaseUrl: API, token: SESSION_TOKEN, orgId: ORG_ID }
+  let checks = 0
+  const hosts = Array.from({ length: 5 }, () => createHost({ desktopSession: endpoint, liveProviderSync: true }))
+  const plugin = createDesktopProviderPlugin({
+    capability: () => "capability", sessionIntervalMs: 25,
+    fetch: async (url, init) => {
+      if (url !== endpoint) return den.fetch(url, init)
+      checks++
+      return Response.json(session)
+    },
+  })
+  const cleanups = await Promise.all(hosts.map(host => plugin.setup(host.ctx)))
+  try {
+    await settle()
+    // One startup check for all five, plus the shared inventory stream's own
+    // session lookup when it opens. Unshared, startup alone was five.
+    assert.ok(checks <= 2, `five Locations starting together shared their session check, got ${checks}`)
+    assert.ok(hosts.every(host => host.providers().size === 1))
+    const before = checks
+    await delay(250)
+    // One poll at 25 ms is ~10 checks; five independent Locations would be ~50.
+    assert.ok(checks - before <= 14, `one shared poll, got ${checks - before} checks in 250 ms`)
+    assert.ok(checks - before >= 5, "the shared poll keeps running")
+
+    session = null
+    for (let i = 0; i < 100 && hosts.some(host => host.providers().size); i++) await delay(5)
+    assert.ok(hosts.every(host => host.providers().size === 0), "every Location received the sign-out")
+    assert.ok(hosts.every(host => !host.storage.has("desktop/provider-inventory")))
+
+    session = { apiBaseUrl: API, token: SESSION_TOKEN, orgId: ORG_ID }
+    for (let i = 0; i < 100 && hosts.some(host => !host.providers().size); i++) await delay(5)
+    assert.ok(hosts.every(host => host.providers().size === 1), "every Location received the sign-in")
+
+    for (const cleanup of cleanups.slice(0, 4)) await cleanup?.()
+    const remaining = checks
+    await delay(100)
+    assert.ok(checks > remaining, "the last Location keeps polling after the others unload")
+    session = null
+    for (let i = 0; i < 100 && hosts[4]?.providers().size; i++) await delay(5)
+    assert.equal(hosts[4]?.providers().size, 0)
+    assert.ok(hosts.slice(0, 4).every(host => host.providers().size === 1), "unloaded Locations no longer receive checks")
+    await cleanups[4]?.()
+    const stopped = checks
+    await delay(100)
+    assert.equal(checks, stopped, "the last Location unloading stopped the poll")
+  } finally { for (const cleanup of cleanups) await cleanup?.() }
+})
+
 test("desktop warm offline cache rebinds public catalogs to a new engine port/key without persisting inference credentials", async () => {
   const identity = "a".repeat(64)
   const firstOrigin = "http://127.0.0.1:1234"
