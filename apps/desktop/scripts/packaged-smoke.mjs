@@ -1,10 +1,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { accessSync, appendFileSync, constants, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describeEngineFindings, diagnoseEngine } from "./engine-diagnosis.mjs";
-import { runCommand } from "./packaged-smoke-runner.mjs";
+import { assertHardenedFuses, runCommand } from "./packaged-smoke-runner.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 if (process.platform !== "linux") throw new Error("The fast packaged smoke gate currently targets Linux.");
@@ -74,14 +75,22 @@ try {
   const archive = join(resources, "app.asar");
   if (!existsSync(archive)) throw new Error(`Missing packaged archive: ${archive}`);
   accessSync(binary, constants.X_OK);
+  const fusesStarted = performance.now();
+  assertHardenedFuses(binary);
+  report.phases.push({ name: "fuses", milliseconds: Math.round(performance.now() - fusesStarted), exitCode: 0 });
+  // The packaged binary cannot run as plain Node, so the workspace's Electron
+  // of the same version loads the packaged archive, with the resources path the
+  // packaged binary reports (where the server finds its bundled plugins).
+  const electronAsNode = createRequire(join(repo, "apps/desktop/package.json"))("electron");
+  const packagedResourcesPath = `--import=data:text/javascript,${encodeURIComponent(`Object.defineProperty(process, "resourcesPath", { value: ${JSON.stringify(resources)} });`)}`;
   const sidecar = join(resources, "sidecars/opencode");
   accessSync(sidecar, constants.X_OK);
   run("sidecar", sidecar, ["--version"], 10_000, {}, output);
   const embedded = pathToFileURL(join(archive, "server/dist/embedded.js")).href;
-  run("server-import", binary, ["--input-type=module", "-e",
+  run("server-import", electronAsNode, [packagedResourcesPath, "--input-type=module", "-e",
     `const server = await import(${JSON.stringify(embedded)}); if (typeof server.startEmbeddedServer !== "function") throw new Error("Missing embedded server export");`],
   15_000, { ELECTRON_RUN_AS_NODE: "1", NODE_PATH: "", NODE_OPTIONS: "" }, output);
-  run("engine-cold-start", binary, ["--test", join(repo, "apps/desktop/test/engine-cold-start.test.mjs")],
+  run("engine-cold-start", electronAsNode, [packagedResourcesPath, "--test", join(repo, "apps/desktop/test/engine-cold-start.test.mjs")],
     45_000, {
       ELECTRON_RUN_AS_NODE: "1", NODE_PATH: "", NODE_OPTIONS: "",
       OPENWORK_TEST_EMBEDDED_MODULE_URL: embedded,

@@ -38,6 +38,18 @@ asarUnpack:
   # Blender loads computer use's script bridge from a real file.
   - electron/computer-scripting/**
 npmRebuild: false
+# Only the app's own code runs as this signed binary: it cannot be started as
+# plain Node (ELECTRON_RUN_AS_NODE), take NODE_OPTIONS or --inspect, or load an
+# app other than its integrity-checked app.asar. Work that must outlive the app
+# runs as a detached task (electron/detached-task.mjs).
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  # Unsigned local arm64 builds must keep a valid ad-hoc signature to launch.
+  resetAdHocDarwinSignature: true
 afterPack: scripts/electron-after-pack.cjs
 afterSign: scripts/electron-after-sign.cjs
 publish:

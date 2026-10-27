@@ -4,7 +4,6 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   desktopBootstrapPath as resolveDesktopBootstrapPath,
   globalOpencodeConfigDir,
@@ -14,6 +13,8 @@ import {
   opencodeCacheDirs as resolveOpencodeCacheDirs,
   opencodeDataDirs as resolveOpencodeDataDirs,
 } from "@openwork/paths";
+
+import { detachedTaskArgs } from "./detached-task.mjs";
 
 const BROWSER_SESSION_PARTITION = "persist:openwork-browser";
 const NUKE_PARTITIONS = ["default", BROWSER_SESSION_PARTITION];
@@ -39,7 +40,6 @@ const USERDATA_WORKSPACE_FILENAMES = [
 ];
 const LEGACY_ORCHESTRATOR_DIR_NAME = ["openwork", "orchestrator"].join("-");
 const SHIP_IT_CACHE_DOMAIN = "com.differentai.openwork.ShipIt";
-const NUKE_WORKER_FILENAME = "nuke-worker.mjs";
 const NUKE_WORKER_DEADLINE_MS = 60_000;
 const NUKE_WORKER_PARENT_WAIT_MS = 30_000;
 // Env overrides that move a profile's storage off the default locations.
@@ -79,8 +79,6 @@ const NUKE_WORKER_ENV_KEYS = [
   "XDG_DATA_HOME",
   "XDG_STATE_HOME",
 ];
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function pathApi(platform) {
   return platform === "win32" ? path.win32 : path.posix;
@@ -408,21 +406,16 @@ function safeNukeWorkerAppArgv(argv) {
   return entrypoint.endsWith("main.mjs") ? [entrypoint] : [];
 }
 
-export function buildNukeWorkerPayload({ parentPid, nukeInput, appExecutablePath, appArgv, pendingPath, nowMs = Date.now() }) {
+export function buildNukeWorkerPayload({ parentPid, nukeInput, appArgv, pendingPath, nowMs = Date.now() }) {
   return {
     version: 1,
     parentPid: Number(parentPid) || 0,
     nukeInput: buildNukeWorkerNukeInput(nukeInput),
-    appExecutablePath: String(appExecutablePath ?? ""),
     appArgv: safeNukeWorkerAppArgv(appArgv),
     pendingPath: String(pendingPath ?? ""),
     parentWaitDeadlineAt: nowMs + NUKE_WORKER_PARENT_WAIT_MS,
     deadlineAt: nowMs + NUKE_WORKER_DEADLINE_MS,
   };
-}
-
-function nukeWorkerScriptPath() {
-  return path.join(__dirname, NUKE_WORKER_FILENAME);
 }
 
 function nukeWorkerPayloadPath() {
@@ -434,7 +427,7 @@ async function writeNukeWorkerPayload(payloadPath, payload) {
 }
 
 function nukeWorkerSpawnEnv(env = process.env) {
-  const workerEnv = { ...env, ELECTRON_RUN_AS_NODE: "1" };
+  const workerEnv = { ...env };
   delete workerEnv["OPENWORK_ELECTRON_REMOTE_DEBUG_PORT"];
   return workerEnv;
 }
@@ -452,14 +445,14 @@ export async function scheduleNukeCleanupWorker({ app, input, plan, spawnFn, exe
   const payload = buildNukeWorkerPayload({
     parentPid: process.pid,
     nukeInput: input,
-    appExecutablePath: execPath,
     appArgv: nukeRelaunchArgv(app, argv),
     pendingPath: plan.pendingPath,
   });
   await writeNukeWorkerPayload(payloadPath, payload);
   try {
     const launchWorker = typeof spawnFn === "function" ? spawnFn : spawn;
-    const child = launchWorker(execPath, [nukeWorkerScriptPath(), payloadPath], {
+    // The worker is this binary in detached-task mode; it relaunches the app.
+    const child = launchWorker(execPath, detachedTaskArgs("nuke-cleanup", [payloadPath], { isPackaged: app?.isPackaged === true }), {
       detached: true,
       env: nukeWorkerSpawnEnv(env),
       stdio: "ignore",

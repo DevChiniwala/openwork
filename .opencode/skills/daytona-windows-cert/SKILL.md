@@ -243,11 +243,13 @@ if (result.reproInSystem === 0) {
 }
 ```
 
-Run Electron in node mode. Adjust the executable path for your unpacked build or
-installed app:
+Run Electron in node mode. Packaged OpenWork builds turn off
+`ELECTRON_RUN_AS_NODE`, so point this at the stock `electron.exe` of the same
+Electron version (`apps/desktop/node_modules/electron/dist`) rather than
+`OpenWork.exe`:
 
 ```bash
-daytona exec "$SANDBOX_ID" -- cmd /c 'set ELECTRON_RUN_AS_NODE=1 && "C:\ow\openwork\app\OpenWork.exe" C:\ow\ca-probe.js'
+daytona exec "$SANDBOX_ID" -- cmd /c 'set ELECTRON_RUN_AS_NODE=1 && "C:\ow\electron\electron.exe" C:\ow\ca-probe.js'
 ```
 
 The verified result was:

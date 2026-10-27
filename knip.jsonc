@@ -83,7 +83,7 @@
       "entry": ["src/cli.ts", "src/opencode-plugins/*.ts", "scripts/*.mjs", "**/*.test.ts"]
     },
     "apps/desktop": {
-      "entry": ["electron/main.mjs", "electron/*preload*.{mjs,cjs}", "electron/nuke-worker.mjs", "scripts/*.{mjs,cjs}", "**/*.test.{mjs,cjs}"]
+      "entry": ["electron/boot.mjs", "electron/main.mjs", "electron/*preload*.{mjs,cjs}", "scripts/*.{mjs,cjs}", "**/*.test.{mjs,cjs}"]
     },
     "packages/mcp-apps": {
       "entry": ["src/connection-action.tsx", "**/*.{test,spec}.{js,cjs,mjs,ts,tsx}"]

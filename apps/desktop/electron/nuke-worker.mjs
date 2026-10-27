@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { runPendingNukeCleanup } from "./nuke.mjs";
 
@@ -49,12 +48,8 @@ export function validateNukeWorkerPayload(value) {
     : "linux";
   const homedir = typeof nukeInput.homedir === "string" ? nukeInput.homedir : "";
   const userDataPath = typeof nukeInput.userDataPath === "string" ? nukeInput.userDataPath : "";
-  const appExecutablePath = typeof payload.appExecutablePath === "string" ? payload.appExecutablePath : "";
   if (!isAbsoluteForPlatform(homedir, platform) || !isAbsoluteForPlatform(userDataPath, platform)) {
     throw new Error("Nuke worker paths must be absolute.");
-  }
-  if (!path.isAbsolute(appExecutablePath)) {
-    throw new Error("Nuke worker app executable path must be absolute.");
   }
   const appArgv = Array.isArray(payload.appArgv) ? payload.appArgv.filter((arg) => typeof arg === "string") : [];
   const parentPid = Number(payload.parentPid) || 0;
@@ -74,7 +69,6 @@ export function validateNukeWorkerPayload(value) {
         ? nukeInput.workspacePaths.filter((entry) => typeof entry === "string" && entry.trim())
         : [],
     },
-    appExecutablePath,
     appArgv,
     pendingPath: typeof payload.pendingPath === "string" ? payload.pendingPath : "",
     parentWaitDeadlineAt,
@@ -111,12 +105,13 @@ async function waitForHandleReleaseGrace(deps) {
   if (graceMs > 0) await sleepFn(graceMs);
 }
 
+// The worker runs as the app's own binary (a detached task, see boot.mjs), so
+// it relaunches that binary rather than any path named in the payload.
 function launchApp(payload, deps) {
   const spawnApp = deps.spawnApp ?? spawn;
   const env = { ...(deps.env ?? process.env) };
-  delete env.ELECTRON_RUN_AS_NODE;
   delete env["OPENWORK_ELECTRON_REMOTE_DEBUG_PORT"];
-  const child = spawnApp(payload.appExecutablePath, payload.appArgv, {
+  const child = spawnApp(deps.appExecutablePath ?? process.execPath, payload.appArgv, {
     detached: true,
     env,
     stdio: "ignore",
@@ -146,10 +141,4 @@ export async function runNukeCleanupWorker(payloadPath, deps = {}) {
   await rm(payloadPath, { force: true }).catch(() => undefined);
   const launchPid = launchApp(payload, deps);
   return { cleanup, launchPid };
-}
-
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
-  runNukeCleanupWorker(String(process.argv[2] ?? "")).catch(() => {
-    process.exitCode = 1;
-  });
 }

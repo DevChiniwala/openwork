@@ -56,5 +56,6 @@ their immutable flavor; the flag never alters sign-in or activation policy.
 
 - `apps/desktop/electron/blank-slate-profile.mjs` — profile resolution (applied
   as the first import in `main.mjs`)
-- `apps/desktop/electron/blank-slate-cleanup.mjs` — post-exit cleanup worker
+- `apps/desktop/electron/blank-slate-cleanup.mjs` — post-exit cleanup, run as a
+  detached task of the app binary (`apps/desktop/electron/boot.mjs`)
 - `evals/specs/desktop-blank-slate-profile.test.ts` — testkit proof

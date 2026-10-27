@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, chmod, mkdir, readdir, readFile, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
@@ -382,22 +381,45 @@ export async function migrateOpencodeV1History(options: MigrationRequest & {
 export type MigrationProcessRequest = MigrationRequest;
 export type MigrationProcessMessage =
   | { type: "progress"; status: EngineV2MigrationStatus }
-  | { type: "scratch"; scratch: MigrationScratch };
+  | { type: "scratch"; scratch: MigrationScratch }
+  | { type: "done" };
+
+// The subset of Electron's utilityProcess this module uses; the server has no
+// Electron dependency of its own.
+interface MigrationUtilityProcess {
+  postMessage(message: unknown): void;
+  kill(): boolean;
+  on(event: "message", listener: (message: unknown) => void): unknown;
+  once(event: "exit", listener: (code: number) => void): unknown;
+}
+interface ElectronUtilityProcessModule {
+  utilityProcess: {
+    fork(modulePath: string, args: string[], options: { stdio: Array<"ignore" | "inherit">; serviceName: string }): MigrationUtilityProcess;
+  };
+}
 
 export async function runOpencodeV1HistoryMigration(options: MigrationRequest & {
   progress: (status: EngineV2MigrationStatus) => void;
   signal?: AbortSignal;
 }): Promise<void> {
-  if (typeof process.versions.electron !== "string") return migrateOpencodeV1History(options);
+  // Electron's main process gives the migration a utility process of its own,
+  // so a failed chat cannot exhaust the app's heap. Packaged builds cannot run
+  // their binary as plain Node, so it is not a child_process.
+  if ((process as { type?: string }).type !== "browser") return migrateOpencodeV1History(options);
   const { progress, signal, ...request } = options;
   signal?.throwIfAborted();
   let last: EngineV2MigrationStatus = { state: "running", phase: "starting", imported: 0, skipped: 0, total: 0 };
   let converterPid: number | undefined;
-  const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "opencode-v2-migration-process.js")], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "inherit", "inherit", "ipc"], serialization: "json", windowsHide: true,
+  // Resolved at runtime only, inside Electron; builds of the server leave it alone.
+  const electron = "electron";
+  const { utilityProcess } = await import(electron) as ElectronUtilityProcessModule;
+  const child = utilityProcess.fork(join(dirname(fileURLToPath(import.meta.url)), "opencode-v2-migration-process.js"), [], {
+    stdio: ["ignore", "inherit", "inherit"], serviceName: "OpenWork chat migration",
   });
   child.on("message", (message: unknown) => {
     if (!isRecord(message)) return;
+    // The worker has cleaned up, and every message it sent before this one has arrived.
+    if (message.type === "done") { child.kill(); return; }
     if (message.type === "scratch" && isRecord(message.scratch)) {
       converterPid = typeof message.scratch.converterPid === "number" ? message.scratch.converterPid : undefined;
     }
@@ -415,12 +437,10 @@ export async function runOpencodeV1HistoryMigration(options: MigrationRequest & 
       ...(typeof value.error === "string" ? { error: value.error } : {}), ...(value.resumed === true ? { resumed: true } : {}) };
     progress(last);
   }
-  const ended = new Promise<void>(resolve => {
-    child.on("error", () => resolve()); child.once("close", () => resolve());
-  });
-  const stop = () => { child.kill("SIGTERM"); };
+  const ended = new Promise<void>(resolve => { child.once("exit", () => resolve()); });
+  const stop = () => { child.kill(); };
   signal?.addEventListener("abort", stop, { once: true });
-  child.send(request);
+  child.postMessage(request);
   await ended;
   signal?.removeEventListener("abort", stop);
   if (converterPid) { try { process.kill(converterPid); } catch { /* already closed */ } }

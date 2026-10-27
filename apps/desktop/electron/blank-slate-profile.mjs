@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const BLANK_SLATE_FLAG = "--blank-slate";
+export const BLANK_SLATE_ROOT_PREFIX = "openwork-test-profile-";
 
 export const BLANK_SLATE_PATH_ENV_KEYS = Object.freeze([
   "HOME",
@@ -43,7 +44,7 @@ export function prepareBlankSlateProfile({
   }
 
   const paths = pathApi(platform);
-  const rootPath = createTempRoot(paths.join(temporaryDirectory, "openwork-test-profile-"));
+  const rootPath = createTempRoot(paths.join(temporaryDirectory, BLANK_SLATE_ROOT_PREFIX));
   const userDataPath = paths.join(rootPath, "electron", "user-data");
   const homePath = paths.join(rootPath, "home");
   const openworkConfigPath = paths.join(rootPath, "openwork", "config");

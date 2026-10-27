@@ -37,6 +37,7 @@ import { remoteComputerAdapters } from "./computer-targets.mjs";
 import { createWindowsComputerAdapter } from "./computer-windows.mjs";
 import { resetPermissionEntry, resolvePermissionEntry } from "./computer-permission-entry.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
+import { detachedTaskArgs } from "./detached-task.mjs";
 import {
   buildNukeManifest,
   executeNukeFreshStart,
@@ -577,15 +578,14 @@ const BRAND_ICON_FETCH_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_1
 function scheduleBlankSlateProfileCleanup() {
   if (!BLANK_SLATE_LAUNCH.rootPath) return;
   try {
-    const child = spawn(process.execPath, [
-      path.join(__dirname, "blank-slate-cleanup.mjs"),
-      String(process.pid),
-      BLANK_SLATE_LAUNCH.rootPath,
-    ], {
+    const child = spawn(process.execPath, detachedTaskArgs(
+      "blank-slate-cleanup",
+      [String(process.pid), BLANK_SLATE_LAUNCH.rootPath],
+      { isPackaged: app.isPackaged },
+    ), {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     });
     child.once("error", (error) => {
       console.warn("[blank-slate] failed to schedule temporary profile cleanup", error);
