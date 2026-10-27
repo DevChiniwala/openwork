@@ -15,9 +15,11 @@ import {
   resolveFeatures,
   RETIRED_FEATURE_KEYS,
   type FeatureContext,
+  type FeatureDefinition,
 } from "@openwork/features"
 
 const base: FeatureContext = { deployment: "cloud", locks: {}, rollouts: {}, overrides: {} }
+const featureDocs = (feature: FeatureDefinition) => feature.docs
 
 test("without stored state, every feature follows its registry default", () => {
   for (const key of FEATURE_KEYS) {
@@ -48,7 +50,7 @@ test("features by category keeps category order and lists every feature once", (
 test("every feature names its author, and docs link to internal docs in the repo", () => {
   for (const key of FEATURE_KEYS) {
     assert.match(FEATURES[key].author, /^[A-Za-z0-9-]+$/, key)
-    const docs = FEATURES[key].docs
+    const docs = featureDocs(FEATURES[key])
     if (docs === undefined) {
       assert.equal(featureDocsUrl(key), null)
     } else {

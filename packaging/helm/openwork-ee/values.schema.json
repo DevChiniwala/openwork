@@ -341,6 +341,16 @@
               ],
               "description": "Self-serve Enterprise: Owners can buy Enterprise by card at the planned per-person price. Renders DEN_FEATURE_SELF_SERVE_ENTERPRISE."
             },
+            "gatewayProviderAuthErrors": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "AI Gateway: rejected provider credentials in chat: When a provider rejects your organization's AI Gateway credential, the chat says which provider rejected it and asks you to contact your administrator, with a request ID for support, instead of sending you to your own model settings. Renders DEN_FEATURE_GATEWAY_PROVIDER_AUTH_ERRORS."
+            },
             "sessionTokenHashing": {
               "enum": [
                 "",

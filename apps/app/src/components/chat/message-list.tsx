@@ -65,6 +65,7 @@ import { TodoWriteTool } from "@/components/tools/todowrite"
 import { WebfetchTool } from "@/components/tools/webfetch"
 import { WebsearchTool } from "@/components/tools/websearch"
 import { useMessageList, useSessionErrorMessage } from "@/components/chat/message-list-provider"
+import { useOrgFeature } from "@/react-app/domains/cloud/use-org-feature"
 import { TaskSuggestions } from "@/components/chat/task-suggestions"
 import { useSessionReferencesMaybe, type SessionReferences } from "@/components/chat/session-reference-context"
 import { SessionReferenceLink } from "@/components/chat/session-reference-link"
@@ -1092,6 +1093,7 @@ const MessageComponent = React.memo(
           canRetry={isLastMessage && !isStreaming}
           technicalDetails={presentation?.technicalDetails}
           gatewayConnectUrl={presentation?.kind === "gateway-auth-required" || presentation?.kind === "provider-credentials" ? presentation.connectUrl ?? null : undefined}
+          gatewayProviderAuthError={presentation?.kind === "gateway-provider-authentication-failed" || presentation?.kind === "gateway-provider-permission-denied"}
           gatewaySelectionRequired={presentation?.kind === "gateway-selection-required"}
           changeModel={presentation !== null && ["provider-access-denied", "provider-unavailable", "provider-unreachable", "model-unavailable", "rate-limited", "conversation-too-long", "attachment-unsupported"].includes(presentation.kind)}
         />
@@ -1236,16 +1238,26 @@ interface ErrorMessageProps {
    * null deep-links to Settings > AI providers instead.
    */
   gatewayConnectUrl?: string | null
+  gatewayProviderAuthError?: boolean
   gatewaySelectionRequired?: boolean
   changeModel?: boolean
 }
 
-function ErrorMessage({ error, description, showDescriptionOnResume, resumePrompt, canRetry = true, technicalDetails, gatewayConnectUrl, gatewaySelectionRequired, changeModel }: ErrorMessageProps) {
+function ErrorMessage({ error, description, showDescriptionOnResume, resumePrompt, canRetry = true, technicalDetails, gatewayConnectUrl, gatewaySelectionRequired, gatewayProviderAuthError, changeModel }: ErrorMessageProps) {
   const { onResumeInterrupted, dispatchAction, sessionId } = useMessageList()
+  const gatewayProviderAuthEnabled = useOrgFeature("gatewayProviderAuthErrors")
+  const useGatewayProviderAuthCopy = gatewayProviderAuthError && gatewayProviderAuthEnabled
   const selection = error?.includes("gateway_selection_required") ? presentOpencodeSessionError(error) : null
-  const displayError = selection?.title ?? error
-  const displayDescription = selection?.description ?? description
+  const displayError = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? "Check your model connection"
+    : selection?.title ?? error
+  const displayDescription = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? "Update your connection in model settings."
+    : selection?.description ?? description
   const displayDetails = selection?.technicalDetails ?? technicalDetails
+  const displayTechnicalDetails = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? displayDetails?.split("\n").filter((line) => !line.startsWith("Request ID:")).join("\n")
+    : displayDetails
   const resumable = Boolean(resumePrompt && onResumeInterrupted)
   return (
     <TaskRecovery title={displayError ?? "Task failed"} state={resumable ? "paused" : "failed"}
@@ -1253,16 +1265,18 @@ function ErrorMessage({ error, description, showDescriptionOnResume, resumePromp
       description={showDescriptionOnResume && displayDescription
         ? <span data-testid="session-error-interruption-warning">{displayDescription}</span>
         : !resumePrompt ? displayDescription : null}
-      technicalDetails={displayDetails}
+      technicalDetails={useGatewayProviderAuthCopy ? displayDetails : displayTechnicalDetails}
       onRetry={canRetry && resumable && resumePrompt ? () => onResumeInterrupted?.(resumePrompt) : undefined}
       retryTestId="session-error-resume"
-      actions={gatewaySelectionRequired || selection || changeModel || gatewayConnectUrl !== undefined ? <>
+      actions={gatewaySelectionRequired || selection || changeModel || gatewayConnectUrl !== undefined || (gatewayProviderAuthError && !gatewayProviderAuthEnabled) ? <>
         {gatewaySelectionRequired || selection ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-selection"
           onClick={() => openAlternativeModelPicker(sessionId)}>
           Choose group and credential set
         </Button> : null}
         {changeModel && !gatewaySelectionRequired && !selection ? <Button variant="ghost" size="xs"
           onClick={() => openAlternativeModelPicker(sessionId)}>Change model</Button> : null}
+        {gatewayProviderAuthError && !gatewayProviderAuthEnabled ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-connect"
+          onClick={() => dispatchAction({ target: "settings", action: "open", section: "providers" })}>Connect</Button> : null}
         {gatewayConnectUrl !== undefined ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-connect"
           onClick={() => dispatchAction({ target: "settings", action: "open", section: "providers" })}>Connect</Button> : null}
       </> : null} />
