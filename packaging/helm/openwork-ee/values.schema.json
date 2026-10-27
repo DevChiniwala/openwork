@@ -201,6 +201,16 @@
               ],
               "description": "Workbot: workspace assistant: Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Renders DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT."
             },
+            "memberFiles": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: My files: Each member gets one My files space shared by all their Workbot chats and Workbot's browser: browser downloads land in it, the agent reads and saves files there and can upload them to websites, and members list, preview, download and delete them from Workbot's Files panel. Renders DEN_FEATURE_MEMBER_FILES."
+            },
             "workbotIncludedModels": {
               "enum": [
                 "",
