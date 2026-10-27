@@ -169,13 +169,16 @@ HEADLESS_COMPUTER_PERSISTENT=true
 HEADLESS_COMPUTER_DOMAIN=computers.example.com
 ```
 
-The production deploy (`celld-runner-deploy.yml`) stops before the fleet
-changes when the configured slug was built for a different guest, for example
-after a dependency bump changes a package the guest bundles. Build the new
-snapshot at that commit, set the `HEADLESS_COMPUTER_SNAPSHOT` variable in the
-`celld-production` GitHub environment, then rerun the deploy. This plain
-environment variable overrides the same field in `CELLD_RUNNER_VARS`; when it
-is unset, the JSON secret remains the fallback for existing setups.
+The production deploy (`celld-runner-deploy.yml`) builds the snapshot itself
+when the configured slug was built for a different guest, for example after a
+dependency bump changes a package the guest bundles. It uses the runner's
+`FREESTYLE_API_KEY`, names the snapshot after the new guest, and bundles the
+runner with that slug. A later run with the same guest finds the snapshot
+already built. If the build fails, the deploy stops before the fleet changes.
+The plain `HEADLESS_COMPUTER_SNAPSHOT` variable in the `celld-production`
+GitHub environment overrides the same field in `CELLD_RUNNER_VARS`; set it to a
+slug not named by the builder to choose a snapshot by hand, which the deploy
+then uses without checking.
 
 Keep `FREESTYLE_API_KEY` in the runner's secrets. Each desktop computer
 publishes only its viewer port, at a random host under that domain; the guest's
