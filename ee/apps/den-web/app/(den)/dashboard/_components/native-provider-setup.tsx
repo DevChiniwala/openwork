@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { DenButton } from "../../_components/ui/button";
 import { DenInput } from "../../_components/ui/input";
-import { getAddConnectorRoute, getMcpConnectionRoute, getMcpConnectionsRoute } from "../../_lib/den-org";
+import { getAddConnectorRoute, getMcpConnectionRoute, getMcpConnectionsRoute, orgFeatureEnabled } from "../../_lib/den-org";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { GOOGLE_WORKSPACE_QUICK_ADD_ID, MICROSOFT_365_QUICK_ADD_ID, type NativeProviderKey } from "./connector-catalog";
 import { useDenToast } from "./den-toast";
@@ -14,10 +14,11 @@ import {
   type NativePermissionGroup,
 } from "./google-workspace-permissions";
 import { ItemHeader, ItemPage, SectionTitle, StepFooter } from "./item-header";
-import { DetailRows, ItemPanel } from "./item-list";
+import { ConfirmDialog, DetailRows, ItemPanel } from "./item-list";
+import { microsoftCredentialChanges, microsoftCredentialIdentityChanged, microsoftCredentialRefetchConflicts, type MicrosoftCredentialDraft, type MicrosoftCredentialIdentity } from "./microsoft-credential-draft";
 import { ConnectorLogo } from "./item-logo";
 import { McpCredentialInput } from "./mcp-credential-input";
-import { useCreateNativeProviderConnection, useGoogleApiCheck, useNativeProviderClient, useSaveNativeProviderClient } from "./mcp-connections-data";
+import { type NativeProviderClient, useCreateNativeProviderConnection, useGoogleApiCheck, useNativeProviderClient, useSaveNativeProviderClient } from "./mcp-connections-data";
 import { MICROSOFT_365_DEFAULT_FEATURES, MICROSOFT_365_PERMISSION_GROUPS } from "./microsoft-365-permissions";
 
 type ProviderCopy = {
@@ -123,6 +124,7 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
   footer: (input: { save: () => void; saving: boolean; disabled: boolean; label: string }) => ReactNode;
 }) {
   const provider = PROVIDERS[providerKey];
+  const { orgContext } = useOrgDashboard();
   const clientConfig = useNativeProviderClient(clientProviderId, true);
   const createNative = useCreateNativeProviderConnection();
   const saveClient = useSaveNativeProviderClient();
@@ -135,6 +137,14 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const prefilled = useRef(false);
+  const [credentialDraft, setCredentialDraft] = useState<MicrosoftCredentialDraft | null>(null);
+  const [savedIdentity, setSavedIdentity] = useState<MicrosoftCredentialIdentity | null>(null);
+  const [savedFeatures, setSavedFeatures] = useState<string[] | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [credentialConflict, setCredentialConflict] = useState(false);
+  const [submittedIdentity, setSubmittedIdentity] = useState<MicrosoftCredentialIdentity | null>(null);
+  const [observedClientConfig, setObservedClientConfig] = useState<NativeProviderClient>();
+  const savingRef = useRef(false);
 
   const creatingGoogle = create && providerKey === GOOGLE_WORKSPACE_QUICK_ADD_ID;
   const configured = !creatingGoogle && (clientConfig.data?.configured ?? false);
@@ -145,12 +155,57 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
     setFeatures(clientConfig.data.features);
   }, [clientConfig.data, configured]);
 
+  const editCredentials = !create && configured && providerKey === MICROSOFT_365_QUICK_ADD_ID
+    && orgFeatureEnabled(orgContext, "microsoftConnectorCredentialEditing");
+
+  useEffect(() => {
+    if (!editCredentials || savedIdentity || !clientConfig.data) return;
+    const identity = { clientId: clientConfig.data.clientId ?? "", tenantId: clientConfig.data.tenantId ?? "" };
+    setObservedClientConfig(clientConfig.data);
+    setSavedIdentity(identity);
+    setCredentialDraft({ ...identity, clientSecret: "" });
+    setSavedFeatures([...clientConfig.data.features]);
+  }, [editCredentials, savedIdentity, clientConfig.data]);
+
+  useEffect(() => {
+    // A live kill returns to the existing permissions-first flow, never a hidden replacement.
+    setReplacing(false);
+    setConfirming(false);
+  }, [editCredentials]);
+
+  const refreshedIdentity = clientConfig.data ? { clientId: clientConfig.data.clientId ?? "", tenantId: clientConfig.data.tenantId ?? "" } : null;
+  const ownIdentityPending = Boolean(editCredentials && savedIdentity && submittedIdentity && refreshedIdentity
+    && microsoftCredentialIdentityChanged(refreshedIdentity, savedIdentity)
+    && !microsoftCredentialIdentityChanged(refreshedIdentity, submittedIdentity));
+  const identityRefreshed = Boolean(editCredentials && savedIdentity && refreshedIdentity && observedClientConfig !== clientConfig.data
+    && microsoftCredentialRefetchConflicts(refreshedIdentity, savedIdentity, submittedIdentity));
+  const credentialsStale = credentialConflict || identityRefreshed;
+
+  useEffect(() => {
+    if (!editCredentials || !savedIdentity || !clientConfig.data || observedClientConfig === clientConfig.data || ownIdentityPending) return;
+    // Do not consume a matching in-flight refresh until the save has succeeded.
+    // If the save fails after the server wrote, the new identity still needs review.
+    setObservedClientConfig(clientConfig.data);
+    if (identityRefreshed) {
+      setCredentialConflict(true);
+      setConfirming(false);
+      setCredentialDraft((current) => current ? { ...current, clientSecret: "" } : current);
+    }
+  }, [editCredentials, savedIdentity, clientConfig.data, observedClientConfig, identityRefreshed, ownIdentityPending]);
+
+  const credentialChanges = credentialDraft && savedIdentity ? microsoftCredentialChanges(credentialDraft, savedIdentity) : null;
+  const permissionsChanged = [...features].sort().join() !== [...(savedFeatures ?? [])].sort().join();
   const redirectUri = clientConfig.data?.redirectUri ?? "";
-  const showCredentials = !clientConfig.isLoading && (!configured || replacing);
+  const showCredentials = !clientConfig.isLoading && (!configured || replacing || editCredentials);
   const saving = createNative.isPending || saveClient.isPending;
-  const credentialsIncomplete = showCredentials && (!clientId.trim() || !clientSecret.trim() || (provider.tenant && !tenantId.trim()));
-  const disabled = clientConfig.isLoading || saving || credentialsIncomplete || (creatingGoogle && !name.trim());
-  const label = configured && !replacing ? "Save permissions" : configured ? "Save new credentials" : `Add ${provider.name}`;
+  const credentialsIncomplete = !editCredentials && showCredentials && (!clientId.trim() || !clientSecret.trim() || (provider.tenant && !tenantId.trim()));
+  const disabled = clientConfig.isLoading || saving || credentialsIncomplete || (creatingGoogle && !name.trim())
+    || (editCredentials && (clientConfig.isError || credentialsStale || !credentialChanges?.valid || (!credentialChanges.changed && !permissionsChanged)));
+  const label = editCredentials ? "Save changes" : configured && !replacing ? "Save permissions" : configured ? "Save new credentials" : `Add ${provider.name}`;
+
+  function updateCredentialDraft(field: keyof MicrosoftCredentialDraft, value: string) {
+    setCredentialDraft((current) => current ? { ...current, [field]: value } : current);
+  }
 
   function toggle(feature: string) {
     setFeatures((current) => current.includes(feature) ? current.filter((entry) => entry !== feature) : [...current, feature]);
@@ -166,11 +221,20 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
     }
   }
 
-  async function save() {
+  async function save(identityConfirmed = false) {
+    if (disabled || savingRef.current || (identityConfirmed && !editCredentials)) return;
+    if (editCredentials && credentialChanges?.identityChanged && !identityConfirmed) {
+      setConfirming(true);
+      return;
+    }
     setError(null);
-    const credentials = showCredentials
-      ? { clientId: clientId.trim(), clientSecret: clientSecret.trim(), ...(provider.tenant ? { tenantId: tenantId.trim() } : {}) }
-      : {};
+    const credentials = editCredentials
+      ? credentialChanges?.credentials ?? {}
+      : showCredentials
+        ? { clientId: clientId.trim(), clientSecret: clientSecret.trim(), ...(provider.tenant ? { tenantId: tenantId.trim() } : {}) }
+        : {};
+    savingRef.current = true;
+    if (editCredentials && credentialChanges) setSubmittedIdentity(credentialChanges.identity);
     try {
       if (creatingGoogle) {
         const created = await createNative.mutateAsync({
@@ -184,9 +248,19 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
       await saveClient.mutateAsync({ providerId: clientProviderId, ...credentials, features });
       setReplacing(false);
       setClientSecret("");
+      if (editCredentials && credentialChanges) {
+        setObservedClientConfig(clientConfig.data);
+        setSavedIdentity(credentialChanges.identity);
+        setCredentialDraft({ ...credentialChanges.identity, clientSecret: "" });
+        setSavedFeatures([...features]);
+      }
       onSaved(clientProviderId, provider.name);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "That did not save.");
+      if (identityConfirmed) throw cause;
+    } finally {
+      setSubmittedIdentity(null);
+      savingRef.current = false;
     }
   }
 
@@ -214,20 +288,20 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
 
       <section className="flex flex-col gap-2.5">
         <SectionTitle
-          title="OAuth app"
-          meta={configured && !replacing ? (
+          title={editCredentials ? "App credentials" : "OAuth app"}
+          meta={!editCredentials && configured && !replacing ? (
             <button type="button" className="font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline" onClick={() => {
               setClientId(clientConfig.data?.clientId ?? "");
               setTenantId(clientConfig.data?.tenantId ?? "");
               setClientSecret("");
               setReplacing(true);
             }}>Replace credentials</button>
-          ) : replacing ? (
+          ) : !editCredentials && replacing ? (
             <button type="button" className="font-medium text-gray-600 underline-offset-2 hover:text-gray-900 hover:underline" onClick={() => setReplacing(false)}>Keep saved credentials</button>
           ) : undefined}
         />
         {clientConfig.isLoading ? <ItemPanel><p className="px-5 py-3 text-[13px] text-gray-500">Checking saved credentials...</p></ItemPanel> : null}
-        {configured && !replacing ? (
+        {configured && !replacing && !editCredentials ? (
           <DetailRows rows={[
             ...(provider.tenant ? [{ label: "Tenant ID", value: <span className="font-mono">{clientConfig.data?.tenantId ?? "Saved"}</span> }] : []),
             { label: "Client ID", value: <span className="font-mono">{clientConfig.data?.clientId ?? "Saved"}</span> },
@@ -238,15 +312,17 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
           <div className="flex flex-col gap-3">
             {provider.tenant ? (
               <Field label="Directory (tenant) ID">
-                <McpCredentialInput kind="identifier" name={`${providerKey}-tenant-id`} data-testid="native-provider-tenant-id" value={tenantId} onChange={(event) => setTenantId(event.target.value)} placeholder="00000000-0000-0000-0000-000000000000" />
+                <McpCredentialInput kind="identifier" name={`${providerKey}-tenant-id`} data-testid="native-provider-tenant-id" value={editCredentials ? credentialDraft?.tenantId ?? clientConfig.data?.tenantId ?? "" : tenantId} disabled={editCredentials && (saving || !credentialDraft || credentialsStale)} onChange={(event) => editCredentials ? updateCredentialDraft("tenantId", event.target.value) : setTenantId(event.target.value)} placeholder="00000000-0000-0000-0000-000000000000" />
               </Field>
             ) : null}
             <Field label="Client ID">
-              <McpCredentialInput kind="identifier" name={`${providerKey}-oauth-client-id`} data-testid="native-provider-client-id" value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder={provider.clientIdPlaceholder} />
+              <McpCredentialInput kind="identifier" name={`${providerKey}-oauth-client-id`} data-testid="native-provider-client-id" value={editCredentials ? credentialDraft?.clientId ?? clientConfig.data?.clientId ?? "" : clientId} disabled={editCredentials && (saving || !credentialDraft || credentialsStale)} onChange={(event) => editCredentials ? updateCredentialDraft("clientId", event.target.value) : setClientId(event.target.value)} placeholder={provider.clientIdPlaceholder} />
             </Field>
             <Field label="Client secret">
-              <McpCredentialInput kind="secret" name={`${providerKey}-oauth-client-secret`} data-testid="native-provider-client-secret" value={clientSecret} onChange={setClientSecret} placeholder={provider.secretPlaceholder} />
+              <McpCredentialInput kind="secret" name={`${providerKey}-oauth-client-secret`} data-testid="native-provider-client-secret" value={editCredentials ? credentialDraft?.clientSecret ?? "" : clientSecret} disabled={editCredentials && (saving || !credentialDraft || credentialsStale)} onChange={(value) => editCredentials ? updateCredentialDraft("clientSecret", value) : setClientSecret(value)} placeholder={provider.secretPlaceholder} aria-describedby={editCredentials ? `${providerKey}-secret-hint` : undefined} />
+              {editCredentials ? <span id={`${providerKey}-secret-hint`} className="text-[12px] text-gray-500">{credentialChanges?.clientChanged ? "A new client ID needs its own client secret." : "Leave blank to keep the saved secret."}</span> : null}
             </Field>
+            {editCredentials && credentialChanges?.identityChanged ? <p role="status" className="text-[13px] text-gray-600">Changing the tenant or client ID signs everyone out. The new app may need different permissions.</p> : null}
           </div>
         ) : null}
       </section>
@@ -286,8 +362,24 @@ export function NativeProviderSettings({ providerKey, clientProviderId, create, 
         />
       ) : null}
 
+      {editCredentials && credentialsStale ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-gray-600">
+          <p>App credentials changed while you were editing. Reload before saving.</p>
+          <DenButton size="sm" variant="secondary" onClick={() => window.location.reload()}>Reload page</DenButton>
+        </div>
+      ) : null}
+      {editCredentials && clientConfig.error ? <p className="text-[13px] text-red-600" role="alert">{clientConfig.error.message} Reload the page to try again.</p> : null}
       {error ? <p className="text-[13px] text-red-600" role="alert">{error}</p> : null}
       {footer({ save: () => void save(), saving, disabled, label })}
+      <ConfirmDialog
+        confirm={editCredentials && confirming && credentialChanges?.identityChanged ? {
+          title: "Change Microsoft 365 app?",
+          description: `All existing signed-in members will be disconnected. Save tenant ${credentialChanges.identity.tenantId} and client ${credentialChanges.identity.clientId}. The new app may require different permissions and admin consent. Everyone must sign in again.`,
+          action: "Save and sign everyone out",
+        } : null}
+        onConfirm={() => save(true)}
+        onClose={() => setConfirming(false)}
+      />
     </div>
   );
 }

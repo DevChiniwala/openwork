@@ -95,6 +95,17 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  microsoftConnectorCredentialEditing: {
+    label: "Microsoft 365 credential editing",
+    description: "Edit Microsoft 365 app credentials directly in Settings, keeping the saved secret unless it is replaced and confirming changes that sign people out.",
+    category: "connect",
+    added: "2026-10-27",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/microsoft-connector-credential-editing/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   nativeAffordanceCodeMode: {
     label: "OpenWork commands in Code Mode",
     description: "Let assistants compose OpenWork queries and sidebar commands in Code Mode using the same checked app actions.",

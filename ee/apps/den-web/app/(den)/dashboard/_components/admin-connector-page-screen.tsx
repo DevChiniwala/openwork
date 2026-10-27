@@ -319,6 +319,7 @@ export function AdminConnectorPageScreen({ connection, confirmRemove = false }: 
         {nativeKey ? (
           <div className="px-5 py-4">
             <NativeProviderSettings
+              key={`${orgContext?.organization.id ?? ""}:${connection.id}:${nativeKey === MICROSOFT_365_QUICK_ADD_ID && orgFeatureEnabled(orgContext, "microsoftConnectorCredentialEditing")}`}
               providerKey={nativeKey}
               clientProviderId={connection.id}
               create={false}

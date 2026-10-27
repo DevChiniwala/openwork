@@ -61,6 +61,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "microsoftConnectorCredentialEditing": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Microsoft 365 credential editing: Edit Microsoft 365 app credentials directly in Settings, keeping the saved secret unless it is replaced and confirming changes that sign people out. Renders DEN_FEATURE_MICROSOFT_CONNECTOR_CREDENTIAL_EDITING."
+            },
             "nativeAffordanceCodeMode": {
               "enum": [
                 "",
