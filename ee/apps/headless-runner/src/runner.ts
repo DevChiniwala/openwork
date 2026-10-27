@@ -1150,7 +1150,7 @@ export class Runner {
                     written = ""
                     events.emit(sessionId, { type: "text", messageId, step: streamStep, delta: "", reset: true })
                   },
-                  onTool: (tool: string) => events.emit(sessionId, { type: "tool", messageId, step: streamStep, tool }),
+                  onTool: (tool: string, description?: string) => events.emit(sessionId, { type: "tool", messageId, step: streamStep, tool, ...(description ? { description } : {}) }),
                 }
               : {}),
           })
@@ -1756,7 +1756,7 @@ export class Runner {
               checkpoints.note(written)
               restartText()
             },
-            onTool: (tool: string) => events?.emit(sessionId, { type: "tool", messageId, step: modelStep, tool }),
+            onTool: (tool: string, description?: string) => events?.emit(sessionId, { type: "tool", messageId, step: modelStep, tool, ...(description ? { description } : {}) }),
           })
         } catch (error) {
           if (!writing.signal.aborted || signal.aborted) throw error

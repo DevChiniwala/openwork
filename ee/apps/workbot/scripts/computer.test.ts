@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { Hono } from "hono"
-import { workbotOwner, workbotSessionId, workbotCellSessionId } from "@openwork-ee/workbot-server"
+import { toWorkbotPageEvent, workbotOwner, workbotSessionId, workbotCellSessionId } from "@openwork-ee/workbot-server"
 import { createHeadlessRunnerClient } from "@openwork-ee/headless-protocol"
 import { createDen, denSessionSchema } from "../src/server/den.js"
 import { loadConfig } from "../src/server/config.js"
@@ -313,10 +313,12 @@ test("the screen's live view stays up while Workbot works on it, not once it tur
   const browsed = [{ kind: "text" as const, text: "Checking listings." }, { kind: "steps" as const, steps: [step({ surface: "browser" })] }, { kind: "text" as const, text: "The browser isn't responding, so I'll pull them another way." }]
   // Saying what it is doing between browser steps keeps the browser's live view up below its words.
   const narrating = computerWork(browsed, { working: true, starting: null, lastIsLive: false })
-  assert.deepEqual([narrating.watch, [...narrating.live], narrating.trailing], ["browser", ["browser"], ["browser"]])
+  assert.deepEqual([narrating.watch, [...narrating.live], narrating.trailing, narrating.starts], ["browser", ["browser"], ["browser"], null])
   // Commands in the background: only their card is live, and the browser card goes back to where it was used.
   const starting = computerWork(browsed, { working: true, starting: { on: "computer", since: 2, background: true }, lastIsLive: false })
   assert.deepEqual([starting.watch, [...starting.live], starting.trailing, starting.placed.get(1)], [null, ["background"], ["background"], ["browser"]])
+  // What a step not yet stored says it is doing belongs on the card it starts on.
+  assert.equal(starting.starts, "background")
   const running = computerWork([...browsed, { kind: "steps", steps: [step({ background: true }, "running")] }], { working: true, starting: null, lastIsLive: true })
   assert.deepEqual([running.watch, [...running.live], running.placed.get(1)], [null, ["background"], ["browser"]])
   // Still no screen while it says what the background work found.
@@ -324,7 +326,7 @@ test("the screen's live view stays up while Workbot works on it, not once it tur
   assert.deepEqual([after.watch, after.live.size], [null, 0])
   // Back on the screen, its live view returns below Workbot's latest words.
   const back = computerWork([...browsed, { kind: "steps", steps: [step({ background: true })] }], { working: true, starting: { on: "computer", since: 3 }, lastIsLive: false })
-  assert.deepEqual([back.watch, back.trailing], ["browser", ["browser"]])
+  assert.deepEqual([back.watch, back.trailing, back.starts], ["browser", ["browser"], "browser"])
 })
 
 test("the screen is in the chat only while Workbot chooses to show it", () => {
@@ -405,4 +407,12 @@ test("Opening the full view resumes a paused computer, but the chat's glimpse le
   assert.deepEqual(actions, ["resume"])
   // The runner gets the view it always did; waking is Workbot's step.
   assert.deepEqual(viewers.at(-1), { view: "browser", control: false, origin: "http://localhost:3020" })
+})
+
+test("what computer work is doing reaches the page as it starts, and other tools' words never do", () => {
+  const tool = (name: string, description?: string) => toWorkbotPageEvent({ type: "tool", messageId: "wb_1", step: 2, tool: name, ...(description === undefined ? {} : { description }) })
+  assert.deepEqual(tool("desktop", `  Drawing the ground and trunk${" ".repeat(3)}${"x".repeat(100)}`), { type: "working", messageId: "1", step: 2, on: "computer", update: `Drawing the ground and trunk   ${"x".repeat(49)}` })
+  assert.deepEqual(tool("bash", "Rendering the scene"), { type: "working", messageId: "1", step: 2, on: "computer", background: true, update: "Rendering the scene" })
+  assert.deepEqual(tool("desktop"), { type: "working", messageId: "1", step: 2, on: "computer" })
+  assert.deepEqual(tool("execute_capability", "Searching Gmail for invoices"), { type: "working", messageId: "1", step: 2, on: "other" })
 })

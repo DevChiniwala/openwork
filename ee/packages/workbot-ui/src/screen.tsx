@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Monitor, Pencil } from "lucide-react";
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { computerViews, setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
 import { OpenWorkMark } from "./mark";
 import { ChatsButton, ChatsDrawer, chatTitle, RemoveChatButton, SideChatTitle, useChatLocation } from "./chats";
@@ -141,6 +141,8 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     return true;
   }, workspaceShell);
   const [computerVisited, setComputerVisited] = useState(tab === "computer");
+  // Which view the Computer page shows (Browser or Computer); the chat beside it leaves that live screen out.
+  const [computerView, setComputerView] = useState<"browser" | "computer" | null>(null);
   useEffect(() => { if (tab === "computer") setComputerVisited(true); }, [tab]);
   const [documentsVisited, setDocumentsVisited] = useState(tab === "documents");
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
@@ -359,6 +361,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       <OpenDocumentContext.Provider value={tab === "documents" && documentContext?.kind === "document" ? documentContext.fileId : null}>
       <WorkspaceNavigationContext.Provider value={host.workspaceAssistant && host.documents ? navigateFromChat : null}>
       <ComputerNavigationContext.Provider value={navigateComputerFromChat}>
+      <ComputerOnScreenContext.Provider value={tab === "computer" ? computerView : null}>
       <DocumentNavigationContext.Provider value={guided && host.documents ? { status: navigationStatus, open: followNavigation } : null}>
         <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased" data-workbot-workspace>
           <WorkbotHeader name={name} organizationName={data?.organizationName ?? ""} userName={user?.name ?? null} answered={hasAnsweredTurn(data?.turns)} search={palette}
@@ -378,7 +381,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && computerViews(host).length > 0 && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} />}
+            {computerVisited && computerViews(host).length > 0 && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} onViewChange={setComputerView} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
@@ -389,6 +392,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           {filesEnabled && <FilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
         </div>
       </DocumentNavigationContext.Provider>
+      </ComputerOnScreenContext.Provider>
       </ComputerNavigationContext.Provider>
       </WorkspaceNavigationContext.Provider>
       </OpenDocumentContext.Provider>
@@ -1521,6 +1525,9 @@ function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) 
 /** The other way of working, offered on a live card: one tap sends it as a follow-up. */
 type SwitchTo = { label: string; text: string; send(text: string): void };
 
+/** The view of Workbot's computer open on the page beside the chat, whose live screen the chat then leaves out. */
+const ComputerOnScreenContext = createContext<Exclude<ComputerSurface, "background"> | null>(null);
+
 /** Opens the full view of Workbot's browser or computer, without reloading Workbot. */
 function openSurface(surface: Exclude<ComputerSurface, "background">) {
   window.history.pushState(null, "", `/${surface}${window.location.search}`);
@@ -1529,14 +1536,16 @@ function openSurface(surface: Exclude<ComputerSurface, "background">) {
 
 /**
  * Work in Workbot's browser or on the rest of its computer, as one card: what it is doing now in its own words, and a
- * live view of its screen only while Workbot is showing it to the person (when the computer is on for them). Other
- * work, on the screen or in the background, is its progress notes alone. The browser card links the pages it opened.
+ * live view of its screen only while Workbot is showing it to the person (when the computer is on for them) and that
+ * view isn't already open beside the chat. Other work, on the screen or in the background, is its progress notes
+ * alone. The browser card links the pages it opened. `starting` is what a step not yet stored says it is doing.
  */
-function SurfaceCard({ surface, steps, live, showing, others, switchTo = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; showing: boolean; others: UsedApp[]; switchTo?: SwitchTo | null }) {
+function SurfaceCard({ surface, steps, live, showing, others, switchTo = null, starting: startingUpdate = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; showing: boolean; others: UsedApp[]; switchTo?: SwitchTo | null; starting?: string | null }) {
   // The switch just tapped, until Workbot takes it up and the card offers the other one.
   const [asked, setAsked] = useState<string | null>(null);
   const updates = steps.flatMap((step) => step.updates);
-  const latest = updates.at(-1) ?? null;
+  const latest = (live ? startingUpdate : null) ?? updates.at(-1) ?? null;
+  const onScreen = useContext(ComputerOnScreenContext) === surface;
   const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
   const pages = steps.flatMap((step) => step.pages ?? []).filter((page, index, all) => all.findIndex((entry) => entry.id === page.id) === index);
   const views = computerViews(workbotHost());
@@ -1559,7 +1568,7 @@ function SurfaceCard({ surface, steps, live, showing, others, switchTo = null }:
       action={<AppLogos apps={others} />}
       footer={
         <>
-          {showing && watchable && surface !== "background" ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
+          {showing && watchable && surface !== "background" && !onScreen ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
           {live && watchable && switchTo && asked !== switchTo.label ? (
             <div className="flex px-2.5 pb-2.5 pt-2" data-workbot-computer-switch>
               <button
@@ -1658,7 +1667,7 @@ function useSettled(flag: boolean, ms: number) {
 
 /** One thing a turn shows: a model call's words (one bubble each), work in apps between them, or a computer card. */
 type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; key: string; steps: WorkbotStep[]; live: boolean }
-  | { kind: "card"; key: string; surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; showing: boolean; others: UsedApp[]; switchTo: SwitchTo | null };
+  | { kind: "card"; key: string; surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; showing: boolean; others: UsedApp[]; switchTo: SwitchTo | null; update: string | null };
 
 function TurnView(props: {
   canChange: boolean;
@@ -1699,7 +1708,8 @@ function TurnView(props: {
     const switchTo = !isLive || !switchMode ? null
       : showing ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: switchMode }
       : { label: "Show me", text: "Show me what you're doing on screen.", send: switchMode };
-    return { kind: "card", key: `card-${surface}`, surface, steps: work.cards.get(surface)?.steps ?? [], live: isLive, showing, others, switchTo };
+    const update = isLive && surface === work.starts ? (starting?.update ?? null) : null;
+    return { kind: "card", key: `card-${surface}`, surface, steps: work.cards.get(surface)?.steps ?? [], live: isLive, showing, others, switchTo, update };
   };
   const items: TurnItem[] = [];
   parts.forEach((part, index) => {
@@ -1764,7 +1774,7 @@ function TurnView(props: {
             </AssistantBubble>
           ) : item.kind === "card" ? (
             <div key={item.key} className="py-1 pl-1">
-              <SurfaceCard surface={item.surface} steps={item.steps} live={item.live} showing={item.showing} others={item.others} switchTo={item.switchTo} />
+              <SurfaceCard surface={item.surface} steps={item.steps} live={item.live} showing={item.showing} others={item.others} switchTo={item.switchTo} starting={item.update} />
             </div>
           ) : (
             <StepsSegment key={item.key} steps={item.steps} live={item.live} />
