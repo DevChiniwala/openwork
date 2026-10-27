@@ -1,4 +1,5 @@
 import { denFetch } from "@openwork/behaviors";
+import { callFunction } from "@openwork/cdp";
 import type { DenSession } from "@openwork/behaviors";
 import type { Seed } from "@openwork/env";
 import { isRecord, records, stringField } from "./library.ts";
@@ -113,12 +114,13 @@ export async function libraryConnectorNavigation(seed: Seed) {
     },
     async pluginReads() {
       // Read Chromium's actual resource timings, without proxying the auth or web origins.
-      const result: unknown = await web.client.send("Runtime.evaluate", {
-        expression: `performance.getEntriesByType("resource").filter(entry => new URL(entry.name).pathname.endsWith(${JSON.stringify(`/v1/plugins/${pluginId}`)})).length`,
-        returnByValue: true,
-      });
-      if (!isRecord(result) || !isRecord(result.result) || typeof result.result.value !== "number") throw new Error("Reading plugin request timings failed.");
-      return result.result.value;
+      const count: unknown = await callFunction(
+        web.client,
+        (suffix: string) => performance.getEntriesByType("resource").filter((entry) => new URL(entry.name).pathname.endsWith(suffix)).length,
+        [`/v1/plugins/${pluginId}`],
+      );
+      if (typeof count !== "number") throw new Error("Reading plugin request timings failed.");
+      return count;
     },
     async tokenFingerprints() {
       return [...new Set((await den.mocks.connector.requests()).filter(request => request.grantType === "authorization_code" && request.status === 200).flatMap(request => request.tokenId ? [request.tokenId] : []))];
