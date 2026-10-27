@@ -10,6 +10,12 @@ final class BoundaryTests: XCTestCase {
         XCTAssertFalse(HostTrust.embeddedHostIsTrusted())
     }
 
+    func testHostIdentityCannotWidenTheSigningRequirement() {
+        // The test runner's Apple-signed parent would satisfy "anchor apple".
+        XCTAssertFalse(HostTrust.process(getppid(), isSignedAs: "x\" or anchor apple or identifier \"y", team: "F5DJWB4CCV"))
+        XCTAssertFalse(HostTrust.process(getppid(), isSignedAs: HostTrust.desktopIdentifier, team: "F5DJWB4CCV"))
+    }
+
     func testOffWindowAndPartiallyClippedAccessibilityTextCannotBeExposed() throws {
         let window = CGRect(x: 100, y: 100, width: 320, height: 240)
         let frames = [CGRect(x: 0, y: 0, width: 80, height: 40),

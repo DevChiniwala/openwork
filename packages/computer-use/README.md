@@ -16,8 +16,8 @@ with the helper's status; the relaunched helper stops if that parent goes away.
 
 | Command | Purpose |
 | --- | --- |
-| `ComputerUse mcp-embedded` | What the same-team signed OpenWork desktop launches. MCP over stdio; requested targets open directly; the desktop hosts Take over, Continue and Stop over the private `openwork/ui` channel. |
-| `ComputerUse mcp` | MCP server with native controls, available only to the authenticated same-team desktop host. |
+| `ComputerUse mcp-embedded` | What the signed OpenWork desktop app (`com.differentai.openwork`, same team as the helper) launches. Other code the team signs, such as the bundled sidecars, is not a host. MCP over stdio; requested targets open directly; the desktop hosts Take over, Continue and Stop over the private `openwork/ui` channel. |
+| `ComputerUse mcp` | MCP server with native controls, available only to that same authenticated desktop host. |
 | `ComputerUse --check` | Prints `{ok, accessibility, screenRecording, supported, protocolVersion: "openwork.computer-use/1"}` and exits. |
 | `ComputerUse permissions accessibility\|screenRecording` | Triggers the macOS prompt and opens the matching System Settings pane. |
 | `ComputerUse permissions-guide accessibility\|screenRecording` | Floating permission guide driven by its parent over line-delimited JSON (below). |
