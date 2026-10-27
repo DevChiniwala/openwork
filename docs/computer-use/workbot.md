@@ -20,6 +20,22 @@ The two views use one conversation computer:
   browser tabs are erased; the chat and its kept Files stay. This is also how a
   person moves an existing computer onto a rebuilt snapshot.
 
+Workbot uses its computer in two modes, and the conversation shows each its own way:
+
+- **In the background**: shell commands and file reads (`bash`, `look`), such as
+  a command-line Blender render or building a web app. The card reads "Working
+  on my computer" with Workbot's own progress notes and never connects a live
+  view, so the desktop does not start for this work.
+- **On screen**: the `desktop` tool, in the browser or a native app. The card
+  shows a live view, and the reply offers **Open Computer**.
+
+Workbot is told to choose by how engaged the person is. For a handed-off job it
+works in the background, then brings the result on screen (a launched app or a
+browser tab) to review or finish together. When the person wants to watch, it
+keeps the work open on screen and changes it there while commands run alongside;
+the screen card keeps its live view while those commands run. Either way it
+says what it is about to change, mentions milestones and shows early previews.
+
 The main Workbot conversation's existing `hc-…` computer owns both views. The
 viewer does not create a second computer or accept a sandbox/session id from the
 page. Agent browser and computer operations use the shared computer-use package,

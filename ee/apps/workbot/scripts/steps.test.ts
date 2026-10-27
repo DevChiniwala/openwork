@@ -36,8 +36,32 @@ test("browser work is its own step that narrates what it does and links the page
   assert.deepEqual(computer?.updates, ["Opening Calc"])
 })
 
-test("the browser nudge is only given when the computer is on", () => {
+test("commands run in the background are their own step, apart from work on the screen", () => {
+  const bash = (id: string, description: string) => ({ id, name: "bash", input: { command: "blender -b scene.blend -a", description } })
+  const snapshot = {
+    status: "busy", finalAssistantText: "", hasEarlier: false,
+    turns: [{ messageId: "wb_render", status: "running", createdAt: 100, error: null }],
+    messages: [
+      { messageId: "wb_render", role: "user", text: "Render my scene, then open it" },
+      { messageId: "wb_render", role: "assistant", text: "", createdAt: 110, toolCalls: [bash("c1", "Rendering the scene with Blender"), bash("c2", "Checking the frames")] },
+      { messageId: "wb_render", role: "tool", callId: "c1", name: "bash", isError: false, createdAt: 120 },
+      { messageId: "wb_render", role: "tool", callId: "c2", name: "bash", isError: false, createdAt: 130 },
+      { messageId: "wb_render", role: "assistant", text: "", createdAt: 140, toolCalls: [desktop("c3", "computer", "computer_launch", { app: "blender" })] },
+    ],
+  } satisfies RunnerSnapshot
+  const [turn] = buildWorkbotTurns(snapshot)
+  const steps = turn?.parts.flatMap((part) => (part.kind === "steps" ? part.steps : [])) ?? []
+  assert.deepEqual(steps.map((step) => [step.label, step.background ?? false, step.status]), [["Working on my computer", true, "done"], ["Using my computer", false, "running"]])
+  assert.deepEqual(steps[0]?.updates, ["Rendering the scene with Blender", "Checking the frames"])
+})
+
+test("the browser and background-then-screen nudges are only given when the computer is on", () => {
   const base = { name: "Workbot", organizationName: "Example", firstName: "Alex", timeZone: "UTC", canSchedule: false }
   assert.equal(workbotInstructions(base).includes("look in your browser"), false)
   assert.ok(workbotInstructions({ ...base, browser: true }).includes("look in your browser"))
+  // Background work and showing it on screen are taught only when there is a screen to show it on.
+  for (const rule of ["bring the result on screen", "keep the work open on screen"]) {
+    assert.equal(workbotInstructions(base).includes(rule), false)
+    assert.ok(workbotInstructions({ ...base, browser: true }).includes(rule))
+  }
 })
