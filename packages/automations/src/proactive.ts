@@ -275,23 +275,27 @@ function formatWhen(at: number, now: number, timeZone: string) {
   return `${label} at ${formatClock(at, timeZone)}`
 }
 
+/**
+ * One calendar event, for the prompt. Only facts Google or the person controls: the event id, times and counts. No
+ * title, description or organizer name: those are written by whoever sent the invite, and the agent reads them itself,
+ * as data, with its tools.
+ */
 function describeWake(wake: CalendarWake, now: number, timeZone: string) {
   const event = wake.event
   const when = event.start !== null ? formatWhen(event.start, now, timeZone) : "soon"
+  const meeting = `A meeting (calendar event ${event.id})`
   if (wake.kind === "meeting_soon") {
     const outside = event.others.filter((other) => other.external).length
-    return `"${event.title}" starts ${when}, with ${outside} ${outside === 1 ? "person" : "people"} from outside the company (meeting_prep, ref ${wake.ref})`
+    return `${meeting} starts ${when}, with ${outside} ${outside === 1 ? "person" : "people"} from outside the company (meeting_prep, ref ${wake.ref})`
   }
-  const by = event.organizer ? ` by ${event.organizer}` : ""
-  if (wake.change === "added") return `"${event.title}" was added for ${when}${by} (calendar_changes, ref ${wake.ref})`
-  if (wake.change === "cancelled") return `"${event.title}" ${when} was cancelled (calendar_changes, ref ${wake.ref})`
-  return describeMove(wake, when, now, timeZone)
+  if (wake.change === "added") return `${meeting} was added for ${when} by someone else (calendar_changes, ref ${wake.ref})`
+  if (wake.change === "cancelled") return `${meeting} ${when} was cancelled by someone else (calendar_changes, ref ${wake.ref})`
+  return describeMove(wake, `${meeting} moved to ${when}`, now, timeZone)
 }
 
-function describeMove(wake: Extract<CalendarWake, { change: "moved" }>, when: string, now: number, timeZone: string) {
-  const event = wake.event
+function describeMove(wake: Extract<CalendarWake, { change: "moved" }>, moved: string, now: number, timeZone: string) {
   const was = wake.previousStart !== null ? ` (was ${formatWhen(wake.previousStart, now, timeZone)})` : ""
-  return `"${event.title}" moved to ${when}${was} (calendar_changes, ref ${wake.ref})`
+  return `${moved}${was} (calendar_changes, ref ${wake.ref})`
 }
 
 /**
@@ -341,12 +345,32 @@ const agentReplySchema = z.object({
 
 export type AgentReply = { kind: "quiet" } | { kind: "message"; message: string; items: AgentItem[] } | { kind: "invalid" }
 
+/** The JSON in an answer: inside the first ``` fence when there is one, from the first `{` to the last `}`. */
 function jsonCandidate(text: string): string | null {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)
-  const body = (fenced?.[1] ?? text).trim()
+  let body = text
+  const open = text.indexOf("```")
+  if (open >= 0) {
+    const close = text.indexOf("```", open + 3)
+    if (close > open) {
+      body = text.slice(open + 3, close)
+      if (body.slice(0, 4).toLowerCase() === "json") body = body.slice(4)
+    }
+  }
   const start = body.indexOf("{")
   const end = body.lastIndexOf("}")
   return start >= 0 && end > start ? body.slice(start, end + 1) : null
+}
+
+const LEADING_MARKS = new Set(["`", "*", "_", '"', "'"])
+const TRAILING_MARKS = new Set(["`", "*", "_", '"', "'", "."])
+
+/** A line without the Markdown or quote marks a model wraps NO_REPLY in. */
+function withoutMarks(line: string): string {
+  let start = 0
+  let end = line.length
+  while (start < end && LEADING_MARKS.has(line.charAt(start))) start += 1
+  while (end > start && TRAILING_MARKS.has(line.charAt(end - 1))) end -= 1
+  return line.slice(start, end)
 }
 
 /**
@@ -356,7 +380,7 @@ function jsonCandidate(text: string): string | null {
 export function parseAgentReply(text: string): AgentReply {
   const trimmed = text.trim()
   if (!trimmed) return { kind: "quiet" }
-  const lines = trimmed.split("\n").map((line) => line.trim().replace(/^[`*_"']+|[`*_"'.]+$/g, ""))
+  const lines = trimmed.split("\n").map((line) => withoutMarks(line.trim()))
   if (lines[0] === AGENT_QUIET_REPLY || lines.at(-1) === AGENT_QUIET_REPLY) return { kind: "quiet" }
   const candidate = jsonCandidate(trimmed)
   if (!candidate) return { kind: "invalid" }
@@ -383,32 +407,90 @@ export function safeProactiveLink(url: string | null | undefined): string | null
   }
 }
 
+const MAX_TOKEN = 2_000
+
+/**
+ * Slack's `<…>` tokens: special mentions (`<!here>`, `<!subteam^…>`), user and channel mentions go; links stay only
+ * when they point at the person's own Google workspace (else their label stays). Scanned, never backtracked.
+ */
+function withoutSlackTokens(text: string): string {
+  let out = ""
+  let at = 0
+  while (at < text.length) {
+    const open = text.indexOf("<", at)
+    if (open < 0) break
+    const close = text.indexOf(">", open + 1)
+    const token = close > open ? text.slice(open + 1, close) : ""
+    if (close < 0 || close - open > MAX_TOKEN || token.includes("\n") || token.includes("<")) {
+      out += text.slice(at, open + 1)
+      at = open + 1
+      continue
+    }
+    out += text.slice(at, open)
+    const bar = token.indexOf("|")
+    const target = bar >= 0 ? token.slice(0, bar) : token
+    const label = bar >= 0 ? token.slice(bar + 1) : ""
+    if (target.startsWith("http://") || target.startsWith("https://")) out += safeProactiveLink(target) ? `<${token}>` : label
+    else if (!target.startsWith("!") && !target.startsWith("@") && !target.startsWith("#")) out += `<${token}>`
+    at = close + 1
+  }
+  return out + text.slice(at)
+}
+
+/** Markdown links `[label](url)`: kept as Slack links to safe hosts, otherwise only the label. */
+function withoutUnsafeMarkdownLinks(text: string): string {
+  let out = ""
+  let at = 0
+  while (at < text.length) {
+    const mid = text.indexOf("](", at)
+    if (mid < 0) break
+    const open = text.lastIndexOf("[", mid)
+    const close = text.indexOf(")", mid + 2)
+    const label = open >= at ? text.slice(open + 1, mid) : ""
+    const url = close > mid ? text.slice(mid + 2, close) : ""
+    if (open < at || close < 0 || close - open > MAX_TOKEN || label.includes("\n") || /\s/.test(url)) {
+      out += text.slice(at, mid + 2)
+      at = mid + 2
+      continue
+    }
+    out += text.slice(at, open) + (safeProactiveLink(url) ? `<${url}|${label}>` : label)
+    at = close + 1
+  }
+  return out + text.slice(at)
+}
+
+/** Bare URLs outside `<…>`: only safe ones stay. */
+function withoutUnsafeUrls(text: string): string {
+  return text
+    .split(/(\s+)/)
+    .map((word) => {
+      const start = word.search(/https?:\/\//)
+      if (start < 0 || word.startsWith("<")) return word
+      return safeProactiveLink(word.slice(start)) ? word : word.slice(0, start)
+    })
+    .join("")
+}
+
 /**
  * The text Den delivers. The agent read untrusted email, so its message can't ping anyone or carry a link outside
  * the person's own Google workspace, and stays short.
  */
 export function cleanAgentMessage(text: string, limit = 1_500): string {
-  const cleaned = text
-    .replace(/<!(?:channel|here|everyone)(?:\|[^>]*)?>/gi, "")
-    .replace(/<!subteam\^[^>]*>/gi, "")
-    .replace(/<@[UW][A-Z0-9]+(?:\|[^>]*)?>/g, "")
-    .replace(/(^|\s)@(channel|here|everyone)\b/gi, "$1$2")
-    .replace(/<(https?:\/\/[^|>\s]+)(?:\|([^>]*))?>/gi, (_match, url: string, label?: string) => (safeProactiveLink(url) ? `<${url}${label ? `|${label}` : ""}>` : label ?? ""))
-    .replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g, (_match, label: string, url: string) => (safeProactiveLink(url) ? `<${url}|${label}>` : label))
-    .replace(/https?:\/\/[^\s<>|)]+/g, (url) => (safeProactiveLink(url) ? url : ""))
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
+  const pinged = ["@channel", "@here", "@everyone"]
+  const lines = withoutUnsafeUrls(withoutUnsafeMarkdownLinks(withoutSlackTokens(text.slice(0, limit * 4))))
+    .split("\n")
+    .map((line) => {
+      let next = line
+      for (const ping of pinged) next = next.split(ping).join(ping.slice(1)).split(ping.toUpperCase()).join(ping.slice(1))
+      return next.trimEnd()
+    })
+  const kept: string[] = []
+  for (const line of lines) {
+    if (line === "" && kept.at(-1) === "") continue
+    kept.push(line)
+  }
+  const cleaned = kept.join("\n").trim()
   return cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit - 1).trimEnd()}…`
-}
-
-/** One line, at most `limit` characters, cut at a word. */
-function proactiveExcerpt(text: string, limit: number): string {
-  const line = text.replace(/\s+/g, " ").trim()
-  if (line.length <= limit) return line
-  const cut = line.slice(0, limit - 1)
-  const space = cut.lastIndexOf(" ")
-  return `${(space > limit / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
 }
 
 // =====================================================================================================================
@@ -432,7 +514,6 @@ const googleTimeSchema = z.object({ dateTime: z.string().optional(), date: z.str
 const googleEventSchema = z.object({
   id: z.string().min(1).max(1024),
   status: z.string().optional(),
-  summary: z.string().optional(),
   created: z.string().optional(),
   updated: z.string().optional(),
   eventType: z.string().optional(),
@@ -457,7 +538,6 @@ export type CalendarAttendee = { email: string; external: boolean }
 export type CalendarEventFacts = {
   id: string
   status: "confirmed" | "tentative" | "cancelled"
-  title: string
   /** Timed events only; all-day events have null. */
   start: number | null
   end: number | null
@@ -465,8 +545,6 @@ export type CalendarEventFacts = {
   created: number | null
   /** Google's `updated`, verbatim: a change's ref. */
   updated: string
-  /** Who organizes it (name, else email); null when it is the person. */
-  organizer: string | null
   organizerSelf: boolean
   declined: boolean
   /** A real meeting (Google's `default` type), not focus time, out of office or a working location. */
@@ -475,7 +553,6 @@ export type CalendarEventFacts = {
   others: CalendarAttendee[]
 }
 
-const UNTITLED = "Untitled meeting"
 
 function domainOf(email: string | null | undefined) {
   const at = email?.lastIndexOf("@") ?? -1
@@ -518,13 +595,11 @@ export function projectGoogleCalendarEvents(raw: unknown, selfEmail?: string | n
     events.push({
       id: event.id,
       status,
-      title: proactiveExcerpt(event.summary?.trim() || UNTITLED, 120),
       start: allDay ? null : instant(event.start?.dateTime),
       end: allDay ? null : instant(event.end?.dateTime),
       allDay,
       created: instant(event.created),
       updated: event.updated ?? "",
-      organizer: event.organizer?.self ? null : event.organizer?.displayName?.trim() || event.organizer?.email || null,
       organizerSelf: event.organizer?.self === true,
       declined: self?.responseStatus === "declined",
       meeting: !event.eventType || event.eventType === "default",
