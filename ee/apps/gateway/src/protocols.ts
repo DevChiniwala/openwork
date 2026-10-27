@@ -137,9 +137,16 @@ export function buildAuthHeader(family: ProtocolFamily, secret: string, bearer =
   }
 }
 
-export function isAllowedRequestHeader(family: ProtocolFamily, name: string) {
+// OpenCode Zen and Go reject a request without the session headers OpenCode
+// sends; no other upstream receives them.
+function isOpencodeUpstream(upstream: URL) {
+  return upstream.protocol === "https:" && (upstream.hostname === "opencode.ai" || upstream.hostname.endsWith(".opencode.ai"))
+}
+
+export function isAllowedRequestHeader(family: ProtocolFamily, name: string, upstream: URL) {
   const lower = name.toLowerCase()
   if (lower.startsWith("x-stainless-")) return true
+  if (lower.startsWith("x-opencode-")) return isOpencodeUpstream(upstream)
   if (commonHeaderAllowlist.includes(lower)) return true
   return familyHeaderAllowlist[family].includes(lower)
 }
