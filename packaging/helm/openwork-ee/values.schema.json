@@ -301,6 +301,16 @@
               ],
               "description": "Computer use: Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules. Renders DEN_FEATURE_COMPUTER_USE."
             },
+            "computerUseBackground": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Desktop: computer use in the background: On a Mac, agents work in app windows where they are, without bringing them to the front or moving your cursor, so you keep working and several chats can work at once. Agents read the app's controls first and take a screenshot only when they need one. Blender and other canvas apps still come to the front. Needs computer use. Renders DEN_FEATURE_COMPUTER_USE_BACKGROUND."
+            },
             "browserUse": {
               "enum": [
                 "",

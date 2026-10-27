@@ -31,8 +31,9 @@ function fixture(options = {}) {
     protocol: COMPUTER_PROTOCOL,
     setup: async () => ({ setupId: "setup" }),
     readiness: options.readiness ?? (async () => ({ readiness: "ready", detail: "Ready" })),
-    connect: async ({ onClose, onUi }) => {
+    connect: async ({ onClose, onUi, background }) => {
       calls.push("connect");
+      options.connected?.push({ background: background === true });
       emit = onUi; disconnect = onClose;
       let paused = false;
       return {
@@ -545,14 +546,17 @@ test("Blender scripts reach the bridge with its token, and an open Blender witho
 function parallelFixture(options = {}) {
   const events = [];
   let connections = 0;
+  /** The connect options each helper started with. */
+  const started = [];
   const windows = { blender: 11, photoshop: 12, notes: 13 };
   /** @type {import("@openwork/computer-use/computer-control").ComputerAdapter} */
   const adapter = {
     id: "local", label: "This Mac", placement: "local", parallel: true, protocol: COMPUTER_PROTOCOL,
     setup: async () => ({ setupId: "setup" }),
     readiness: async () => ({ readiness: "ready", detail: "Ready" }),
-    connect: async ({ onUi, onClose }) => {
+    connect: async ({ onUi, onClose, background }) => {
       connections++;
+      started.push({ background: background === true });
       let app = "";
       return {
         callTool: async (name, args) => {
@@ -562,19 +566,20 @@ function parallelFixture(options = {}) {
           events.push(`${app}:${name}:end`);
           if (name === "computer_open_session") {
             onUi({ kind: "state", id: `view-${app}`, phase: "working", appID: app, appName: app, windowTitle: app, mode: args.mode, task: args.purpose });
-            return text({ ok: true, session_id: `native-${app}`, window_id: args.window_id ?? windows[app], state: "active" });
+            return text({ ok: true, session_id: `native-${app}`, window_id: args.window_id ?? windows[app], state: "active",
+              ...(options.delivery ? { delivery: options.delivery(app) } : {}) });
           }
           if (name === "computer_session_status") return text({ ok: true, state: "active" });
           if (name === "computer_act") return text({ ok: true, status: "dispatched" });
           return text({ ok: true, ...(name === "computer_observe" ? { observation_id: `observation-${app}` } : {}) });
         },
         notifyUi: async (value) => { if (value.action === "takeover") onUi({ kind: "state", id: `view-${app}`, phase: "paused", canContinue: true }); },
-        close: async () => { onClose(); },
+        close: async () => { events.push(`${app}:close`); onClose(); },
       };
     },
   };
   const control = createComputerControl({ adapters: [adapter] });
-  return { control, events, connections: () => connections };
+  return { control, events, started, connections: () => connections };
 }
 const openApp = (control, sessionId, app, mode = "control", windowId) =>
   control.execute({ sessionId, name: "computer_open", args: { app_id: app, mode, purpose: `Work in ${app}`, ...(windowId ? { window_id: windowId } : {}) } });
@@ -689,4 +694,60 @@ test("chats on different computers no longer block each other", async (t) => {
   assert.equal(payload(await f.control.execute({ sessionId: "chat-vm", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).ok, true);
   assert.equal(payload(await f.control.execute({ sessionId: "chat-other", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).code, "computer_busy",
     "a computer that is not parallel still serves one chat");
+});
+
+test("background sessions act at the same time instead of taking turns", async (t) => {
+  const started = deferred(); const gate = deferred();
+  const f = parallelFixture({ delivery: () => "background",
+    beforeTool: async (name, app) => { if (name === "computer_act" && app === "blender") { started.resolve(); await gate.promise; } } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.setBackgroundEnabled(true);
+  await openApp(f.control, "chat-blender", "blender");
+  await openApp(f.control, "chat-photoshop", "photoshop");
+  assert.deepEqual(f.started, [{ background: true }, { background: true }], "each helper starts with background delivery");
+  const blender = click(f.control, "chat-blender");
+  await started.promise;
+  assert.equal(payload(await click(f.control, "chat-photoshop")).status, "dispatched", "the second chat acts while the first one's input is still running");
+  gate.resolve();
+  await blender;
+});
+
+test("a session the helper keeps in front still takes turns, without holding up background ones", async (t) => {
+  const started = deferred(); const gate = deferred();
+  const f = parallelFixture({ delivery: (app) => app === "photoshop" ? "background" : "foreground",
+    beforeTool: async (name, app) => { if (name === "computer_act" && app === "blender") { started.resolve(); await gate.promise; } } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.setBackgroundEnabled(true);
+  for (const app of ["blender", "photoshop", "notes"]) await openApp(f.control, `chat-${app}`, app);
+  const blender = click(f.control, "chat-blender");
+  await started.promise;
+  const notes = click(f.control, "chat-notes");
+  assert.equal(payload(await click(f.control, "chat-photoshop")).status, "dispatched");
+  await settle();
+  assert.ok(!f.events.includes("notes:computer_act:start"), "another foreground session waits for its turn");
+  gate.resolve();
+  await Promise.all([blender, notes]);
+  assert.ok(f.events.indexOf("blender:computer_act:end") < f.events.indexOf("notes:computer_act:start"));
+});
+
+test("turning background off hands idle sessions back so the next call starts in front", async (t) => {
+  const f = parallelFixture({ delivery: () => "background" }); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.setBackgroundEnabled(true);
+  await openApp(f.control, "chat-notes", "notes");
+  await f.control.setBackgroundEnabled(false);
+  assert.ok(f.events.includes("notes:close"), "the idle background session was handed back");
+  assert.equal(payload(await f.control.execute({ sessionId: "chat-notes", name: "computer_observe", args: {} })).ok, true);
+  assert.deepEqual(f.started.at(-1), { background: false });
+});
+
+test("background stays off on a computer that is not parallel", async (t) => {
+  const connected = [];
+  const f = fixture({ connected }); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.setBackgroundEnabled(true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).ok, true);
+  assert.deepEqual(connected, [{ background: false }]);
 });

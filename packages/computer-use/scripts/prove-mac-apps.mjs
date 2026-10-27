@@ -85,7 +85,9 @@ function chat(desktop, scenario) {
     const parts = states(body);
     const first = parts[0] ?? {};
     const ok = body.isError !== true && first.ok !== false;
-    const step = { tool: name, ms: Math.round(performance.now() - started), ok, ...(ok ? {} : { code: first.code ?? `http_${response.status}`, message: first.message }) };
+    const step = { tool: name, ms: Math.round(performance.now() - started), ok, ...(ok ? {} : { code: first.code ?? `http_${response.status}`, message: first.message }),
+      // Actions report how input was delivered and whether the front app, cursor or Space changed.
+      ...(first.desktop ? { delivery: first.delivery, desktop: first.desktop } : {}) };
     steps.push(step);
     const observation = parts.findLast((part) => typeof part.observation_id === "string");
     if (observation) seen.last = observation;
@@ -283,6 +285,11 @@ try {
     results.push(result);
     console.log(`${result.passed ? "PASS" : "FAIL"}  ${name}  ${result.calls} calls, ${result.computerMs} ms in the computer${result.reason ? `\n      ${result.reason}` : ""}`);
     console.log(`      ${steps.map((step) => `${step.tool.replace("computer_", "")} ${step.ms}ms${step.ok ? "" : ` (${step.code})`}`).join(" · ")}`);
+    const actions = steps.filter((step) => step.desktop);
+    if (actions.length) {
+      const disturbed = actions.filter((step) => Object.values(step.desktop).some(Boolean)).length;
+      console.log(`      ${actions[0].delivery ?? "foreground"} input · front app, cursor or Space changed in ${disturbed} of ${actions.length} actions`);
+    }
     if (error && !error.expected) console.error(error);
   }
 } finally {

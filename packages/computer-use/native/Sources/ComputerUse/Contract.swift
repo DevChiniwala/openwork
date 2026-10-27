@@ -77,14 +77,15 @@ enum RuntimePolicy: Equatable {
 }
 
 struct ObservationOptions {
-    let image: Bool
+    /// nil leaves it to the session: background delivery reads the accessibility tree first.
+    let image: Bool?
     let elements: String
     init(_ values: [String: Any], policy: RuntimePolicy) throws {
         let a = Arguments(values: values)
         try a.only(policy == .embedded ? ["session_id", "include_image", "elements"] : ["session_id", "include_image"])
-        image = try a.bool("include_image", default: true)
         elements = values["elements"] == nil ? policy.defaultElements : try a.string("elements", max: 16)
-        guard ["interactive", "all", "none"].contains(elements), image || elements != "none" else {
+        image = values["include_image"] == nil ? (elements == "none" ? true : nil) : try a.bool("include_image", default: true)
+        guard ["interactive", "all", "none"].contains(elements), image != false || elements != "none" else {
             throw UseError("invalid_arguments", "Request an image or accessible elements; elements must be interactive, all or none.")
         }
     }

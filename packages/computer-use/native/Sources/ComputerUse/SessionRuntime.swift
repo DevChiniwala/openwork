@@ -19,12 +19,16 @@ final class SessionRuntime {
     private var lastWatchCaptureAt: TimeInterval = -.infinity
     private var handBack = SharedDesktop.HandBack()
     private var handBackTimer: Timer?
+    private let backgroundDelivery = ProcessInfo.processInfo.environment[InputDelivery.hostVariable] == InputDelivery.background.rawValue
 
     private struct Session {
         let id: String
         let app: AppIdentity
         let target: WindowTarget
         let mode: AccessMode
+        let delivery: InputDelivery
+        /// Control input that brings the window to the front first.
+        var takesFront: Bool { mode == .control && delivery == .foreground }
         var started: TimeInterval
         var lastUsed: TimeInterval
         var generation = 0
@@ -102,10 +106,14 @@ final class SessionRuntime {
             _ = try access.validate(target, app: identity)
             let reservation = try ControlLease(pid: identity.pid, window: target.id)
             let id = UUID().uuidString.lowercased()
-            session = Session(id: id, app: identity, target: target, mode: mode, started: now, lastUsed: now, purpose: purpose)
+            let delivery = InputDelivery.decide(enabled: backgroundDelivery, available: BackgroundFocus.available, mode: mode, bundleID: identity.bundleID)
+            session = Session(id: id, app: identity, target: target, mode: mode, delivery: delivery, started: now, lastUsed: now, purpose: purpose)
             lease = reservation
             controls.show(app: identity, target: target, mode: mode, purpose: purpose)
-            if mode == .control, let current = session {
+            if delivery == .background {
+                // Ready for keys ahead of time; each action makes the window key again.
+                try? await BackgroundFocus.makeKey(pid: identity.pid, window: target.id)
+            } else if mode == .control, let current = session {
                 // Initial focus is technical startup, never a human pause/Continue flow.
                 let focus = try await FocusLease.acquire(check: { try self.checkActive(current) })
                 defer { focus.release() }
@@ -119,7 +127,7 @@ final class SessionRuntime {
             }
             guard let opened = session, opened.id == id else { throw UseError("session_unavailable", "Access ended while starting. Stop work and wait for a new user request.", next: "human_takeover") }
             return text(["ok": true, "session_id": id, "app_id": identity.bundleID, "app_name": identity.name, "pid": Int(identity.pid),
-                "window_id": Int(target.id), "window_title": target.title, "mode": mode.rawValue,
+                "window_id": Int(target.id), "window_title": target.title, "mode": mode.rawValue, "delivery": delivery.rawValue,
                 "state": opened.paused ? "paused" : "active", "expires_in_seconds": 900,
                 "next": next(opened)])
         case "computer_observe":
@@ -285,20 +293,22 @@ final class SessionRuntime {
         }
         if let deadline, now >= deadline { throw UseError("action_timeout", "The bounded action time expired. Inspect the receipt before doing anything else.", next: "observe") }
     }
-    private func observe(_ id: String, image: Bool, elements: String) async throws -> [[String: Any]] {
+    private func observe(_ id: String, image: Bool?, elements: String) async throws -> [[String: Any]] {
         // A paused session never resumes from an observation: only the person's Continue does.
         // Retry only read-only capture races. Never repeat an action or cross takeover.
         let current = try current(id)
         session?.needsRefresh = true
         controls.update("Refreshing the selected window before continuing…", paused: false)
-        // A control observation shows the window in front, as input will see it.
-        let focus = current.mode == .control ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
+        // A foreground observation shows the window in front, as input will see it.
+        // Background reads the window where it is: capture works behind other windows.
+        let focus = current.takesFront ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focus?.release() }
         var otherWindowFocused = false
         var returns = 0
         // Something else in front is the person or another app, not a takeover:
         // bring the selected window back for this read; it is handed back after.
         func bringBack() async throws {
+            guard current.takesFront else { return }
             // Right after the person interrupted a step, read without taking the front.
             // The next action takes it and re-checks the window against this read.
             if self.session?.yielded == true {
@@ -324,7 +334,7 @@ final class SessionRuntime {
                 try self.checkActive(current)
                 do { return try await self.observeAttempt(id, image: image, elements: elements, otherWindowFocused: otherWindowFocused) }
                 catch let error as UseError {
-                    if error.code == "window_not_frontmost", current.mode == .control, attempt < 2 {
+                    if error.code == "window_not_frontmost", current.takesFront, attempt < 2 {
                         try await bringBack()
                         continue
                     }
@@ -335,16 +345,18 @@ final class SessionRuntime {
             throw UseError("stale_observation", "The window is still changing. Observe again.", next: "observe")
         })
     }
-    private func observeAttempt(_ id: String, image: Bool, elements filter: String, otherWindowFocused: Bool = false) async throws -> [[String: Any]] {
+    private func observeAttempt(_ id: String, image requested: Bool?, elements filter: String, otherWindowFocused: Bool = false) async throws -> [[String: Any]] {
         let current = try current(id)
         session?.observation = nil; session?.records = []; session?.focus = nil
-        let frontmost = current.mode == .control && !otherWindowFocused
+        let frontmost = current.takesFront && !otherWindowFocused
         let bounds = try access.validate(current.target, app: current.app, requireFrontmost: frontmost)
         @MainActor func check() throws { try self.checkActive(current) }
         var state = try await access.read(current.target, check: check)
         var png: Data?
         var imageFailure: UseError?
         var width = max(1, Int(bounds.width)); var height = max(1, Int(bounds.height))
+        let namedControls = state.records.filter { bounds.contains($0.frame) && $0.interactive && !$0.label.isEmpty }.count
+        let image = ImagePolicy.include(requested: requested, automatic: current.delivery == .background, namedControls: namedControls)
         if image {
             do {
                 let captured = try await observationImage(current, bounds: bounds, state: state, requireFrontmost: frontmost, check: check)
@@ -389,6 +401,7 @@ final class SessionRuntime {
         controls.update("Window observed. Ready for the next action.", paused: false)
         var imageInfo: [String: Any] = ["width": width, "height": height, "included": png != nil, "coordinate_space": "image_pixels"]
         if let imageFailure { imageInfo["unavailable"] = imageFailure.payload }
+        if !image { imageInfo["omitted"] = requested == false ? "requested" : "accessible_controls_suffice" }
         var payload: [String: Any] = ["ok": true, "session_id": id, "observation_id": observation.id, "window_id": Int(current.target.id),
             "window_title": current.target.title, "mode": current.mode.rawValue, "image": imageInfo, "elements": elements,
             "truncated": state.truncated, "protected_fields": state.protectedFrames.count,
@@ -459,8 +472,9 @@ final class SessionRuntime {
             session?.receipts.removeValue(forKey: oldest); session?.receiptInputs.removeValue(forKey: oldest)
         }
         guard let observation = current.observation else { throw UseError("observation_required", "Observe this window before acting. Each observation authorizes one act call.", next: "observe") }
+        let desktopBefore = DesktopState.now()
         // Held through the settle wait, so no other agent's window comes forward mid-batch.
-        let focusLease = current.mode == .control ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
+        let focusLease = current.takesFront ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focusLease?.release() }
         // The person may be using another app meanwhile; bring the selected window back
         // for this step instead of pausing when they switched away. A click or key of
@@ -470,11 +484,15 @@ final class SessionRuntime {
         var returns = 0
         var disturbed = try await shareDesktop(current, returns: &returns, since: moment)
         let bounds: CGRect
-        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) }
+        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.takesFront) }
         catch { throw SharedDesktop.yielding(error) }
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
         if actions.contains(where: \.usesCoordinates), observation.imageDigest == nil {
-            throw UseError("image_required", "Coordinates require an observation with an available verified image. Use accessible refs instead.", next: "observe")
+            throw UseError("image_required", "Coordinates require an observation with an image. Use accessible refs, or observe with include_image true.", next: "observe")
+        }
+        // Background: the window takes keys and clicks where it is, behind other windows.
+        if current.delivery == .background, actions.contains(where: { $0.name != "wait" }) {
+            try await BackgroundFocus.makeKey(pid: current.app.pid, window: current.target.id)
         }
         session?.observation = nil; session?.focus = nil; session?.lastUsed = now
         if let intent { controls.narrate(intent) }
@@ -485,7 +503,7 @@ final class SessionRuntime {
         @MainActor func checkWindow() throws {
             try check()
             let live: CGRect
-            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) }
+            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: current.takesFront) }
             catch { throw SharedDesktop.yielding(error) }
             guard live == bounds else {
                 throw UseError("stale_observation", "The window moved during input.", next: "observe")
@@ -493,7 +511,12 @@ final class SessionRuntime {
         }
         @MainActor func checkInput() throws {
             try check()
-            if current.mode == .control, self.personInterrupted(since: moment) { throw SharedDesktop.interrupted }
+            guard current.mode == .control, self.personInterrupted(since: moment) else { return }
+            // In the background the person's input goes to their own front app; it
+            // stops the step only once they are working in the agent's app.
+            if current.takesFront || NSWorkspace.shared.frontmostApplication?.processIdentifier == current.app.pid {
+                throw SharedDesktop.interrupted
+            }
         }
         var progress = BatchProgress(actions: actions.map(\.name))
         // Watch for the app's reaction from the first event on, so the wait
@@ -525,7 +548,7 @@ final class SessionRuntime {
                     }
                     if action.usesCoordinates {
                         let captured = try await observationImage(current, bounds: bounds, state: live,
-                            requireFrontmost: current.mode == .control, check: check)
+                            requireFrontmost: current.takesFront, check: check)
                         guard access.imageDigest(captured.0) == observation.imageDigest else {
                             throw UseError("stale_observation", "The window image changed. Observe before coordinate input.", next: "observe")
                         }
@@ -544,12 +567,17 @@ final class SessionRuntime {
                     default: break
                     }
                 }
+                // Keys go to the app's key window; never type into another window of it.
+                if current.delivery == .background, action.name == "key" || action.name == "type",
+                   !access.isFocusedWindow(current.target, app: current.app) {
+                    throw UseError("background_keys_unavailable", "This window could not take keys in the background, so nothing was typed. Observe again; if it keeps happening the app needs the front.", next: "observe")
+                }
                 try check()
                 try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
                 session?.actionCount += 1
                 let path = try await input.execute(action, app: current.app, target: current.target, lease: observation,
                     access: access, records: current.records, focus: focus, pointerTarget: pointerTarget,
-                    check: checkInput, checkWindow: checkWindow, feedback: { [weak self] feedback in
+                    check: checkInput, checkWindow: checkWindow, background: current.delivery == .background, feedback: { [weak self] feedback in
                         guard let self, self.session?.id == id else { return }
                         self.controls.inputFeedback(feedback)
                     })
@@ -607,6 +635,8 @@ final class SessionRuntime {
         if settled != nil, let changes = windowsBefore.diff(access.windowChanges(current.app), target: current.target.id) {
             receipt["window_changes"] = changes
         }
+        receipt["delivery"] = current.delivery.rawValue
+        receipt["desktop"] = desktopBefore.changes(to: DesktopState.now())
         if session?.id == id { session?.receipts[requestID] = receipt }
         return text(receipt)
     }
@@ -653,9 +683,9 @@ final class SessionRuntime {
     private func personHoldsButton() -> Bool {
         [CGMouseButton.left, .right, .center].contains { CGEventSource.buttonState(.hidSystemState, button: $0) }
     }
-    /// In control mode, takes the next gap in the person's typing or a held button.
+    /// In foreground control, takes the next gap in the person's typing or a held button.
     private func takeGap(_ current: Session, deadline: TimeInterval? = nil) async throws {
-        guard current.mode == .control else { return }
+        guard current.takesFront else { return }
         try await SharedDesktop.takeGap(busy: {
             SharedDesktop.personBusy(keyAt: self.lastPersonInput(.keyDown), buttonDown: self.personHoldsButton(),
                 now: ProcessInfo.processInfo.systemUptime)
@@ -683,7 +713,7 @@ final class SessionRuntime {
     /// window back if something else came to the front. Returns whether it refocused.
     /// A click or key since the step began (`since`) leaves the front with the person.
     private func shareDesktop(_ current: Session, returns: inout Int, since step: TimeInterval, deadline: TimeInterval? = nil) async throws -> Bool {
-        guard current.mode == .control else { return false }
+        guard current.takesFront else { return false }
         session?.yielded = false
         try await takeGap(current, deadline: deadline)
         do {
@@ -748,15 +778,16 @@ final class SessionRuntime {
         defer { if resumingSessionID == current.id { resumingSessionID = nil } }
         do {
             // Only the person's explicit Continue can resume a human pause.
-            let focus = current.mode == .control ? try await FocusLease.acquire(check: {
+            let focus = current.takesFront ? try await FocusLease.acquire(check: {
                 guard self.session?.id == current.id, self.session?.generation == current.generation else {
                     throw UseError("session_changed", "Control changed before Continue.", next: "observe")
                 }
             }) : nil
             defer { focus?.release() }
-            try await focusTarget(current)
+            if current.delivery == .background { try await BackgroundFocus.makeKey(pid: current.app.pid, window: current.target.id) }
+            else { try await focusTarget(current) }
             guard session?.id == current.id, session?.generation == current.generation else { return }
-            _ = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
+            _ = try access.validate(current.target, app: current.app, requireFrontmost: current.takesFront)
             expire(); guard session != nil else { return }
             session?.pauseReason = nil
             session?.interactionDeadline = nil

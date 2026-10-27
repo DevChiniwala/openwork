@@ -80,7 +80,7 @@ final class MacInput {
     }
     func execute(_ action: Action, app: AppIdentity, target: WindowTarget, lease: ObservationLease,
                  access: MacAccessibility, records: [ElementRecord], focus: ElementRecord?, pointerTarget: AXUIElement?,
-                 check: () throws -> Void, checkWindow: () throws -> Void,
+                 check: () throws -> Void, checkWindow: () throws -> Void, background: Bool = false,
                  feedback send: @escaping (InputFeedback) -> Void = { _ in }) async throws -> String {
         feedback = DispatchFeedback(action: action.name, frame: lease.frame, send: send)
         gesture = Int64(UInt32.random(in: 1...UInt32.max))
@@ -148,6 +148,7 @@ final class MacInput {
                 }, move: {
                     try self.mouse(.mouseMoved, screen, app.pid, 0, target.id, lease.frame, flags, check: check)
                 }, down: { click in
+                    if click == 1, background { try self.primeUserActivation(app.pid, target.id, lease.frame, check: check) }
                     try self.mouse(.leftMouseDown, screen, app.pid, click, target.id, lease.frame, flags, check: check)
                 }, up: { click in
                     try self.mouse(.leftMouseUp, screen, app.pid, click, target.id, lease.frame, flags)
@@ -165,7 +166,7 @@ final class MacInput {
                 }
                 report(.dispatched, point: screen)
             case .key(let key, let flags):
-                try access.checkFocus(focus, target: target, app: app, requireField: ["backspace", "delete"].contains(key))
+                try access.checkFocus(focus, target: target, app: app, requireField: ["backspace", "delete"].contains(key), requireFront: !background)
                 let code = try keyCode(key, flags: flags)
                 try modifiers(flags, pid: app.pid, check: check)
                 try keyboard(code, flags: flags, text: nil, pid: app.pid, check: check)
@@ -173,7 +174,7 @@ final class MacInput {
             case .type(let text):
                 try await InputDispatch.type(text, check: check, validate: {
                     try checkWindow()
-                    try access.checkFocus(focus, target: target, app: app, requireField: true)
+                    try access.checkFocus(focus, target: target, app: app, requireField: true, requireFront: !background)
                 }, send: { character in
                     // Line breaks and tabs stay text: as real Return or Tab keys they could
                     // submit or move focus mid-text, which only a separate key action may do.
@@ -212,6 +213,14 @@ final class MacInput {
             let cause = (error as? UseError) ?? UseError("action_interrupted", "Input was interrupted. Do not repeat it without inspecting the result.", next: "human_takeover")
             throw InputFailure(cause: cause, mayHaveActed: feedback?.didDispatch == true)
         }
+    }
+    /// Chromium acts on a background click only after a recent user gesture. A
+    /// press outside every window advances that gate and is itself discarded.
+    private func primeUserActivation(_ pid: pid_t, _ windowID: CGWindowID, _ frame: CGRect, check: () throws -> Void) throws {
+        guard routes[pid] == .skyLight else { return }
+        let outside = CGPoint(x: -1, y: -1)
+        try mouse(.leftMouseDown, outside, pid, 1, windowID, frame, check: check)
+        try mouse(.leftMouseUp, outside, pid, 1, windowID, frame)
     }
     private func post(_ event: CGEvent, _ pid: pid_t, pointer: Bool = false) {
         event.setIntegerValueField(.eventSourceUnixProcessID, value: Int64(ProcessInfo.processInfo.processIdentifier))

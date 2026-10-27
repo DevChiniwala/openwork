@@ -2074,6 +2074,10 @@ const desktopCommandHandlers = {
       assertComputerSender(event);
       return computerControl.setRemoteEnabled(enabled === true);
   },
+  "computerSetBackgroundEnabled": async (event, enabled) => {
+      assertComputerSender(event);
+      return computerControl.setBackgroundEnabled(enabled === true);
+  },
   "computerResetPermission": async (event, permission) => {
       assertComputerSender(event);
       if (permission !== "accessibility" && permission !== "screenRecording") throw new Error("Choose Accessibility or Screen Recording.");

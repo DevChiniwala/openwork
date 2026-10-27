@@ -350,6 +350,18 @@ export const FEATURES = defineFeatures({
     default: false,
   },
 
+  computerUseBackground: {
+    label: "Desktop: computer use in the background",
+    description: "On a Mac, agents work in app windows where they are, without bringing them to the front or moving your cursor, so you keep working and several chats can work at once. Agents read the app's controls first and take a screenshot only when they need one. Blender and other canvas apps still come to the front. Needs computer use.",
+    category: "computerUse",
+    added: "2026-10-27",
+    since: "2026-10",
+    author: "reachjalil",
+    docs: "docs/features/computer-use-background/README.md",
+    deployments: everywhere,
+    default: false,
+  },
+
   browserUse: {
     label: "Workbot: browser use",
     description: "Workbot uses the browser on its cloud computer, with a Browser view people can watch and take over. Needs remote computers. Computer use separately controls Workbot's other desktop apps.",

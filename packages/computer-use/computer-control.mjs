@@ -96,7 +96,7 @@ function deadline(ms) {
  *   readiness: () => Promise<{ readiness: string, detail: string, permissions?: { accessibility: boolean, screenRecording: boolean } }>,
  *   setup?: (permission: "accessibility" | "screenRecording") => Promise<{ setupId: string }>,
  *   dismissSetup?: (setupId?: string) => Promise<void>,
- *   connect: (options: { signal: AbortSignal, presence: { name: string, color: string } | null, onUi: (value: unknown) => void, onClose: () => void }) => Promise<ComputerTransport>,
+ *   connect: (options: { signal: AbortSignal, presence: { name: string, color: string } | null, background?: boolean, onUi: (value: unknown) => void, onClose: () => void }) => Promise<ComputerTransport>,
  * }} ComputerAdapter
  */
 
@@ -158,6 +158,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   /** Per computer: whose control call has the keyboard and pointer, and who waits. */
   const slots = new Map();
   let featureEnabled = false;
+  // `computerUseBackground`: new sessions on a parallel computer work behind other windows.
+  let backgroundEnabled = false;
   let featureGeneration = 0;
   let remoteGeneration = 0;
   let remoteUpdateRevision = 0;
@@ -640,7 +642,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       if (Number.isSafeInteger(window) && others.some((other) => other.windowId === window)) {
         return failure("window_busy", "Another chat is working in this window. Choose another window, or wait for that chat to finish. Nothing was dispatched.");
       }
-      if (!own) leases.set(grant.sessionId, { grant, adapter: target, controller: new AbortController(), nativeId: null, session: null, busy: false, handoffGeneration: 0 });
+      if (!own) leases.set(grant.sessionId, { grant, adapter: target, background: backgroundEnabled && target.parallel === true, controller: new AbortController(), nativeId: null, session: null, busy: false, handoffGeneration: 0 });
       const current = leases.get(grant.sessionId);
       clearTimeout(current.idleTimer);
       current.busy = true;
@@ -657,11 +659,14 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       let releaseFocus = null;
       current.work = Promise.resolve().then(async () => {
         progress();
-        // Control mode brings the window forward to look or act, renewals included: take this
-        // computer's turn for the one call, then hand it on while the model thinks.
+        // Foreground control brings the window forward to look or act, renewals included: take
+        // this computer's turn for the one call, then hand it on while the model thinks. Background
+        // sessions work behind other windows and never wait; until the helper names the delivery,
+        // the session's setting decides (the helper still takes the front for canvas apps).
         const mode = name === "computer_open" ? args.mode : grant.lastOpen?.mode;
         const renewing = !current.nativeId && grant.lastOpen && grant.lastTarget === current.adapter.id && !["computer_discover", "computer_close"].includes(name);
-        if (mode === "control" && (["computer_open", "computer_observe", "computer_act"].includes(name) || renewing)) {
+        const delivery = current.delivery ?? (current.background ? "background" : "foreground");
+        if (mode === "control" && delivery === "foreground" && (["computer_open", "computer_observe", "computer_act"].includes(name) || renewing)) {
           releaseFocus = await focusSlot(current.adapter.id, active);
           progress();
           if (takenOverElsewhere(grant)) return takenOver();
@@ -670,6 +675,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
           try {
             current.transport = await current.adapter.connect({
               signal: active, presence,
+              background: current.background,
               onUi: (value) => receiveUi(current, value),
               onClose: () => {
                 clearPresentation(current); current.uiEnded = true;
@@ -697,6 +703,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
           if (opened.isError || !state?.ok || typeof state.session_id !== "string") return opened;
           current.nativeId = state.session_id;
           if (Number.isSafeInteger(state.window_id)) current.windowId = state.window_id;
+          if (["background", "foreground"].includes(state.delivery)) current.delivery = state.delivery;
           invalidateObservation(current); current.needsObservation = true;
           updateSession(current, opened, args.purpose);
           if (["computer_act", "computer_zoom"].includes(name)) return failure("observation_required", "The internal session was renewed. Observe the current window before input; nothing was dispatched.", { next: "observe", actions_replayed: false });
@@ -721,6 +728,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         if (name === "computer_open" && state?.ok && typeof state.session_id === "string") {
           current.nativeId = state.session_id;
           if (Number.isSafeInteger(state.window_id)) current.windowId = state.window_id;
+          if (["background", "foreground"].includes(state.delivery)) current.delivery = state.delivery;
           grant.lastTarget = current.adapter.id;
           grant.lastOpen = { ...args, ...(Number.isSafeInteger(state.window_id) ? { window_id: state.window_id } : {}) };
         }
@@ -1068,6 +1076,17 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       for (const current of running) current.expectedClose = true;
       if ((await Promise.all(running.map(cleanup))).includes(false)) throw new Error(COMPUTER_STOP_GUIDANCE);
       return false;
+    },
+    /**
+     * The renderer reports the `computerUseBackground` feature. A change hands
+     * idle sessions back, so each chat's next call reopens with the new setting;
+     * a call in flight keeps its own until it ends.
+     */
+    async setBackgroundEnabled(enabled) {
+      if (backgroundEnabled === (enabled === true)) return backgroundEnabled;
+      backgroundEnabled = enabled === true;
+      await Promise.all([...leases.values()].filter((current) => current.background !== (backgroundEnabled && current.adapter.parallel === true)).map((current) => release(current, true)));
+      return backgroundEnabled;
     },
     /**
      * The renderer reports the `remoteComputers` feature. Turning it off ends a

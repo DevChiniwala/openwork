@@ -295,6 +295,12 @@ final class MacAccessibility {
         return changes
     }
 
+    /// The window its app sends keys to, whether or not the app is in front.
+    func isFocusedWindow(_ target: WindowTarget, app: AppIdentity) -> Bool {
+        guard let focused = try? checkedElement(AXUIElementCreateApplication(app.pid), kAXFocusedWindowAttribute, AXReadBudget()) else { return false }
+        return CFEqual(focused, target.element)
+    }
+
     func validate(_ target: WindowTarget, app: AppIdentity, requireFrontmost: Bool = false) throws -> CGRect {
         try requirePermissions()
         try app.validate()
@@ -442,13 +448,13 @@ final class MacAccessibility {
         return hit
     }
 
-    func checkFocus(_ expected: ElementRecord?, target: WindowTarget, app: AppIdentity, requireField: Bool) throws {
+    func checkFocus(_ expected: ElementRecord?, target: WindowTarget, app: AppIdentity, requireField: Bool, requireFront: Bool = true) throws {
         guard let expected, !expected.protected, expected.enabled, !requireField || expected.textField else {
             throw UseError("focus_required", "Observe a focused normal text field or control before using the keyboard.", next: "observe")
         }
         let budget = AXReadBudget()
         let root = AXUIElementCreateApplication(app.pid)
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.pid,
+        guard !requireFront || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.pid,
               let window = try checkedElement(root, kAXFocusedWindowAttribute, budget), CFEqual(window, target.element),
               let focused = try checkedElement(root, kAXFocusedUIElementAttribute, budget), CFEqual(focused, expected.element),
               try checkedString(focused, kAXRoleAttribute, budget) == expected.role,
