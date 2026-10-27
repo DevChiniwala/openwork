@@ -9,10 +9,11 @@ import {
   AUTO_ROUTER_THINKING_LEVELS,
 } from "@openwork/types/den/auto-router";
 import { ACME_MODEL, ACME_REPLY } from "../../worlds/lib/acme-gateway.ts";
-import { autoRouterDesktopWorld, autoRouterWorld } from "../worlds/auto-router.ts";
+import { autoRouterDesktopWorld, autoRouterMissingKeyWorld, autoRouterWorld } from "../worlds/auto-router.ts";
 import { isRecord } from "./../worlds/library.ts";
 
 const test = spec.world(autoRouterWorld, { resources: { surfaces: ["web"], services: ["den"] }, timeout: 900_000 });
+const missingKeyTest = spec.world(autoRouterMissingKeyWorld, { resources: { surfaces: ["web"], services: ["den"] }, timeout: 900_000 });
 const desktopTest = spec.world(autoRouterDesktopWorld, {
   resources: { surfaces: ["appWeb"], services: ["den"] },
   // The shipping server downloads its pinned verified v2 engine if absent.
@@ -104,7 +105,8 @@ desktopTest("a member picks Auto and sees which model answered their question", 
       probe.dom(`[data-testid="composer-model-picker"] [data-model-key="${autoKey}"]`),
     ]);
     const first = rows.elements[0];
-    const autoFirst = Boolean(first && auto.elements[0] && first.rect.top === auto.elements[0].rect.top && first.text === auto.elements[0].text);
+    // Compare by content: the picker may still be animating between the two reads.
+    const autoFirst = Boolean(first && auto.elements[0] && first.text === auto.elements[0].text);
     expect(autoFirst).toBe(true);
     expect(first?.text).toContain("Auto");
     evidence.recordAssertionEvidence("Auto is the first model the member can pick", `picker rows=${rows.elements.length}; first="${first?.text ?? ""}"`, autoFirst);
@@ -150,5 +152,38 @@ desktopTest("a member picks Auto and sees which model answered their question", 
     const text = labels.elements.map((element) => element.text).join(" | ");
     evidence.recordAssertionEvidence("the routed model is remembered with the conversation", `label after reload="${text}"`, text.includes(expectedLabel));
     await user.screenshot();
+  });
+});
+
+missingKeyTest("without the gateway's routing key, Enable explains how to add it instead of turning Auto on", async ({ world, user, probe, step, evidence }) => {
+  await step("before: Enable is muted and says why", async () => {
+    await user.see({ testId: "auto-router-section" }, { timeoutMs: 60_000 });
+    await user.see({ testId: "auto-router-missing-key" }, { timeoutMs: 30_000 });
+    const settings = await probe.api(world.den.admin, "/v1/org/auto-router");
+    expect(isRecord(settings.body) && settings.body.routing).toBe("missing_key");
+    const enable = await probe.dom('[data-testid="auto-router-enable"][data-blocked="missing-key"]');
+    expect(enable.elements).toHaveLength(1);
+    evidence.recordAssertionEvidence("Den knows the gateway has no routing key", `routing=${String(isRecord(settings.body) ? settings.body.routing : null)}; Enable blocked=${enable.elements.length === 1}`, enable.elements.length === 1);
+    await user.screenshot();
+  });
+
+  await step("after: clicking Enable opens the setup dialog and nothing is enabled", async () => {
+    await user.click({ testId: "auto-router-enable" });
+    await user.see({ testId: "auto-router-setup-dialog" }, { timeoutMs: 10_000 });
+    await user.see({ text: "Auto Router needs a routing key" });
+    await user.see({ text: "TYPESAFE_API_KEY" });
+    await user.screenshot();
+    const settings = await probe.api(world.den.admin, "/v1/org/auto-router");
+    const refused = await world.tryEnable();
+    const connect = await probe.api(world.den.admin, "/v1/org/auto-router/connect");
+    expect(isRecord(settings.body) && settings.body.enabled).toBe(false);
+    expect(refused).toBe(409);
+    expect(connect.response.status).toBe(404);
+    evidence.recordAssertionEvidence(
+      "Auto cannot be turned on or reach desktops without the key",
+      `enabled=${String(isRecord(settings.body) ? settings.body.enabled : null)}; enable via API HTTP ${refused}; desktop connect HTTP ${connect.response.status}`,
+      refused === 409 && connect.response.status === 404,
+    );
+    await user.click({ testId: "auto-router-setup-close" });
   });
 });

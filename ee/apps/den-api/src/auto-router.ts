@@ -15,11 +15,13 @@ import {
   AUTO_ROUTER_THINKING_LEVELS,
   autoRouterThinkingLevels,
   type AutoRouterModelOption,
+  type AutoRouterRoutingState,
   type AutoRouterRoute,
   type AutoRouterThinkingLevel,
   type AutoRouterWrite,
 } from "@openwork/types/den/auto-router"
 import { db } from "./db.js"
+import { env } from "./env.js"
 import { gatewayManagementUnavailable } from "./gateway-deployment.js"
 import { gatewayModelConfigurationError, readProviderConfigNpm } from "./llm/inference-provider-config.js"
 import { effectiveGatewayGrants, memberGatewayTeams } from "./llm/inference-provider-lifecycle.js"
@@ -173,4 +175,37 @@ export async function memberCanUseAutoRouter(organizationId: OrganizationId, mem
     if (routes.some((route) => route.providerId === providerId && models.has(route.modelId))) return true
   }
   return false
+}
+
+const ROUTING_CACHE_MS = { known: 60_000, unknown: 10_000 } as const
+let routingCache: { state: AutoRouterRoutingState; expires: number } | null = null
+
+/**
+ * Asks the AI Gateway whether it has its TypeSafe (Jev) key. Only the gateway
+ * holds the key, so Den reads a boolean from its `/auto-router/status`.
+ * Cached briefly; `unknown` when the gateway cannot be reached.
+ */
+export async function readAutoRouterRouting(fetcher: typeof fetch = fetch, now = Date.now()): Promise<AutoRouterRoutingState> {
+  if (routingCache && routingCache.expires > now) return routingCache.state
+  let state: AutoRouterRoutingState = "unknown"
+  try {
+    const base = (env.gatewayProxyBaseUrl ?? env.gatewayPublicBaseUrl).replace(/\/+$/, "")
+    const response = await fetcher(`${base}/auto-router/status`, { signal: AbortSignal.timeout(2_000), redirect: "error" })
+    if (response.ok) {
+      const body: unknown = await response.json()
+      const configured = typeof body === "object" && body !== null && !Array.isArray(body) ? Reflect.get(body, "routingConfigured") : undefined
+      if (typeof configured === "boolean") state = configured ? "ready" : "missing_key"
+    } else {
+      await response.body?.cancel().catch(() => {})
+    }
+  } catch (error) {
+    console.warn("[auto-router] could not read the gateway's routing status", error instanceof Error ? error.message : error)
+  }
+  routingCache = { state, expires: now + (state === "unknown" ? ROUTING_CACHE_MS.unknown : ROUTING_CACHE_MS.known) }
+  return state
+}
+
+/** Test hook. */
+export function clearAutoRouterRoutingCache() {
+  routingCache = null
 }
