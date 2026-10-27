@@ -28,6 +28,9 @@ import { observedRunnerFetch, reportError } from "./error-reporting.js"
  */
 
 const fileIdSchema = z.string().regex(/^fl_[a-f0-9]{32}$/)
+/** A file in the person's My files; the same routes serve it as a chat's kept file (fl_), so previews work alike. */
+const memberFileIdSchema = z.string().regex(/^mf_[a-f0-9]{32}$/)
+const memberUploadQuerySchema = z.object({ name: z.string().trim().min(1).max(255), folder: z.string().trim().max(400).optional() })
 /** The runner's own limit on one message; anything longer goes as a file. */
 const MAX_MESSAGE_CHARS = WORKBOT_MAX_MESSAGE_CHARS
 const sendSchema = z
@@ -128,6 +131,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       stepTurns: member.den.stepTurns,
       // Per-chat cells are GA; older Dens may omit sessionCells, so preserve their legacy placement.
       sessionCells: member.den.sessionCells,
+      memberFiles: member.den.memberFiles,
     })
 
   const enabled = (c: Context<AppEnv>) => c.get("member").den.enabled
@@ -224,6 +228,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       canSchedule: who.enabled && who.canSchedule,
       sideChats: who.enabled && who.sideChats,
       commandPalette: true,
+      memberFiles: who.enabled && who.memberFiles,
       denUrl: config.denWebUrl ?? (await den.webUrl().catch(() => null)),
     })
   })
@@ -752,7 +757,47 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     }
   })
 
+  // My files: the person's whole space. Every call names the person's owner (runnerFor), never a path from the page
+  // into another space; with the feature off these routes don't exist and mf_ ids are unknown.
+  const memberFilesOn = (c: Context<AppEnv>) => enabled(c) && c.get("member").den.memberFiles
+  app.get("/v1/workbot/my-files", async (c) => {
+    if (!memberFilesOn(c)) return c.json({ error: "feature_disabled" }, 404)
+    const member = c.get("member")
+    try {
+      return c.json(await workbotFor(member).listMemberFiles(actorOf(member)))
+    } catch (error) {
+      if (error instanceof WorkbotUnavailableError) return c.json({ error: error.code }, 409)
+      throw error
+    }
+  })
+  app.post(
+    "/v1/workbot/my-files",
+    bodyLimit({ maxSize: MAX_UPLOAD_BYTES, onError: (c) => c.json({ error: "file_too_large", message: "The most a file can be is 100 MB." }, 413) }),
+    async (c) => {
+      if (!memberFilesOn(c)) return c.json({ error: "feature_disabled" }, 404)
+      const query = memberUploadQuerySchema.safeParse(c.req.query())
+      if (!query.success) return c.json({ error: "invalid_request" }, 400)
+      const member = c.get("member")
+      try {
+        const added = await workbotFor(member).uploadMemberFile(actorOf(member), {
+          name: query.data.name,
+          ...(query.data.folder ? { folder: query.data.folder } : {}),
+          mediaType: c.req.header("content-type") ?? "application/octet-stream",
+          bytes: await c.req.arrayBuffer(),
+        })
+        if (added.ok) return c.json(added.file, 201)
+        return c.json({ error: added.code, ...(added.message ? { message: added.message } : {}) }, added.status === 413 ? 413 : added.status === 400 ? 400 : 409)
+      } catch (error) {
+        if (error instanceof WorkbotFilesUnavailableError) return c.json({ error: "workbot_files_not_configured" }, 409)
+        if (error instanceof WorkbotUnavailableError) return c.json({ error: error.code }, 409)
+        throw error
+      }
+    },
+  )
+
   app.get("/v1/workbot/files/:fileId/preview", async (c) => {
+    // My files have no page images yet: their preview reads the file itself.
+    if (memberFileIdSchema.safeParse(c.req.param("fileId")).success) return c.json({ error: "not_found" }, 404)
     const fileId = fileIdSchema.safeParse(c.req.param("fileId"))
     const scope = chatOf(c)
     if (!fileId.success || !enabled(c) || scope.refused) return c.json({ error: "not_found" }, 404)
@@ -784,11 +829,14 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   })
 
   app.get("/v1/workbot/files/:fileId", async (c) => {
-    const fileId = fileIdSchema.safeParse(c.req.param("fileId"))
+    const memberFile = memberFileIdSchema.safeParse(c.req.param("fileId"))
+    const fileId = memberFile.success ? memberFile : fileIdSchema.safeParse(c.req.param("fileId"))
     const scope = chatOf(c)
-    if (!fileId.success || !enabled(c) || scope.refused) return c.json({ error: "not_found" }, 404)
+    if (!fileId.success || !enabled(c) || scope.refused || (memberFile.success && !memberFilesOn(c))) return c.json({ error: "not_found" }, 404)
     const member = c.get("member")
-    const upstream = await workbotFor(member).downloadFile(actorOf(member), fileId.data, scope.chat).catch(() => null)
+    const upstream = memberFile.success
+      ? await workbotFor(member).downloadMemberFile(memberFile.data).catch(() => null)
+      : await workbotFor(member).downloadFile(actorOf(member), fileId.data, scope.chat).catch(() => null)
     if (!upstream?.body) return c.json({ error: "not_found" }, 404)
     const type = upstream.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "application/octet-stream"
     const encodedName = upstream.headers.get("x-file-name") ?? "file"
@@ -815,11 +863,14 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   })
 
   app.delete("/v1/workbot/files/:fileId", async (c) => {
-    const fileId = fileIdSchema.safeParse(c.req.param("fileId"))
+    const memberFile = memberFileIdSchema.safeParse(c.req.param("fileId"))
+    const fileId = memberFile.success ? memberFile : fileIdSchema.safeParse(c.req.param("fileId"))
     const scope = chatOf(c)
-    if (!fileId.success || !enabled(c) || scope.refused) return c.json({ error: "not_found" }, 404)
+    if (!fileId.success || !enabled(c) || scope.refused || (memberFile.success && !memberFilesOn(c))) return c.json({ error: "not_found" }, 404)
     const member = c.get("member")
-    const deleted = await workbotFor(member).deleteFile(actorOf(member), fileId.data, scope.chat).catch(() => false)
+    const deleted = memberFile.success
+      ? await workbotFor(member).deleteMemberFile(memberFile.data).catch(() => false)
+      : await workbotFor(member).deleteFile(actorOf(member), fileId.data, scope.chat).catch(() => false)
     return deleted ? c.body(null, 204) : c.json({ error: "not_found" }, 404)
   })
 }

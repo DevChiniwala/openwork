@@ -78,6 +78,8 @@ const sessionSchema = z.object({
   sideChats: z.boolean(),
   /** Always true for older Workbot clients; the command palette is available by default. */
   commandPalette: z.boolean().optional(),
+  /** My files (`memberFiles`): one file space per member at /files for their chats and Workbot's browser; older Dens omit it: off. */
+  memberFiles: z.boolean().optional(),
   /**
    * The model Workbot's turns run on: the organization's default model. Null, and
    * omitted by older Dens, means the headless runner's default.
@@ -403,6 +405,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         activationChecklist: features.activationChecklist,
         sideChats: true,
         commandPalette: true,
+        memberFiles: features.memberFiles,
         model,
         gatewayModels: true,
         stepTurns: true,

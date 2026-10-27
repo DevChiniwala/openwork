@@ -297,12 +297,12 @@ export function FilesButton({ open, onOpen }: { open: boolean; onOpen: () => voi
       className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium leading-4 transition-colors duration-150 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)] ${open ? "bg-[var(--wb-chip)] text-[var(--wb-text)]" : "text-[var(--wb-muted)] hover:bg-[var(--wb-chip)] hover:text-[var(--wb-text)]"}`}
     >
       <FileText size={15} strokeWidth={1.75} aria-hidden />
-      Files
+      {workbotHost().memberFiles ? "My files" : "Files"}
     </button>
   );
 }
 
-function FileRow({ file, assistantName, onOpen }: { file: WorkbotFile; assistantName: string; onOpen: (file: WorkbotFile) => void }) {
+export function FileRow({ file, assistantName, onOpen }: { file: WorkbotFile; assistantName: string; onOpen: (file: WorkbotFile) => void }) {
   const remove = useDeleteWorkbotFile();
   const chat = useWorkbotChat();
   const thumb = useWorkbotImageUrl(isImage(file.mediaType) ? file.id : null);

@@ -26,7 +26,8 @@ import {
   type WorkbotTask,
   type WorkbotTurn,
 } from "./data";
-import { AppMark, AttachButton, FileBadge, FilesButton, FilesPanel, ImageThumb, isImage, kindLabel, SentAttachments, UploadTray, useFileDrop, type Upload } from "./files";
+import { WorkbotFilesPanel } from "./member-files";
+import { AppMark, AttachButton, FileBadge, FilesButton, ImageThumb, isImage, kindLabel, SentAttachments, UploadTray, useFileDrop, type Upload } from "./files";
 import { createComposerState, type ComposerState, type Pending } from "./composer-state";
 import { initials } from "./format";
 import { documentLinks, WorkbotMarkdown } from "./markdown";
@@ -379,7 +380,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
           <div hidden={!(host.workspaceAssistant || host.browserDemonstrations && tab === "computer") || tab === "home"}><WorkspaceAssistant name={name} context={currentContext} includeContext={includeContext} onIncludeContext={setIncludeContext}
             composer={composer} conversation={conversation} onDocument={navigateFromChat} onComputer={navigateComputerFromChat} unavailable={!data} active={(host.workspaceAssistant === true || host.browserDemonstrations === true && tab === "computer") && tab !== "home"}
             reveal={revealChat} stayOpen={guided} /></div>
-          {filesEnabled && <FilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
+          {filesEnabled && <WorkbotFilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
         </div>
       </DocumentNavigationContext.Provider>
       </ComputerNavigationContext.Provider>
@@ -551,7 +552,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       {previewFile ? <PreviewPanel file={previewFile} onClose={() => setPreview(null)} /> : null}
       </div>
       {filesEnabled ? (
-        <FilesPanel
+        <WorkbotFilesPanel
           open={filesOpen}
           onClose={() => setFilesOpen(false)}
           assistantName={data.name}

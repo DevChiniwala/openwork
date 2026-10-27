@@ -28,6 +28,7 @@ export const meSchema = z.object({
   /** Side chats are on for this person (while Workbot is on). */
   sideChats: z.boolean().default(false),
   /** The Cmd+K / Ctrl+K command palette; older servers omit it. */
+  memberFiles: z.boolean().default(false),
   denUrl: z.string().nullable(),
 })
 export type Me = z.infer<typeof meSchema>
@@ -107,6 +108,7 @@ export function createHost(me: Me, recovery: { authorization?: WorkbotHost["docu
         && current.userId === me.userId && current.organizationId === me.organizationId
     },
     sideChats: me.sideChats,
+    memberFiles: me.memberFiles,
     identity: me.userId && me.organizationId ? { principalId: me.userId, organizationId: me.organizationId } : undefined,
   }
 }

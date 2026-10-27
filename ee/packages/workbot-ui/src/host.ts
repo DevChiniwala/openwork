@@ -55,6 +55,8 @@ export type WorkbotHost = {
   documentAuthorization?: "signin" | "blocked" | "disabled"
   /** The person can start side chats next to their main chat (on while Workbot is on). Off when unset. */
   sideChats?: boolean
+  /** My files: the Files panel shows the member's whole space (Downloads, Workbot's folder, uploads) with where each came from. */
+  memberFiles?: boolean
   /** Authenticated identity for permission-protected model-setting caches; absent on older hosts. */
   identity?: { principalId: string; organizationId: string }
 }
