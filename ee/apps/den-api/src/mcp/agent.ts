@@ -67,6 +67,7 @@ import {
   externalCapabilityErrorToolResult,
   externalCapabilitySuccessToolResult,
   searchCapabilityRegistry,
+  slackSendAsBotAvailable,
   withUsageSource,
   workflowExecutionAuditStatus,
   type ExecuteCapabilityToolResult,
@@ -752,6 +753,7 @@ export function registerAgentMcpRoutes<T extends { Variables: RequestIdVariables
       toolView,
       toolShapes,
       remoteSessionStatus: Boolean(memberIdentity && organizationFeatures.remoteSessionSubagents),
+      slackSendAsBot: slackSendAsBotAvailable(capabilityContext),
       skillsExtension,
       skillIndex: skillsExtension && advertisesInstructions && !listsSkillsNatively ? skillIndexInstructions(await loadRemoteSkills()) : undefined,
     })
