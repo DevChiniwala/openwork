@@ -20,6 +20,7 @@ const { NO_NEW_ACTIVITY_AFTER_MS } = await import("../src/react-app/domains/sess
 
 const workspaceId = "workspace_fixture"
 const sessionId = "session_fixture"
+const helperSessionId = "session_helper"
 let mounted: { root: Root; container: HTMLElement } | null = null
 
 afterEach(async () => {
@@ -31,14 +32,33 @@ afterEach(async () => {
     mounted = null
   }
   useSessionActivityStore.getState().removeSession(workspaceId, sessionId)
+  useSessionActivityStore.getState().removeSession(workspaceId, helperSessionId)
 })
 
+type RunOptions = {
+  syncDegraded?: boolean
+  followUp?: { sentAgoMs: number; replyCompletedAgoMs?: number }
+  /** An approval the chat or its helper asked for, and when the person answered. */
+  approval?: { session: string; askedAgoMs: number; answeredAgoMs: number }
+  helper?: { background: boolean }
+}
+
 /** A busy run that began `silentForMs` ago and has produced no text, reasoning or tool step since. */
-async function renderBusyRun(silentForMs: number, options: { syncDegraded?: boolean; followUp?: { sentAgoMs: number; replyCompletedAgoMs?: number } } = {}) {
+async function renderBusyRun(silentForMs: number, options: RunOptions = {}) {
   const startedAt = Date.now() - silentForMs
   setSystemTime(new Date(startedAt))
   useSessionActivityStore.getState().setRunStatus(workspaceId, sessionId, { type: "busy" })
   setSystemTime()
+  const { approval } = options
+  if (approval) {
+    const askedAt = Date.now() - approval.askedAgoMs
+    const answeredAt = Date.now() - approval.answeredAgoMs
+    setSystemTime(new Date(askedAt))
+    useSessionActivityStore.getState().setWaitingRequest(workspaceId, approval.session, "permission", "per_fixture", true)
+    setSystemTime(new Date(answeredAt))
+    useSessionActivityStore.getState().setWaitingRequest(workspaceId, approval.session, "permission", "per_fixture", false)
+    setSystemTime()
+  }
 
   const messages: UIMessage[] = [{
     id: "msg_user",
@@ -59,6 +79,21 @@ async function renderBusyRun(silentForMs: number, options: { syncDegraded?: bool
       role: "user",
       parts: [{ type: "text", text: "Only the photos." }],
       metadata: { opencode: { created: Date.now() - followUp.sentAgoMs } },
+    })
+  }
+  if (options.helper) {
+    messages.push({
+      id: "msg_delegating",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "task",
+        toolCallId: "call_task",
+        state: "input-available",
+        input: { description: "Sort the photos", prompt: "Sort the photos", subagent_type: "general", background: options.helper.background },
+        callProviderMetadata: { openwork: { childSessionId: helperSessionId } },
+      }],
+      metadata: { opencode: { created: startedAt + 100 } },
     })
   }
   const container = document.createElement("div")
@@ -105,6 +140,21 @@ test("a follow-up sent mid-run keeps the run's working time", async () => {
 test("a message sent after the reply finished starts its own working time", async () => {
   const { working } = await renderBusyRun(90_000, { followUp: { sentAgoMs: 5_000, replyCompletedAgoMs: 30_000 } })
   expect(working).toMatch(/^Working \ds$/)
+})
+
+test("time spent waiting for the person's approval is not working time", async () => {
+  const { working } = await renderBusyRun(90_000, { approval: { session: sessionId, askedAgoMs: 80_000, answeredAgoMs: 20_000 } })
+  expect(working).toMatch(/^Working 3\ds$/)
+})
+
+const helperApproval = { session: helperSessionId, askedAgoMs: 80_000, answeredAgoMs: 20_000 }
+
+test("a helper the run waits on pauses its working time while asking for approval", async () => {
+  expect((await renderBusyRun(90_000, { approval: helperApproval, helper: { background: false } })).working).toMatch(/^Working 3\ds$/)
+})
+
+test("a background helper asking for approval does not pause the run", async () => {
+  expect((await renderBusyRun(90_000, { approval: helperApproval, helper: { background: true } })).working).toMatch(/^Working 1m 3\ds$/)
 })
 
 test("Reconnecting replaces the Working line when the run can no longer be confirmed", async () => {

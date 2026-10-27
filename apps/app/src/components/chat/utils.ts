@@ -155,6 +155,26 @@ function replyUnfinishedAt(reply: UIMessage, sentAt: number | null, newest: bool
   return sentAt !== null && completed > sentAt
 }
 
+/**
+ * How long, between `from` and `now`, a run waited for a person's approval or
+ * answer. Waits that overlap (the chat and a helper asking at once) count once;
+ * an open wait lasts until `now`.
+ */
+export function getWaitedMs(waits: readonly { start: number; end?: number }[], from: number, now: number): number {
+  const spans = waits
+    .map((wait) => [Math.max(wait.start, from), Math.min(wait.end ?? now, now)] as const)
+    .filter(([start, end]) => end > start)
+    .sort((left, right) => left[0] - right[0])
+  let waited = 0
+  let cursor = from
+  for (const [start, end] of spans) {
+    if (end <= cursor) continue
+    waited += end - Math.max(start, cursor)
+    cursor = end
+  }
+  return waited
+}
+
 export function formatMessageTimestamp(timestampMs: number): string {
   const date = new Date(timestampMs)
   const now = new Date()
