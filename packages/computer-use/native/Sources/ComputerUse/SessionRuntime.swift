@@ -121,6 +121,8 @@ final class SessionRuntime {
                 // Initial focus is technical startup, never a human pause/Continue flow.
                 let focus = try await FocusLease.acquire(check: { try self.checkActive(current) })
                 defer { focus.release() }
+                let keys = try await FocusLease.acquire(app: current.app.pid, check: { try self.checkActive(current) })
+                defer { keys.release() }
                 try await takeGap(current)
                 do { try await takeFront(current) }
                 catch let error as UseError where error.code == SharedDesktop.interrupted.code {
@@ -307,6 +309,10 @@ final class SessionRuntime {
         // Background reads the window where it is: capture works behind other windows.
         let focus = current.takesFront ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focus?.release() }
+        // Bringing the window forward makes it the app's key window: not while another
+        // agent in this app is between selecting its own window and typing.
+        let keys = current.takesFront ? try await FocusLease.acquire(app: current.app.pid, check: { try self.checkActive(current) }) : nil
+        defer { keys?.release() }
         // In the background, another focused window of the app is the same signal as
         // another window in front: usually a dialog the last action opened.
         var otherWindowFocused = current.mode == .control && current.delivery == .background
@@ -489,6 +495,10 @@ final class SessionRuntime {
         // Held through the settle wait, so no other agent's window comes forward mid-batch.
         let focusLease = front ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focusLease?.release() }
+        // Every control step may change the app's key window, and keys go to that window:
+        // agents in other windows of this app wait until this batch's input is sent.
+        let keyLease = front || background ? try await FocusLease.acquire(app: current.app.pid, check: { try self.checkActive(current) }) : nil
+        defer { keyLease?.release() }
         // The person may be using another app meanwhile; bring the selected window back
         // for this step instead of pausing when they switched away. A click or key of
         // theirs from here on stops the step and leaves the computer to them.
@@ -814,6 +824,12 @@ final class SessionRuntime {
                 }
             }) : nil
             defer { focus?.release() }
+            let keys = current.takesFront ? try await FocusLease.acquire(app: current.app.pid, check: {
+                guard self.session?.id == current.id, self.session?.generation == current.generation else {
+                    throw UseError("session_changed", "Control changed before Continue.", next: "observe")
+                }
+            }) : nil
+            defer { keys?.release() }
             // A background session stays behind the person's work; each step readies its window.
             if current.delivery != .background { try await focusTarget(current) }
             guard session?.id == current.id, session?.generation == current.generation else { return }

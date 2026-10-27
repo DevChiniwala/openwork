@@ -58,6 +58,25 @@ final class LeaseTests: XCTestCase {
     }
 
     @MainActor
+    func testAgentsInOneAppTakeTurnsForItsKeyWindow() async throws {
+        let holder = try await FocusLease.acquire(app: 42, directory: directory, check: {})
+        do {
+            _ = try await FocusLease.acquire(app: 42, directory: directory, timeout: 0.05, check: {})
+            XCTFail("Two agents held one app's key window at once.")
+        } catch {
+            XCTAssertEqual((error as? UseError)?.code, "focus_busy")
+        }
+        // Other apps and the shared keyboard focus stay free.
+        let otherApp = try await FocusLease.acquire(app: 43, directory: directory, timeout: 0.05, check: {})
+        let focus = try await FocusLease.acquire(directory: directory, timeout: 0.05, check: {})
+        otherApp.release(); focus.release()
+        holder.release()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("app-42.lock").path))
+        let next = try await FocusLease.acquire(app: 42, directory: directory, timeout: 0.05, check: {})
+        next.release()
+    }
+
+    @MainActor
     func testHandBackSkipsWhileAnotherAgentHoldsFocus() async throws {
         let holder = try await FocusLease.acquire(directory: directory, check: {})
         XCTAssertNil(FocusLease.attempt(directory: directory))

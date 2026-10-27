@@ -53,6 +53,11 @@ Some apps and steps still need the front, and get it the way they did before
   typing-gap wait. The person's own clicks and typing stop a background step
   only when they are in the agent's app. Steps that take the front use the
   existing shared-desktop path and the cross-process focus lock.
+- An app sends keys to its one key window, so sessions in different windows
+  of the same app take turns: every control step that can change that window
+  (a background focus or make-key record, or bringing a window forward) holds
+  the app's cross-process lock until its input is sent. Sessions in different
+  apps still work at the same time.
 
 ## How to try it
 

@@ -46,15 +46,30 @@ final class ControlLease {
 // session brings its window forward, reads it and sends input.
 final class FocusLease {
     private var fd: Int32
-    private init(fd: Int32) { self.fd = fd }
+    /// Removed on release; the shared focus file stays.
+    private let path: String?
+    private init(fd: Int32, path: String? = nil) { self.fd = fd; self.path = path }
     @MainActor static func acquire(directory: URL? = nil, timeout: TimeInterval = 15, check: () throws -> Void) async throws -> FocusLease {
         let path = try (directory ?? LeaseFiles.directory()).appendingPathComponent("focus.lock").path
+        return FocusLease(fd: try await wait(path, timeout: timeout, check: check,
+            busy: "Another agent kept the keyboard and pointer too long. Nothing was dispatched. Observe again."))
+    }
+    /// An app sends its keys to its one key window. Held from the moment a control step
+    /// may change which window that is, by bringing its window forward or selecting it in
+    /// the background, until its input is sent, so agents in different windows of one app
+    /// never type into each other's window. Taken after the focus lease, never before.
+    @MainActor static func acquire(app pid: pid_t, directory: URL? = nil, timeout: TimeInterval = 15, check: () throws -> Void) async throws -> FocusLease {
+        let path = try (directory ?? LeaseFiles.directory()).appendingPathComponent("app-\(pid).lock").path
+        return FocusLease(fd: try await wait(path, timeout: timeout, check: check,
+            busy: "Another agent kept this app's keyboard focus too long. Nothing was dispatched. Observe again."), path: path)
+    }
+    @MainActor private static func wait(_ path: String, timeout: TimeInterval, check: () throws -> Void, busy: String) async throws -> Int32 {
         let started = ProcessInfo.processInfo.systemUptime
         while true {
             try Task.checkCancellation(); try check()
-            if let fd = try LeaseFiles.lock(path) { return FocusLease(fd: fd) }
+            if let fd = try LeaseFiles.lock(path) { return fd }
             guard ProcessInfo.processInfo.systemUptime - started < timeout else {
-                throw UseError("focus_busy", "Another agent kept the keyboard and pointer too long. Nothing was dispatched. Observe again.", next: "observe")
+                throw UseError("focus_busy", busy, next: "observe")
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -67,9 +82,10 @@ final class FocusLease {
     }
     func release() {
         guard fd >= 0 else { return }
+        if let path { unlink(path) }
         flock(fd, LOCK_UN); Darwin.close(fd); fd = -1
     }
-    deinit { if fd >= 0 { flock(fd, LOCK_UN); Darwin.close(fd) } }
+    deinit { release() }
 }
 
 @MainActor

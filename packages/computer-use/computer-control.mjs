@@ -661,8 +661,10 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         progress();
         // Foreground control brings the window forward to look or act, renewals included: take
         // this computer's turn for the one call, then hand it on while the model thinks. Background
-        // sessions work behind other windows and never wait; until the helper names the delivery,
-        // the session's setting decides (the helper still takes the front for canvas apps).
+        // sessions work behind other windows and skip this queue; until the helper names the delivery,
+        // the session's setting decides (the helper still takes the front for canvas apps). Sessions
+        // in one app still take turns there: each helper holds that app's key-window lock from
+        // selecting its window until its input is sent, so keys never land in another chat's window.
         const mode = name === "computer_open" ? args.mode : grant.lastOpen?.mode;
         const renewing = !current.nativeId && grant.lastOpen && grant.lastTarget === current.adapter.id && !["computer_discover", "computer_close"].includes(name);
         const delivery = current.delivery ?? (current.background ? "background" : "foreground");
