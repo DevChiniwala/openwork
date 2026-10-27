@@ -7,6 +7,8 @@ import { readGatewayUsageScope } from "@/app/lib/gateway-usage-scope";
 import { refreshGatewayUsageAfterCompletion } from "../../cloud/gateway-usage-refresh";
 import { gatewayUsageQueryPrefix } from "../../cloud/gateway-usage-state";
 import { mergeReplyMetadata, replyModelFromInfo } from "./reply-model";
+import { useProviderCredentialHealth } from "../../connections/provider-auth/credential-health";
+import { isProviderCredentialRejection } from "./session-error";
 import { closeSessionBrowserTabs } from "@/app/lib/desktop";
 import { captureAnalyticsEvent, takeTaskRunStart } from "@/app/lib/analytics";
 import { trackTaskCompleted, trackTaskFailed } from "@/app/lib/den-telemetry";
@@ -138,7 +140,7 @@ type SyncEntry = {
   statusReconcileFailures: number;
   runActiveObservedAt: Map<string, number>;
   assistantMessageCompletedAt: Map<string, number>;
-  gatewayUsageRuns: Map<string, { scope: number; key: string; providerId: string | null; completed: boolean }>;
+  gatewayUsageRuns: Map<string, { scope: number; key: string; providerId: string | null; completed: boolean; startedAt: number; failed: boolean; responseCompleted: boolean }>;
   nativeSequenceBySession: Map<string, { sequence: number; revision: number }>;
   nativeSequenceRevision: number;
   nativeTerminalSessions: Set<string>;
@@ -158,8 +160,8 @@ type DeltaFlushScheduler = (
 ) => () => void;
 
 let gatewayUsageRunSequence = 0;
-function newGatewayUsageRun(key: string): { scope: number; key: string; providerId: string | null; completed: boolean } {
-  return { scope: readGatewayUsageScope().generation, key, providerId: null, completed: false };
+function newGatewayUsageRun(key: string): { scope: number; key: string; providerId: string | null; completed: boolean; startedAt: number; failed: boolean; responseCompleted: boolean } {
+  return { scope: readGatewayUsageScope().generation, key, providerId: null, completed: false, startedAt: Date.now(), failed: false, responseCompleted: false };
 }
 
 function gatewayUsageProviderId(value: unknown): string | null {
@@ -1308,6 +1310,13 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
     if (sessionId) {
       const sessionError = sessionErrorFromProperties(event.properties);
       const errorPresentation = presentOpencodeSessionError(sessionError);
+      const credentialRun = entry.gatewayUsageRuns.get(sessionId);
+      if (credentialRun) {
+        credentialRun.failed = true;
+        if (credentialRun.providerId && isProviderCredentialRejection(sessionError)) {
+          useProviderCredentialHealth.getState().observe(workspaceId, credentialRun.providerId, "rejected", credentialRun.startedAt);
+        }
+      }
       if (errorPresentation.gatewayUsage) void queryClient.invalidateQueries({ queryKey: gatewayUsageQueryPrefix });
       const errorText = describeOpencodeSessionError(sessionError);
       const runStartedAt = takeTaskRunStart(sessionId);
@@ -1477,6 +1486,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent)
     if (usageRun && info.role === "assistant") usageRun.providerId = gatewayUsageProviderId(info) ?? usageRun.providerId;
     useSessionActivityStore.getState().markMessageRole(workspaceId, info.sessionID, info.id, info.role);
     if (info.role === "assistant" && typeof info.time?.completed === "number") {
+      if (usageRun && !("error" in info && info.error)) usageRun.responseCompleted = true;
       const observedAt = perfNow();
       entry.assistantMessageCompletedAt.set(info.sessionID, observedAt);
       const runActiveAt = entry.runActiveObservedAt.get(info.sessionID);
@@ -1881,6 +1891,9 @@ function applySessionRunStatus(
       entry.gatewayUsageRuns.set(sessionId, usageRun);
       if (!usageRun.completed) {
         usageRun.completed = true;
+        if (usageRun.providerId && !usageRun.failed && (options.completed === true || usageRun.responseCompleted)) {
+          useProviderCredentialHealth.getState().observe(workspaceId, usageRun.providerId, "verified", usageRun.startedAt);
+        }
         if (usageRun.providerId === null || usageRun.providerId.startsWith("ipr_")) {
           refreshGatewayUsageAfterCompletion(usageRun.scope, usageRun.key);
         }

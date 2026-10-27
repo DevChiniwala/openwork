@@ -85,6 +85,7 @@ import ProviderAuthModal, { PROVIDER_LABELS } from "@/react-app/domains/connecti
 import { keylessProviderIds } from "@/react-app/domains/connections/provider-auth/provider-policy";
 import ConnectionsModals from "@/react-app/domains/connections/modals";
 import { AiSettingsView } from "@/react-app/domains/settings/pages/ai-view";
+import { useDesktopFeature } from "@/react-app/domains/session/status/use-desktop-feature";
 import { deviceProviders, useLocalProviderEngineStates } from "@/react-app/domains/connections/provider-auth/local-provider-engine-state";
 // Side-effect imports: register extension config components into the registry.
 import { OllamaConfig } from "@/react-app/domains/settings/ollama-config";
@@ -1050,7 +1051,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     ...providerAuthSnapshot.cloudOrgProviders.map((provider) => provider.providerId),
   ]), [providerAuthSnapshot.importedCloudProviders, providerAuthSnapshot.cloudOrgProviders]);
 
-  const handleOpenProviderAuth = useCallback(() => {
+  const credentialStatusEnabled = useDesktopFeature("providerCredentialStatus");
+  const handleOpenProviderAuth = useCallback((preferredProviderId?: string) => {
     if (providerAuthStore.isProviderAddRestricted()) {
       restrictionNotice.show({
         title: t("restrictions.add_custom_providers_disabled_title"),
@@ -1059,7 +1061,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       return;
     }
 
-    void providerAuthStore.openProviderAuthModal();
+    void providerAuthStore.openProviderAuthModal(preferredProviderId ? { preferredProviderId } : undefined);
   }, [providerAuthStore, restrictionNotice]);
 
   useEffect(() => {
@@ -2196,6 +2198,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       case "ai":
         return (
           <AiSettingsView
+            runtimeWorkspaceId={runtimeWorkspaceId}
+            credentialStatusEnabled={credentialStatusEnabled}
+            onReplaceProviderKey={handleOpenProviderAuth}
             busy={busy}
             providerAuthBusy={providerAuthSnapshot.providerAuthBusy}
             providerStatusLabel={providerStatusLabel}
@@ -2258,6 +2263,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onOpenDen={openProvidersInDen}
             cloudProvidersView={
               <CloudProvidersView
+                runtimeWorkspaceId={runtimeWorkspaceId}
+                credentialStatusEnabled={credentialStatusEnabled}
                 key={`${cloudSession.baseUrl}:${cloudSession.activeOrganization?.id ?? "signed-out"}`}
                 embedded
                 onOpenDen={openProvidersInDen}
@@ -2430,6 +2437,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       case "cloud-providers":
         return (
           <CloudProvidersView
+            runtimeWorkspaceId={runtimeWorkspaceId}
+            credentialStatusEnabled={credentialStatusEnabled}
             checkDesktopAppRestriction={checkDesktopRestriction}
             cloudOrgProviders={providerAuthSnapshot.cloudOrgProviders}
             connectCloudProvider={providerAuthStore.connectCloudProvider}
