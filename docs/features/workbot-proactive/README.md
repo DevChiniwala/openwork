@@ -19,7 +19,7 @@ wake: schedule (morning + ~3h)  ─┐
                                      delivery step in Den (plain code) ◀──────┘
                                      quiet hours · snooze · mutes · one message per item · daily limit
                                                                               │
-                                     a DM from the Workbot Slack app (default), or a channel the member chose ◀┘
+                                     a DM from the Workbot Slack app, to the member only ◀┘
 ```
 
 1. **Wake** (`den-api/src/workbot-proactive/worker.ts`). A Den loop claims agents whose `next_wake_at` is due, with a
@@ -42,14 +42,12 @@ wake: schedule (morning + ~3h)  ─┐
 5. **Delivery step** (`wake.ts`, pure rules in `decideAgentDelivery`). Quiet hours, snooze, responsibilities that are
    off or muted, the ledger (one message per item: responsibility plus the item's ref), and the daily limit. Past the
    limit, items are recorded as `capped` and never retried later.
-6. **Deliver** (`deliver.ts`). Den, not the model, sends after policy, and the model never picks recipients:
-   - **A DM from Workbot** (the default): `sendWorkbotDirectMessage` in `slack-assistant/direct-message.ts` opens the
-     member's DM with the Workbot Slack app's own bot and posts there, so Slack notifies them like any DM. It is the
-     shared helper for anything that notifies a member.
-   - **A Slack channel the member chose**: posted as the member through their Slack connection in Connect (Slack's
-     MCP server, `slack_send_message`). Only the member can choose this; an organization default is never a channel.
-
-   Text is cleaned first: no `@channel`/`@here`/user mentions, and links only to the member's own Google workspace.
+6. **Deliver** (`deliver.ts`). Den, not the model, sends after policy, and the model never picks recipients. Always a
+   DM from the Workbot Slack app's own bot: `sendWorkbotDirectMessage` in `slack-assistant/direct-message.ts` opens
+   the member's DM with the app and posts there, so Slack notifies them like any DM. It is the shared helper for
+   anything that notifies a member. Never a channel: the agent reads private email, so its messages go only to the
+   member. Text is cleaned first: no `@channel`/`@here`/user mentions, and links only to the member's own Google
+   workspace.
 
 ## Responsibilities (day one)
 
@@ -109,9 +107,8 @@ headless runner is missing (DESIGN.md P4, C5).
 
 `GET /v1/me/agent` answers "what will my agent tell me about?": each responsibility with whether the organization
 turned it on and whether the member muted it, where messages go, the hours and limit. `PUT /v1/me/agent` takes plain
-choices: `on`, `snooze: "tomorrow" | null`, `mute` / `unmute`, `destination` (`{ kind: "workbot_dm" }`, or
-`{ kind: "slack_channel", connectionId, channel }` to post as themselves). `destination.blocked` says why messages
-can't arrive yet (`slack_app_not_installed`, `member_not_linked`, `connection_unavailable`). Both are tagged for Connect, so a member
+choices: `on`, `snooze: "tomorrow" | null`, `mute` / `unmute`. `destination.blocked` says why messages can't arrive
+yet (`slack_app_not_installed`, `member_not_linked`). Both are tagged for Connect, so a member
 can say "stop telling me about calendar changes" or "snooze until tomorrow" to Workbot. The agent's own `mcp:read`
 token can read them but never change them. There are no buttons on messages and no Slack Home tab.
 
@@ -146,8 +143,9 @@ Not live-tested against a Slack workspace; the unit tests cover the calls Den ma
   tool for it. Den delivers only after the delivery step, with text it cleaned.
 - **Invite text stays out of the prompt.** Calendar wakes name events by id and time; the agent reads titles and
   descriptions as data.
-- **No shared channels by default.** An organization's default is a Workbot DM; only a member can send their own
-  messages to a channel.
+- **Only to the member.** Messages are DMs from the Workbot app, never channel posts: an email sender could steer
+  what the agent writes, and private mail must not reach a shared channel. Posting to a channel would need per-message
+  approval first.
 - **No memory pollution.** The agent's reading stays in its own session. Only delivered text leaves it.
 - **At most once.** A ledger row is reserved before sending, so a crash never sends twice. Silence wins on doubt: an
   unparsable answer, a runner outage or a failed model check mean no message.

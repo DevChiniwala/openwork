@@ -3,7 +3,6 @@ import type { AgentInstanceOverrides } from "@openwork-ee/den-db/schema"
 import {
   AGENT_RESPONSIBILITIES,
   agentResponsibilitySchema,
-  type AgentDestination,
   type AgentResponsibility,
   type AgentTemplateContent,
   type MemberAgentInput,
@@ -49,13 +48,6 @@ export function activeResponsibilities(template: AgentTemplateContent, row: Pick
   return AGENT_RESPONSIBILITIES.filter((responsibility) => template.responsibilities[responsibility] && !muted.has(responsibility))
 }
 
-/** Where this member's messages go: their own choice, else the organization's default (a Workbot DM, never a channel). */
-export function memberDestination(row: Pick<MemberChoices, "overrides"> | null, settings: WorkbotProactiveSettings): { destination: AgentDestination; chosenBy: "member" | "organization" } | null {
-  const own = row?.overrides?.destination
-  if (own) return { destination: own, chosenBy: "member" }
-  return settings.destination === "workbot_dm" ? { destination: { kind: "workbot_dm" }, chosenBy: "organization" } : null
-}
-
 /** What a member's request changes. "Snooze until tomorrow" lasts until the next working morning in their zone. */
 export function memberChoiceChange(
   input: MemberAgentInput,
@@ -68,12 +60,11 @@ export function memberChoiceChange(
   if (input.on !== undefined) change.status = input.on ? "on" : "off"
   if (input.snooze === null) change.snoozedUntil = null
   if (input.snooze === "tomorrow") change.snoozedUntil = new Date(nextWorkingStart(proactivePolicy(settings), zonedDayStart(now, timeZone, 1), timeZone))
-  if (input.mute || input.unmute || input.destination !== undefined) {
+  if (input.mute || input.unmute) {
     const muted = mutedOf(row)
     for (const responsibility of input.mute ?? []) muted.add(responsibility)
     for (const responsibility of input.unmute ?? []) muted.delete(responsibility)
     const overrides: AgentInstanceOverrides = { ...row?.overrides, muted: AGENT_RESPONSIBILITIES.filter((responsibility) => muted.has(responsibility)) }
-    if (input.destination !== undefined) overrides.destination = input.destination
     change.overrides = overrides
   }
   return change

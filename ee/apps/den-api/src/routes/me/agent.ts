@@ -15,9 +15,9 @@ import { requireFeature } from "../../features.js"
 import { jsonValidator, orgMemberRoute, type OrganizationContextVariables } from "../../middleware/index.js"
 import { invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
-import { listSlackConnections, readProactiveSettings } from "../../workbot-proactive/access.js"
+import { readProactiveSettings } from "../../workbot-proactive/access.js"
 import { destinationBlock } from "../../workbot-proactive/deliver.js"
-import { memberAgentOn, memberChoiceChange, memberDestination, mutedOf, type MemberChoices } from "../../workbot-proactive/policy.js"
+import { memberAgentOn, memberChoiceChange, mutedOf, type MemberChoices } from "../../workbot-proactive/policy.js"
 import { readAgentInstance, saveMemberChoices } from "../../workbot-proactive/repository.js"
 import { readAgentTemplate } from "../../workbot-proactive/template.js"
 import { workbotOrigin } from "../../workbot/config.js"
@@ -31,7 +31,6 @@ import { workbotOrigin } from "../../workbot/config.js"
 const memberAgentDocumentSchema = memberAgentViewSchema.meta({ ref: "MemberAgent" })
 const memberAgentInputDocumentSchema = memberAgentInputSchema.meta({ ref: "MemberAgentInput" })
 const featureDisabledSchema = z.object({ error: z.literal("feature_disabled"), feature: z.string() }).meta({ ref: "MemberAgentDisabled" })
-const unknownDestinationSchema = z.object({ error: z.literal("unknown_destination"), message: z.string() }).meta({ ref: "MemberAgentUnknownDestinationError" })
 
 async function memberAgentView(input: {
   organizationId: DenTypeId<"organization">
@@ -42,17 +41,10 @@ async function memberAgentView(input: {
   const { settings, row } = input
   const template = await readAgentTemplate(input.organizationId)
   const muted = mutedOf(row)
-  const chosen = memberDestination(row, settings)
   const on = memberAgentOn(row, settings)
-  let destination: MemberAgentView["destination"] = null
-  if (chosen) {
-    const blocked = await destinationBlock({ organizationId: input.organizationId, userId: input.userId, destination: chosen.destination })
-    const channel = chosen.destination.kind === "slack_channel" ? chosen.destination : null
-    const name = channel
-      ? (await listSlackConnections(input.organizationId)).find((option) => option.connectionId === channel.connectionId)?.name ?? "Slack"
-      : "Workbot DM"
-    destination = { kind: chosen.destination.kind, name, channel: channel?.channel ?? null, chosenBy: chosen.chosenBy, blocked }
-  }
+  const destination: MemberAgentView["destination"] = settings.destination === "workbot_dm"
+    ? { kind: "workbot_dm", name: "Workbot DM", blocked: await destinationBlock({ organizationId: input.organizationId, userId: input.userId }) }
+    : null
   return {
     available: settings.enabled,
     on,
@@ -71,7 +63,7 @@ export function registerMeAgentRoutes<T extends { Variables: AuthContextVariable
       tags: ["Users"],
       summary: "Get my agent",
       description:
-        "The signed-in member's own agent in the active organization: whether it is on for them, what it will tell them about (each responsibility, whether the organization turned it on and whether they muted it), where its messages go and whether they can arrive yet (the Workbot Slack app installed, their Slack account linked), the working hours and daily limit it follows, and when it looks next. Requires the workbotProactive feature and Workbot on this deployment.",
+        "The signed-in member's own agent in the active organization: whether it is on for them, what it will tell them about (each responsibility, whether the organization turned it on and whether they muted it), where its messages go (a DM from the Workbot Slack app) and whether they can arrive yet (the Slack app installed, their Slack account linked), the working hours and daily limit it follows, and when it looks next. Requires the workbotProactive feature and Workbot on this deployment.",
       responses: {
         200: jsonResponse("The member's agent.", memberAgentDocumentSchema),
         401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
@@ -97,10 +89,10 @@ export function registerMeAgentRoutes<T extends { Variables: AuthContextVariable
       tags: ["Users"],
       summary: "Change my agent",
       description:
-        "Changes the signed-in member's own agent, as they would say it: turn it on or off (`on`), snooze it until the next working morning or resume (`snooze: \"tomorrow\"` or null), stop or restart one kind of message (`mute` / `unmute`: morning_brief, meeting_prep, calendar_changes, waiting_on_you), or send messages somewhere else (`destination`: `{ kind: \"workbot_dm\" }` for a DM from the Workbot Slack app, or `{ kind: \"slack_channel\", connectionId, channel }` to post as themselves in a Slack channel through their Slack connection; null goes back to the organization's default). Organization settings and limits still apply. Requires the workbotProactive feature and Workbot on this deployment.",
+        "Changes the signed-in member's own agent, as they would say it: turn it on or off (`on`), snooze it until the next working morning or resume (`snooze: \"tomorrow\"` or null), stop or restart one kind of message (`mute` / `unmute`: morning_brief, meeting_prep, calendar_changes, waiting_on_you). Organization settings and limits still apply. Requires the workbotProactive feature and Workbot on this deployment.",
       responses: {
         200: jsonResponse("The member's agent after the change.", memberAgentDocumentSchema),
-        400: jsonResponse("The request was invalid, or the destination is not a Slack connection.", z.union([unknownDestinationSchema, invalidRequestSchema])),
+        400: jsonResponse("The request was invalid.", invalidRequestSchema),
         401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
         404: jsonResponse("Agents are off for this organization.", featureDisabledSchema),
       },
@@ -117,10 +109,6 @@ export function registerMeAgentRoutes<T extends { Variables: AuthContextVariable
       const input = c.req.valid("json")
       const userId = context.currentMember.userId
       if (!userId) return c.json({ error: "feature_disabled" as const, feature: "workbotProactive" }, 404)
-      const channel = input.destination?.kind === "slack_channel" ? input.destination : null
-      if (channel && !(await listSlackConnections(organizationId)).some((option) => option.connectionId === channel.connectionId)) {
-        return c.json({ error: "unknown_destination" as const, message: "Choose a Slack connection from Your connections." }, 400)
-      }
       const settings = await readProactiveSettings(organizationId)
       const row = await readAgentInstance(memberId)
       const timeZone = row && isValidTimeZone(row.timeZone) ? row.timeZone : "UTC"

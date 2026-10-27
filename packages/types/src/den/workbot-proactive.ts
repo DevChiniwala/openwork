@@ -10,7 +10,7 @@ import { z } from "zod"
  *   enforces these in code after every turn.
  * - The template: what the agent is responsible for and short organization instructions. A versioned agent config
  *   object; each admin save is a new version.
- * - Each member's own choices: on/off, snooze, muted responsibilities and their destination.
+ * - Each member's own choices: on/off, snooze and muted responsibilities.
  */
 
 export const AGENT_RESPONSIBILITIES = ["morning_brief", "meeting_prep", "calendar_changes", "waiting_on_you"] as const
@@ -33,21 +33,9 @@ const leadMinutesSchema = z.number().int().refine((value) => WORKBOT_PROACTIVE_L
   message: "Choose 5, 10, 15, 30 or 60 minutes.",
 })
 
-/**
- * Where a member's messages go.
- * - `workbot_dm`: a DM from the Workbot Slack app's own bot, which notifies like any DM. The default.
- * - `slack_channel`: posted as the member, through their Slack connection in Connect, to a channel they chose. Only a
- *   member can choose this for themselves: an organization default never sends members' summaries to a channel.
- */
-export const agentDestinationSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("workbot_dm") }),
-  z.object({
-    kind: z.literal("slack_channel"),
-    connectionId: z.string().trim().min(1).max(128),
-    channel: z.string().trim().regex(/^[CG][A-Z0-9]{2,31}$/, "Use a Slack channel id, like C0123ABCD."),
-  }),
-])
-export type AgentDestination = z.infer<typeof agentDestinationSchema>
+/** Why a Workbot DM can't reach a member yet. */
+export const AGENT_DESTINATION_BLOCKS = ["slack_app_not_installed", "member_not_linked"] as const
+export type AgentDestinationBlock = (typeof AGENT_DESTINATION_BLOCKS)[number]
 
 const workbotProactiveFieldsSchema = z.object({
   /** Your agent, for the whole organization. */
@@ -62,7 +50,10 @@ const workbotProactiveFieldsSchema = z.object({
   dailyCap: z.number().int().min(1).max(10),
   /** `opted_in`: members get messages and can turn them off. `opted_out`: members turn them on. */
   membersStart: z.enum(["opted_in", "opted_out"]),
-  /** Where members' messages go unless they choose otherwise: a Workbot DM, or nowhere yet. Never a channel. */
+  /**
+   * Where members' messages go: a DM from the Workbot Slack app's own bot (which notifies them), or nowhere yet.
+   * Never a channel: the agent reads private email, and a channel is not the member's own.
+   */
   destination: z.enum(["workbot_dm"]).nullable(),
 })
 
@@ -146,14 +137,11 @@ export const memberAgentViewSchema = z.object({
     /** Turned off by the member. */
     muted: z.boolean(),
   })),
-  /** Where messages go, or null when nowhere is set up. `blocked` says why they can't arrive yet. */
+  /** Where messages go (a DM from Workbot), or null when the organization set nowhere. `blocked` says why they can't arrive yet. */
   destination: z.object({
-    kind: z.enum(["workbot_dm", "slack_channel"]),
-    /** "Workbot DM", or the Slack connection's name. */
+    kind: z.literal("workbot_dm"),
     name: z.string(),
-    channel: z.string().nullable(),
-    chosenBy: z.enum(["member", "organization"]),
-    blocked: z.enum(["slack_app_not_installed", "member_not_linked", "connection_unavailable"]).nullable(),
+    blocked: z.enum(AGENT_DESTINATION_BLOCKS).nullable(),
   }).nullable(),
   workingHours: z.object({ workingDays: z.enum(["weekdays", "everyday"]), startHour: z.number(), endHour: z.number(), dailyCap: z.number() }),
   nextCheckAt: z.iso.datetime().nullable(),
@@ -168,8 +156,6 @@ export const memberAgentInputSchema = z
     snooze: z.enum(["tomorrow"]).nullable().optional(),
     mute: z.array(agentResponsibilitySchema).max(AGENT_RESPONSIBILITIES.length).optional(),
     unmute: z.array(agentResponsibilitySchema).max(AGENT_RESPONSIBILITIES.length).optional(),
-    /** A Workbot DM, or a Slack channel posted as the member. Null: back to the organization's default. */
-    destination: agentDestinationSchema.nullable().optional(),
   })
   .strict()
 export type MemberAgentInput = z.infer<typeof memberAgentInputSchema>

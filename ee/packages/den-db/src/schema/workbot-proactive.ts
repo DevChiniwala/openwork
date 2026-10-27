@@ -5,8 +5,6 @@ import { compatJsonColumn, denTypeIdColumn, encryptedMediumTextColumn } from "..
 export type AgentInstanceOverrides = {
   /** Responsibilities the member turned off. */
   muted?: string[]
-  /** Where the member wants messages instead of the organization's default (a Workbot DM, or a channel they chose). */
-  destination?: { kind: "workbot_dm" } | { kind: "slack_channel"; connectionId: string; channel: string } | null
 }
 
 /**

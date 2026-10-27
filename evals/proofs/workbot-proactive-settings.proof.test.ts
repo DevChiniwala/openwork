@@ -64,7 +64,7 @@ test("an owner sets up members' agents in Manage › Workbot; a member sees only
     const read = await memberProbe.api(world.den.members.member, "/v1/org/workbot-settings/proactive");
     expect(read.response.status).toBe(403);
     const own = memberAgentViewSchema.parse((await memberProbe.api(world.den.members.member, "/v1/me/agent")).body);
-    expect(own).toMatchObject({ available: true, on: true, snoozedUntil: null, destination: { kind: "workbot_dm", name: "Workbot DM", chosenBy: "organization", blocked: "member_not_linked" } });
+    expect(own).toMatchObject({ available: true, on: true, snoozedUntil: null, destination: { kind: "workbot_dm", name: "Workbot DM", blocked: "member_not_linked" } });
     expect(own.responsibilities.filter((entry) => entry.enabled && !entry.muted).map((entry) => entry.label)).toEqual(["Morning brief", "Meeting prep", "Calendar changes"]);
     await member.navigate(`${world.den.ref.webUrl}/dashboard/workbot-settings`);
     await memberProbe.eventually(() => memberProbe.dom('[data-testid="admin-access-state"][data-access-state="locked"], [data-testid="member-dashboard"]'), { within: 60_000, until: (value) => value.elements.length > 0, label: "the member's Workbot settings route is denied" });

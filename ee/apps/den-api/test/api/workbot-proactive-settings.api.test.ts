@@ -89,7 +89,7 @@ test("each member reads and changes only their own agent, in plain terms", async
   assert.equal(before.status, 200, summary(before))
   assert.equal(field(before.body, "available"), true)
   assert.equal(field(before.body, "on"), true, "members start opted in")
-  assert.deepEqual(field(before.body, "destination"), { kind: "workbot_dm", name: "Workbot DM", channel: null, chosenBy: "organization", blocked: "slack_app_not_installed" }, "the default DM can't arrive without the Slack app, and says so")
+  assert.deepEqual(field(before.body, "destination"), { kind: "workbot_dm", name: "Workbot DM", blocked: "slack_app_not_installed" }, "the DM can't arrive without the Slack app, and says so")
 
   const muted = await call("PUT", "/v1/me/agent", { mute: ["calendar_changes"], snooze: "tomorrow" })
   assert.equal(muted.status, 200, summary(muted))
@@ -102,7 +102,7 @@ test("each member reads and changes only their own agent, in plain terms", async
   assert.equal(field(off.body, "snoozedUntil"), null)
   assert.equal(field((await owner("GET", "/v1/me/agent")).body, "on"), true, "another member's agent is untouched")
   assert.equal((await call("PUT", "/v1/me/agent", { mute: ["send_email"] })).status, 400)
-  assert.equal((await call("PUT", "/v1/me/agent", { destination: { kind: "slack_channel", connectionId: "emc_01k0000000000000000000000", channel: "C0ALERTS" } })).status, 400, "only a Slack connection in Connectors")
+  assert.equal((await call("PUT", "/v1/me/agent", { destination: { kind: "slack_channel", connectionId: "emc_01k0000000000000000000000", channel: "C0ALERTS" } })).status, 400, "agent messages never go to a channel")
 })
 
 test("the ledger delivers each item at most once and leases keep two instances off one agent", async () => {
@@ -113,8 +113,8 @@ test("the ledger delivers each item at most once and leases keep two instances o
   const memberId = normalizeDenTypeId("member", workspace.owner.memberId)
   const now = new Date()
 
-  await repository.ensureAgentInstances(organizationId, [memberId])
-  await repository.ensureAgentInstances(organizationId, [memberId])
+  await repository.ensureAgentInstances(organizationId, [memberId], now)
+  await repository.ensureAgentInstances(organizationId, [memberId], now)
   const claimedRows = await repository.claimDueAgents(50, now)
   const claimed = claimedRows.find((row) => row.memberId === memberId)
   assert.ok(claimed)

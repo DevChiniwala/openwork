@@ -1,17 +1,16 @@
 import { and, eq, isNull, sql } from "@openwork-ee/den-db/drizzle"
-import { ExternalMcpConnectionTable, MemberTable, OrganizationTable } from "@openwork-ee/den-db/schema"
+import { MemberTable, OrganizationTable } from "@openwork-ee/den-db/schema"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
 import { readWorkbotProactiveSettings, type WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
 import { db } from "../db.js"
 import { organizationFeatureEnabled } from "../features.js"
 import { headlessRunnerConfig } from "../headless-runner/client.js"
 import { workbotOrigin } from "../workbot/config.js"
-import { isSlackDestination } from "./deliver.js"
 
 /**
  * Who has an agent, and where its messages can go. Three switches, all required: the `workbotProactive` feature
  * (with member overrides), Workbot on this deployment (`DEN_WORKBOT_URL`, the same capability that gates Workbot),
- * and the organization's own switch. Messages go out as a Workbot DM, or to a Slack channel the member chose.
+ * and the organization's own switch. Messages go out as a DM from the Workbot Slack app.
  */
 
 export async function proactiveAllowed(organizationId: string, userId?: string) {
@@ -30,12 +29,6 @@ export async function readProactiveSettings(organizationId: DenTypeId<"organizat
 
 export function proactiveRunnerReady(env: Record<string, string | undefined> = process.env) {
   return headlessRunnerConfig(env) !== null
-}
-
-/** Slack connections in Connect (Slack's own MCP server, each person signs in): where a member may post as themselves. */
-export async function listSlackConnections(organizationId: DenTypeId<"organization">): Promise<{ connectionId: string; name: string }[]> {
-  const rows = await db.select().from(ExternalMcpConnectionTable).where(eq(ExternalMcpConnectionTable.organizationId, organizationId))
-  return rows.filter((row) => isSlackDestination(row)).map((row) => ({ connectionId: row.id, name: row.name }))
 }
 
 /** Active members of organizations that turned their agent on: the ones who get one. */

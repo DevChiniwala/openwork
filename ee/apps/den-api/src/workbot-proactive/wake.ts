@@ -21,11 +21,11 @@ import {
   type AgentWakeReason,
 } from "@openwork/automations/proactive"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
-import type { AgentDestination, WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
+import type { AgentDestinationBlock, WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
 import { appLogger } from "../observability/logger.js"
 import type { MemberCalendarRead } from "../routes/org/google-workspace.js"
-import type { DeliveryBlock, DeliveryResult } from "./deliver.js"
-import { activeResponsibilities, enabledOf, memberAgentOn, memberDestination, mutedOf, proactivePolicy } from "./policy.js"
+import type { DeliveryResult } from "./deliver.js"
+import { activeResponsibilities, enabledOf, memberAgentOn, mutedOf, proactivePolicy } from "./policy.js"
 import type { AgentInstanceRow, AgentSettle, DeliveryOutcome } from "./repository.js"
 import type { AgentTemplateVersion } from "./template.js"
 import type { AgentTurnResult } from "./turn.js"
@@ -55,12 +55,12 @@ export type AgentWakeDeps = {
   sentSince: (memberId: DenTypeId<"member">, since: Date) => Promise<number>
   holdsLease: (row: AgentInstanceRow) => Promise<boolean>
   settle: (row: AgentInstanceRow, changes: AgentSettle) => Promise<boolean>
-  /** Why a message couldn't reach the member now (no Slack app, not linked, connection gone), or null. */
-  destinationBlock: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; destination: AgentDestination }) => Promise<DeliveryBlock | null>
-  deliver: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; destination: AgentDestination; text: string }) => Promise<DeliveryResult>
+  /** Why a Workbot DM couldn't reach the member now (no Slack app, Slack not linked), or null. */
+  destinationBlock: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user"> }) => Promise<AgentDestinationBlock | null>
+  deliver: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; text: string }) => Promise<DeliveryResult>
 }
 
-type SkipReason = "off" | "not_allowed" | "opted_out" | "snoozed" | "outside_hours" | "no_destination" | DeliveryBlock | "no_responsibilities" | "no_google" | "nothing_due"
+type SkipReason = "off" | "not_allowed" | "opted_out" | "snoozed" | "outside_hours" | "no_destination" | AgentDestinationBlock | "no_responsibilities" | "no_google" | "nothing_due"
 type Delivered = "sent" | "failed" | "nothing_new" | "daily_limit" | "quiet_hours" | "snoozed" | null
 
 export type AgentWakeOutcome =
@@ -91,11 +91,10 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   const policy = proactivePolicy(settings)
   const storedZone = isValidTimeZone(row.timeZone) ? row.timeZone : null
   if (storedZone && !withinWorkingHours(policy, now, storedZone)) return skip("outside_hours", nextWorkingStart(policy, now, storedZone))
-  const destination = memberDestination(row, settings)
-  if (!destination) return skip("no_destination", now + HOUR_MS)
-  // A message that could not arrive is not worth a turn: no Slack app, the member not linked, or their channel's
-  // connection gone. The member's settings say which, and the agent picks up once it is fixed.
-  const blocked = await deps.destinationBlock({ organizationId, userId, destination: destination.destination })
+  if (settings.destination !== "workbot_dm") return skip("no_destination", now + HOUR_MS)
+  // A message that could not arrive is not worth a turn: no Slack app, or the member's Slack not linked. The
+  // member's settings say which, and the agent picks up once it is fixed.
+  const blocked = await deps.destinationBlock({ organizationId, userId })
   if (blocked) {
     appLogger.info("workbot_agent_destination_blocked", { member_id: memberId, reason: blocked })
     return skip(blocked, now + HOUR_MS)
@@ -188,7 +187,7 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
         for (const item of rest) await deps.reserve({ organizationId, memberId, item, outcome: "folded" })
         // Right before sending: still this instance's agent, and the feature still on (a kill switch wins).
         const sent = (await deps.holdsLease(row)) && (await deps.allowed(organizationId, userId))
-          ? await deps.deliver({ organizationId, userId, destination: destination.destination, text: cleanAgentMessage(result.message) })
+          ? await deps.deliver({ organizationId, userId, text: cleanAgentMessage(result.message) })
           : { ok: false as const, code: "lease_or_feature_lost" }
         await deps.finish(id, sent.ok ? "sent" : "failed")
         delivered = sent.ok ? "sent" : "failed"
