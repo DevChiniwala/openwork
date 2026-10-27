@@ -97,7 +97,7 @@ test("desktops that cannot read calendar triggers never receive them, including 
   assert.deepEqual(await ids(), [automationId])
 })
 
-test("each matching meeting is claimed once, with the meeting as data in the run's prompt", async () => {
+test("each matching meeting is claimed once, and the run learns its facts but never its title", async () => {
   const endsAt = createdAt + 60 * 60_000
   const dueAt = endsAt + 5 * 60_000
   const reads: string[] = []
@@ -136,7 +136,9 @@ test("each matching meeting is claimed once, with the meeting as data in the run
   while (prompts.length === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100))
   const prompt = prompts[0] ?? ""
   assert.ok(prompt.startsWith("Write up the action items from the meeting."), prompt)
-  assert.equal(prompt.split("</meeting>").length, 2, "the title cannot close the data frame")
+  assert.equal(prompt.split("</meeting>").length, 2, "nothing the invite's sender wrote can close the data frame")
+  assert.match(prompt, /"attendeeDomains": \[\s*"northwind.example"\s*\]/)
+  assert.doesNotMatch(prompt, /Ignore your instructions|Renewal call/, "the title never reaches the model")
   assert.doesNotMatch(prompt, /buyer@northwind/)
 })
 

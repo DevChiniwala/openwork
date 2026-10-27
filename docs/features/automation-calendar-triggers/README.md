@@ -39,9 +39,14 @@ people outside the organization count. Agents create one with
   occurrences with a stable key; each due one is claimed once, keyed by
   Automation and that key. A moment more than 10 minutes old is never
   replayed, and meetings from before the trigger was saved never run.
-- The run gets the person's instructions plus the meeting inside `<meeting>`:
-  title, local start and end, attendee email domains (never addresses), a
-  Google Meet or Calendar link, framed as data the invite's sender wrote.
+- The run gets the person's instructions plus facts Google or the owner
+  control inside `<meeting>`: local start and end, invitee email domains
+  (checked as hostnames, never addresses) and a Google Meet or Calendar link.
+  The run is unattended, so nothing the invite's sender wrote (title,
+  description, names) reaches the model from the trigger, and the prompt never
+  points the agent at the event. The event id and title are stored with the
+  run for the owner (`triggerContext`); the title also serves
+  `rule.titleIncludes`.
 - Cloud placement only. If the owner's Google Calendar is not connected (or
   lacks the calendar scope) the Automation needs attention with "Connect
   Google Calendar…"; a Google API error is retried on the next read.

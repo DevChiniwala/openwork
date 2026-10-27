@@ -803,8 +803,8 @@ export type AutomationRunnerTokenResponse = z.infer<typeof automationRunnerToken
 
 /**
  * The meeting a calendar-triggered run is about, captured when Den claimed
- * it. Everything here comes from the calendar invite; the title is written by
- * whoever sent it, so a run receives it as data, never as instructions.
+ * it, for the owner to see. The title is written by whoever sent the invite,
+ * so it is never put in the run's prompt.
  */
 export const automationMeetingContextSchema = z.object({
   kind: z.literal("calendar_meeting"),
