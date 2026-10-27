@@ -1758,8 +1758,9 @@ function TurnView(props: {
   // One computer, so only the newest reply that used its screen offers to open it, already while it works. Commands run
   // in the background leave nothing on the screen to open.
   const onScreen = (step: WorkbotStep) => step.icon === "computer" && !step.background;
-  // While it answers, the person can ask it to show its work on screen or carry on without them.
-  const switchMode = answering && props.canChange ? props.onSwitch : undefined;
+  // While it answers, the person can ask it to show its work on screen or carry on without them. (Not `canChange`:
+  // that is false while Workbot answers, which is exactly when these are offered.)
+  const switchMode = answering ? props.onSwitch : undefined;
   const usedComputer = props.latest && ((startingStep !== null && onScreen(startingStep)) || parts.some((part) => part.kind === "steps" && part.steps.some(onScreen)));
   return (
     <>
