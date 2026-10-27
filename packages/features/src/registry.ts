@@ -179,6 +179,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  slackSendAsBot: {
+    label: "Connect: Slack messages from the OpenWork bot",
+    description: "Chats and Automations can send a Slack message from the OpenWork app instead of as the member: a DM that notifies them (\"ping me when this is done\") or a channel post that names whose agent sent it. Needs the OpenWork app in Slack; limited to 20 messages a day per member.",
+    category: "connect",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/slack-send-as-bot/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",

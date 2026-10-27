@@ -141,6 +141,16 @@
               ],
               "description": "Connect: an MCP server for each connection: Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools. Renders DEN_FEATURE_CONNECTION_MCP_SERVERS."
             },
+            "slackSendAsBot": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: Slack messages from the OpenWork bot: Chats and Automations can send a Slack message from the OpenWork app instead of as the member: a DM that notifies them (\"ping me when this is done\") or a channel post that names whose agent sent it. Needs the OpenWork app in Slack; limited to 20 messages a day per member. Renders DEN_FEATURE_SLACK_SEND_AS_BOT."
+            },
             "liveProviderSync": {
               "enum": [
                 "",
