@@ -18,6 +18,7 @@ import type { WorkbotDirectMessageDeps } from "../src/slack-assistant/direct-mes
 import type { AgentInstanceRow, AgentSettle } from "../src/workbot-proactive/repository.js"
 import type { AgentTurnResult } from "../src/workbot-proactive/turn.js"
 import type { AgentWakeDeps } from "../src/workbot-proactive/wake.js"
+import type { AgentCheckRecord } from "../src/workbot-proactive/checks.js"
 
 // No database, runner, Google or Connect is contacted: every boundary is injected or faked below.
 process.env.DATABASE_URL ??= "mysql://test:test@127.0.0.1:3306/workbot_proactive_unit_test"
@@ -33,6 +34,8 @@ const { SlackApiError } = await import("../src/slack-assistant/protocol.js")
 const { createHeadlessRunnerClient } = await import("../src/headless-runner/client.js")
 const { renderAgentTemplate } = await import("../src/workbot-proactive/template.js")
 const policy = await import("../src/workbot-proactive/policy.js")
+const preferences = await import("../src/workbot-proactive/preferences.js")
+const { checkHeadline, describeAgentCheck, memberAgentCheck } = await import("../src/workbot-proactive/checks.js")
 
 const TZ = "America/New_York"
 // Tuesday 2026-10-20, 13:45 in New York.
@@ -78,6 +81,7 @@ function agentRow(overrides: Partial<AgentInstanceRow> = {}): AgentInstanceRow {
     leaseUntil: new Date(NOW + 600_000),
     createdAt: new Date(NOW),
     updatedAt: new Date(NOW),
+    preferences: null,
     ...overrides,
   }
 }
@@ -85,6 +89,7 @@ function agentRow(overrides: Partial<AgentInstanceRow> = {}): AgentInstanceRow {
 const message = (text: string, items: { responsibility: string; ref: string }[]) => JSON.stringify({ message: text, items })
 
 type HarnessState = {
+  records: AgentCheckRecord[]
   checks: { day: string; counts: { responsibility: string; checks: number; quiet: number; sent: number }[] }[]
   destinations: string[]
   clock: number
@@ -98,8 +103,8 @@ type HarnessState = {
 }
 
 /** An in-memory agent, ledger and destination; `events`, `clock` and the reply change between runs. */
-function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
-  const state: HarnessState = { checks: [], destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
+function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock; library?: boolean; google?: "ok" | "needs_connection"; sendFails?: boolean }) {
+  const state: HarnessState = { records: [], checks: [], destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
   const replies = [...(input.replies ?? ["NO_REPLY"])]
   let allowedCalls = 0
   const deps: AgentWakeDeps = {
@@ -110,6 +115,7 @@ function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Pa
     user: async () => userId,
     calendar: async () => {
       state.calendarReads += 1
+      if (input.google === "needs_connection") return { kind: "needs_connection" }
       return { kind: "ok", json: { timeZone: TZ, items: state.events } }
     },
     recordChecks: async (call) => {
@@ -142,9 +148,16 @@ function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Pa
     },
     destinationBlock: async () => input.blocked ?? null,
     deliver: async (call) => {
+      if (input.sendFails) return { ok: false, code: "send_failed" }
       state.delivered.push(call.text)
       state.destinations.push("workbot_dm")
-      return { ok: true }
+      return { ok: true, message: { channelId: "D0DM", messageTs: "1700000000.0001", permalink: "https://example.slack.com/archives/D0DM/p17000000000001" } }
+    },
+    library: async () => input.library ?? false,
+    recordCheck: async (record) => {
+      const index = state.records.findIndex((entry) => entry.key === record.key)
+      if (index >= 0) state.records[index] = record
+      else state.records.push(record)
     },
   }
   return { state, deps, run: () => wakeAgent(state.row, deps) }
@@ -338,10 +351,11 @@ describe("delivery", () => {
   }
   const base = { organizationId, userId, text: "Quarterly review moved." }
 
-  test("always a DM from the Workbot app, only to the member", async () => {
-    const dm = deps()
-    assert.deepEqual(await deliverAgentMessage(base, dm.value), { ok: true })
+  test("always a DM from the Workbot app, only to the member; where it landed comes back for My agent", async () => {
+    const dm = deps({ ok: true, channelId: "D1", messageTs: "1.1", permalink: "https://example.slack.com/archives/D1/p11" })
+    assert.deepEqual(await deliverAgentMessage(base, dm.value), { ok: true, message: { channelId: "D1", messageTs: "1.1", permalink: "https://example.slack.com/archives/D1/p11" } })
     assert.deepEqual(dm.sent, ["Quarterly review moved."])
+    assert.deepEqual(await deliverAgentMessage(base, deps().value), { ok: true, message: { channelId: "D1", messageTs: "1.1", permalink: null } }, "no link from Slack, no link shown")
   })
 
   test("no Slack app or no linked account: nothing is sent, and the reason says which", async () => {
@@ -374,6 +388,33 @@ describe("sendWorkbotDirectMessage", () => {
     assert.deepEqual(slack.calls.map((call) => [call.token, call.method]), [["xoxb-bot", "conversations.open"], ["xoxb-bot", "chat.postMessage"]])
     assert.deepEqual(slack.calls[0]?.body, { users: "U0MEMBER" })
     assert.deepEqual(slack.calls[1]?.body, { channel: "D0DM", text: "Quarterly review moved to 3 PM.", unfurl_links: false, unfurl_media: false })
+  })
+
+  test("asked for, it also reads the message's Slack link; a link outside Slack or a failure there never fails the send", async () => {
+    function linkDeps(permalink: unknown) {
+      const calls: string[] = []
+      const deps: WorkbotDirectMessageDeps = {
+        installations: async () => [{ connectionId: slackConnectionId, teamId: "T1" }],
+        linkedSlackUser: async () => "U0MEMBER",
+        botToken: async () => "xoxb-bot",
+        slack: () => async (method, body) => {
+          calls.push(method)
+          if (method === "chat.getPermalink") {
+            assert.deepEqual(body, { channel: "D0DM", message_ts: "1700000000.0001" })
+            if (permalink instanceof Error) throw permalink
+            return { ok: true, permalink }
+          }
+          return method === "conversations.open" ? { ok: true, channel: { id: "D0DM" } } : { ok: true, ts: "1700000000.0001" }
+        },
+      }
+      return { deps, calls }
+    }
+    const linked = linkDeps("https://example.slack.com/archives/D0DM/p17000000000001")
+    assert.deepEqual(await sendWorkbotDirectMessage({ ...message, permalink: true }, linked.deps), { ok: true, channelId: "D0DM", messageTs: "1700000000.0001", permalink: "https://example.slack.com/archives/D0DM/p17000000000001" })
+    assert.deepEqual(linked.calls, ["conversations.open", "chat.postMessage", "chat.getPermalink"])
+    const permalinkOf = (result: Awaited<ReturnType<typeof sendWorkbotDirectMessage>>) => (result.ok ? result.permalink : undefined)
+    assert.equal(permalinkOf(await sendWorkbotDirectMessage({ ...message, permalink: true }, linkDeps("https://evil.example/x").deps)), null)
+    assert.equal(permalinkOf(await sendWorkbotDirectMessage({ ...message, permalink: true }, linkDeps(new SlackApiError("ratelimited")).deps)), null)
   })
 
   test("answers with a reason instead of throwing", async () => {
@@ -424,5 +465,195 @@ describe("organization policy", () => {
     const merged = mergeWorkbotProactiveSettings(DEFAULT_WORKBOT_PROACTIVE_SETTINGS, { enabled: true, instructions: "kept out of policy" })
     assert.ok(merged && !("instructions" in merged))
     assert.deepEqual(withWorkbotProactiveSettings({ workbot: { model: "m" } }, DEFAULT_WORKBOT_PROACTIVE_SETTINGS), { workbot: { model: "m", proactive: DEFAULT_WORKBOT_PROACTIVE_SETTINGS } })
+  })
+})
+
+describe("My agent: every check is recorded for the member (workbotAgentLibrary)", () => {
+  const reply = (responsibility: string, ref: string, extra: Record<string, unknown> = {}) => JSON.stringify({ message: "A thread is waiting.", items: [{ responsibility, ref }], ...extra })
+  const only = (h: { state: HarnessState }) => {
+    assert.equal(h.state.records.length, 1, JSON.stringify(h.state.records))
+    const [record] = h.state.records
+    assert.ok(record)
+    return { outcome: record.outcome, reason: record.reason, summary: record.summary, kind: record.kind, responsibilities: record.responsibilities }
+  }
+
+  test("off, nothing is recorded and the agent follows the organization's limits, without the member's words", async () => {
+    const h = harness({ row: { overrides: { hours: { startHour: 9, endHour: 12 } }, preferences: JSON.stringify({ v: 1, words: { always: "Payroll", never: "", when: "", how: "" }, log: [] }) } })
+    assert.deepEqual(await h.run(), { status: "ran", reasons: ["scheduled"], reply: "quiet", delivered: null }, "13:45 is inside the organization's 8–7")
+    assert.deepEqual(h.state.records, [])
+    assert.doesNotMatch(h.state.turns[0]?.prompt ?? "", /own words|Payroll/)
+  })
+
+  test("stayed quiet, sent, held by the daily limit: each check says what happened and why", async () => {
+    const quiet = harness({ library: true })
+    await quiet.run()
+    assert.deepEqual(only(quiet), { outcome: "quiet", reason: "nothing_new", summary: "Stayed quiet: nothing new.", kind: "morning", responsibilities: [] })
+
+    const sent = harness({ library: true, replies: [reply("waiting_on_you", "t1")] })
+    await sent.run()
+    assert.deepEqual(only(sent), { outcome: "sent", reason: "sent", summary: "Sent you a message about waiting on you.", kind: "morning", responsibilities: ["waiting_on_you"] })
+    assert.deepEqual(sent.state.records[0]?.message, { channelId: "D0DM", messageTs: "1700000000.0001", permalink: "https://example.slack.com/archives/D0DM/p17000000000001" }, "a reference to the DM, never its text")
+    sent.state.clock = NOW + 3 * 3_600_000
+    await sent.run()
+    assert.equal(sent.state.records.length, 2, "each check that ran is its own record")
+    assert.deepEqual([sent.state.records[1]?.reason, sent.state.records[1]?.kind], ["nothing_new", "scheduled"])
+
+    const capped = harness({ library: true, sentToday: 3, replies: [reply("waiting_on_you", "t2")] })
+    await capped.run()
+    assert.deepEqual(only(capped), { outcome: "quiet", reason: "daily_limit", summary: "Stayed quiet: daily limit reached (3 a day). Held a message about waiting on you.", kind: "morning", responsibilities: ["waiting_on_you"] })
+
+    const told = harness({ library: true, row: { overrides: { muted: ["waiting_on_you"] } }, replies: [reply("waiting_on_you", "t3")] })
+    await told.run()
+    assert.equal(only(told).reason, "already_told")
+  })
+
+  test("outside the member's hours, inside their quiet window, or snoozed, it waited", async () => {
+    const narrowed = harness({ library: true, row: { timeZone: TZ, overrides: { hours: { startHour: 9, endHour: 13 } } } })
+    assert.deepEqual(await narrowed.run(), { status: "skipped", reason: "outside_hours" }, "13:45 is after their own 1 PM")
+    assert.deepEqual(only(narrowed), { outcome: "waited", reason: "outside_hours", summary: "Waited: outside your hours (9 AM–1 PM).", kind: "scheduled", responsibilities: [] })
+    assert.equal(narrowed.state.row.nextWakeAt.toISOString(), "2026-10-21T13:00:00.000Z", "next look at their 9 AM")
+    assert.equal(narrowed.state.turns.length, 0)
+
+    const quietWindow = harness({ library: true, row: { overrides: { quietWindow: { startHour: 12, endHour: 14 } } }, replies: [reply("calendar_changes", "c1")] })
+    assert.deepEqual(await quietWindow.run(), { status: "ran", reasons: ["scheduled"], reply: "message", delivered: "quiet_window" })
+    assert.deepEqual(quietWindow.state.delivered, [])
+    assert.deepEqual(only(quietWindow), { outcome: "waited", reason: "quiet_window", summary: "Waited: only urgent messages 12 PM–2 PM. Held a message about calendar changes.", kind: "morning", responsibilities: ["calendar_changes"] })
+    assert.equal(quietWindow.state.ledger.size, 0, "nothing is recorded as told, so it can come up after 2 PM")
+    assert.match(quietWindow.state.turns[0]?.prompt ?? "", /Between 12 PM and 2 PM only urgent messages reach them/)
+
+    const urgent = harness({ library: true, row: { overrides: { quietWindow: { startHour: 12, endHour: 14 } } }, replies: [reply("calendar_changes", "c2", { urgent: true })] })
+    assert.deepEqual(await urgent.run(), { status: "ran", reasons: ["scheduled"], reply: "message", delivered: "sent" }, "urgent goes out inside the window")
+
+    const snoozed = harness({ library: true, row: { snoozedUntil: new Date(NOW + 3_600_000) } })
+    await snoozed.run()
+    assert.deepEqual(only(snoozed), { outcome: "waited", reason: "snoozed", summary: "Waited: snoozed.", kind: "scheduled", responsibilities: [] })
+  })
+
+  test("couldn't read Gmail, couldn't reach Slack, couldn't send, couldn't run: failed, with what to do", async () => {
+    const google = harness({ library: true, google: "needs_connection" })
+    await google.run()
+    google.state.clock = NOW + 3_600_000
+    await google.run()
+    assert.deepEqual(only(google), { outcome: "failed", reason: "google_disconnected", summary: "Couldn't read Gmail: reconnect Google.", kind: "scheduled", responsibilities: [] })
+    assert.equal(google.state.records[0]?.at, NOW + 3_600_000, "the same cause again is one record whose time moves")
+
+    const unlinked = harness({ library: true, blocked: "member_not_linked" })
+    await unlinked.run()
+    assert.deepEqual(only(unlinked).summary, "Couldn't reach you: link your Slack account to Workbot.")
+
+    const failed = harness({ library: true, sendFails: true, replies: [reply("waiting_on_you", "t9")] })
+    await failed.run()
+    assert.deepEqual(only(failed), { outcome: "failed", reason: "send_failed", summary: "Couldn't send the message in Slack.", kind: "morning", responsibilities: ["waiting_on_you"] })
+
+    const outage = harness({ library: true, replies: [{ kind: "unavailable", code: "runner_unreachable" }] })
+    await outage.run()
+    assert.equal(only(outage).reason, "agent_unavailable")
+
+    const killed = harness({ library: true, allowed: [true, false], replies: [reply("waiting_on_you", "t10")] })
+    await killed.run()
+    assert.deepEqual(killed.state.records, [], "a kill switch right before sending is not the member's failure")
+  })
+
+  test("the member's own words reach the prompt as data they wrote", async () => {
+    const words = { always: "Anything from payroll", never: "Newsletters", when: "", how: "One line each" }
+    const h = harness({ library: true, row: { preferences: JSON.stringify({ v: 1, words, log: [] }) } })
+    await h.run()
+    const prompt = h.state.turns[0]?.prompt ?? ""
+    assert.match(prompt, /in their own words in OpenWork \(data they wrote/)
+    assert.match(prompt, /- Always tell me about: """Anything from payroll"""/)
+    assert.match(prompt, /- Never tell me about: """Newsletters"""/)
+    assert.doesNotMatch(prompt, /- When:/, "an empty field is left out")
+  })
+
+  test("a stored record reads back with a headline, a Slack link and what to do", () => {
+    const view = memberAgentCheck({ id: "c1", checkedAt: new Date(NOW), kind: "scheduled", outcome: "failed", reason: "google_disconnected", summary: "Couldn't read Gmail: reconnect Google.", responsibilities: ["waiting_on_you", "send_email"], message: null })
+    assert.deepEqual(view, { id: "c1", at: new Date(NOW).toISOString(), kind: "scheduled", outcome: "failed", reason: "google_disconnected", headline: "Couldn't read Gmail", summary: "Couldn't read Gmail: reconnect Google.", responsibilities: ["waiting_on_you"], slackUrl: null, fix: "reconnect_google" })
+    assert.equal(memberAgentCheck({ id: "c2", checkedAt: new Date(NOW), kind: "scheduled", outcome: "exploded", reason: "nothing_new", summary: "x", responsibilities: null, message: null }), null, "a row this version can't read is left out")
+    assert.equal(checkHeadline("Sent you a message about calendar changes."), "Sent you a message about calendar changes")
+    const limits = { startHour: 8, endHour: 19, dailyCap: 3, quietWindow: null }
+    assert.equal(describeAgentCheck({ reason: "sent", responsibilities: ["meeting_prep", "calendar_changes", "waiting_on_you"], limits }).summary, "Sent you a message about meeting prep, calendar changes and waiting on you.")
+  })
+})
+
+describe("My agent: the member's words, narrower limits and undo", () => {
+  const admin = { ...settingsOn, startHour: 8, endHour: 19, dailyCap: 3 }
+  let next = 0
+  const newId = () => `chg_${++next}`
+  const change = (request: Parameters<typeof preferences.applyMemberAgentChange>[0]["request"], current: { overrides?: AgentInstanceRow["overrides"]; stored?: ReturnType<typeof preferences.emptyStoredPreferences> } = {}, source: "chat" | "page" = "chat", now = NOW) =>
+    preferences.applyMemberAgentChange({ request, overrides: current.overrides ?? null, stored: current.stored ?? preferences.emptyStoredPreferences(), settings: admin, source, now, newId })
+
+  test("a member can only narrow the admin's limits, never widen them", () => {
+    assert.deepEqual(change({ hours: { startHour: 7, endHour: 17 } }), { ok: false, status: 400, error: "limit_wider_than_admin", message: "Your admin allows 8 AM–7 PM. Choose hours inside that." })
+    assert.deepEqual(change({ hours: { startHour: 9, endHour: 20 } }).ok, false)
+    assert.deepEqual(change({ dailyCap: 5 }), { ok: false, status: 400, error: "limit_wider_than_admin", message: "Your admin allows 3 a day. Choose 3 or fewer." })
+    const narrowed = change({ hours: { startHour: 9, endHour: 17 }, dailyCap: 1 })
+    assert.ok(narrowed.ok)
+    assert.deepEqual([narrowed.overrides.hours, narrowed.overrides.dailyCap], [{ startHour: 9, endHour: 17 }, 1])
+    const limits = preferences.memberLimits(admin, narrowed.overrides)
+    assert.deepEqual([limits.startHour, limits.endHour, limits.dailyCap, limits.narrowed], [9, 17, 1, { hours: true, dailyCap: true }])
+  })
+
+  test("an admin who narrows later always wins over what the member stored", () => {
+    const stored = { hours: { startHour: 9, endHour: 17 }, dailyCap: 2 }
+    const later = preferences.memberLimits({ ...admin, startHour: 10, endHour: 16, dailyCap: 1 }, stored)
+    assert.deepEqual([later.startHour, later.endHour, later.dailyCap], [10, 16, 1])
+    const apart = preferences.memberLimits({ ...admin, startHour: 18, endHour: 22 }, stored)
+    assert.deepEqual([apart.startHour, apart.endHour, apart.narrowed.hours], [18, 22, false], "hours that no longer overlap fall back to the admin's")
+    assert.deepEqual(preferences.memberLimits(admin, { hours: { startHour: 12, endHour: 9 }, dailyCap: 99 }).dailyCap, 3, "unreadable stored values are ignored")
+  })
+
+  test("one chat message saves several fields as one save, says exactly what was saved, and undo reverts it", () => {
+    const saved = change({ preferences: { when: "Between 12 and 2, only urgent things" }, quietWindow: { startHour: 12, endHour: 14 }, mute: ["calendar_changes"] })
+    assert.ok(saved.ok)
+    assert.deepEqual(saved.lines, ["When: “Between 12 and 2, only urgent things”", "Stopped: Calendar changes", "Only urgent messages 12 PM–2 PM"])
+    assert.equal(saved.wake, true, "a new quiet window makes the agent look again")
+    assert.equal(preferences.savedReply({ lines: saved.lines, undid: false, undoable: true }, "https://den.example/dashboard/library/my-agent"),
+      "Saved:\n- When: “Between 12 and 2, only urgent things”\n- Stopped: Calendar changes\n- Only urgent messages 12 PM–2 PM\nReply \"undo\" to revert. My agent: https://den.example/dashboard/library/my-agent")
+    assert.deepEqual(saved.overrides, { muted: ["calendar_changes"], quietWindow: { startHour: 12, endHour: 14 } })
+    assert.deepEqual(new Set(saved.stored.log.map((entry) => entry.save)).size, 1)
+    assert.ok(saved.stored.log.every((entry) => entry.source === "chat"))
+
+    const page = change({ preferences: { how: "Bullets" } }, { overrides: saved.overrides, stored: saved.stored }, "page", NOW + 60_000)
+    assert.ok(page.ok)
+    const changes = preferences.memberAgentChanges(page.stored, admin)
+    assert.deepEqual(changes.map((entry) => [entry.field, entry.source]), [["how", "page"], ["quietWindow", "chat"], ["calendar_changes", "chat"], ["when", "chat"]])
+
+    const undone = change({ undo: "last" }, { overrides: page.overrides, stored: page.stored }, "chat", NOW + 120_000)
+    assert.ok(undone.ok && undone.undid)
+    assert.equal(undone.stored.words.how, "", "undo reverts the last save, whichever side made it")
+    assert.equal(undone.stored.words.when, "Between 12 and 2, only urgent things")
+
+    const again = change({ undo: "last" }, { overrides: undone.overrides, stored: undone.stored }, "chat", NOW + 180_000)
+    assert.ok(again.ok)
+    assert.deepEqual(again.stored.words, { always: "", never: "", when: "", how: "" })
+    assert.deepEqual(again.overrides, { muted: [] }, "the whole chat save is reverted")
+    assert.deepEqual(change({ undo: "last" }, { overrides: again.overrides, stored: again.stored }), { ok: false, status: 409, error: "nothing_to_undo", message: "There is nothing to undo." })
+  })
+
+  test("undo of one change on the page, but only the latest for its field", () => {
+    const first = change({ preferences: { never: "Newsletters" } }, {}, "page")
+    assert.ok(first.ok)
+    const second = change({ preferences: { never: "Newsletters and alerts" } }, { stored: first.stored }, "chat", NOW + 1)
+    assert.ok(second.ok)
+    const older = first.stored.log[0]?.id ?? ""
+    assert.deepEqual(change({ undo: older }, { stored: second.stored }), { ok: false, status: 409, error: "undo_superseded", message: "That was changed again since. Undo the newer change first." })
+    const newer = second.stored.log.at(-1)?.id ?? ""
+    const reverted = change({ undo: newer }, { stored: second.stored })
+    assert.ok(reverted.ok)
+    assert.equal(reverted.stored.words.never, "Newsletters")
+    assert.deepEqual(change({ undo: newer, preferences: { how: "x" } }), { ok: false, status: 400, error: "undo_alone", message: "Undo on its own, then make the next change." })
+  })
+
+  test("asking for the admin's own hours or limit is no narrowing; the same value twice changes nothing", () => {
+    const same = change({ hours: { startHour: 8, endHour: 19 }, dailyCap: 3 })
+    assert.ok(same.ok)
+    assert.deepEqual(same.lines, [], "nothing to log")
+    const set = change({ preferences: { always: "Payroll" } })
+    assert.ok(set.ok)
+    const twice = change({ preferences: { always: "Payroll" } }, { stored: set.stored })
+    assert.ok(twice.ok)
+    assert.deepEqual(twice.lines, [])
+    assert.equal(preferences.savedReply({ lines: [], undid: false, undoable: false }, "L"), "Nothing changed. My agent: L")
+    assert.deepEqual(preferences.choiceLines({ on: false, snooze: "tomorrow" }), ["Turned off", "Snoozed until your next working morning"])
   })
 })
