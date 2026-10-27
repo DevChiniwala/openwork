@@ -1,3 +1,4 @@
+import { parse as parseJsonc } from "jsonc-parser";
 import { ApiError } from "./errors.js";
 import { isOrganizationMcpName } from "./organization-mcp-names.js";
 
@@ -60,12 +61,21 @@ export function validateUserProviderUpdate(update: Record<string, unknown>): voi
   }
 }
 
-/** Refuses OpenCode config text (JSON or JSONC) that defines a reserved provider. */
+function hasReservedProviderKey(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasReservedProviderKey);
+  if (typeof value !== "object" || value === null) return false;
+  return Object.entries(value).some(([key, child]) => isReservedProviderId(key) || hasReservedProviderKey(child));
+}
+
+/**
+ * Refuses OpenCode config text (JSON or JSONC) that defines a reserved
+ * provider. Keys are checked after JSONC decoding, so escaped spellings
+ * (`openwork-\u0061uto`) are caught too.
+ */
 export function validateUserOpencodeConfigText(content: string): void {
-  for (const id of RESERVED_PROVIDER_IDS) {
-    if (new RegExp(`["']${id}["']\\s*:`, "i").test(content)) {
-      throw new ApiError(409, "reserved_provider_id", `${id} is managed by your organization and can't be defined in OpenCode config`);
-    }
+  const parsed: unknown = parseJsonc(content, [], { allowTrailingComma: true, disallowComments: false });
+  if (hasReservedProviderKey(parsed)) {
+    throw new ApiError(409, "reserved_provider_id", "openwork-auto is managed by your organization and can't be defined in OpenCode config");
   }
 }
 

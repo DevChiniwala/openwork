@@ -13,4 +13,8 @@ describe("the Auto Router provider id is reserved for OpenWork's sync", () => {
     expect(() => validateUserOpencodeConfigText('{ "provider": { "openwork-auto": { "npm": "x" } } }')).toThrow("managed by your organization");
     expect(() => validateUserOpencodeConfigText('{ "provider": { "anthropic": {} } }')).not.toThrow();
   });
+  test("escaped, commented and trailing-comma spellings are decoded before checking", () => {
+    expect(() => validateUserOpencodeConfigText('{ "provider": { "openwork-\\u0061uto": { "npm": "x" } } }')).toThrow("managed by your organization");
+    expect(() => validateUserOpencodeConfigText('{ // note\n "provider": { "openwork-auto": {}, }, }')).toThrow("managed by your organization");
+  });
 });
