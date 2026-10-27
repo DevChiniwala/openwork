@@ -136,7 +136,7 @@ export const memberAgentViewSchema = z.object({
   available: z.boolean(),
   /** The member gets messages: their own choice, else the organization's starting choice. */
   on: z.boolean(),
-  snoozedUntil: z.string().nullable(),
+  snoozedUntil: z.iso.datetime().nullable(),
   responsibilities: z.array(z.object({
     id: agentResponsibilitySchema,
     label: z.string(),
@@ -156,7 +156,7 @@ export const memberAgentViewSchema = z.object({
     blocked: z.enum(["slack_app_not_installed", "member_not_linked", "connection_unavailable"]).nullable(),
   }).nullable(),
   workingHours: z.object({ workingDays: z.enum(["weekdays", "everyday"]), startHour: z.number(), endHour: z.number(), dailyCap: z.number() }),
-  nextCheckAt: z.string().nullable(),
+  nextCheckAt: z.iso.datetime().nullable(),
 })
 export type MemberAgentView = z.infer<typeof memberAgentViewSchema>
 
