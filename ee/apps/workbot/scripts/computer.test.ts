@@ -7,6 +7,7 @@ import { createDen, denSessionSchema } from "../src/server/den.js"
 import { loadConfig } from "../src/server/config.js"
 import { registerWorkbotRoutes } from "../src/server/routes.js"
 import type { AppEnv, Member } from "../src/server/auth.js"
+import { addressFor, translateKey } from "../../../packages/workbot-ui/src/screencast.js"
 
 const config = loadConfig({ WORKBOT_PUBLIC_URL: "http://localhost:3020", WORKBOT_DEN_API_URL: "http://localhost:8790", WORKBOT_RUNNER_URL: "http://runner", WORKBOT_RUNNER_TOKEN: "r".repeat(32), WORKBOT_SESSION_SECRET: "s".repeat(32) })
 const member = (id: string, computer = true): Member => ({
@@ -227,4 +228,31 @@ test("Computer asks to reconnect for other desktop failures", async t => {
   const response = await app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })
   // Other runner codes, including ones this Workbot doesn't know, keep the reconnect message.
   assert.deepEqual(await response.json(), { error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." })
+})
+
+test("the address bar opens web addresses and searches everything else", () => {
+  assert.equal(addressFor("https://example.com/a?b=1"), "https://example.com/a?b=1")
+  assert.equal(addressFor("  example.com/path "), "https://example.com/path")
+  assert.equal(addressFor("localhost:3000"), "http://localhost:3000/")
+  assert.equal(addressFor("apartments in sf"), "https://www.google.com/search?q=apartments%20in%20sf")
+  // Other schemes are searched, never opened.
+  for (const typed of ["javascript:alert(1)", "file:///etc/passwd", "chrome://settings"]) assert.match(addressFor(typed)!, /^https:\/\/www\.google\.com\/search\?q=/)
+  assert.equal(addressFor("   "), null)
+})
+
+test("keys reach the Linux browser as typed, with a Mac's shortcuts translated", () => {
+  const key = (init: Partial<Parameters<typeof translateKey>[0]>) => ({ key: "a", code: "KeyA", keyCode: 65, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...init })
+  // Characters are text; a shortcut is not.
+  assert.deepEqual(translateKey(key({ key: "A", shiftKey: true }), false), { key: "A", code: "KeyA", keyCode: 65, modifiers: 8, text: "A" })
+  assert.deepEqual(translateKey(key({ ctrlKey: true }), false), { key: "a", code: "KeyA", keyCode: 65, modifiers: 2, text: "" })
+  assert.equal(translateKey(key({ key: "Enter", code: "Enter", keyCode: 13 }), false).text, "\r")
+  // ⌘A selects all and ⌘← goes to the line start, as Ctrl+A and Home do on Linux.
+  assert.deepEqual(translateKey(key({ metaKey: true }), true), { key: "a", code: "KeyA", keyCode: 65, modifiers: 2, text: "" })
+  assert.deepEqual(translateKey(key({ key: "ArrowLeft", code: "ArrowLeft", keyCode: 37, metaKey: true, shiftKey: true }), true), { key: "Home", code: "Home", keyCode: 36, modifiers: 8, text: "" })
+  assert.equal(translateKey(key({ key: "Meta", code: "MetaLeft", keyCode: 91, metaKey: true }), true).key, "Control")
+  // ⌥ moves by word on a Mac, and types characters like å.
+  assert.equal(translateKey(key({ key: "ArrowLeft", code: "ArrowLeft", keyCode: 37, altKey: true }), true).modifiers, 2)
+  assert.deepEqual(translateKey(key({ key: "å", altKey: true }), true), { key: "å", code: "KeyA", keyCode: 65, modifiers: 0, text: "å" })
+  // AltGr types characters such as @ on many layouts, which browsers report as Ctrl+Alt.
+  assert.deepEqual(translateKey(key({ key: "@", code: "KeyQ", keyCode: 81, ctrlKey: true, altKey: true, altGraph: true }), false), { key: "@", code: "KeyQ", keyCode: 81, modifiers: 0, text: "@" })
 })

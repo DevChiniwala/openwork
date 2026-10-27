@@ -2,12 +2,12 @@
 "use client";
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { ExternalLink, Globe, Lock, Maximize2, Monitor, Pause, Play, RotateCw, Wrench, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Loader2, Lock, Maximize2, Monitor, Pause, Play, Plus, RotateCw, Wrench, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { z } from "zod";
 import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
 import { WorkbotTeaching } from "./teaching";
-import { ScreencastViewer, type ScreencastPage } from "./screencast";
+import { addressFor, ScreencastViewer, type ScreencastPage } from "./screencast";
 import { errorMessage, workbotHost } from "./host";
 
 const viewerSchema = z.union([z.object({ state: z.literal("paused") }), z.object({ state: z.literal("connected"), url: z.string().url(), expiresAt: z.number(), paused: z.boolean() })]);
@@ -261,11 +261,20 @@ function shortAddress(href: string) {
   try { const url = new URL(href); return url.protocol === "http:" || url.protocol === "https:" ? `${url.host}${url.pathname === "/" ? "" : url.pathname}${url.search}` : href; } catch { return href; }
 }
 
+/** Chrome calls a blank tab New Tab. */
+function tabTitle(tab: { url: string; title: string }) {
+  if (!tab.url || tab.url === "about:blank" || tab.url.startsWith("chrome://newtab")) return "New Tab";
+  return tab.title && tab.title !== tab.url ? tab.title : shortAddress(tab.url);
+}
+
+const toolbarButton = "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--wb-muted)] enabled:hover:bg-[var(--wb-chip)] enabled:hover:text-[var(--wb-text)] disabled:opacity-40 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]";
+
 /**
  * The page stream shows the page alone, so Workbot draws the browser around it the way Chrome does: the open tabs,
- * with the one on screen in front, and the address bar for that page. Clicking a tab brings it to the front on the
- * computer and its × closes it (never the last one, which would quit the browser). A computer built before tabs were
- * streamed shows just the front tab, without those controls.
+ * with the one on screen in front, and a toolbar for that page. Clicking a tab brings it to the front on the computer;
+ * its × or a middle click closes it (never the last one, which would quit the browser). With control, the toolbar
+ * goes back, forward and reloads, + opens a tab, and the address bar takes an address or a search. A computer built
+ * before tabs were streamed shows just the front tab, without those controls.
  */
 function BrowserFrame({ page, stream }: { page: ScreencastPage; stream: ScreencastViewer | null }) {
   const live = Boolean(page.tabs?.length && page.id);
@@ -280,36 +289,98 @@ function BrowserFrame({ page, stream }: { page: ScreencastPage; stream: Screenca
   const frontId = picked && picked.over === page.id ? picked.id : page.id;
   const front = tabs.find((tab) => tab.id === frontId) ?? tabs[0];
   const shown = front.id === page.id || !live ? page : front;
-  const controls = live && stream !== null;
+  const tabsOn = live && stream !== null;
+  const control = tabsOn && stream!.control;
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    strip.current?.querySelector<HTMLElement>("[aria-selected=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [front.id]);
+  // With control, the keyboard goes to the page after a tab change, as in Chrome.
+  const activate = (id: string) => {
+    if (!stream) return;
+    if (id !== front.id) { setPicked({ id, over: page.id }); stream.tab("activate", id); }
+    if (stream.control) stream.focus();
+  };
+  const close = (id: string) => {
+    if (!stream || tabs.length < 2) return;
+    stream.tab("close", id);
+    if (stream.control) stream.focus();
+  };
+  // Arrow keys move between tabs, as in any tab list; Enter or Space brings one to the front.
+  const moveFocus = (event: ReactKeyboardEvent, index: number) => {
+    const next = event.key === "ArrowRight" ? index + 1 : event.key === "ArrowLeft" ? index - 1 : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+    if (next === null) return;
+    event.preventDefault();
+    strip.current?.querySelectorAll<HTMLElement>("[role=tab]")[(next + tabs.length) % tabs.length]?.focus();
+  };
+
+  // The address bar shows the page's address until the person edits it.
+  const address = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const openedTab = useRef(false);
+  // A click that focuses the address bar selects all of it; the click's own mouse-up would otherwise place the caret.
+  const selectOnMouseUp = useRef(false);
+  useEffect(() => {
+    setDraft(null);
+    // A tab opened with + is ready to take an address, as in Chrome.
+    if (openedTab.current) { openedTab.current = false; address.current?.focus(); }
+  }, [page.id]);
+  const blank = tabTitle(shown) === "New Tab";
   const secure = shown.url.startsWith("https://");
+
   return <div className="shrink-0 bg-[var(--wb-bubble)]">
-    <div role="tablist" aria-label="Browser tabs" className="flex items-end gap-px overflow-hidden px-2 pt-1.5 sm:px-4">
-      {tabs.map((tab, index) => {
-        const active = tab === front;
-        const title = tab.title || shortAddress(tab.url) || "New Tab";
-        // Like Chrome, a thin divider separates two background tabs, not a background tab from the front one.
-        const divider = index > 0 && !active && tabs[index - 1] !== front;
-        return <div key={tab.id} className={`group relative flex h-8 min-w-0 max-w-[15rem] flex-1 basis-[15rem] items-center rounded-t-lg text-[12px] ${active ? "bg-[var(--wb-surface)] text-[var(--wb-text)]" : "text-[var(--wb-muted)] hover:bg-[var(--wb-chip)]/70"}`}>
-          {divider ? <span className="absolute left-0 top-2 h-4 w-px -translate-x-px bg-[var(--wb-ring)] group-hover:opacity-0" aria-hidden /> : null}
-          <button type="button" role="tab" aria-selected={active} disabled={!controls} title={tab.title ? `${tab.title}\n${tab.url}` : tab.url}
-            onClick={() => { if (active || !stream) return; setPicked({ id: tab.id, over: page.id }); stream.tab("activate", tab.id); }}
-            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-t-lg pl-3 pr-1 text-left disabled:cursor-default focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">
-            <Globe size={14} aria-hidden className="shrink-0" />
-            <span className="truncate">{title}</span>
-          </button>
-          {controls && tabs.length > 1 ? <button type="button" aria-label={`Close ${title}`} onClick={() => stream!.tab("close", tab.id)}
-            className={`mr-1.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--wb-muted)] hover:bg-[var(--wb-bubble)] hover:text-[var(--wb-text)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)] ${active ? "" : "opacity-0 group-hover:opacity-100"}`}>
-            <X size={12} aria-hidden />
-          </button> : null}
-        </div>;
-      })}
-    </div>
-    <div className="flex items-center gap-2 border-b border-[var(--wb-hairline)] bg-[var(--wb-surface)] px-2 py-1.5 sm:px-4">
-      <div className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-full bg-[var(--wb-chip)] px-3 text-[12px] text-[var(--wb-text)]" aria-label="Address" title={shown.url}>
-        {secure ? <Lock size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" /> : <Globe size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" />}
-        <span className="truncate">{shortAddress(shown.url)}</span>
+    <div className="flex items-end gap-1 px-2 pt-1.5 sm:px-4">
+      <div ref={strip} role="tablist" aria-label="Browser tabs" className="flex min-w-0 items-end gap-px overflow-x-auto [scrollbar-width:none]">
+        {tabs.map((tab, index) => {
+          const active = tab === front;
+          const title = tabTitle(tab);
+          // Like Chrome, a thin divider separates two background tabs, not a background tab from the front one.
+          const divider = index > 0 && !active && tabs[index - 1] !== front;
+          return <div key={tab.id} className={`group relative flex h-8 w-[15rem] min-w-[3.5rem] shrink items-center rounded-t-lg text-[12px] ${active ? "bg-[var(--wb-surface)] text-[var(--wb-text)]" : "text-[var(--wb-muted)] hover:bg-[var(--wb-chip)]/70"}`}
+            onAuxClick={(event) => { if (event.button === 1 && tabsOn) { event.preventDefault(); close(tab.id); } }}>
+            {divider ? <span className="absolute left-0 top-2 h-4 w-px -translate-x-px bg-[var(--wb-ring)] group-hover:opacity-0" aria-hidden /> : null}
+            <button type="button" role="tab" aria-selected={active} tabIndex={active ? 0 : -1} disabled={!tabsOn} title={tab.url ? `${title}\n${tab.url}` : title}
+              onClick={() => activate(tab.id)} onKeyDown={(event) => moveFocus(event, index)}
+              className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-t-lg pl-3 pr-1 text-left disabled:cursor-default focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">
+              {active && page.loading ? <Loader2 size={14} aria-label="Loading" className="shrink-0 animate-spin" /> : <Globe size={14} aria-hidden className="shrink-0" />}
+              <span className="truncate">{title}</span>
+            </button>
+            {tabsOn && tabs.length > 1 ? <button type="button" tabIndex={-1} aria-label={`Close ${title}`} onClick={() => close(tab.id)}
+              className={`mr-1.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--wb-muted)] hover:bg-[var(--wb-bubble)] hover:text-[var(--wb-text)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)] ${active ? "" : "opacity-0 group-hover:opacity-100"}`}>
+              <X size={12} aria-hidden />
+            </button> : null}
+          </div>;
+        })}
       </div>
-      {/^https?:\/\//.test(shown.url) ? <a href={shown.url} target="_blank" rel="noopener noreferrer" aria-label="Open this page in a new tab" className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--wb-muted)] hover:bg-[var(--wb-chip)] hover:text-[var(--wb-text)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"><ExternalLink size={14} aria-hidden /></a> : null}
+      {control ? <button type="button" aria-label="New tab" title="New tab" onClick={() => { openedTab.current = true; stream!.newTab(); }} className={`${toolbarButton} mb-0.5`}><Plus size={14} aria-hidden /></button> : null}
+    </div>
+    <div className="flex items-center gap-1 border-b border-[var(--wb-hairline)] bg-[var(--wb-surface)] px-2 py-1.5 sm:px-4">
+      <button type="button" aria-label="Back" title={control ? "Back" : "Take control to browse"} disabled={!control || !page.back} onClick={() => stream!.history("back")} className={toolbarButton}><ArrowLeft size={15} aria-hidden /></button>
+      <button type="button" aria-label="Forward" title={control ? "Forward" : "Take control to browse"} disabled={!control || !page.forward} onClick={() => stream!.history("forward")} className={toolbarButton}><ArrowRight size={15} aria-hidden /></button>
+      <button type="button" aria-label="Reload" title={control ? "Reload" : "Take control to browse"} disabled={!control} onClick={() => stream!.history("reload")} className={toolbarButton}><RotateCw size={14} aria-hidden /></button>
+      <form className="ml-1 flex h-7 min-w-0 flex-1 items-center gap-2 rounded-full bg-[var(--wb-chip)] px-3 text-[12px] text-[var(--wb-text)] focus-within:bg-[var(--wb-surface)] focus-within:shadow-[var(--wb-focus)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const url = addressFor(draft ?? "");
+          if (!url || !stream) return;
+          stream.navigate(url);
+          setDraft(null);
+          address.current?.blur();
+          stream.focus();
+        }}>
+        {secure ? <Lock size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" /> : <Globe size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" />}
+        {control
+          ? <input ref={address} aria-label="Address" value={draft ?? (blank ? "" : shortAddress(shown.url))} placeholder="Search Google or type a URL" spellCheck={false} autoComplete="off" autoCapitalize="off"
+              onChange={(event) => setDraft(event.target.value)}
+              // Editing shows the whole address, selected, as Chrome does.
+              onMouseDown={(event) => { selectOnMouseUp.current = document.activeElement !== event.currentTarget; }}
+              onMouseUp={(event) => { if (selectOnMouseUp.current) { event.preventDefault(); selectOnMouseUp.current = false; } }}
+              onFocus={(event) => { const field = event.target; setDraft(blank ? "" : shown.url); requestAnimationFrame(() => field.select()); }}
+              onBlur={() => setDraft(null)} onKeyDown={(event) => { if (event.key === "Escape") { setDraft(null); event.currentTarget.blur(); stream!.focus(); } }}
+              className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[var(--wb-muted)]" />
+          : <span className="truncate" aria-label="Address" title={shown.url}>{blank ? "" : shortAddress(shown.url)}</span>}
+      </form>
+      {/^https?:\/\//.test(shown.url) ? <a href={shown.url} target="_blank" rel="noopener noreferrer" aria-label="Open this page in a new tab" title="Open this page in a new tab" className={toolbarButton}><ExternalLink size={14} aria-hidden /></a> : null}
     </div>
   </div>;
 }
