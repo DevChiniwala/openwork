@@ -448,11 +448,15 @@ export async function readWorkbotThread(
   splitOnce(actor, deps)
   const sessionId = await sessionOf(actor, input.chat ?? null, deps)
   const name = workbotName(actor.organizationMetadata)
+  // One runner round trip on the first load: the conversation and its files are read side by side.
+  const filesEnabledRead = client.filesEnabled()
+  const filesRead = filesEnabledRead.then((enabled) => (enabled ? client.listFiles(sessionId) : null))
+  filesRead.catch(() => undefined) // Still awaited below; this only keeps an early return from leaving it unhandled.
   // Windowed: reading a year-long thread costs the same as reading a new one.
   const read = await client.readSession(sessionId, { turns: input.turns ?? WORKBOT_PAGE_TURNS, limit: 2_000, outputs: "none" })
   if (!read.ok && read.status === 404) {
     // No conversation yet: the welcome screen starts the main chat (startWorkbotGreeting), the first message any chat.
-    return { name, organizationName: actor.organizationName, status: "idle", turns: [], hasEarlier: false, filesEnabled: await client.filesEnabled() }
+    return { name, organizationName: actor.organizationName, status: "idle", turns: [], hasEarlier: false, filesEnabled: await filesEnabledRead }
   }
   if (!read.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
 
@@ -462,8 +466,7 @@ export async function readWorkbotThread(
     await client.sendTurn({ userId: actor.userId, organizationId: actor.organizationId }, { sessionId, messageId: interrupted, prompt: "resume", ...executionFor(deps), ...(stored?.modelAccessRequired ? { modelAccessRequired: true, model: stored.model ?? undefined } : {}), ...((interrupted === GREETING_RUNNER_ID || read.value.messages.some(message => message.role === "user" && message.messageId === interrupted && (readWorkbotContextPrompt(message.text).context !== undefined || readBrowserTeachingPrompt(message.text) !== message.text))) ? { readOnly: true } : {}) }).catch(() => null)
   }
 
-  const filesEnabled = await client.filesEnabled()
-  const files = filesEnabled ? await client.listFiles(sessionId) : null
+  const [filesEnabled, files] = await Promise.all([filesEnabledRead, filesRead])
   const names = new Map(
     (files?.ok ? files.value : []).map((file) => [
       file.id,
@@ -672,6 +675,11 @@ export function createWorkbot(deps: WorkbotDeps) {
     readThread: (actor: WorkbotActor, input: { turns?: number; chat?: WorkbotChat } = {}) => readWorkbotThread(actor, input, deps),
     /** The runner session a chat lives under (for a host that talks to the runner directly, e.g. live sockets). */
     sessionIdOf: (actor: WorkbotActor, chat: WorkbotChat = null) => sessionOf(actor, chat, deps),
+    /** Looks up where the person's chats live ahead of the first read, so opening the page waits on one runner call. */
+    warm: (actor: WorkbotActor) => {
+      splitOnce(actor, deps)
+      void sessionOf(actor, null, deps).catch(() => undefined)
+    },
     hello: (actor: WorkbotActor, input: { timeZone?: string }) => startWorkbotGreeting(actor, input, deps),
     send: (actor: WorkbotActor, input: { id: string; text: string; timeZone?: string; attachments?: string[]; chat?: WorkbotChat; context?: WorkbotViewContext }) =>
       sendWorkbotMessage(actor, input, deps),

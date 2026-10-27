@@ -202,7 +202,12 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
 
 
   app.get("/v1/workbot/me", async (c) => {
-    const { den: who } = c.get("member")
+    const member = c.get("member")
+    const { den: who } = member
+    // The page asks for its conversation next: start finding it on the runner now, without holding this answer.
+    if (who.enabled) {
+      try { workbotFor(member).warm(actorOf(member)) } catch { /* No runner here: the conversation read reports it. */ }
+    }
     return c.json({
       userId: who.user.id,
       organizationId: who.organization.id,

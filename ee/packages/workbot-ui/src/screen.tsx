@@ -13,6 +13,7 @@ import {
   useStopWorkbot,
   useStopWorkbotTask,
   useWorkbotChats,
+  useWorkbotConnections,
   useWorkbotLive,
   useWorkbotThread,
   WorkbotChatProvider,
@@ -205,6 +206,8 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const start = useStartWorkbot();
   const stream = useWorkbotLive(true);
   const thread = useWorkbotThread({ turns: turnWindow, awaiting: greetingAwaited || pending.some((entry) => !entry.failed), live: stream.connected });
+  // The welcome lists the person's connections: read them alongside the conversation, not once it has loaded.
+  useWorkbotConnections({ enabled: welcome === "pending" && !side, waiting: false });
   const send = useSendWorkbotMessage();
   const retry = useRetryWorkbotMessage();
   const stop = useStopWorkbot();
