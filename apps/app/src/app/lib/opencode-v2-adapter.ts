@@ -20,6 +20,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 
 import { createClient, createDesktopFetch, type FieldsResult } from "./opencode";
+import { AUTO_ROUTER_SESSION_ROUTES_KEY, autoRouterReplyRoutes } from "@openwork/types/den/auto-router";
 import type { OpenworkSessionHistory } from "./openwork-server";
 import { isDesktopRuntime } from "./runtime-env";
 import type { McpStatusMap, OpencodeEvent } from "../types";
@@ -181,6 +182,9 @@ type SessionUpdateParameters = SessionParameters & {
   title?: string;
   time?: { archived?: number };
 };
+
+/** The app's event for a session's recorded Auto routing decisions (`properties: { sessionID, routes }`). */
+export const AUTO_ROUTES_EVENT = "openwork.auto-routes.updated";
 
 export const V2_SESSION_ARCHIVE_UNAVAILABLE = "Archiving and unarchiving are not available in the OpenCode v2 preview.";
 
@@ -507,7 +511,9 @@ function mapV2Session(value: unknown, directory: string | undefined, eventCreate
     } : {}),
     ...(revertMessageID ? { revert: { messageID: revertMessageID } } : {}),
   };
-  return mapped;
+  // Auto replies' routing decisions ride along for the chat's "answered by" label.
+  const autoRoutes = autoRouterReplyRoutes(readRecord(source, "metadata")?.[AUTO_ROUTER_SESSION_ROUTES_KEY]);
+  return autoRoutes.length ? Object.assign(mapped, { [AUTO_ROUTER_SESSION_ROUTES_KEY]: autoRoutes }) : mapped;
 }
 
 function messageRole(value: Record<string, unknown>): V2MessageRole {
@@ -960,7 +966,7 @@ function mapV2Message(
         created,
         ...(completed === undefined ? {} : { completed }),
       },
-      ...(role === "assistant" ? mapV2ReplyModel(value) : {}),
+      ...(role === "assistant" ? { ...mapV2ReplyModel(value), finish: readString(value, "finish") } : {}),
       ...(role === "assistant" ? mapV2ReplyUsage(value) : {}),
       ...(role === "assistant" && error
         ? { error: mapV2SessionError(error) }
@@ -1151,9 +1157,11 @@ export function mapV2SessionError(value: unknown): UnknownError | ApiError {
   const reportedStatus = readNumber(data, "statusCode") ?? readNumber(data, "status");
   const statuses = [readNumber(value, "statusCode"), readNumber(value, "status"), readNumber(data, "status"),
     readNumber(readRecord(value, "response"), "status"), readNumber(readRecord(data, "response"), "status")];
-  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus;
-  const responseBody = readString(data, "responseBody");
-  if (statusCode !== undefined && responseBody !== undefined) {
+  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus ?? statuses.find((status) => status !== undefined);
+  const responseBody = readString(data, "responseBody") ?? readString(value, "responseBody");
+  // A body is optional evidence. Dropping an otherwise explicit HTTP status
+  // makes authentication failures indistinguishable from arbitrary text.
+  if (statusCode !== undefined) {
     const rawHeaders = readRecord(data, "responseHeaders");
     const responseHeaders: Record<string, string> = {};
     for (const [key, header] of Object.entries(rawHeaders ?? {})) {
@@ -1619,6 +1627,7 @@ function translateV2EventInternal(
     }
     return [{ type, properties: {
       ...properties, sequence: readNumber(value.durable, "seq"),
+      ...(type === "session.execution.started" ? { timestamp: readNumber(properties, "timestamp") ?? readNumber(value, "created") } : {}),
       ...(type === "session.execution.failed" ? {
         error: mapV2SessionError(properties.error),
       } : {}),
@@ -1915,6 +1924,12 @@ function translateV2EventInternal(
       type: "session.created",
       properties: { info },
     }];
+  }
+
+  if (type === "session.metadata.updated") {
+    // Only the Auto Router's routing decisions are read from host metadata.
+    const routes = autoRouterReplyRoutes(readRecord(properties, "metadata")?.[AUTO_ROUTER_SESSION_ROUTES_KEY]);
+    return sessionID ? [{ type: AUTO_ROUTES_EVENT, properties: { sessionID, routes } }] : null;
   }
 
   if (type === "session.renamed") {

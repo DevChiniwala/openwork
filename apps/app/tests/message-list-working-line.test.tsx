@@ -34,7 +34,7 @@ afterEach(async () => {
 })
 
 /** A busy run that began `silentForMs` ago and has produced no text, reasoning or tool step since. */
-async function renderBusyRun(silentForMs: number, options: { syncDegraded?: boolean } = {}) {
+async function renderBusyRun(silentForMs: number, options: { syncDegraded?: boolean; followUp?: { sentAgoMs: number; replyCompletedAgoMs?: number } } = {}) {
   const startedAt = Date.now() - silentForMs
   setSystemTime(new Date(startedAt))
   useSessionActivityStore.getState().setRunStatus(workspaceId, sessionId, { type: "busy" })
@@ -46,6 +46,21 @@ async function renderBusyRun(silentForMs: number, options: { syncDegraded?: bool
     parts: [{ type: "text", text: "Why did you not move them?" }],
     metadata: { opencode: { created: startedAt } },
   }]
+  const { followUp } = options
+  if (followUp) {
+    const completed = followUp.replyCompletedAgoMs === undefined ? {} : { completed: Date.now() - followUp.replyCompletedAgoMs }
+    messages.push({
+      id: "msg_reply",
+      role: "assistant",
+      parts: [{ type: "text", text: "Moving them now." }],
+      metadata: { opencode: { created: startedAt + 100, ...completed } },
+    }, {
+      id: "msg_follow_up",
+      role: "user",
+      parts: [{ type: "text", text: "Only the photos." }],
+      metadata: { opencode: { created: Date.now() - followUp.sentAgoMs } },
+    })
+  }
   const container = document.createElement("div")
   document.body.append(container)
   const root = createRoot(container)
@@ -81,6 +96,15 @@ test("the Working line stays when a busy run is silent for over a minute", async
   // A slow first token on a long conversation, or a quiet tool, is still a busy run.
   const { working } = await renderBusyRun(NO_NEW_ACTIVITY_AFTER_MS + 60_000)
   expect(working).toMatch(/^Working 2m \ds$/)
+})
+
+test("a follow-up sent mid-run keeps the run's working time", async () => {
+  expect((await renderBusyRun(90_000, { followUp: { sentAgoMs: 5_000 } })).working).toMatch(/^Working 1m 3\ds$/)
+})
+
+test("a message sent after the reply finished starts its own working time", async () => {
+  const { working } = await renderBusyRun(90_000, { followUp: { sentAgoMs: 5_000, replyCompletedAgoMs: 30_000 } })
+  expect(working).toMatch(/^Working \ds$/)
 })
 
 test("Reconnecting replaces the Working line when the run can no longer be confirmed", async () => {

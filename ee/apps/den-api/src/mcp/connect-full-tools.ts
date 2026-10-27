@@ -12,8 +12,8 @@ import type { ExecuteCapabilityToolResult } from "./capability-registry.js"
  * A tool is named like the Code Mode call for the same capability,
  * `<namespace>.<tool>` (`linear.list_issues` is `tools.linear.list_issues` in
  * execute_capability_script). Capabilities with no Code Mode namespace use
- * hyphenated ones (`run-workflow`, `open-app`, `remote-session`), which a
- * connection's namespace can never be. Names keep to the MCP name characters
+ * hyphenated ones (`run-workflow`, `open-app`, `remote-session`,
+ * `openwork-bot`), which a connection's namespace can never be. Names keep to the MCP name characters
  * and to 64 characters, so clients that prefix them (`mcp__<server>__<tool>`
  * in Claude Code, which drops names over 128) still accept them.
  *
@@ -27,6 +27,8 @@ export const CONNECTION_STATUS_TOOL_NAME = "connection_status"
 export const WORKFLOW_TOOL_NAMESPACE = "run-workflow"
 export const APP_TOOL_NAMESPACE = "open-app"
 export const REMOTE_SESSION_TOOL_NAMESPACE = "remote-session"
+/** slack_send_as_bot's namespace: `openwork-bot.slack_send_as_bot`. */
+export const OPENWORK_BOT_TOOL_NAMESPACE = "openwork-bot"
 
 export type ConnectFullToolCandidate = {
   namespace: string

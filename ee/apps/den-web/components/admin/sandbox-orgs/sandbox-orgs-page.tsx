@@ -25,8 +25,8 @@ const parseList = (value: unknown) => { const result = sandboxListSchema.safePar
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
 const stateLabel = { open: "Open", expired: "Ended", closed: "Closed" } as const;
 
-type Draft = { name: string; connectorBaseUrl: string; days: string; memberLimit: string; domains: string; extraUsd: string; joinRole: SandboxJoinRole };
-const freshDraft = (workplaceUrl: string | null | undefined): Draft => ({ name: "", connectorBaseUrl: workplaceUrl ?? "", days: "14", memberLimit: "50", domains: "", extraUsd: "", joinRole: "admin" });
+type Draft = { name: string; connectorBaseUrl: string; days: string; memberLimit: string; domains: string; joinRole: SandboxJoinRole };
+const freshDraft = (workplaceUrl: string | null | undefined): Draft => ({ name: "", connectorBaseUrl: workplaceUrl ?? "", days: "14", memberLimit: "50", domains: "", joinRole: "admin" });
 const roleLabel: Record<SandboxJoinRole, string> = { member: "Members", admin: "Admins" };
 
 export function SandboxOrgsPage() {
@@ -83,7 +83,6 @@ export function SandboxOrgsPage() {
       days: Number(draft.days),
       memberLimit: Number(draft.memberLimit),
       allowedEmailDomains: draft.domains.split(/[\s,]+/).map(value => value.trim().toLowerCase()).filter(Boolean),
-      extraFreeAutoUsd: draft.extraUsd.trim() ? Number(draft.extraUsd) : null,
       joinRole: draft.joinRole,
     };
     if (await mutate(base, body, `Created ${body.name}. Copy its join link below.`)) setDraft(null);
@@ -142,9 +141,7 @@ export function SandboxOrgsPage() {
             <span className="text-[color:var(--dls-text-secondary)]">Admins can try everything: connectors, members and settings.</span></label>
           <label className="grid gap-2 text-xs">Who can join<DenInput aria-label="Allowed email domains" placeholder="Anyone with the link" value={draft.domains} disabled={saving} onChange={event => setDraft({ ...draft, domains: event.target.value })} />
             <span className="text-[color:var(--dls-text-secondary)]">Optional. Email domains separated by commas, such as example.com.</span></label>
-          <label className="grid gap-2 text-xs">Extra Free Auto usage (USD)<DenInput aria-label="Extra Free Auto usage in USD" type="number" min="0.01" max="10000" step="0.01" placeholder="None" value={draft.extraUsd} disabled={saving} onChange={event => setDraft({ ...draft, extraUsd: event.target.value })} />
-            <span className="text-[color:var(--dls-text-secondary)]">Optional pool shared by the sandbox after each person&apos;s standard allowance. Ends with the sandbox.</span></label>
-          <div className="grid gap-1 rounded-md bg-[var(--dls-hover)] p-3 text-xs"><span className="font-medium">You become the owner.</span><span className="text-[color:var(--dls-text-secondary)]">People who join become {draft.joinRole === "admin" ? "admins" : "members"}, never owners. When the sandbox ends, the link and included models stop; members and data stay.</span></div>
+          <div className="grid gap-1 rounded-md bg-[var(--dls-hover)] p-3 text-xs"><span className="font-medium">You become the owner.</span><span className="text-[color:var(--dls-text-secondary)]">People who join become {draft.joinRole === "admin" ? "admins" : "members"}, never owners. When the sandbox ends, the link and Free Auto stop; members and data stay.</span></div>
           <div className="flex flex-wrap justify-end gap-2"><DenButton type="button" variant="secondary" size="sm" disabled={saving} onClick={() => setDraft(null)}>Cancel</DenButton><DenButton type="submit" size="sm" disabled={busy} loading={saving} data-testid="admin-sandbox-create-submit">Create sandbox</DenButton></div>
         </form>
       </section> : null}

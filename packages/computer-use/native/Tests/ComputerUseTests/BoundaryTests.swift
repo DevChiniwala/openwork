@@ -160,6 +160,7 @@ final class BoundaryTests: XCTestCase {
         let text = String(repeating: "café 日本語 e\u{301} ", count: 10)
         XCTAssertEqual(try InputDispatch.chunks(text).joined(), text)
         XCTAssertTrue(try InputDispatch.chunks(text).allSatisfy { $0.utf16.count <= 16 })
+        let firstChunk = try InputDispatch.chunks(text)[0].map(String.init)
         for changedFocus in [false, true] {
             var changed = false
             var posted: [String] = []
@@ -175,7 +176,8 @@ final class BoundaryTests: XCTestCase {
             } catch let error as UseError {
                 XCTAssertEqual(error.code, changedFocus ? "focus_changed" : "session_paused")
             }
-            XCTAssertEqual(posted.count, 1)
+            // One character per event; a focus change stops typing at the next chunk.
+            XCTAssertEqual(posted, changedFocus ? firstChunk : ["c"])
             XCTAssertEqual(validations, changedFocus ? 2 : 1)
         }
         var cancelledPosts = 0

@@ -398,6 +398,9 @@ export type ComputerSnapshot = {
   timing?: { steps: number; computerMs: number; modelMs: number; last?: { name: string; computerMs: number; modelMs?: number } };
 };
 
+/** Settings: the computer every chat uses and whether it is set up. */
+export type ComputerStatus = Pick<ComputerSnapshot, "enabled" | "entry" | "targetId" | "targets" | "placement" | "readiness" | "permissions" | "detail">;
+
 /** The live watch view: recent redacted frames and dispatched input, never actionable. */
 export type ComputerPresentation = {
   id: string;
@@ -472,6 +475,7 @@ export type DesktopCommandMap = {
 
   // Computer use (macOS): chat ownership, the watch view and permission setup
   computerSnapshot: { args: [sessionId: string]; result: ComputerSnapshot };
+  computerStatus: { args: []; result: ComputerStatus };
   computerPresentation: { args: [sessionId: string, visible: boolean]; result: ComputerPresentation | null };
   computerInteract: {
     args: [input: { sessionId: string; id: string; action: "takeover" | "resume" }];
@@ -479,7 +483,7 @@ export type DesktopCommandMap = {
   };
   computerSetup: { args: [permission: ComputerPermission]; result: { setupId: string } };
   computerDismissSetup: { args: [setupId?: string]; result: void };
-  computerChoose: { args: [input: { sessionId: string; targetId: string }]; result: ComputerSnapshot };
+  computerChoose: { args: [targetId: string]; result: ComputerStatus };
   computerHalt: { args: [sessionId: string]; result: ComputerSnapshot };
   computerAnswerRequest: { args: [input: { sessionId: string; answer: "dismiss" | "allow" | "always"; id?: string }]; result: ComputerSnapshot };
   computerSetFeatureEnabled: { args: [enabled: boolean]; result: boolean };

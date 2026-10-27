@@ -12,7 +12,7 @@ import { useMessageList } from "@/components/chat/message-list-provider"
 import { taskChildSessionId, type TaskToolPart } from "@/lib/build-in-tools"
 import { isToolPartInFlight } from "@/lib/tool-activity"
 import { formatElapsedSeconds, getToolCallStartedAt, trackToolCallDuration } from "@/lib/tool-call-duration"
-import { runElapsed } from "@/lib/session-run"
+import { workingTime } from "@/lib/session-run"
 import { cn } from "@/lib/utils"
 import { t } from "@/i18n"
 import { useSessionActivityStore } from "@/react-app/domains/session/status/session-activity-store"
@@ -89,7 +89,7 @@ export function SubagentRunLine({ part, className, parentActive = true }: Subage
   const childRunning = child?.runActive === true || childStatus?.type === "busy" || childStatus?.type === "retry"
   const inFlight = isToolPartInFlight(part) || childRunning
   const isFailed = part.state === "output-error"
-  const childRun = child?.currentRunId ? child.runs[child.currentRunId] : undefined
+  const childWaits = child?.waits
   const duration = trackToolCallDuration(part)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   // Native start time survives reload; optimistic timing survives remounts.
@@ -110,16 +110,16 @@ export function SubagentRunLine({ part, className, parentActive = true }: Subage
     // module-scoped anchor resumes the true elapsed time on recovery.
     if (!inFlight || startedAt === null || syncDegraded) return
     const update = () => {
-      setElapsedSeconds(Math.max(0, Math.floor((childRun ? runElapsed(childRun, Date.now()) : Date.now() - startedAt) / 1000)))
+      setElapsedSeconds(Math.floor(workingTime(startedAt, Date.now(), childWaits) / 1000))
     }
     update()
     const interval = window.setInterval(update, 1000)
     return () => window.clearInterval(interval)
-  }, [inFlight, startedAt, part.toolCallId, syncDegraded, childRun])
+  }, [inFlight, startedAt, part.toolCallId, syncDegraded, childWaits])
   const title = part.input?.description?.trim().slice(0, 160) || "Sub-agent task"
   // A helper the person stopped is not a failure (DESIGN.md C5): say "Stopped".
   const errorText = part.state === "output-error" ? part.errorText : undefined
-  const stopped = childRun?.outcome === "stopped" || stoppedByPerson.current || isFailed && /abort|interrupt|cancel/i.test(errorText ?? "")
+  const stopped = stoppedByPerson.current || isFailed && /abort|interrupt|cancel/i.test(errorText ?? "")
   const agent = agentName(part.input?.subagent_type ?? "")
   const status = stopping ? "Stopping…" : stopError ? "Could not stop — retry" : stopped && !childRunning ? "Stopped" : permissionPending
     ? t("session.subagent_permission_needed")

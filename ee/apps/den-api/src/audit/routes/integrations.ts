@@ -65,6 +65,7 @@ const APP = "app.management"
 export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
   support(`${GW}/*`, "capabilities_google_workspace", "app.use contextStorage so token resolvers can read signed internal capability headers; concrete handlers are declared."),
   support(`${MS}/*`, "capabilities_microsoft_365", "app.use contextStorage for the Microsoft token resolver; concrete handlers are declared."),
+  support("/v1/documents/microsoft-365/*", "documents_microsoft_365", "app.use contextStorage for the Microsoft token resolver on OneDrive document routes; concrete handlers are declared."),
   support("/v1/direct-uploads/google-workspace/*", "direct_uploads_google_workspace", "app.use contextStorage for direct-upload handlers; concrete handlers are declared."),
   support("/v1/direct-downloads/google-workspace/*", "direct_downloads_google_workspace", "app.use contextStorage for direct-download handlers; concrete handlers are declared."),
   support("/v1/direct-uploads/microsoft-365/*", "direct_uploads_microsoft_365", "app.use contextStorage for the Microsoft token resolver on direct-upload handlers; concrete handlers are declared."),
@@ -122,6 +123,9 @@ export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
   external("PATCH", `${MS}/mail-message/:messageId`, "capability.outlook_mail.message.update", MSK, res("outlook_message", "messageId"), GRAPH, CAP),
   external("POST", `${MS}/mail-message/:messageId/move`, "capability.outlook_mail.message.move", MSK, res("outlook_message", "messageId"), GRAPH, CAP),
   external("POST", `${MS}/mail-message/:messageId/reply-draft`, "capability.outlook_mail.reply_draft.create", MSK, res("outlook_message", "messageId"), GRAPH, CAP),
+  access("GET", `${MS}/mail-attachments/:messageId`, "capability.outlook_mail.attachment.list", MSK, res("outlook_message", "messageId"), `${CAP} Response lists attachment names.`),
+  access("GET", `${MS}/mail-attachment/:messageId/:attachmentId`, "capability.outlook_mail.attachment.download", MSK, res("outlook_attachment", "attachmentId"), `${CAP} Response carries attachment bytes.`),
+  external("POST", "/v1/direct-uploads/microsoft-365/mail-drafts", "capability.outlook_mail.draft.attachments.create", MSK, res("outlook_message"), GRAPH, "cloudTransportRoute (MCP OAuth token, org from token); creates a draft or reply draft with attachments, never sends. Conditional token refresh write."),
   external("POST", `${MS}/mail-drafts`, "capability.outlook_mail.draft.create", MSK, res("outlook_message"), GRAPH, CAP),
   external("POST", `${MS}/mail-drafts/:messageId/send`, "capability.outlook_mail.draft.send", MSK, res("outlook_message", "messageId"), GRAPH, `${CAP} Sends email.`),
   access("GET", `${MS}/calendar-events`, "capability.outlook_calendar.event.list", MSK, res("outlook_calendar_event"), CAP_CONTENT),

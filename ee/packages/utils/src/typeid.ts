@@ -129,6 +129,8 @@ export const idTypesMapNameToPrefix = {
   agentPermissionPolicy: "agp",
   agentPermissionSetting: "aps",
   orgDefaultModel: "odm",
+  autoRouter: "aur",
+  autoRouterRoute: "arr",
   headlessResumeGrant: "hrsg",
   desktopStartupReport: "dsr",
   accountFollowUpAction: "afa",
