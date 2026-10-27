@@ -32,6 +32,7 @@ export const denSessionSchema = z.object({
   enabled: z.boolean(),
   canSchedule: z.boolean(),
   computer: z.boolean().default(false),
+  browser: z.boolean().default(false),
   browserDemonstrations: z.boolean().default(false),
   browserLiveView: z.boolean().default(false),
   /** Workbot's Calendar tab is on (while Workbot is on). Older Dens omit it: off. */

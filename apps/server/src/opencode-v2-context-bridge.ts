@@ -6,13 +6,13 @@ import { openworkReadTransport, type OpenworkReadTransport } from "./opencode-pl
 import { createV2ReadAdapter, readV2SessionActivity } from "./opencode-v2-read-adapter.js";
 import { isRecord } from "./workspace-kv-store.js";
 import { createV2BrowserBridge } from "./opencode-v2-browser-bridge.js";
-import { DRIVE_UPLOAD_PERMISSION, GMAIL_DRAFT_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID } from "./extensions/cloud-upload-constants.js";
+import { DRIVE_UPLOAD_PERMISSION, GMAIL_DRAFT_PERMISSION, OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, OUTLOOK_DRAFT_PERMISSION } from "./extensions/cloud-upload-constants.js";
 import { createDriveFileTools, DRIVE_FILE_ACTIONS, type DriveFileAction } from "./opencode-plugins/drive-file-tools.js";
 import { SESSION_GROUP_COMMAND_IDS } from "./opencode-plugins/openwork-session-groups.js";
 import { loopbackFetch } from "./server-fetch.js";
 
 const requestSchema = z.object({
-  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", "openwork_gmail_draft", ...DRIVE_FILE_ACTIONS]),
+  name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", "openwork_gmail_draft", "openwork_outlook_draft", ...DRIVE_FILE_ACTIONS]),
   input: z.unknown(),
   sessionId: z.string().max(256).optional(),
   // Marks a tool snapshot admitted to Code Mode; direct tools keep working when the rollout is off.
@@ -93,9 +93,9 @@ export async function askEngineApproval(engine: EngineConnection | undefined, ap
     watching.abort();
   }
 }
-// The only commands this bridge runs: sidebar group changes, written through
-// the host's session-group routes and nothing else.
-const commandIds: readonly string[] = SESSION_GROUP_COMMAND_IDS;
+// Only sidebar-group commands can write through the generic affordance path.
+// Automation proposals are inert: the person explicitly creates one in the renderer.
+const commandIds: readonly string[] = [...SESSION_GROUP_COMMAND_IDS, "automation.propose"];
 const sessionGroupRoute = /^\/workspace\/[^/]+\/session-groups(?:\/assignments\/[^/]+|\/[^/]+)?$/;
 /** A session-group route as sent: a path the URL parser would normalize (dot segments) is refused. */
 export function isSessionGroupWritePath(path: string): boolean {
@@ -109,6 +109,12 @@ const driveUploadSchema = z.object({ path: z.string().min(1), folderId: z.string
 const gmailDraftSchema = z.object({
   to: z.string().min(1), cc: z.string().optional(), bcc: z.string().optional(), subject: z.string().min(1), body: z.string().min(1),
   threadId: z.string().min(1).optional(), connectionId: z.string().optional(), paths: z.array(z.string().min(1)).min(1).max(10),
+}).strict();
+const addresses = z.array(z.string().min(1)).max(50).optional();
+const outlookDraftSchema = z.object({
+  to: addresses, cc: addresses, bcc: addresses, subject: z.string().min(1).optional(), body: z.string(),
+  replyToMessageId: z.string().min(1).optional(), connectionId: z.string().optional(),
+  paths: z.array(z.string().min(1)).min(1).max(10),
 }).strict();
 // Advertise only what this bridge executes. Native MCP discovery owns remote
 // tool names; v1 executor spellings and unregistered commands do not belong here.
@@ -204,6 +210,26 @@ export async function createV2ContextBridge(
           extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: GMAIL_DRAFT_PERMISSION, args, context: { directory: call.caller.directory },
         }) }));
       }
+      // An Outlook draft with attachments uses the same authorized-root file
+      // transport, only after the person allows this draft in the calling chat.
+      if (call.name === "openwork_outlook_draft") {
+        const args = outlookDraftSchema.parse(call.input);
+        if (!call.sessionId || !call.caller) throw new Error("This OpenWork engine cannot ask for your approval, so no draft was created.");
+        await askEngineApproval(engine?.(), {
+          directory: call.caller.directory, sessionId: call.sessionId, messageId: call.caller.messageId, callId: call.caller.callId,
+          ...(call.caller.agent ? { agent: call.caller.agent } : {}), action: OUTLOOK_DRAFT_PERMISSION, resources: args.paths,
+          metadata: {
+            paths: args.paths, ...(args.subject ? { subject: args.subject } : {}),
+            target: args.replyToMessageId ? "Outlook reply draft" : `Outlook draft to ${(args.to ?? []).join(", ")}`,
+            ...(args.connectionId ? { connectionId: args.connectionId } : {}),
+          },
+          subject: "this draft", nothing: "no draft was created",
+        }, AbortSignal.any([request.signal, AbortSignal.timeout(APPROVAL_WAIT_MS)]));
+        deadline = AbortSignal.timeout(130_000);
+        return Response.json(await read("/experimental/extensions/call", { method: "POST", body: JSON.stringify({
+          extensionId: OPENWORK_CLOUD_UPLOADS_EXTENSION_ID, action: OUTLOOK_DRAFT_PERMISSION, args, context: { directory: call.caller.directory },
+        }) }));
+      }
       // Pull, status and push run the v1 tools themselves: the same argument
       // checks and the same writes that ask first, answered in the calling chat.
       // The host's Drive file route still has Desktop confirm every transfer.
@@ -250,13 +276,13 @@ export async function createV2ContextBridge(
         if (call.name === "openwork_query") return plugin.tool.openwork_query.execute(call.input);
         if (call.name === "openwork_execute") {
           const id = isRecord(call.input) ? String(call.input.id) : "";
-          if (!commandIds.includes(id)) throw new Error(`${id || "This command"} is not available here; only session group changes are`);
+          if (!commandIds.includes(id)) throw new Error(`${id || "This command"} is not available here; only session group changes and automation proposals are`);
           return plugin.tool.openwork_execute.execute(call.input, call.sessionId ? { sessionID: call.sessionId } : {});
         }
         const context: unknown = JSON.parse(await plugin.tool.openwork_context.execute());
         const filtered = bridgeAffordances(context);
         return JSON.stringify(isRecord(filtered) ? { ...filtered, instructions: {
-          context: "Use openwork_query for the discovered read-only affordances and openwork_execute for the session.group commands. When Code Mode exposes these tools, discover their exact paths with search and compose them there, preserving exceptions and verifying the resulting groups. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
+          context: "Use openwork_query for the discovered read-only affordances and openwork_execute for session.group commands or automation.propose. An automation proposal only shows a review card; it does not create, activate, or run anything. When Code Mode exposes these tools, discover their exact paths with search and compose them there, preserving exceptions and verifying the resulting groups. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
         } } : filtered);
       });
       return new Response(result, { headers: { "Content-Type": "application/json" } });

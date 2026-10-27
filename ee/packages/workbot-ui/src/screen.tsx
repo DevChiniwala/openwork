@@ -2,7 +2,7 @@
 
 import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Monitor, Pencil } from "lucide-react";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
-import { setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
+import { computerViews, setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
 import { OpenWorkMark } from "./mark";
 import { ChatsButton, ChatsDrawer, chatTitle, RemoveChatButton, SideChatTitle, useChatLocation } from "./chats";
 import {
@@ -13,6 +13,7 @@ import {
   useStopWorkbot,
   useStopWorkbotTask,
   useWorkbotChats,
+  useWorkbotConnections,
   useWorkbotLive,
   useWorkbotThread,
   WorkbotChatProvider,
@@ -194,7 +195,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const sentFrom = useRef(new Map<string, string>());
   const followed = useRef(new Set<string>());
   // The same move for Workbot's computer: open it and keep the conversation beside it. Null while it is on screen.
-  const navigateComputerFromChat = guided && host.computer === true && tab !== "computer"
+  const navigateComputerFromChat = guided && computerViews(host).length > 0 && tab !== "computer"
     ? () => { setTab("computer"); setRevealChat(count => count + 1); }
     : null;
   const [preview, setPreview] = useState<WorkbotAttachment | null>(null);
@@ -206,18 +207,14 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const start = useStartWorkbot();
   const stream = useWorkbotLive(true);
   const thread = useWorkbotThread({ turns: turnWindow, awaiting: greetingAwaited || pending.some((entry) => !entry.failed), live: stream.connected });
+  // The welcome lists the person's connections: read them alongside the conversation, not once it has loaded.
+  useWorkbotConnections({ enabled: welcome === "pending" && !side, waiting: false });
   const send = useSendWorkbotMessage();
   const retry = useRetryWorkbotMessage();
   const stop = useStopWorkbot();
   const editMessage = useEditWorkbotMessage();
   const uploads = { uploads: draft.uploads, add: composerState.add, remove: composerState.removeUpload, retry: composerState.retryUpload };
   const data = thread.data?.available ? thread.data : null;
-  // The pages Workbot opened in this chat's browser, oldest first: the Browser view lists them, each with its own link.
-  const browserPages = useMemo(() => {
-    const seen = new Map<string, WorkbotPage>();
-    for (const turn of data?.turns ?? []) for (const part of turn.parts) if (part.kind === "steps") for (const step of part.steps) for (const page of step.pages ?? []) { seen.delete(page.id); seen.set(page.id, page); }
-    return [...seen.values()];
-  }, [data?.turns]);
   useEffect(() => {
     if (!guided || !host.documents || !data) return;
     for (const turn of data.turns) {
@@ -380,7 +377,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} />}
+            {computerVisited && computerViews(host).length > 0 && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
@@ -396,7 +393,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       </OpenDocumentContext.Provider>
     </OpenFileContext.Provider>;
   }
-  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && host.computer)) {
+  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && computerViews(host).length > 0)) {
     return (
       <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased">
         <WorkbotHeader
@@ -410,7 +407,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );
@@ -648,7 +645,7 @@ type WorkbotTab = WorkbotPaletteTab;
 
 /** The pages this person has, in the header's order. */
 function paletteTabs(host: WorkbotHost): WorkbotTab[] {
-  return ["home", ...(host.calendar ? ["calendar" as const] : []), ...(host.documents ? ["documents" as const] : []), ...(host.computer ? ["computer" as const] : [])];
+  return ["home", ...(host.calendar ? ["calendar" as const] : []), ...(host.documents ? ["documents" as const] : []), ...(computerViews(host).length ? ["computer" as const] : [])];
 }
 
 /** Puts the caret in the message box on screen (the Home composer, or the workspace chat's). */
@@ -677,7 +674,7 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
   const beforeLeaveRef = useRef(beforeLeave);
   beforeLeaveRef.current = beforeLeave;
   const [tab, setTabState] = useState<WorkbotTab>(tabFromLocation);
-  const computerEnabled = workbotHost().computer === true;
+  const computerEnabled = computerViews(workbotHost()).length > 0;
   useEffect(() => {
     if (!computerEnabled && tab === "computer") { window.history.replaceState(null, "", `/${preserveSearch ? window.location.search : ""}`); setTabState("home"); }
   }, [computerEnabled, tab, preserveSearch]);
@@ -704,7 +701,7 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
 function WorkbotNav({ tab, onTab }: { tab: WorkbotTab; onTab: (tab: WorkbotTab) => void }) {
   return (
     <nav className="ml-4 flex items-center gap-0.5" aria-label="Workbot">
-      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : []), ...(workbotHost().computer ? ["computer" as const] : [])] as const).map((entry) => (
+      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : []), ...(computerViews(workbotHost()).length ? ["computer" as const] : [])] as const).map((entry) => (
         <button
           key={entry}
           type="button"
@@ -1591,7 +1588,10 @@ function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surfac
   const latest = updates.at(-1) ?? null;
   const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
   const pages = steps.flatMap((step) => step.pages ?? []).filter((page, index, all) => all.findIndex((entry) => entry.id === page.id) === index);
-  const watchable = workbotHost().computer === true;
+  const views = computerViews(workbotHost());
+  // Each view is its own rollout: a card shows a screen only for a view this person has. Work in the background has
+  // no screen of its own, so asking to see it needs at least one.
+  const watchable = surface === "background" ? views.length > 0 : views.includes(surface);
   const title = surface === "browser" ? `${live ? "Using" : "Used"} the browser`
     : surface === "background" ? `${live ? "Working" : "Worked"} on my computer`
     : `${live ? "Using" : "Used"} my computer`;
@@ -1621,7 +1621,7 @@ function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surfac
               </button>
             </div>
           ) : null}
-          {watchable && pages.length > 0 ? <BrowserPageLinks pages={pages} /> : null}
+          {views.includes("browser") && pages.length > 0 ? <BrowserPageLinks pages={pages} /> : null}
         </>
       }
     />

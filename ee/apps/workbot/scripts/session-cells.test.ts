@@ -267,3 +267,31 @@ test("an index capability from Den goes to the runner in the turn's credentials"
   assert.equal(turn.body.credentials.indexCapability, "hic1.payload.mac")
   assert.equal(turn.body.credentials.mcpToken, "turn-token")
 })
+
+test("opening the page: warm finds the chat ahead of its read, which then reads the conversation and its files side by side", async () => {
+  const runner = fakeRunner()
+  let inFlight = 0
+  let most = 0
+  const slow: typeof runner.fetch = async (input, init) => {
+    most = Math.max(most, ++inFlight)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      return await runner.fetch(input, init)
+    } finally {
+      inFlight--
+    }
+  }
+  const workbot = workbotWith({ ...runner, fetch: slow }, { sessionCells: true })
+  await workbot.send(actor, { id: "message_0001", text: "Hello" })
+  restart()
+  const before = lists(runner.calls).length
+  workbot.warm(actor)
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  const listed = lists(runner.calls).length
+  assert.equal(listed, before + 1, "warm listed the person's chats")
+  most = 0
+  const thread = await workbot.readThread(actor)
+  assert.match(texts(thread), /Answer to Hello/)
+  assert.equal(lists(runner.calls).length, listed, "the read reuses what warm found")
+  assert.equal(most, 2, "the conversation and the files check are read side by side")
+})

@@ -924,6 +924,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     async snapshot({ sessionId } = {}) { return view(await grantFor(sessionId), true); },
     /** Settings: the computer chats use and its setup, without a chat. */
     async status() { return computerStatus(); },
+    /** Whether the renderer reported the `computerUse` feature on. */
+    featureEnabled() { return featureEnabled && !closed; },
     /**
      * Settings: point every chat at this computer or a connected VM. Earlier
      * per-chat choices are dropped, and work on another computer stops first.

@@ -123,7 +123,7 @@ test("the v2 bridge writes only session-group routes", () => {
   ]) assert.equal(isSessionGroupWritePath(path), false, path);
 });
 
-test("the v2 bridge runs group commands and refuses every other command", async () => {
+test("the v2 bridge runs group commands and refuses unregistered commands", async () => {
   const { createV2ContextBridge } = await import("../src/opencode-v2-context-bridge.js");
   const state: State = { groups: [{ id: "g1", label: "Done" }], assignments: {} };
   const { transport } = fakeHost(state, ["s1"]);
@@ -153,6 +153,87 @@ test("the v2 bridge runs group commands and refuses every other command", async 
     const refused = await post({ id: "session.create", args: { sessions: [{ title: "x", prompt: "y" }] } });
     assert.equal(refused.status, 400);
     assert.match(refused.body.error, /not available here/);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test("the v2 bridge advertises automation proposals without exposing other app commands", async () => {
+  const { createV2ContextBridge } = await import("../src/opencode-v2-context-bridge.js");
+  const bridge = await createV2ContextBridge(async (path, init) => {
+    if (path === "/experimental/connect/skills") return { skills: [] };
+    assert.equal(path, "/experimental/ui-control/request");
+    assert.equal(JSON.parse(String(init?.body)).kind, "context");
+    return { ok: true, context: { availableAffordances: [] } };
+  });
+  try {
+    const response = await fetch(bridge.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bridge.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "openwork_context", input: {}, sessionId: "s1" }),
+    });
+    assert.equal(response.status, 200);
+    const { context } = await response.json();
+    const commands = context.availableAffordances.filter((item: { kind: string }) => item.kind === "command");
+    assert.deepEqual(commands.map((item: { id: string }) => item.id).sort(), [
+      "automation.propose", "session.group.create", "session.group.move", "session.group.remove",
+    ]);
+    const proposal = context.contributions.find((item: { featureId: string }) => item.featureId === "automations");
+    assert.equal(proposal.affordances[0].id, "automation.propose");
+    assert.deepEqual(proposal.affordances[0].effects, { data: "none", ui: "none", external: false });
+  } finally {
+    await bridge.close();
+  }
+});
+
+test("a v2 automation proposal is validated and returned for review without creating or running anything", async () => {
+  const { createV2ContextBridge } = await import("../src/opencode-v2-context-bridge.js");
+  const hostCalls: string[] = [];
+  const bridge = await createV2ContextBridge(async (path) => {
+    hostCalls.push(path);
+    throw new Error("An automation proposal must not call the host");
+  });
+  const args = {
+    name: "Morning greeting",
+    instructions: "Post Good morning! in the team's Slack general channel.",
+    schedule: { kind: "daily", hour: 9, minute: 0, timezone: "America/Los_Angeles" },
+  };
+  const post = async (id: string, input = args) => {
+    const response = await fetch(bridge.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bridge.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "openwork_execute", input: { id, args: input }, sessionId: "s1" }),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const proposed = await post("automation.propose");
+    assert.equal(proposed.status, 200, JSON.stringify(proposed.body));
+    assert.equal(proposed.body.ok, true);
+    assert.equal(proposed.body.id, "automation.propose");
+    assert.deepEqual(proposed.body.result.proposal, args);
+    assert.equal(proposed.body.result.created, false);
+    assert.equal(proposed.body.result.kind, "automation-proposal");
+    assert.deepEqual(proposed.body.effects, { data: "none", ui: "none", external: false });
+
+    const retargeted = { ...args, workspaceId: "ws_other" };
+    const untrustedWorkspace = await post("automation.propose", retargeted);
+    assert.deepEqual(untrustedWorkspace.body.result.proposal, args, "model-supplied workspace targeting is ignored");
+    const unauthorized = await fetch(bridge.url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "openwork_execute", input: { id: "automation.propose", args } }),
+    });
+    assert.equal(unauthorized.status, 401);
+
+    const malformed = await post("automation.propose", { ...args, schedule: { ...args.schedule, hour: 25 } });
+    assert.equal(malformed.status, 400);
+    assert.match(malformed.body.error, /hour/);
+    for (const id of ["automation.create", "automation.activate", "automation.run", "extension.call", "session.create"]) {
+      const refused = await post(id);
+      assert.equal(refused.status, 400, id);
+      assert.match(refused.body.error, /not available here/);
+    }
+    assert.deepEqual(hostCalls, []);
   } finally {
     await bridge.close();
   }

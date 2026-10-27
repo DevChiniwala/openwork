@@ -291,6 +291,16 @@
               ],
               "description": "Computer use: Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules. Renders DEN_FEATURE_COMPUTER_USE."
             },
+            "browserUse": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: browser use: Workbot uses the browser on its cloud computer, with a Browser view people can watch and take over. Needs remote computers. Computer use separately controls Workbot's other desktop apps. Renders DEN_FEATURE_BROWSER_USE."
+            },
             "browserDemonstrations": {
               "enum": [
                 "",
@@ -309,7 +319,7 @@
                 true,
                 false
               ],
-              "description": "Workbot: browser live view: Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window. Renders DEN_FEATURE_BROWSER_LIVE_VIEW."
+              "description": "Workbot: browser live view: Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window, with Workbot's own tabs to switch and close. Taking control sends input to the page, so Chrome's toolbar stays hidden. Renders DEN_FEATURE_BROWSER_LIVE_VIEW."
             },
             "browserFloatingView": {
               "enum": [
@@ -410,6 +420,16 @@
                 false
               ],
               "description": "Desktop: honest AI provider key status: AI Providers says \"Not checked yet\" for a key that has not answered a chat, and \"Key not accepted\" with Replace key (or ask your admin, for organization providers) after the provider rejects it, instead of always \"Ready to use\". Renders DEN_FEATURE_PROVIDER_CREDENTIAL_STATUS."
+            },
+            "outlookAttachments": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Outlook attachments: Agents read the files attached to Outlook messages and create Outlook drafts and replies with workspace files attached, after the member approves each draft. Drafts are never sent. Renders DEN_FEATURE_OUTLOOK_ATTACHMENTS."
             },
             "sessionTokenHashing": {
               "enum": [

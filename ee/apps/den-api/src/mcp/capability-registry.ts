@@ -10,7 +10,7 @@ import { AuditUnavailableError, auditUnavailableToolResult, runMcpServiceAction,
 import type { AuditServiceActionName } from "../audit/service-actions.js"
 import { isPlatformAdminUserId } from "../middleware/admin.js"
 import { mcpPrincipalCredentialId, type McpPrincipal } from "./auth.js"
-import { catalogOperationAvailableToCapabilities } from "./catalog-availability.js"
+import { catalogOperationAvailableToCapabilities, nativeOperationAvailableToCapabilities } from "./catalog-availability.js"
 import type { McpToolOperation } from "./catalog.js"
 import {
   executeAdminCapability,
@@ -169,7 +169,7 @@ export type CapabilityRegistryContextInput = {
   redirectUriBase: string
   generatedArtifactViewsEnabled: boolean
   /** Effective features of the organization (see features.ts). */
-  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionSubagents" | "managedDeployments" | "slackSendAsBot">>
+  organizationFeatures: Partial<Pick<FeatureMap, "remoteSessionSubagents" | "managedDeployments" | "slackSendAsBot" | "outlookAttachments">>
   /** MCP transports pass the verified caller; route and Automation contexts omit it (their route records the request). */
   audit?: McpAuditPrincipal | null
   /**
@@ -199,7 +199,9 @@ export function createCapabilityRegistryContext(input: CapabilityRegistryContext
     env: input.env,
     // All capability paths (search, Code Mode, execution, saved Workflows) use this catalog.
     // The route also checks the current rollout so a cached tool cannot bypass a kill switch.
-    catalog: input.catalog,
+    catalog: input.catalog.filter((operation) => nativeOperationAvailableToCapabilities({
+      outlookAttachmentsEnabled: input.organizationFeatures.outlookAttachments === true,
+    }, operation)),
     principal: input.principal,
     organizationId: input.organizationId,
     member: input.member,

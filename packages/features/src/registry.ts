@@ -339,6 +339,18 @@ export const FEATURES = defineFeatures({
     default: false,
   },
 
+  browserUse: {
+    label: "Workbot: browser use",
+    description: "Workbot uses the browser on its cloud computer, with a Browser view people can watch and take over. Needs remote computers. Computer use separately controls Workbot's other desktop apps.",
+    category: "computerUse",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "reachjalil",
+    docs: "docs/computer-use/workbot.md",
+    deployments: everywhere,
+    default: false,
+  },
+
   browserDemonstrations: {
     label: "Workbot: teach browser tasks",
     description: "Demonstrate a browser task with explanations, save it as a private reusable skill, and run it with new inputs.",
@@ -353,7 +365,7 @@ export const FEATURES = defineFeatures({
 
   browserLiveView: {
     label: "Workbot: browser live view",
-    description: "Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.",
+    description: "Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window, with Workbot's own tabs to switch and close. Taking control sends input to the page, so Chrome's toolbar stays hidden.",
     category: "computerUse",
     added: "2026-10-22",
     since: "2026-10",
@@ -464,6 +476,17 @@ export const FEATURES = defineFeatures({
     since: "2026-10",
     author: "benjaminshafii",
     docs: "docs/features/provider-credential-status/README.md",
+    deployments: everywhere,
+    default: false,
+  },
+  outlookAttachments: {
+    label: "Outlook attachments",
+    description: "Agents read the files attached to Outlook messages and create Outlook drafts and replies with workspace files attached, after the member approves each draft. Drafts are never sent.",
+    category: "connect",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "reachjalil",
+    docs: "docs/features/outlook-attachments/README.md",
     deployments: everywhere,
     default: false,
   },

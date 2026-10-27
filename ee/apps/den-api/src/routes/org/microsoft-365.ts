@@ -6,10 +6,11 @@ import { describeRoute } from "hono-openapi"
 import { z } from "zod"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
 import { env } from "../../env.js"
-import { jsonValidator, orgMemberRoute, paramValidator, queryValidator } from "../../middleware/index.js"
-import { jsonResponse, unauthorizedSchema } from "../../openapi.js"
+import { requireFeature } from "../../features.js"
+import { cloudTransportRoute, jsonValidator, orgMemberRoute, paramValidator, queryValidator } from "../../middleware/index.js"
+import { invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import { getValidAccessToken } from "../../capability-sources/generic-oauth.js"
-import { DEFAULT_GRAPH_BASE_URL, MicrosoftGraphClient } from "../../capability-sources/microsoft-graph.js"
+import { DEFAULT_GRAPH_BASE_URL, MICROSOFT_MAIL_ATTACHMENT_MAX_BYTES, MicrosoftGraphClient } from "../../capability-sources/microsoft-graph.js"
 import { getOrgOAuthClient } from "../../capability-sources/oauth-credentials.js"
 import { listNativeProviderUsableEntries, nativeProviderConnectionPolicyError, resolveDefaultNativeProviderCredentialId, type NativeProviderPolicyError } from "../../capability-sources/native-provider-connections.js"
 import { clientSelectedFeatures, getNativeOAuthProvider, providerScopesSatisfy } from "../../capability-sources/provider-registry.js"
@@ -97,6 +98,52 @@ const mailSendResponseSchema = z.object({
 const mailReplyDraftBodySchema = z.object({
   comment: z.string().trim().min(1).max(20_000).describe("Reply text to save in a draft for user review; this does not send mail."),
 }).strict().meta({ ref: "Microsoft365MailReplyDraftBody" })
+
+const MAIL_DRAFT_UPLOAD_MAX_FILES = 10
+const MAIL_DRAFT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024
+const MAIL_DRAFT_UPLOAD_BODY_MAX_BYTES = MAIL_DRAFT_UPLOAD_MAX_BYTES + (256 * 1024)
+const MIME_TYPE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+
+const mailAttachmentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  contentType: z.string(),
+  size: z.number().nullable(),
+  isInline: z.boolean().describe("Shown inside the message body, such as a signature image, rather than as a separate file."),
+  kind: z.enum(["file", "item", "reference", "unknown"]).describe("Only file attachments have bytes to download; item is an attached Outlook item and reference a link to a cloud file."),
+}).meta({ ref: "Microsoft365MailAttachment" })
+
+const mailAttachmentsResponseSchema = z.object({
+  ok: z.literal(true),
+  attachments: z.array(mailAttachmentSchema),
+}).meta({ ref: "Microsoft365MailAttachmentsResponse" })
+
+const mailAttachmentParamSchema = z.object({
+  messageId: graphItemIdSchema.describe("Microsoft Graph message id."),
+  attachmentId: graphItemIdSchema.describe("Attachment id from the mail-attachments capability."),
+})
+
+const mailAttachmentResponseSchema = z.object({
+  ok: z.literal(true),
+  attachment: mailAttachmentSchema.extend({
+    contentBase64: z.string().nullable().describe("Standard base64-encoded file bytes; decode locally to reconstruct the file."),
+    contentUnavailableReason: z.enum(["not_a_file", "file_too_large"]).nullable(),
+  }),
+}).meta({ ref: "Microsoft365MailAttachmentResponse" })
+
+const connectionIdSchema = z.string().regex(/^(microsoft-365|emc_[A-Za-z0-9]+)$/).optional()
+
+// The multipart payload of a draft with attachments: a new message, or a reply to one.
+const mailDraftUploadPayloadSchema = z.union([
+  mailDraftBodySchema.extend({ connectionId: connectionIdSchema }).strict(),
+  z.object({ replyToMessageId: graphItemIdSchema, comment: mailReplyDraftBodySchema.shape.comment, connectionId: connectionIdSchema }).strict(),
+])
+
+const mailDraftUploadResponseSchema = z.object({
+  ok: z.literal(true),
+  draft: mailMessageSchema,
+  attachments: z.array(z.object({ name: z.string(), contentType: z.string(), size: z.number().int().nonnegative() })),
+}).meta({ ref: "Microsoft365MailDraftWithAttachmentsResponse" })
 
 const mailMessageUpdateBodySchema = z.object({
   isRead: z.boolean().optional(),
@@ -501,6 +548,130 @@ export function registerMicrosoft365Routes<T extends { Variables: OrgRouteVariab
       try {
         return c.json({ ok: true, draft: await client.createMailReplyDraft(c.req.valid("param").messageId, c.req.valid("json").comment) })
       } catch (error) { return c.json(graphError(error), 502) }
+    },
+  )
+
+  app.get(
+    "/v1/capabilities/microsoft-365/mail-attachments/:messageId",
+    describeRoute({
+      tags: ["Capability Sources"],
+      summary: "List an Outlook message's attachments as the calling member",
+      description: "Lists one Outlook message's attachments with their name, type, size and kind. Only file attachments have bytes: pass one's id to the mail-attachment capability to download it. Read-only.",
+      responses: {
+        200: jsonResponse("Outlook attachments returned.", mailAttachmentsResponseSchema),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+        409: jsonResponse("The calling member has not connected their Microsoft account or is missing permission.", needsConnectionSchema),
+        502: jsonResponse("Microsoft Graph rejected the request.", upstreamErrorSchema),
+      },
+    }),
+    orgMemberRouteMiddleware, requireFeature("outlookAttachments"), paramValidator(mailMessageParamSchema),
+    async (c) => {
+      const client = await mutationClient(c.get("organizationContext"), c.req.raw.signal, ["mailRead"], "Outlook mail read")
+      if (client instanceof Response) return client
+      try {
+        return c.json({ ok: true, attachments: await client.listMailAttachments(c.req.valid("param").messageId) })
+      } catch (error) { return c.json(graphError(error), 502) }
+    },
+  )
+
+  app.get(
+    "/v1/capabilities/microsoft-365/mail-attachment/:messageId/:attachmentId",
+    describeRoute({
+      tags: ["Capability Sources"],
+      summary: "Download an Outlook attachment's bytes as the calling member",
+      description: "Downloads one file attachment from an Outlook message as base64, up to 10 MiB, using the attachment id from the mail-attachments capability. Decode contentBase64 locally to reconstruct the file, e.g. a PDF or spreadsheet. Attached Outlook items, cloud links and larger files return contentUnavailableReason instead.",
+      responses: {
+        200: jsonResponse("Outlook attachment returned.", mailAttachmentResponseSchema),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+        409: jsonResponse("The calling member has not connected their Microsoft account or is missing permission.", needsConnectionSchema),
+        502: jsonResponse("Microsoft Graph rejected the request.", upstreamErrorSchema),
+      },
+    }),
+    orgMemberRouteMiddleware, requireFeature("outlookAttachments"), paramValidator(mailAttachmentParamSchema),
+    async (c) => {
+      const client = await mutationClient(c.get("organizationContext"), c.req.raw.signal, ["mailRead"], "Outlook mail read")
+      if (client instanceof Response) return client
+      try {
+        const { messageId, attachmentId } = c.req.valid("param")
+        return c.json({ ok: true, attachment: await client.getMailAttachment(messageId, attachmentId) })
+      } catch (error) { return c.json(graphError(error), 502) }
+    },
+  )
+
+  app.post(
+    "/v1/direct-uploads/microsoft-365/mail-drafts",
+    describeRoute({
+      tags: ["Direct uploads"],
+      security: [{ mcpAccessToken: [] }],
+      summary: "Create an Outlook draft or reply draft with direct multipart workspace attachments",
+      description: "Authenticated host transport for openwork-cloud-uploads. Creates the draft, attaches each file and never sends it. If a file cannot be attached, the new draft moves to Deleted Items. Attachment bytes are not stored or shown to the model.",
+      responses: {
+        200: jsonResponse("Outlook draft created with its attachments.", mailDraftUploadResponseSchema),
+        400: jsonResponse("The multipart draft request was invalid.", invalidRequestSchema),
+        401: jsonResponse("The caller must be signed in.", unauthorizedSchema),
+        409: jsonResponse("The calling member has not connected their Microsoft account or is missing permission.", needsConnectionSchema),
+        502: jsonResponse("Microsoft Graph rejected the request or the outcome is unknown.", upstreamErrorSchema),
+      },
+    }),
+    options.transportRoute ?? cloudTransportRoute(),
+    requireFeature("outlookAttachments"),
+    bodyLimit({
+      maxSize: MAIL_DRAFT_UPLOAD_BODY_MAX_BYTES,
+      onError: (c) => c.json({ error: "invalid_request", message: "Direct upload request is too large." }, 413),
+    }),
+    async (c) => {
+      const form = await c.req.formData()
+      const files = form.getAll("file").filter((value): value is File => value instanceof File)
+      const totalBytes = files.reduce((total, file) => total + file.size, 0)
+      if (files.length < 1 || files.length > MAIL_DRAFT_UPLOAD_MAX_FILES || totalBytes > MAIL_DRAFT_UPLOAD_MAX_BYTES
+        || files.some((file) => file.size < 1 || file.size > MICROSOFT_MAIL_ATTACHMENT_MAX_BYTES || !file.name.trim())) {
+        return c.json({ error: "invalid_request", message: "Attach one to ten named, non-empty files, each under 3 MB and up to 4 MiB in all." }, 400)
+      }
+      const payloadValue = form.get("payload")
+      let payloadJson: unknown = null
+      try {
+        payloadJson = typeof payloadValue === "string" ? JSON.parse(payloadValue) : null
+      } catch {
+        payloadJson = null
+      }
+      const parsed = mailDraftUploadPayloadSchema.safeParse(payloadJson)
+      if (!parsed.success) {
+        return c.json({ error: "invalid_request", message: `The draft payload is invalid: ${parsed.error.issues.map((issue) => `${issue.path.join(".") || "payload"} ${issue.message}`).join("; ")}` }, 400)
+      }
+      const payload = c.get("organizationContext")
+      if (!payload) return c.json({ error: "unauthorized" }, 401)
+      const granted = await access({
+        organizationId: payload.organization.id, orgMembershipId: payload.currentMember.id, connectionId: parsed.data.connectionId ?? null,
+        features: ["mailDraft"], label: "Outlook draft creation",
+      })
+      if (!granted.ok) return c.json(granted.body, granted.status)
+      const client = granted.graph({ signal: c.req.raw.signal })
+
+      let draft: Awaited<ReturnType<MicrosoftGraphClient["createMailDraft"]>>
+      try {
+        draft = "replyToMessageId" in parsed.data
+          ? await client.createMailReplyDraft(parsed.data.replyToMessageId, parsed.data.comment)
+          : await client.createMailDraft(parsed.data)
+      } catch (error) { return c.json(graphError(error), 502) }
+
+      const attachments: { name: string; contentType: string; size: number }[] = []
+      for (const file of files) {
+        const name = file.name.replace(/[\r\n]/g, " ").trim()
+        const mimeType = file.type.split(";", 1)[0]?.trim() ?? ""
+        const contentType = MIME_TYPE.test(mimeType) ? mimeType : "application/octet-stream"
+        try {
+          await client.addMailAttachment(draft.id, { name, contentType, content: new Uint8Array(await file.arrayBuffer()) })
+          attachments.push({ name, contentType, size: file.size })
+        } catch (error) {
+          // Never leave a draft that is missing a file the person asked for; cleanup outlives a dropped request.
+          const removed = await granted.graph().deleteMailDraft(draft.id).then(() => true, () => false)
+          return c.json(removed
+            ? { error: "microsoft_graph_error", message: `Outlook did not attach ${name}, so the new draft was moved to Deleted Items. ${graphError(error).message}` }
+            : { error: "microsoft_graph_error", message: `Outlook did not attach ${name}, and the new draft may still be in Drafts without every file. Check Drafts before trying again.`, outcome: "unknown", retryable: false },
+          502)
+        }
+      }
+      return c.json({ ok: true, draft: { ...draft, hasAttachments: true }, attachments })
     },
   )
 
