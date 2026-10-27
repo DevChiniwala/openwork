@@ -111,7 +111,7 @@ jobs:
           pnpm --filter @openwork-ee/headless-runner test:service-health
           pnpm --filter @openwork-ee/workbot test:service-readiness
           # Den web does not install tsx in CI; keep its JSX config with the API-owned loader.
-          TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/diagnostics/*.test.ts' '../den-web/components/diagnostics/*.test.tsx' '../den-web/components/admin/services/*.test.ts' '../den-web/components/services/*.test.tsx' '../den-web/app/(den)/dashboard/_lib/diagnostics-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts'
+          TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/diagnostics/*.test.ts' '../den-web/components/diagnostics/*.test.tsx' '../den-web/components/admin/services/*.test.ts' '../den-web/components/admin/feature-change.test.ts' '../den-web/components/services/*.test.tsx' '../den-web/app/(den)/dashboard/_lib/diagnostics-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts' '../den-web/app/(den)/dashboard/_components/workbot-proactive-section.test.tsx'
           bun test apps/app/tests/deployment-service-readiness.test.ts apps/app/tests/opencode-zen-removal.test.ts apps/app/tests/activation-card-model.test.ts apps/app/tests/connector-readiness.test.ts
       - name: Boot the app provider tree
         run: pnpm test:boot
@@ -120,19 +120,23 @@ jobs:
           node --test apps/desktop/test/native-dictation.test.mjs
           # Load Lexical's synchronous development exports for the DOM editor tests.
           pnpm --filter @openwork/app exec bun --conditions=development test --isolate ./tests/native-dictation.test.tsx ./tests/browser-dictation.test.ts ./tests/composer-caret-refocus.test.tsx
+      - name: Test follow-ups sent while a chat is starting
+        run: pnpm --filter @openwork/app exec bun test --isolate ./tests/starting-thread-follow-ups.test.ts
+      - name: Test the chat Working line, run time and reply order
+        run: pnpm --filter @openwork/app exec bun --conditions=development test --isolate ./tests/message-list-working-line.test.tsx ./tests/run-working-time.test.ts ./tests/reply-chronology.test.ts
       - name: Check desktop links open real Den pages
         run: pnpm --filter @openwork/app test:den-links
       - name: Test the shared Calendar logic
         run: pnpm --filter @openwork/calendar test
       - name: Test fork authorization and free screening policy
         run: node --test .github/scripts/contributor-pr.test.mjs .github/scripts/contributor-screen.test.mjs .github/scripts/warden-check.test.mjs .github/scripts/warden-report.test.mjs .github/scripts/warden-fast.test.mjs .github/scripts/setup-browser.test.mjs
-      - name: Test on-demand PR proof review builds
-        run: node --test .github/scripts/pr-proof-review-build.test.mjs .github/scripts/pr-proof-artifacts.test.mjs evals/scripts/engine-parity-binaries.test.mjs evals/scripts/run-parity-proof.test.mjs
+      - name: Test on-demand PR proof review builds and CI timing
+        run: node --test .github/scripts/pr-proof-review-build.test.mjs .github/scripts/pr-proof-selection.test.mjs .github/scripts/ci-time-to-green.test.mjs evals/scripts/engine-parity-binaries.test.mjs evals/scripts/run-parity-proof.test.mjs
       - name: Test desktop and cloud computer access and interruption
         run: |
           pnpm --filter @openwork/computer-use build
           node --test ee/packages/headless-computer/src/viewer-tickets.test.mjs
-          node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs apps/desktop/electron/computer-windows.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/browser-task-viewport.test.mjs packages/browser-tabs/index.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs apps/desktop/electron/floating-view-window.test.mjs
+          node --test apps/desktop/electron/computer-control.test.mjs apps/desktop/electron/computer-remote.test.mjs apps/desktop/electron/computer-windows.test.mjs packages/computer-use/cloud.test.mjs packages/computer-use/browser-task-privacy.test.mjs packages/computer-use/browser-task-viewport.test.mjs packages/browser-tabs/index.test.mjs packages/computer-use/chromium.test.mjs apps/desktop/electron/computer-program.test.mjs apps/desktop/electron/floating-view-window.test.mjs apps/desktop/electron/window-state.test.mjs
           python3 ee/packages/headless-computer/scripts/desktop-bridge.test.py
           python3 ee/packages/headless-computer/scripts/app-scripting.test.py
           python3 ee/packages/headless-computer/scripts/configure-desktop-files.test.py
@@ -158,12 +162,16 @@ jobs:
         run: bun --conditions=development test apps/server/test/web-ui-origin.test.ts
       - name: Test OneDrive and SharePoint pulls and saves
         run: bun --conditions=development test apps/server/test/drive-files-microsoft.test.ts
+      - name: Test old workspaces drop the retired browser plugin
+        run: bun test apps/server/test/workspace-init-legacy-browser-plugin.test.ts
       - name: Test Windows environment variable names match in any case
         run: |
           node --test packages/paths/env.test.mjs apps/desktop/test/runtime-env.test.mjs
           bun test apps/server/test/windows-env-names.test.ts
       - name: Test the desktop reads Apps as large as Den builds them
         run: bun test apps/server/test/mcp-app-resource-cache.test.ts
+      - name: Test the agent's Automation listing reads every schedule kind
+        run: bun test apps/server/test/connect-automation-catalog.test.ts
       - name: Setup headless Chrome for locator regression
         uses: ./.github/actions/setup-browser
       - name: Run eval framework tests (spec lint and its fixtures)
@@ -179,14 +187,14 @@ jobs:
           pnpm --filter @openwork-ee/utils test
           pnpm --filter @openwork/automations test
           pnpm --filter @openwork-ee/den-api test
-          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts" "../den-web/app/(den)/dashboard/_components/connector-readiness.test.ts" "../den-web/app/(den)/dashboard/_components/mcp-account-authorization-state.test.ts" "../den-web/app/(den)/dashboard/_lib/workbot-entry.test.ts" "../den-web/app/(den)/_lib/billing-checkout.test.ts" "../den-web/app/(den)/_lib/org-boot-requests.test.ts" "../den-web/app/api/_lib/signed-client-ip.test.ts"
+          pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test "../den-web/app/(den)/dashboard/_components/manual-oauth-draft.test.ts" "../den-web/app/(den)/dashboard/_components/connector-readiness.test.ts" "../den-web/app/(den)/dashboard/_components/mcp-account-authorization-state.test.ts" "../den-web/app/(den)/dashboard/_lib/workbot-entry.test.ts" "../den-web/app/(den)/_lib/billing-checkout.test.ts" "../den-web/app/(den)/_lib/org-boot-requests.test.ts" "../den-web/app/(den)/_lib/last-sign-in.test.ts" "../den-web/app/api/_lib/signed-client-ip.test.ts"
           pnpm --filter @openwork-ee/workbot test:model
       # Security rules (roles, tenants, keys, OAuth, audit) against the real
       # den-api app and a throwaway database on MySQL (root:password).
       - name: Run Den API security tests
         run: |
           pnpm --filter @openwork-ee/den-api build:workspace-dependencies
-          pnpm dev:den:mysql
+          pnpm ci:den:mysql
           pnpm --filter @openwork-ee/den-api test:api
       - name: Check sandbox contracts and adapters (no cloud resources)
         run: |
@@ -394,7 +402,7 @@ jobs:
           pnpm --filter @openwork/types build
           pnpm --filter @openwork-ee/den-db build
           pnpm --filter @openwork/email build
-          pnpm dev:den:mysql
+          pnpm ci:den:mysql
           pnpm --filter @openwork/desktop prepare:sidecar
       # One file at a time: every local Den boot resets den-web's shared .next/dev
       # build directory, so parallel Den specs crash each other's Den web.

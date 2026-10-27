@@ -114,6 +114,14 @@ export const turnCredentialsSchema = z
 export type TurnCredentials = z.infer<typeof turnCredentialsSchema>
 
 /**
+ * The two views of a conversation's desktop, which callers may offer separately: `browser` (the web browser) and
+ * `computer` (the desktop's native applications).
+ */
+export const DESKTOP_VIEWS = ["browser", "computer"] as const
+export const desktopViewSchema = z.enum(DESKTOP_VIEWS)
+export type DesktopView = z.infer<typeof desktopViewSchema>
+
+/**
  * An optional Linux computer per conversation (`@openwork-ee/headless-computer`), loaded only when configured.
  * The runner offers its tools and prompt, and tells it when a conversation starts, goes quiet, or is deleted.
  */

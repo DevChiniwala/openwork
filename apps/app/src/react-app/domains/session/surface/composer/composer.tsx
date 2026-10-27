@@ -49,6 +49,7 @@ import { ComposerSuggestionMenu, composerSuggestionRowClass } from "./composer-s
 import type { PlusMenuAgent, PlusMenuConnector, PlusMenuSection } from "./composer-plus-menu-model";
 import { connectionDiagnosticHistory, type ConnectionDiagnosticSource, type SendDiagnosticReason } from "@/app/lib/connection-diagnostic-history";
 import { composerDiagnosticBlockers } from "./composer-diagnostics";
+import { resolveComposerSubmit } from "./composer-submit";
 import { ModelRecoveryNote } from "./model-recovery-note";
 import { modelRecoveryChatKey, useModelRecoveryStore } from "../model-recovery-store";
 import { useNativeDictation } from "@openwork/ui/react";
@@ -369,29 +370,23 @@ export const ReactSessionComposer = memo(function ReactSessionComposer(props: Co
     if (escapeTimerRef.current) clearTimeout(escapeTimerRef.current);
   }, []);
 
-  // Editor submit (Enter). While idle this sends normally; while busy
-  // Enter queues until the agent finishes, and Cmd/Ctrl+Enter steers.
-  // An edit always replaces its original turn through the immediate send path.
+  // Editor submit (Enter, or Cmd/Ctrl+Enter when `queue` is set).
   const handleEditorSubmit = useCallback((options: { queue: boolean }) => {
     const current = prepareVoiceSubmission();
-    const hasContent = current.draft.trim().length > 0 || current.attachments.length > 0;
-    if (!hasContent) return;
-    if (current.submissionPreparing) return;
-    // A new Enter after Stop is fresh work, not a follow-up to the interrupted
-    // turn. The immediate send path fences admission on the shared interruption
-    // promise; dropping Enter here silently leaves the person's draft unsent.
-    if (current.stopping) {
-      void current.onSend();
-      return;
-    }
-    if (current.childConversation) { void current.onSend(); return; }
-    if (current.busy && !current.editing) {
-      if (options.queue) void current.onSteer();
-      else void current.onQueue();
-      return;
-    }
-    void current.onSend();
-  }, [props.childConversation, props.busy, props.editing, props.draft, props.attachments, props.onSend, props.onSteer, props.onQueue, props.submissionPreparing, props.stopping]);
+    const action = resolveComposerSubmit({
+      hasContent: current.draft.trim().length > 0 || current.attachments.length > 0,
+      disabled: current.disabled,
+      // A helper's conversation sends right away; it cannot queue or steer.
+      busy: current.busy && !current.childConversation,
+      editing: Boolean(current.editing),
+      stopping: Boolean(current.stopping),
+      submissionPreparing: current.submissionPreparing,
+      steer: options.queue,
+    });
+    if (action === "send") void current.onSend();
+    else if (action === "steer") void current.onSteer();
+    else if (action === "queue") void current.onQueue();
+  }, [props.childConversation, props.busy, props.disabled, props.editing, props.draft, props.attachments, props.onSend, props.onSteer, props.onQueue, props.submissionPreparing, props.stopping]);
 
   const showStop = props.busy && !props.editing;
 

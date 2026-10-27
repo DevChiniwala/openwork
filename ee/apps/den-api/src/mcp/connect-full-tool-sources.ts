@@ -4,13 +4,14 @@ import { listExternalMcpTools } from "../capability-sources/external-mcp-client-
 import { createExternalMcpLifecycleDeadline, type ExternalMcpLifecycleDeadline } from "../capability-sources/external-mcp-client.js"
 import type { NativeProviderConnectionEntry } from "../capability-sources/native-provider-connections.js"
 import type { McpAppEntry } from "../mcp-apps.js"
-import { CAPABILITY_SOURCES, type CapabilityLeaf, type CapabilityRegistryContext, type CapabilitySourceKind, type ExecuteCapabilityToolResult } from "./capability-registry.js"
+import { CAPABILITY_SOURCES, slackSendAsBotAvailable, type CapabilityLeaf, type CapabilityRegistryContext, type CapabilitySourceKind, type ExecuteCapabilityToolResult } from "./capability-registry.js"
 import { buildCodemodeConnectionNamespaceMaps } from "./codemode-namespaces.js"
 import { mapConcurrent } from "./codemode-tools.js"
 import {
   APP_TOOL_NAMESPACE,
   buildConnectFullTools,
   externalToolCandidates,
+  OPENWORK_BOT_TOOL_NAMESPACE,
   REMOTE_SESSION_TOOL_NAMESPACE,
   titledToolNames,
   WORKFLOW_TOOL_NAMESPACE,
@@ -27,6 +28,7 @@ import { listAccessibleWorkflows } from "./marketplace-capabilities.js"
 import { buildMarketplaceCapabilityName } from "./marketplace-capability-name.js"
 import { connectionStatusMatch } from "./native-capabilities.js"
 import { listRemoteSessionCapabilities } from "./remote-session-capabilities.js"
+import { SLACK_SEND_AS_BOT_ARGUMENTS_SCHEMA, SLACK_SEND_AS_BOT_CAPABILITY, SLACK_SEND_AS_BOT_SUMMARY } from "./slack-send-as-bot.js"
 
 // The same bounds capability search gives one provider probe.
 const LIST_LIFECYCLE_TIMEOUT_MS = 8_000
@@ -113,7 +115,7 @@ async function connectionTools(
  * the capability registry's own sources: native Google/Microsoft operations
  * and platform-admin tools as Code Mode enumerates them, ready external MCP
  * connections' tools under their tool policy, the member's Workflows and
- * Apps, and remote sessions. Each tool names the capability
+ * Apps, remote sessions, and slack_send_as_bot. Each tool names the capability
  * execute_capability runs.
  */
 export async function loadConnectFullTools(input: {
@@ -206,6 +208,17 @@ export async function loadConnectFullTools(input: {
       inputSchema: capability.argumentsSchema,
       annotations: { readOnlyHint: READ_ONLY_REMOTE_SESSION_ACTIONS.has(capability.action) },
     })))
+  }
+
+  if (wants(OPENWORK_BOT_TOOL_NAMESPACE) && slackSendAsBotAvailable(ctx)) {
+    candidates.push({
+      namespace: OPENWORK_BOT_TOOL_NAMESPACE,
+      toolName: SLACK_SEND_AS_BOT_CAPABILITY,
+      capability: SLACK_SEND_AS_BOT_CAPABILITY,
+      description: SLACK_SEND_AS_BOT_SUMMARY,
+      inputSchema: SLACK_SEND_AS_BOT_ARGUMENTS_SCHEMA,
+      annotations: { readOnlyHint: false, openWorldHint: true },
+    })
   }
 
   // Connections the member may use but cannot call yet: connection_status shows their card.

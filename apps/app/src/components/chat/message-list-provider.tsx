@@ -11,7 +11,9 @@ import type { ConnectorToolIdentity } from "@/react-app/domains/connections/conn
 import type { OpenworkServerClient } from "@/app/lib/openwork-server"
 import type { McpAppOrigin } from "./mcp-app-origin"
 import { publicModelTitle } from "@/react-app/domains/models/model-catalog"
-import type { ReplyModelTitleResolver } from "@/react-app/domains/session/sync/reply-model"
+import type { AutoRouteNameResolver, ReplyModelTitleResolver } from "@/react-app/domains/session/sync/reply-model"
+import type { AutoRouterReplyRoute } from "@openwork/types/den/auto-router"
+import { useSessionAutoRoutes } from "@/react-app/domains/session/sync/auto-route-store"
 import { useModelPickerCatalogStore } from "@/react-app/domains/session/models/model-collections-store"
 import type { ChatConnectionDecisionBinding } from "@/react-app/domains/session/surface/mcp-chat-reconnect"
 
@@ -32,6 +34,9 @@ interface MessageListContextValue {
   displaySuggestions: boolean
   providerConnectedCount: number
   resolveReplyModelTitle: ReplyModelTitleResolver
+  /** Auto (feature `autoRouter`): the gateway's routing decisions for this session's replies. */
+  autoRoutes: readonly AutoRouterReplyRoute[]
+  resolveAutoRouteName: AutoRouteNameResolver
   connectorIdentities: ConnectorToolIdentity[]
   /**
    * True while the workspace sync layer cannot validate live run status
@@ -202,6 +207,16 @@ export function MessageListProvider({
     },
     [replyModelOptions],
   )
+  const autoRoutes = useSessionAutoRoutes(sessionId)
+  // The gateway names the routed model; older gateways send only its id,
+  // which the member's catalog may know by name.
+  const resolveAutoRouteName = React.useCallback<AutoRouteNameResolver>(
+    modelID => {
+      const option = replyModelOptions?.find(option => option.modelID === modelID || option.modelID.endsWith(`/${modelID}`));
+      return option ? publicModelTitle(option) : undefined;
+    },
+    [replyModelOptions],
+  )
   const value = React.useMemo(
     () => ({
       mcpAppOrigin,
@@ -219,6 +234,8 @@ export function MessageListProvider({
       displaySuggestions,
       providerConnectedCount,
       resolveReplyModelTitle,
+      autoRoutes,
+      resolveAutoRouteName,
       connectorIdentities,
       syncDegraded,
       ...stableHandlers,
@@ -248,6 +265,8 @@ export function MessageListProvider({
       displaySuggestions,
       providerConnectedCount,
       resolveReplyModelTitle,
+      autoRoutes,
+      resolveAutoRouteName,
       connectorIdentities,
       syncDegraded,
       stableHandlers,

@@ -42,7 +42,7 @@ import { BackgroundTaskNotice, BackgroundTasksLabel, BackgroundTasksMessage, bac
 import { sessionBackgroundShells, useBackgroundShellStore, type BackgroundShell } from "@/react-app/domains/session/status/background-shell-store"
 import { messageAutoAccessWall } from "@/app/lib/inference-access"
 import { AutoAccessNotice } from "@/react-app/domains/cloud/auto-access-ui"
-import { OpenWorkModelsLimitCard, useUsageLimitUpgrade } from "@/react-app/domains/cloud/usage-limit-card"
+import { OpenWorkModelsLimitCard } from "@/react-app/domains/cloud/usage-limit-card"
 import type { OpenWorkModelsLimit } from "@/react-app/domains/cloud/usage-limit-state"
 import { rejectedRecoveryFromMessage } from "@/react-app/domains/session/sync/rejected-turn"
 import { replyModelLabel, replyModelProvider } from "@/react-app/domains/session/sync/reply-model"
@@ -65,6 +65,7 @@ import { TodoWriteTool } from "@/components/tools/todowrite"
 import { WebfetchTool } from "@/components/tools/webfetch"
 import { WebsearchTool } from "@/components/tools/websearch"
 import { useMessageList, useSessionErrorMessage } from "@/components/chat/message-list-provider"
+import { useOrgFeature } from "@/react-app/domains/cloud/use-org-feature"
 import { TaskSuggestions } from "@/components/chat/task-suggestions"
 import { useSessionReferencesMaybe, type SessionReferences } from "@/components/chat/session-reference-context"
 import { SessionReferenceLink } from "@/components/chat/session-reference-link"
@@ -146,13 +147,13 @@ import { revalidateWorkspaceSessionSync } from "@/react-app/domains/session/sync
 import { useWorkspaceMaybe } from "@/react-app/shell/workspace-provider"
 import { formatElapsedSeconds, formatToolCallDuration } from "@/lib/tool-call-duration"
 import { collectLatestAssistantToolParts } from "@/lib/latest-assistant-tool-parts"
-import { messageNotice, runElapsed } from "@/lib/session-run"
+import { messageNotice, workingTime } from "@/lib/session-run"
 import { isToolPartInFlight } from "@/lib/tool-activity"
 import { faviconUrlForHref } from "@/lib/favicon"
 import { useOpenArtifactPath } from "@/lib/artifacts"
 import { cn } from "@/lib/utils"
 import { DevProfiler } from "@/react-app/shell/dev-profiler"
-import { groupMessages, isMessageGroup, getLastTextPart, getAggregateOnlyParts, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, splitTurnAtAnswer, type UIMessageWithIndex, getMessagesText, getSafeFileDownloadUrl, getSafeFileRevealPath } from "./utils"
+import { groupMessages, isMessageGroup, getLastTextPart, getAggregateOnlyParts, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, getRunStartedAt, formatMessageTimestamp, splitTurnAtAnswer, type UIMessageWithIndex, getMessagesText, getSafeFileDownloadUrl, getSafeFileRevealPath } from "./utils"
 import type { AnyToolPart } from "@/lib/tool-aggregate"
 import { resolveConnectorToolIdentity } from "@/react-app/domains/connections/connector-tool-identity"
 
@@ -1095,11 +1096,12 @@ const MessageComponent = React.memo(
           canRetry={isLastMessage && !isStreaming}
           technicalDetails={presentation?.technicalDetails}
           gatewayConnectUrl={presentation?.kind === "gateway-auth-required" || presentation?.kind === "provider-credentials" ? presentation.connectUrl ?? null : undefined}
+          gatewayProviderAuthError={presentation?.kind === "gateway-provider-authentication-failed" || presentation?.kind === "gateway-provider-permission-denied"}
           gatewaySelectionRequired={presentation?.kind === "gateway-selection-required"}
           changeModel={presentation !== null && ["provider-access-denied", "provider-unavailable", "provider-unreachable", "model-unavailable", "rate-limited", "conversation-too-long", "attachment-unsupported"].includes(presentation.kind)}
         />
       )
-      if (presentation?.openworkModelsLimit) return <TranscriptOpenWorkModelsLimit limit={presentation.openworkModelsLimit} fallback={errorMessage} />
+      if (presentation?.openworkModelsLimit) return <TranscriptOpenWorkModelsLimit limit={presentation.openworkModelsLimit} />
       return errorMessage
     }
 
@@ -1133,10 +1135,9 @@ const MessageComponent = React.memo(
   }
 )
 
-/** The organization used its OpenWork Models allowance: one usage-limit card when `usageLimitUpgrade` is on. */
-function TranscriptOpenWorkModelsLimit({ limit, fallback }: { limit: OpenWorkModelsLimit; fallback: React.ReactNode }) {
+/** The organization used its OpenWork Models allowance: one usage-limit card. */
+function TranscriptOpenWorkModelsLimit({ limit }: { limit: OpenWorkModelsLimit }) {
   const { sessionId } = useMessageList()
-  if (!useUsageLimitUpgrade()) return fallback
   return <div className="mx-auto w-full max-w-3xl px-2 py-2 md:px-10"><OpenWorkModelsLimitCard limit={limit} sessionId={sessionId} /></div>
 }
 
@@ -1242,16 +1243,26 @@ interface ErrorMessageProps {
    * null deep-links to Settings > AI providers instead.
    */
   gatewayConnectUrl?: string | null
+  gatewayProviderAuthError?: boolean
   gatewaySelectionRequired?: boolean
   changeModel?: boolean
 }
 
-function ErrorMessage({ error, description, showDescriptionOnResume, resumePrompt, canRetry = true, technicalDetails, gatewayConnectUrl, gatewaySelectionRequired, changeModel }: ErrorMessageProps) {
+function ErrorMessage({ error, description, showDescriptionOnResume, resumePrompt, canRetry = true, technicalDetails, gatewayConnectUrl, gatewaySelectionRequired, gatewayProviderAuthError, changeModel }: ErrorMessageProps) {
   const { onResumeInterrupted, dispatchAction, sessionId } = useMessageList()
+  const gatewayProviderAuthEnabled = useOrgFeature("gatewayProviderAuthErrors")
+  const useGatewayProviderAuthCopy = gatewayProviderAuthError && gatewayProviderAuthEnabled
   const selection = error?.includes("gateway_selection_required") ? presentOpencodeSessionError(error) : null
-  const displayError = selection?.title ?? error
-  const displayDescription = selection?.description ?? description
+  const displayError = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? "Check your model connection"
+    : selection?.title ?? error
+  const displayDescription = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? "Update your connection in model settings."
+    : selection?.description ?? description
   const displayDetails = selection?.technicalDetails ?? technicalDetails
+  const displayTechnicalDetails = gatewayProviderAuthError && !gatewayProviderAuthEnabled
+    ? displayDetails?.split("\n").filter((line) => !line.startsWith("Request ID:")).join("\n")
+    : displayDetails
   const resumable = Boolean(resumePrompt && onResumeInterrupted)
   return (
     <TaskRecovery title={displayError ?? "Task failed"} state={resumable ? "paused" : "failed"}
@@ -1259,16 +1270,18 @@ function ErrorMessage({ error, description, showDescriptionOnResume, resumePromp
       description={showDescriptionOnResume && displayDescription
         ? <span data-testid="session-error-interruption-warning">{displayDescription}</span>
         : !resumePrompt ? displayDescription : null}
-      technicalDetails={displayDetails}
+      technicalDetails={useGatewayProviderAuthCopy ? displayDetails : displayTechnicalDetails}
       onRetry={canRetry && resumable && resumePrompt ? () => onResumeInterrupted?.(resumePrompt) : undefined}
       retryTestId="session-error-resume"
-      actions={gatewaySelectionRequired || selection || changeModel || gatewayConnectUrl !== undefined ? <>
+      actions={gatewaySelectionRequired || selection || changeModel || gatewayConnectUrl !== undefined || (gatewayProviderAuthError && !gatewayProviderAuthEnabled) ? <>
         {gatewaySelectionRequired || selection ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-selection"
           onClick={() => openAlternativeModelPicker(sessionId)}>
           Choose group and credential set
         </Button> : null}
         {changeModel && !gatewaySelectionRequired && !selection ? <Button variant="ghost" size="xs"
           onClick={() => openAlternativeModelPicker(sessionId)}>Change model</Button> : null}
+        {gatewayProviderAuthError && !gatewayProviderAuthEnabled ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-connect"
+          onClick={() => dispatchAction({ target: "settings", action: "open", section: "providers" })}>Connect</Button> : null}
         {gatewayConnectUrl !== undefined ? <Button variant="ghost" size="xs" data-testid="session-error-gateway-connect"
           onClick={() => dispatchAction({ target: "settings", action: "open", section: "providers" })}>Connect</Button> : null}
       </> : null} />
@@ -1500,7 +1513,7 @@ function MessageGroup({
   isStreaming,
   newestAppCallIds,
 }: AssistantMessageGroupProps) {
-  const { onForkAtMessage, forkingMessageId, showThinking, readOnly, getConnectionDecision, resolveReplyModelTitle } = useMessageList()
+  const { onForkAtMessage, forkingMessageId, showThinking, readOnly, getConnectionDecision, resolveReplyModelTitle, autoRoutes, resolveAutoRouteName } = useMessageList()
   const connectionCardParts = React.useMemo(() => connectionCardPartIds(items, getConnectionDecision), [items, getConnectionDecision])
   const newestAppCalls = React.useMemo(() => new Set(newestAppCallIds.split("\n")), [newestAppCallIds])
   const lastItem = items[items.length - 1]
@@ -1541,8 +1554,9 @@ function MessageGroup({
   }
   // Native turns can end with a metadata-free completion marker. Keep the
   // latest known model within this turn rather than losing the answer's name.
-  const replyModelMessage = items.findLast(item => item.message.role === "assistant" && replyModelLabel(item.message, resolveReplyModelTitle))?.message
-  const resolvedReplyModel = replyModelMessage ? replyModelLabel(replyModelMessage, resolveReplyModelTitle) : null
+  const replyModelMessage = items.findLast(item => item.message.role === "assistant" && replyModelLabel(item.message, resolveReplyModelTitle, autoRoutes, resolveAutoRouteName))?.message
+  const resolvedReplyModel = replyModelMessage ? replyModelLabel(replyModelMessage, resolveReplyModelTitle, autoRoutes, resolveAutoRouteName) : null
+  const replyModelProviderId = replyModelMessage ? replyModelProvider(replyModelMessage, autoRoutes) : undefined
   const mcpAppParts = collectMcpAppParts(items)
 
   // Leading messages without prose (tool/reasoning steps) render inline and
@@ -1767,7 +1781,7 @@ function MessageGroup({
           >
             <span className="sr-only">Replied with </span>
             <span aria-hidden="true" className="flex size-3 shrink-0 items-center justify-center">
-              {replyModelMessage && replyModelProvider(replyModelMessage) ? <ProviderIcon providerId={replyModelProvider(replyModelMessage)} size={12} /> : null}
+              {replyModelProviderId ? <ProviderIcon providerId={replyModelProviderId} size={12} /> : null}
             </span>
             <span className="truncate">{resolvedReplyModel}</span>
           </span> : null}
@@ -1840,8 +1854,9 @@ interface MessageListProps {
 /**
  * The turn's "Working 12s" line stays on screen for the whole run, including
  * while a tool row shows its own live step: the row says what is happening
- * now, the line says the turn is still going and how long since the person's
- * last message. Hiding it between steps made the chat look finished.
+ * now, the line says the turn is still going and how long it has been working,
+ * including follow-ups sent mid-run. Hiding it between steps made the chat
+ * look finished.
  */
 export function shouldShowMessageListLoading(status: ThreadStatus, messageCount: number) {
   return status === "streaming" || (status === "submitted" && messageCount > 0)
@@ -1887,25 +1902,15 @@ export function MessageList({ messages, messageIdReplacements, status, activityS
   const appPanelLive = React.useMemo(() => (appRunActive || status === "submitted") && appBuildInProgress(messages), [appRunActive, status, messages])
   const syncDegraded = syncHealth?.degraded === true
   const activityActive = runActive || tasks.length > 0
-  const currentRun = useSessionActivityStore(state => {
-    const record = state.recordsByWorkspaceId[workspaceId]?.[sessionId]
-    return record?.currentRunId ? record.runs[record.currentRunId] : undefined
-  })
+  const runWaits = useSessionActivityStore(state => state.recordsByWorkspaceId[workspaceId]?.[sessionId]?.waits)
   const runStartedAtRef = React.useRef<number | null>(null)
   const [runElapsedSeconds, setRunElapsedSeconds] = React.useState(0)
   // Anchor the counter to the user message that started the run (server
   // timestamp), so switching sessions and back doesn't reset it to 0 on
-  // remount. Optimistic messages without metadata fall back to first-mount
-  // wall clock.
-  const runStartedAt = React.useMemo(() => {
-    if (!runActive) return null
-    if (currentRun && !currentRun.endedAt) return currentRun.startedAt
-    for (let index = messages.length - 1; index >= 0; index--) {
-      const message = messages[index]
-      if (message && message.role === "user") return getMessageCreated(message)
-    }
-    return null
-  }, [messages, runActive, currentRun])
+  // remount, and a follow-up sent mid-run doesn't restart it. Time spent
+  // waiting for the person is not work. Optimistic messages without metadata
+  // fall back to first-mount wall clock.
+  const runStartedAt = React.useMemo(() => runActive ? getRunStartedAt(messages) : null, [messages, runActive])
   React.useEffect(() => {
     if (!activityActive) {
       runStartedAtRef.current = null
@@ -1921,12 +1926,12 @@ export function MessageList({ messages, messageIdReplacements, status, activityS
     if (syncDegraded) return
     const updateElapsed = () => {
       const startedAt = runStartedAtRef.current
-      if (startedAt !== null) setRunElapsedSeconds(Math.max(0, Math.floor((currentRun ? runElapsed(currentRun, Date.now()) : Date.now() - startedAt) / 1000)))
+      if (startedAt !== null) setRunElapsedSeconds(Math.floor(workingTime(startedAt, Date.now(), runWaits) / 1000))
     }
     updateElapsed()
     const interval = window.setInterval(updateElapsed, 1000)
     return () => window.clearInterval(interval)
-  }, [activityActive, runStartedAt, syncDegraded, currentRun])
+  }, [activityActive, runStartedAt, syncDegraded, runWaits])
   const latestUserMessageId = React.useMemo(() => messages.findLast((message) => message.role === "user")?.id, [messages])
   // Steps that render nothing are removed before layout, so they leave no gap.
   const remoteThreads = useRemoteThreadsEnabled()
