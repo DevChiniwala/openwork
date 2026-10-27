@@ -188,6 +188,10 @@ the GUI account is not a member of the command user's group. App profiles live
 in `/home/openwork-app` and survive VM pause/resume. This account cannot read
 the Chromium profile or open network connections; use shared uploads and outputs
 to exchange files with native apps. Browser downloads also use the shared outputs.
+With My files on (`memberFiles`, [docs/features/member-files](../features/member-files/README.md)), the desktop
+bridge's `files on` makes `/files` for the same shared group and points the browser's Downloads at `/files/Downloads`;
+the runner saves new downloads to the member's My files after each browser call, and copies a file the agent uploads
+into `/files/.uploads/` just before the browser attaches it. `files off` points Downloads back at the shared outputs.
 
 Workbot's `desktop` tool exposes `computer_apps {}` to discover app availability,
 package versions, supported formats, paths and environment guidance, and

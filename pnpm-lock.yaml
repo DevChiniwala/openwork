@@ -1085,6 +1085,12 @@ importers:
         specifier: ^4.6.6
         version: 4.6.6
     devDependencies:
+      '@openwork/computer-use':
+        specifier: workspace:*
+        version: link:../../../packages/computer-use
+      '@openwork/sandbox':
+        specifier: workspace:*
+        version: link:../../../packages/sandbox
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3

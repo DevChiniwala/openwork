@@ -98,6 +98,11 @@ jobs:
         run: |
           pnpm --filter @openwork-ee/headless-runner test:conversation
           pnpm --filter @openwork-ee/headless-runner test:transfer
+      - name: Test My files (per-member files, scopes, owner routes, browser downloads and uploads, Workbot)
+        run: |
+          pnpm --filter @openwork-ee/headless-runner test:member-files
+          MEMBER_FILES_E2E_REQUIRE_CHROME=1 CHROME_PATH="$(command -v google-chrome || command -v chromium)" pnpm --filter @openwork-ee/headless-runner member-files:e2e
+          pnpm --filter @openwork-ee/workbot test:member-files
       - name: Test Workbot sign-in and adoption boundary
         run: |
           pnpm --filter @openwork-ee/workbot test:auth
