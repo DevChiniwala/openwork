@@ -353,7 +353,7 @@ export const FEATURES = defineFeatures({
 
   browserLiveView: {
     label: "Workbot: browser live view",
-    description: "Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window.",
+    description: "Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window, with Workbot's own tabs to switch and close. Taking control sends input to the page, so Chrome's toolbar stays hidden.",
     category: "computerUse",
     added: "2026-10-22",
     since: "2026-10",

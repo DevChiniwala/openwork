@@ -309,7 +309,7 @@
                 true,
                 false
               ],
-              "description": "Workbot: browser live view: Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window. Taking control still uses the full window. Renders DEN_FEATURE_BROWSER_LIVE_VIEW."
+              "description": "Workbot: browser live view: Workbot's Browser view streams the browser page itself, sending a frame only when the page changes, instead of video of the whole browser window, with Workbot's own tabs to switch and close. Taking control sends input to the page, so Chrome's toolbar stays hidden. Renders DEN_FEATURE_BROWSER_LIVE_VIEW."
             },
             "browserFloatingView": {
               "enum": [

@@ -17,6 +17,14 @@ test("V2 instructions support both individual Connect tools and capability searc
   }
 });
 
+test("V2 Desktop instructions direct recurring work to a reviewable proposal", () => {
+  const instructions = buildOpenWorkV2Instructions(true);
+  assert.match(instructions.automations, /openwork_execute id automation\.propose/);
+  assert.match(instructions.automations, /review and create it in the app/);
+  assert.match(instructions.automations, /each occurrence requires the signed-in desktop runner/);
+  assert.match(instructions.automations, /never claim a Desktop Automation will run while the app is offline/);
+});
+
 test("V2 instructions do not claim Connect is available when disconnected", () => {
   assert.equal(buildOpenWorkV2Instructions(false).connect,
     "OpenWork Connect is not connected for this request. Do not claim remote capabilities are available.");

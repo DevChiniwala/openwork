@@ -93,9 +93,9 @@ export async function askEngineApproval(engine: EngineConnection | undefined, ap
     watching.abort();
   }
 }
-// The only commands this bridge runs: sidebar group changes, written through
-// the host's session-group routes and nothing else.
-const commandIds: readonly string[] = SESSION_GROUP_COMMAND_IDS;
+// Only sidebar-group commands can write through the generic affordance path.
+// Automation proposals are inert: the person explicitly creates one in the renderer.
+const commandIds: readonly string[] = [...SESSION_GROUP_COMMAND_IDS, "automation.propose"];
 const sessionGroupRoute = /^\/workspace\/[^/]+\/session-groups(?:\/assignments\/[^/]+|\/[^/]+)?$/;
 /** A session-group route as sent: a path the URL parser would normalize (dot segments) is refused. */
 export function isSessionGroupWritePath(path: string): boolean {
@@ -276,13 +276,13 @@ export async function createV2ContextBridge(
         if (call.name === "openwork_query") return plugin.tool.openwork_query.execute(call.input);
         if (call.name === "openwork_execute") {
           const id = isRecord(call.input) ? String(call.input.id) : "";
-          if (!commandIds.includes(id)) throw new Error(`${id || "This command"} is not available here; only session group changes are`);
+          if (!commandIds.includes(id)) throw new Error(`${id || "This command"} is not available here; only session group changes and automation proposals are`);
           return plugin.tool.openwork_execute.execute(call.input, call.sessionId ? { sessionID: call.sessionId } : {});
         }
         const context: unknown = JSON.parse(await plugin.tool.openwork_context.execute());
         const filtered = bridgeAffordances(context);
         return JSON.stringify(isRecord(filtered) ? { ...filtered, instructions: {
-          context: "Use openwork_query for the discovered read-only affordances and openwork_execute for the session.group commands. When Code Mode exposes these tools, discover their exact paths with search and compose them there, preserving exceptions and verifying the resulting groups. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
+          context: "Use openwork_query for the discovered read-only affordances and openwork_execute for session.group commands or automation.propose. An automation proposal only shows a review card; it does not create, activate, or run anything. When Code Mode exposes these tools, discover their exact paths with search and compose them there, preserving exceptions and verifying the resulting groups. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
         } } : filtered);
       });
       return new Response(result, { headers: { "Content-Type": "application/json" } });

@@ -212,12 +212,6 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const editMessage = useEditWorkbotMessage();
   const uploads = { uploads: draft.uploads, add: composerState.add, remove: composerState.removeUpload, retry: composerState.retryUpload };
   const data = thread.data?.available ? thread.data : null;
-  // The pages Workbot opened in this chat's browser, oldest first: the Browser view lists them, each with its own link.
-  const browserPages = useMemo(() => {
-    const seen = new Map<string, WorkbotPage>();
-    for (const turn of data?.turns ?? []) for (const part of turn.parts) if (part.kind === "steps") for (const step of part.steps) for (const page of step.pages ?? []) { seen.delete(page.id); seen.set(page.id, page); }
-    return [...seen.values()];
-  }, [data?.turns]);
   useEffect(() => {
     if (!guided || !host.documents || !data) return;
     for (const turn of data.turns) {
@@ -380,7 +374,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} />}
+            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
@@ -410,7 +404,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );
