@@ -330,8 +330,12 @@ enum SharedDesktop {
 
     /// Brings the selected window back when something else is in front, at most
     /// `refocusLimit` times in one call, so the agent never fights the person for it.
-    @MainActor static func returnFocus(used: inout Int, inFront: () -> Bool, focus: () async throws -> Void) async throws -> Bool {
+    /// A person who clicked or typed since the step began keeps the front: the step
+    /// stops before the window is raised, not after.
+    @MainActor static func returnFocus(used: inout Int, inFront: () -> Bool, personActed: () -> Bool = { false },
+        focus: () async throws -> Void) async throws -> Bool {
         if inFront() { return false }
+        if personActed() { throw interrupted }
         guard used < refocusLimit else { throw contested }
         used += 1
         do { try await focus() }

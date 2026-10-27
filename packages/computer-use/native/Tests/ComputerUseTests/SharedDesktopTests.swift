@@ -130,6 +130,21 @@ final class SharedDesktopTests: XCTestCase {
     }
 
     @MainActor
+    func testAPersonAtWorkSinceTheStepBeganKeepsTheFront() async throws {
+        var used = 0
+        var focused = 0
+        do {
+            // They typed while the agent waited for a gap: the window is never raised.
+            _ = try await SharedDesktop.returnFocus(used: &used, inFront: { false }, personActed: { true }, focus: { focused += 1 })
+            XCTFail("The agent took the front from a person at work")
+        } catch let error as UseError {
+            XCTAssertEqual(error.code, "person_interrupted")
+        }
+        XCTAssertEqual(focused, 0)
+        XCTAssertEqual(used, 0)
+    }
+
+    @MainActor
     func testSwitchingAwayBringsTheWindowBackALimitedNumberOfTimes() async throws {
         var used = 0
         var focused = 0

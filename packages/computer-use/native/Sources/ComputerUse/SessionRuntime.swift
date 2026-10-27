@@ -460,7 +460,7 @@ final class SessionRuntime {
         try await takeGap(current)
         let moment = ProcessInfo.processInfo.systemUptime
         var returns = 0
-        var disturbed = try await shareDesktop(current, returns: &returns)
+        var disturbed = try await shareDesktop(current, returns: &returns, since: moment)
         let bounds: CGRect
         do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) }
         catch { throw SharedDesktop.yielding(error) }
@@ -506,7 +506,7 @@ final class SessionRuntime {
                 // Between steps, bring the window back if something else came to the front.
                 // Before any input, the window must still match the observation; after it,
                 // each step re-validates the field or control it uses.
-                if index > 0, try await shareDesktop(current, returns: &returns, deadline: deadline) { disturbed = true }
+                if index > 0, try await shareDesktop(current, returns: &returns, since: moment, deadline: deadline) { disturbed = true }
                 try checkWindow()
                 try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
                 var pointerTarget: AXUIElement?
@@ -670,13 +670,20 @@ final class SessionRuntime {
     }
     /// Before input: takes a gap in the person's typing, then brings the selected
     /// window back if something else came to the front. Returns whether it refocused.
-    private func shareDesktop(_ current: Session, returns: inout Int, deadline: TimeInterval? = nil) async throws -> Bool {
+    /// A click or key since the step began (`since`) leaves the front with the person.
+    private func shareDesktop(_ current: Session, returns: inout Int, since step: TimeInterval, deadline: TimeInterval? = nil) async throws -> Bool {
         guard current.mode == .control else { return false }
         session?.yielded = false
         try await takeGap(current, deadline: deadline)
-        return try await SharedDesktop.returnFocus(used: &returns, inFront: {
-            (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) != nil
-        }, focus: { try await self.takeFront(current) })
+        do {
+            return try await SharedDesktop.returnFocus(used: &returns, inFront: {
+                (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) != nil
+            }, personActed: { self.personInterrupted(since: step) }, focus: { try await self.takeFront(current) })
+        } catch let error as UseError where error.code == SharedDesktop.interrupted.code {
+            // The read that follows leaves the front where the person has it.
+            session?.yielded = true
+            throw error
+        }
     }
     /// Gives the front back once the agent's moment is over: no call within
     /// `handBackDelay`, so an action and the read after it count as one moment.
