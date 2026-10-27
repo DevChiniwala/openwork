@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, ExternalLink, Globe, Loader2, Lock, Maximize2, M
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { z } from "zod";
 import type { BrowserTeachingContext } from "@openwork/types/browser-demonstration";
+import type { WorkbotViewContext } from "@openwork/types/workbot-context";
 import { WorkbotTeaching } from "./teaching";
 import { addressFor, ScreencastViewer, type ScreencastPage } from "./screencast";
 import { computerViews, errorMessage, workbotHost } from "./host";
@@ -34,7 +35,7 @@ export function openBrowserPage(id: string) {
  * Both views belong to the main conversation's computer. noVNC carries pixels and native input; with the browser live
  * view on, watching the browser streams the page itself instead.
  */
-export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, onViewChange }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean; onViewChange?(view: ComputerView): void }) {
+export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, onViewChange, onContextChange }: { onTeachingChange?(context: BrowserTeachingContext | undefined): void; onRun?(text: string): void | Promise<void>; canTeach?: boolean; onViewChange?(view: ComputerView): void; /** The tab in front of the Browser view, for the chat beside it; null when none is on screen. */ onContextChange?(context: WorkbotViewContext | null): void }) {
   const host = workbotHost();
   const [teaching, setTeaching] = useState<BrowserTeachingContext>();
   const teachingChange = useCallback((context: BrowserTeachingContext | undefined) => { setTeaching(context); onTeachingChange?.(context); }, [onTeachingChange]);
@@ -67,6 +68,13 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, onVi
   const [stream, setStream] = useState<ScreencastViewer | null>(null);
   const identity = host.identity ? `${host.identity.organizationId}:${host.identity.principalId}` : "";
   const away = useAway(30_000) && !recording;
+  // Only the page stream says which tab is in front; noVNC shows pixels alone.
+  const frontId = view === "browser" && !paused && !error ? livePage?.id ?? null : null;
+  const frontUrl = livePage?.url ?? "", frontTitle = livePage?.title ?? "";
+  useEffect(() => {
+    onContextChange?.(frontId ? { kind: "browser", tabId: frontId, url: frontUrl.slice(0, 2048), title: frontTitle.slice(0, 512) } : null);
+  }, [frontId, frontUrl, frontTitle, onContextChange]);
+  useEffect(() => () => onContextChange?.(null), [onContextChange]);
 
   useEffect(() => {
     const target = screen.current;

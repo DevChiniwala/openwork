@@ -130,6 +130,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   useEffect(() => { if (host.workspaceAssistant || host.browserDemonstrations) setWorkspaceShell(true); }, [host.workspaceAssistant, host.browserDemonstrations]);
   const [documentContext, setDocumentContext] = useState<WorkbotViewContext | null>(null);
   const [calendarContext, setCalendarContext] = useState<WorkbotViewContext | null>(null);
+  const [browserContext, setBrowserContext] = useState<WorkbotViewContext | null>(null);
   const [includeContext, setIncludeContext] = useState(true);
   const [openDocument, setOpenDocument] = useState<DocumentOpenRequest>();
   const [documentsDirty, setDocumentsDirty] = useState(false);
@@ -147,9 +148,14 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const [documentsVisited, setDocumentsVisited] = useState(tab === "documents");
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
   useEffect(() => { if (tab === "documents") setDocumentsVisited(true); if (tab === "calendar") setCalendarVisited(true); }, [tab]);
-  const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : null;
+  const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : tab === "computer" ? browserContext : null;
+  // The views a message may name, as Den allows them: the browser tab with browser use, documents and the calendar with
+  // the workspace assistant.
+  const shares = (context: WorkbotViewContext | undefined): context is WorkbotViewContext => context !== undefined
+    && (context.kind === "browser" ? host.browser === true : host.workspaceAssistant === true && (context.kind === "calendar" || host.documents === true));
   // Excluding a view applies to that view only: whatever the person looks at next is shared again.
-  const viewKey = !currentContext ? null : currentContext.kind === "document" ? `document:${currentContext.fileId}`
+  const viewKey = !currentContext ? null : currentContext.kind === "browser" ? `browser:${currentContext.tabId}`
+    : currentContext.kind === "document" ? `document:${currentContext.fileId}`
     : currentContext.kind === "documents" ? `documents:${currentContext.view}:${currentContext.folderId}`
     : `calendar:${currentContext.view}:${currentContext.start}:${currentContext.selected?.id ?? ""}`;
   useEffect(() => { if (viewKey) setIncludeContext(true); }, [viewKey]);
@@ -304,8 +310,9 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     if (retry) { sendPending(retry.id, true); return; }
     const trimmed = text.trim();
     if (!trimmed && (plain || draft.uploads.length === 0)) return;
-    const parsed = workbotViewContextSchema.safeParse(includeContext && !plain ? currentContext : undefined);
-    const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || host.documents) ? parsed.data : undefined;
+    // A teaching note or skill run carries its own browser snapshot.
+    const parsed = workbotViewContextSchema.safeParse(includeContext && !plain && !runSkill && !teaching ? currentContext : undefined);
+    const context = parsed.success && shares(parsed.data) ? parsed.data : undefined;
     const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, keepDraft: plain, ...(!runSkill && !plain && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
     const delivery = sendPending(id);
     if (runSkill) return delivery.then(() => {
@@ -321,7 +328,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const editTurn = (turn: WorkbotTurn, text: string) => {
     const trimmed = text.trim();
     if (!trimmed && turn.attachments.length === 0) return;
-    const context = host.workspaceAssistant && (turn.context?.kind === "calendar" || host.documents) ? turn.context : undefined;
+    const context = shares(turn.context) ? turn.context : undefined;
     const correctionReference = { messageId: `wb_${turn.id}`, quote: readWorkbotCorrectionPrompt(turn.text).text.slice(0, 1000), sentAt: turn.sentAt };
     const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, correctionOf: turn.id, correctionReference, attachments: turn.attachments });
     sendPending(id);
@@ -381,7 +388,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && computerViews(host).length > 0 && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} onViewChange={setComputerView} />}
+            {computerVisited && computerViews(host).length > 0 && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} onViewChange={setComputerView} onContextChange={setBrowserContext} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}

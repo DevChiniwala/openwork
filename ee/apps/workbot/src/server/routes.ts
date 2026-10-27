@@ -14,7 +14,7 @@ import { bodyLimit } from "hono/body-limit"
 import { streamSSE } from "hono/streaming"
 import { z } from "zod"
 import { browserTeachingPrompt, compileBrowserDemonstration, demonstrationCommandSchema } from "@openwork/types/browser-demonstration"
-import { workbotContextPrompt, workbotViewContextSchema, WORKBOT_MAX_MESSAGE_CHARS } from "@openwork/types/workbot-context"
+import { workbotContextPrompt, workbotViewContextSchema, WORKBOT_MAX_MESSAGE_CHARS, type WorkbotViewContext } from "@openwork/types/workbot-context"
 import { activationEventRequestSchema } from "@openwork/types/den/activation"
 import type { AppEnv, Member } from "./auth.js"
 import type { Config } from "./config.js"
@@ -74,6 +74,12 @@ const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 const MESSAGES_PER_WINDOW = 30
 const MESSAGE_WINDOW_MS = 10 * 60_000
 const RUN_TOKEN_TTL_MS = 60 * 60_000
+
+/** Which open view a message may name: the browser tab with browser use, documents and the calendar with the workspace assistant. */
+function sharesContext(den: Pick<Member["den"], "browser" | "workspaceAssistant" | "calendar" | "documents">, context: WorkbotViewContext) {
+  if (context.kind === "browser") return den.browser
+  return den.workspaceAssistant && (context.kind === "calendar" ? den.calendar === true : den.documents === true)
+}
 
 /** The views of Workbot's computer this person may use: the browser (`browserUse`) and the native apps (`computerUse`). */
 function desktopViewsOf(den: Pick<Member["den"], "browser" | "computer">): RunnerDesktopView[] {
@@ -497,7 +503,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     const scope = chatOf(c)
     if (scope.refused) return scope.refused
     const member = c.get("member")
-    if (body.data.context && (!member.den.workspaceAssistant || (body.data.context.kind === "calendar" ? !member.den.calendar : !member.den.documents))) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
+    if (body.data.context && !sharesContext(member.den, body.data.context)) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
     if (workbotContextPrompt(body.data.text, body.data.context).length > MAX_MESSAGE_CHARS) return c.json(messageTooLong, 400)
     const retryAfter = rateLimited(member.den.memberId)
     if (retryAfter !== null) return c.json({ error: "rate_limited" as const, retryAfter }, 429)
@@ -591,7 +597,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     const scope = chatOf(c)
     if (scope.refused) return scope.refused
     const member = c.get("member")
-    if (body.data.context && (!member.den.workspaceAssistant || (body.data.context.kind === "calendar" ? !member.den.calendar : !member.den.documents))) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
+    if (body.data.context && !sharesContext(member.den, body.data.context)) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
     if (workbotContextPrompt(body.data.text, body.data.context).length > MAX_MESSAGE_CHARS) return c.json(messageTooLong, 400)
     const retryAfter = rateLimited(member.den.memberId)
     if (retryAfter !== null) return c.json({ error: "rate_limited" as const, retryAfter }, 429)
