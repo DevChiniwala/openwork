@@ -39,6 +39,7 @@ import { isGoogleAuthorizationFailure, parseGoogleError } from "./google-workspa
 import { registerGmailManagementRoutes } from "./gmail-management.js"
 import { registerGoogleProductivityManagementRoutes } from "./google-productivity-management.js"
 import { registerGoogleDocumentRoutes } from "./google-documents.js"
+import { registerGoogleChatRoutes } from "./google-chat.js"
 import { listTeamsForMember } from "../../orgs.js"
 import { readInternalCapabilityConnectorId } from "../../session.js"
 import type { OrgRouteVariables } from "./shared.js"
@@ -785,6 +786,7 @@ export function registerGoogleWorkspaceRoutes<T extends { Variables: OrgRouteVar
   registerGmailManagementRoutes(app, actionDependencies)
   registerGoogleProductivityManagementRoutes(app, actionDependencies)
   registerGoogleDocumentRoutes(app, actionDependencies)
+  registerGoogleChatRoutes(app, actionDependencies)
 
   app.post(
     "/v1/direct-uploads/google-workspace/drive-files",

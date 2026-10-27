@@ -116,6 +116,10 @@ export const integrationsAuditRoutes: readonly AuditRouteDeclaration[] = [
   access("POST", `${GW}/drive-download-links`, "capability.google_drive.download_link.create", GWK, res("google_drive_file"), `${CAP} Returns a five-minute signed link to one file; the link is not audit evidence.`),
   handlerRoute("tenant_access", "GET", "/v1/direct-downloads/google-workspace/drive-link", "capability.google_drive.download_link.use", GWK, res("google_drive_file"), { notes: "Signed five-minute link bound to one member, connection, file and format; attributed to that member after verification, with organization access rechecked. Bytes are not audit evidence." }),
   external("POST", "/v1/direct-uploads/google-workspace/gmail-drafts", "capability.gmail.draft.attachments.create", GWK, res("gmail_draft"), GOOGLE, "cloudTransportRoute (MCP OAuth token, org from token); creates a draft with attachments, never sends. Conditional token refresh write."),
+  access("GET", `${GW}/chat-spaces`, "capability.google_chat.space.list", GWK, res("google_chat_space"), `${CAP} Response lists conversation names.`),
+  access("GET", `${GW}/chat-direct-message`, "capability.google_chat.direct_message.find", GWK, res("google_chat_space"), `${CAP} The looked-up email is not audit evidence.`),
+  access("GET", `${GW}/chat-spaces/:spaceId/messages`, "capability.google_chat.message.list", GWK, res("google_chat_space", "spaceId"), CAP_CONTENT),
+  external("POST", `${GW}/chat-spaces/:spaceId/messages`, "capability.google_chat.message.send", GWK, res("google_chat_space", "spaceId"), GOOGLE, `${CAP} Posts a Google Chat message.`),
 
   // Microsoft 365 capabilities
   access("GET", `${MS}/mail-messages`, "capability.outlook_mail.message.search", MSK, res("outlook_message"), CAP_CONTENT),
