@@ -175,12 +175,9 @@ final class MacInput {
                     try checkWindow()
                     try access.checkFocus(focus, target: target, app: app, requireField: true)
                 }, send: { character in
-                    // Line breaks and tabs are their real keys: some fields ignore them as text.
-                    switch character {
-                    case "\n", "\r", "\r\n": try self.keyboard(36, flags: [], text: "\r", pid: app.pid, check: check)
-                    case "\t": try self.keyboard(48, flags: [], text: "\t", pid: app.pid, check: check)
-                    default: try self.keyboard(0, flags: [], text: character, pid: app.pid, check: check)
-                    }
+                    // Line breaks and tabs stay text: as real Return or Tab keys they could
+                    // submit or move focus mid-text, which only a separate key action may do.
+                    try self.keyboard(0, flags: [], text: character, pid: app.pid, check: check)
                 })
             case .drag(let points):
                 let points = try points.map(lease.screenPoint)
