@@ -352,6 +352,7 @@ export function WorkbotFilesPanel(props: { open: boolean; onClose: () => void; a
 /**
  * The person's answer to an upload the agent asked to make (DESIGN T4, P9): what goes where, as one sentence, with
  * Upload and Don't upload. A page can talk the agent into uploading, so nothing leaves My files without this answer.
+ * Each file shows by its full place in My files, so two files with one name can't be mistaken for each other.
  * Approving also tells the agent to go ahead, as the person's message.
  */
 export function UploadApprovals({ version, onAnswered }: { version: string; onAnswered: (text: string) => void }) {
@@ -360,7 +361,7 @@ export function UploadApprovals({ version, onAnswered }: { version: string; onAn
   const decide = useDecideWorkbotUpload();
   const approval = approvals.data?.[0];
   if (!enabled || !approval) return null;
-  const names = approval.files.map((file) => file.name).join(", ");
+  const names = approval.files.map((file) => file.path.replace(/^\/files\//, "")).join(", ");
   const answer = (decision: "approve" | "decline") =>
     decide.mutate({ id: approval.id, decision }, {
       onSuccess: () => onAnswered(decision === "approve" ? `Go ahead: upload ${names} to ${approval.host}.` : `Don't upload ${names} to ${approval.host}.`),

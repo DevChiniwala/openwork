@@ -91,6 +91,21 @@ const verifyLocalEgress = async () => {
   if (!(await browserEgressStatus()).ok) throw Object.assign(new Error("The cloud browser's private-network filter is unavailable. Reconnect the computer."), { code: "egress_unavailable" });
 };
 
+/** Second-level names under a two-letter country domain that sites register below (bbc.co.uk, example.com.au). */
+const COUNTRY_SECOND_LEVEL = new Set(["ac", "co", "com", "edu", "gob", "go", "gov", "ltd", "mil", "ne", "net", "nhs", "or", "org", "plc", "sch"]);
+
+/**
+ * The site a host or cookie domain belongs to: its registrable domain by a small rule (the last two labels, three
+ * under a country second level such as co.uk), or the host itself for an IP address or a single label.
+ */
+export function siteOf(host) {
+  const name = String(host).toLowerCase().replace(/^\.+/, "").replace(/\.+$/, "");
+  if (!name || isIP(name) || !name.includes(".")) return name;
+  const labels = name.split(".");
+  const take = labels.length >= 3 && labels.at(-1).length === 2 && COUNTRY_SECOND_LEVEL.has(labels.at(-2)) ? 3 : 2;
+  return labels.slice(-take).join(".");
+}
+
 /**
  * Answers the file chooser a click opens with `paths`: only regular files under `root` (My files on the computer, where
  * the runner copied them), never a link out of it. Interception is on only around the click, so a chooser the page or
@@ -170,12 +185,14 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
     });
     let tabChanged = () => {};
     const reply = (method, params) => { try { socket.send(JSON.stringify({ id: ++sequence, method, params })); } catch {} };
+    // While this tab holds files the person approved for one site, it reaches only that site (see `hold`).
+    let heldSite = null;
     async function admitRequest({ requestId, request }) {
       let allowed = false;
       try {
         const url = new URL(request.url);
         if (["ws:", "wss:"].includes(url.protocol)) url.protocol = url.protocol === "ws:" ? "http:" : "https:";
-        allowed = ["http:", "https:"].includes(url.protocol) ? await allowedDestination(url.href)
+        allowed = ["http:", "https:"].includes(url.protocol) ? await allowedDestination(url.href) && (heldSite === null || siteOf(url.hostname) === heldSite)
           : ["about:", "data:", "blob:"].includes(url.protocol);
       } catch { allowed = false; }
       if (allowed) reply("Fetch.continueRequest", { requestId });
@@ -189,6 +206,11 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       pending.clear();
     });
     return {
+      /**
+       * Uploads: from attaching files until the tab is sent elsewhere, every request it makes (scripts, forms, beacons,
+       * sockets, redirects) must go to `site`, so a page can't pass the files on to another site. null lifts it.
+       */
+      hold(site) { heldSite = site; },
       changed(callback) { tabChanged = callback; },
       events(callback) { pageEvent = (method, params) => { for (const waiter of [...waiters]) waiter(method, params); callback(method, params); }; },
       nextEvent(name, waitMs) {
@@ -270,12 +292,21 @@ export function createCloudBrowser({ statePath, assertActive, enabled, beforeInp
       },
       debugger: { isAttached: () => true, sendCommand: async (method, params) => { await beforeInput(); await wire.send("Page.bringToFront"); return wire.send(method, params); } },
       // Uploads from My files (copied under uploadRoot by the runner); the desktop app's browser has no such method.
-      chooseFiles: async (paths, trigger) => { await guarded; assertActive(); return chooseFilesThrough(wire, paths, trigger, { root: uploadRoot }); },
+      chooseFiles: async (paths, trigger) => {
+        await guarded;
+        assertActive();
+        // The tab reaches only the approved site before the files are in the page, and until it is sent elsewhere.
+        wire.hold(siteOf(new URL(currentUrl).hostname));
+        try { return await chooseFilesThrough(wire, paths, trigger, { root: uploadRoot }); }
+        catch (error) { wire.hold(null); throw error; }
+      },
     } },
       async navigate(url) {
         await guarded;
         await beforeInput();
         await wire.send("Page.bringToFront");
+        // Sent elsewhere on purpose: the page holding attached files is replaced, so the tab may reach other sites again.
+        wire.hold(null);
         const navigation = await wire.send("Page.navigate", { url });
         if (navigation.errorText) throw new Error("Browser navigation did not finish.");
         currentUrl = url; context = null; tab.webMcpRevision++; host.invalidate(tab.tabId);

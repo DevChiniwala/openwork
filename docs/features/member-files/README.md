@@ -128,18 +128,28 @@ the computer can reach the store.
   so an upload never dispatches until the person approved those files for that
   site: the runner checks the tab's site against approvals (`upload_approvals`,
   per conversation); without one it records the ask and refuses, and Workbot
-  shows a consent card above the composer ("Upload october-statement.csv from
-  My files to expenses.example.test? The site keeps a copy." Upload / Don't
-  upload). Approving records the answer (only through Workbot's member-authorized
-  route; the model can't) and sends "Go ahead: …" as the person's message. An
-  approval holds for 15 minutes for exactly those files and that site. Then the
-  runner copies each file onto the computer (`/files/.uploads/<hash>/<name>`,
-  same name), and the browser checks again that the page is still on the
-  approved site, clicks the observed control and answers the file chooser it
-  opens (Chromium's file-chooser interception, on only around that click). Only
-  regular files under `/files` are accepted, never a link out of it. A file that
-  isn't in My files, or a conversation without them, is refused before the
-  browser does anything. The desktop app's browser has no uploads.
+  shows a consent card above the composer, naming each file by its full place
+  in My files ("Upload Downloads/october-statement.csv from My files to
+  expenses.example.test? The site keeps a copy." Upload / Don't upload), so two
+  files with the same name can't be mistaken for each other. Approving records
+  the answer (only through Workbot's member-authorized route; the model can't)
+  and sends "Go ahead: …" as the person's message. An approval holds for 15
+  minutes for exactly those files at the versions they were when asked (a file
+  changed since needs a new approval) and that site. Then the runner copies each
+  file onto the computer (`/files/.uploads/<hash>/<name>`, same name), and the
+  browser checks again that the page is still on the approved site, clicks the
+  observed control and answers the file chooser it opens (Chromium's
+  file-chooser interception, on only around that click).
+- **The file goes only to the approved site.** From just before the files are
+  attached until the agent sends the tab elsewhere, every request the tab makes
+  (scripts, forms, `fetch`, beacons, images, sockets, redirects) must go to the
+  approved site, so a script on the page can't pass the file on to another
+  site. A site that uploads straight to another host (a storage bucket on
+  another domain) is refused; the person can take over and upload it
+  themselves. Only regular files under `/files` are accepted, never a link out
+  of it. A file that isn't in My files, or a conversation without them, is
+  refused before the browser does anything. The desktop app's browser has no
+  uploads.
 
 ![An upload waiting for the member's approval](./member-files-upload-approval.png)
 

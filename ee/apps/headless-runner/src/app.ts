@@ -676,7 +676,7 @@ export function createApp(input: {
   // upload-approvals.ts). Only the caller can approve: the model never reaches these routes.
   app.get("/v1/sessions/:id/upload-approvals", (c) => {
     if (!store.getSession(c.req.param("id"))) return c.json({ error: "unknown_session" }, 404)
-    return c.json({ approvals: pendingUploadApprovals(store.db, c.req.param("id")).map(({ id, paths, host, messageId, createdAt }) => ({ id, paths, host, messageId, createdAt })) })
+    return c.json({ approvals: pendingUploadApprovals(store.db, c.req.param("id")).map(({ id, files, host, messageId, createdAt }) => ({ id, paths: files.map((file) => file.path), host, messageId, createdAt })) })
   })
   app.post("/v1/sessions/:id/upload-approvals/:approvalId", async (c) => {
     if (!store.getSession(c.req.param("id"))) return c.json({ error: "unknown_session" }, 404)

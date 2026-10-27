@@ -375,7 +375,7 @@ export class Computers {
       host = ""
     }
     if (!host) return refuse("That tab isn't open on a website. Open the site's upload page and observe it first. Nothing was sent.")
-    const staged = new Map<string, string>()
+    const staged = new Map<string, { target: string; version: number }>()
     for (const upload of uploads) {
       const paths = z.array(z.string().min(1).max(600)).min(1).max(MAX_UPLOAD_FILES).safeParse(upload.paths)
       if (!paths.success) return refuse(`An upload needs paths: 1 to ${MAX_UPLOAD_FILES} files in /files, such as /files/Downloads/report.pdf. Nothing was sent.`)
@@ -387,20 +387,22 @@ export class Computers {
         if (!staged.has(path) && !file) return refuse(`There is no file at ${path}. List /files to find it. Nothing was sent.`)
         if (file) found.set(path, file)
       }
-      if (!(await approvals.approvedHosts(paths.data)).includes(host)) {
-        await approvals.request(paths.data, host)
+      // Approved for these versions: a file changed since the person approved it needs their approval again.
+      const versions = paths.data.map((path) => ({ path, version: found.get(path)?.file.version ?? staged.get(path)?.version ?? 0 }))
+      if (!(await approvals.approvedHosts(versions)).includes(host)) {
+        await approvals.request(versions, host)
         return refuse(`They haven't approved uploading ${paths.data.join(", ")} to ${host}. Workbot is asking them now: stop here, tell them you need their OK to upload it there, and continue once they approve. Nothing was sent.`)
       }
       for (const [path, file] of found) {
         const target = uploadPath(file.file.path, file.file.version)
         await this.execute(box, { command: `mkdir -p "$FOLDER"`, env: { FOLDER: posix.dirname(target) }, activity: "maintenance", timeoutMs: 30_000 })
         await this.blocks.files.write(box, target, file.bytes, { timeoutMs: 120_000, mode: 0o660 })
-        staged.set(path, target)
+        staged.set(path, { target, version: file.file.version })
       }
     }
     const rewritten = actions.map((action) => {
       if (typeof action !== "object" || action === null || !("type" in action) || action.type !== "upload" || !("paths" in action) || !Array.isArray(action.paths)) return action
-      return { ...action, paths: action.paths.map((path: unknown) => (typeof path === "string" ? staged.get(path) ?? path : path)), hosts: [host] }
+      return { ...action, paths: action.paths.map((path: unknown) => (typeof path === "string" ? staged.get(path)?.target ?? path : path)), hosts: [host] }
     })
     return { args: { ...args, actions: rewritten } }
   }

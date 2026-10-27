@@ -49,10 +49,10 @@ export interface ComputerMemberFiles {
  * uploaded until the person approved those files for that site; the computer only reads approvals and asks for them.
  */
 export interface UploadApprovals {
-  /** Sites (`host`) the person approved for all of these `/files` paths, while the approval holds. */
-  approvedHosts(paths: string[]): Promise<string[]>
-  /** Asks the person (through the caller) to approve these files for this site; returns the ask's id. */
-  request(paths: string[], host: string): Promise<string>
+  /** Sites (`host`) the person approved for all of these `/files` paths at these versions, while the approval holds. */
+  approvedHosts(files: Array<{ path: string; version: number }>): Promise<string[]>
+  /** Asks the person (through the caller) to approve these files, at these versions, for this site; returns the ask's id. */
+  request(files: Array<{ path: string; version: number }>, host: string): Promise<string>
 }
 
 /** What one desktop call may use beyond the conversation; null My files turns the browser's Downloads back. */

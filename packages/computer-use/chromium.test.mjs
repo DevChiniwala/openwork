@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { chooseFilesThrough, createCloudBrowser, publicDestination } from "./chromium.mjs";
+import { chooseFilesThrough, createCloudBrowser, publicDestination, siteOf } from "./chromium.mjs";
 
 async function fixture({ rejectInterception = false, holdInterception = false, existing = true, missingEgress = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "openwork-browser-network-"));
@@ -191,4 +191,10 @@ test("an upload answers the chooser its click opens with files under My files on
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("a cookie domain or host belongs to its registrable site, by a small rule", () => {
+  const cases = [["accounts.example.com", "example.com"], [".example.com", "example.com"], ["news.bbc.co.uk", "bbc.co.uk"], ["shop.example.com.au", "example.com.au"],
+    ["app.example.io", "example.io"], ["localhost", "localhost"], ["127.0.0.1", "127.0.0.1"], ["EXAMPLE.org.", "example.org"]];
+  for (const [host, site] of cases) assert.equal(siteOf(host), site, host);
 });

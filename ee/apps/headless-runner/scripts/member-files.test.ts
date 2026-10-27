@@ -300,9 +300,11 @@ test("an upload waits for the person's approval of those files for that site, wh
   let clock = 1_000_000
   const session = w.store.createSession({ owner, memberFiles: true })
   const approvals = uploadApprovalsFor(w.store.db, session.id, "msg_1", () => clock)
-  assert.deepEqual(await approvals.approvedHosts(["/files/Downloads/a.csv"]), [])
-  const id = await approvals.request(["/files/Downloads/a.csv"], "expenses.example.test")
-  assert.equal(await approvals.request(["/files/Downloads/a.csv"], "expenses.example.test"), id, "the same ask isn't repeated")
+  const a = { path: "/files/Downloads/a.csv", version: 1 }
+  const b = { path: "/files/Uploads/b.pdf", version: 1 }
+  assert.deepEqual(await approvals.approvedHosts([a]), [])
+  const id = await approvals.request([a], "expenses.example.test")
+  assert.equal(await approvals.request([a], "expenses.example.test"), id, "the same ask isn't repeated")
   const app = w.app(w.runnerWith(scripted([])))
   const call = (path: string, init: RequestInit = {}) => app.fetch(new Request(`http://runner${path}`, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } }))
   const pending = z.object({ approvals: z.array(z.object({ id: z.string(), paths: z.array(z.string()), host: z.string(), messageId: z.string().nullable() })) }).parse(await (await call(`/v1/sessions/${session.id}/upload-approvals`)).json())
@@ -313,13 +315,14 @@ test("an upload waits for the person's approval of those files for that site, wh
   // Approved: for those files (or fewer of them) and that site only, for a while.
   clock = Date.now()
   const now = uploadApprovalsFor(w.store.db, session.id, "msg_2")
-  assert.deepEqual(await now.approvedHosts(["/files/Downloads/a.csv"]), ["expenses.example.test"])
-  assert.deepEqual(await now.approvedHosts(["/files/Downloads/a.csv", "/files/Uploads/b.pdf"]), [])
+  assert.deepEqual(await now.approvedHosts([a]), ["expenses.example.test"])
+  assert.deepEqual(await now.approvedHosts([a, b]), [])
+  assert.deepEqual(await now.approvedHosts([{ ...a, version: 2 }]), [], "a file changed since it was approved needs a new approval")
   const later = uploadApprovalsFor(w.store.db, session.id, "msg_3", () => Date.now() + 16 * 60_000)
-  assert.deepEqual(await later.approvedHosts(["/files/Downloads/a.csv"]), [], "an approval runs out")
+  assert.deepEqual(await later.approvedHosts([a]), [], "an approval runs out")
   // Declined asks aren't pending, and nothing was approved by them.
-  const declined = await now.request(["/files/Uploads/b.pdf"], "expenses.example.test")
+  const declined = await now.request([b], "expenses.example.test")
   assert.equal((await call(`/v1/sessions/${session.id}/upload-approvals/${declined}`, { method: "POST", body: JSON.stringify({ decision: "decline" }) })).status, 200)
-  assert.deepEqual(await now.approvedHosts(["/files/Uploads/b.pdf"]), [])
+  assert.deepEqual(await now.approvedHosts([b]), [])
   assert.deepEqual(pendingUploadApprovals(w.store.db, session.id), [])
 })
