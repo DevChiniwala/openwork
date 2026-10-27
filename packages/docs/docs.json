@@ -163,6 +163,7 @@
               "ai-gateway/compare-litellm-bifrost",
               "ai-gateway/litellm",
               "ai-gateway/how-requests-flow",
+              "ai-gateway/auto-model-routing",
               "ai-gateway/google-agent-platform",
               "ai-gateway/amazon-bedrock",
               "ai-gateway/microsoft-foundry"

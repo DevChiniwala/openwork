@@ -163,10 +163,19 @@ export const autoRouterRouteSchema = z
   .meta({ ref: "AutoRouterRoute" })
 export type AutoRouterRoute = z.infer<typeof autoRouterRouteSchema>
 
+/**
+ * Whether the AI Gateway can route Auto requests: `ready` when it has its
+ * TypeSafe (Jev) key, `missing_key` when it does not (Auto is then off and
+ * cannot be enabled), `unknown` when Den could not reach the gateway to ask.
+ */
+export const AUTO_ROUTER_ROUTING_STATES = ["ready", "missing_key", "unknown"] as const
+export type AutoRouterRoutingState = (typeof AUTO_ROUTER_ROUTING_STATES)[number]
+
 export const autoRouterSettingsSchema = z
   .object({
     /** False until an admin enables the Auto Router for the organization. */
     enabled: z.boolean(),
+    routing: z.enum(AUTO_ROUTER_ROUTING_STATES),
     routes: z.array(autoRouterRouteSchema),
     canEdit: z.boolean(),
   })

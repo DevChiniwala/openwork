@@ -23,6 +23,7 @@ import { DenTextarea } from "../../_components/ui/textarea";
 import { getNewAiGatewayProviderRoute, permissionLockReason } from "../../_lib/den-org";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { useAutoRouterOptions, useAutoRouterSettings, useSaveAutoRouter } from "./auto-router-data";
+import { AutoRouterSetupDialog } from "./auto-router-setup-dialog";
 import { providerIconSlug } from "./library-models";
 
 const VALUE_SEPARATOR = "::";
@@ -273,6 +274,8 @@ export function AutoRouterSection() {
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [removed, setRemoved] = useState<{ route: AutoRouterRouteWrite; index: number; title: string } | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const missingKeyId = useId();
 
   async function store(input: { enabled: boolean; routes: AutoRouterRouteWrite[] }): Promise<boolean> {
     setSaveError(null);
@@ -310,7 +313,10 @@ export function AutoRouterSection() {
     );
   }
 
-  const { enabled, routes, canEdit } = settings.data;
+  const { enabled, routes, canEdit, routing } = settings.data;
+  // Without the gateway's routing key Auto is off: Enable explains how to add it instead.
+  const missingKey = routing === "missing_key";
+  const setupDialog = <AutoRouterSetupDialog open={setupOpen} onOpenChange={setSetupOpen} />;
   const modelOptions = options.data?.options ?? [];
   const noModels = options.data !== undefined && modelOptions.length === 0;
   const writes = routes.map(toWrite);
@@ -340,8 +346,15 @@ export function AutoRouterSection() {
               <DenButton
                 size="sm"
                 data-testid="auto-router-enable"
+                // Muted and explained rather than inert: the click opens the setup steps.
+                variant={missingKey ? "secondary" : undefined}
+                data-blocked={missingKey ? "missing-key" : undefined}
+                aria-describedby={missingKey ? missingKeyId : undefined}
                 loading={busy}
-                onClick={() => void store({ enabled: true, routes: writes }).then((ok) => { if (ok && routes.length === 0) setEditor("new"); })}
+                onClick={() => {
+                  if (missingKey) { setSetupOpen(true); return; }
+                  void store({ enabled: true, routes: writes }).then((ok) => { if (ok && routes.length === 0) setEditor("new"); });
+                }}
               >
                 Enable
               </DenButton>
@@ -349,6 +362,11 @@ export function AutoRouterSection() {
           ) : <span className="shrink-0 text-[12px] text-gray-500">Off</span>}
         </div>
         {canEdit && noModels ? <p className="mt-2 px-1 text-[13px] text-gray-500">Add a provider and its models to the AI Gateway first.</p> : null}
+        {canEdit && !noModels && missingKey ? (
+          <p id={missingKeyId} data-testid="auto-router-missing-key" className="mt-2 px-1 text-[13px] text-gray-500">
+            Needs a routing key on the AI Gateway before it can be turned on.
+          </p>
+        ) : null}
         {saveError ? <p role="alert" className="mt-2 px-1 text-[13px] text-red-700">{saveError}</p> : null}
         {canEdit ? null : (
           <p className="mt-3 flex items-center gap-2 px-1 text-[13px] text-gray-500">
@@ -356,6 +374,7 @@ export function AutoRouterSection() {
             {`An admin can turn on the Auto Router. ${LOCK_REASON}`}
           </p>
         )}
+        {setupDialog}
       </section>
     );
   }
@@ -418,6 +437,17 @@ export function AutoRouterSection() {
         />
       ) : null}
 
+      {missingKey ? (
+        <div data-testid="auto-router-paused">
+          <DenNotice
+            className="mb-3"
+            tone="warning"
+            message="Auto is paused: the AI Gateway is missing its routing key, so members don't see Auto. Routes can't be changed until it's added."
+            action={canEdit ? <DenButton variant="secondary" size="sm" data-testid="auto-router-setup-open" onClick={() => setSetupOpen(true)}>How to fix</DenButton> : undefined}
+          />
+        </div>
+      ) : null}
+
       <div className="flex min-h-9 items-center justify-between gap-3 pb-1.5">
         <span className="flex items-baseline gap-2">
           <h3 className="text-[13px] font-medium text-gray-900">Routes</h3>
@@ -428,7 +458,7 @@ export function AutoRouterSection() {
             size="sm"
             icon={Plus}
             data-testid="auto-router-add"
-            disabled={busy || editor === "new" || atLimit || options.isPending || options.isError}
+            disabled={busy || missingKey || editor === "new" || atLimit || options.isPending || options.isError}
             title={atLimit ? `Up to ${AUTO_ROUTER_MAX_ROUTES} models` : undefined}
             onClick={() => { setSaveError(null); setRemoved(null); setEditor("new"); }}
           >
@@ -463,7 +493,7 @@ export function AutoRouterSection() {
             route={route}
             option={findOption(modelOptions, route)}
             canEdit={canEdit}
-            busy={busy || editor !== null}
+            busy={busy || missingKey || editor !== null}
             onEdit={() => { setSaveError(null); setRemoved(null); setEditor(index); }}
             onRemove={() => void removeRoute(index)}
           />
@@ -489,6 +519,7 @@ export function AutoRouterSection() {
       {saveError && editor === null ? <p role="alert" className="mt-2 px-1 text-[13px] text-red-700">{saveError}</p> : null}
       <p className="mt-2 px-1 text-[12px] text-gray-500">When Auto can&apos;t decide, it uses the first model that allows High thinking.</p>
       {lockLine}
+      {setupDialog}
     </section>
   );
 }

@@ -46,6 +46,8 @@ export type AutoRouterDependencies = {
   catalog: ProviderCatalog
   askJev: AskJev
   reasoningStore: ReasoningStore
+  /** False when this gateway has no TypeSafe key: Auto is then off, as Den reports to admins. */
+  routingConfigured: boolean
   /** The normal Gateway pipeline for a rewritten request. */
   forward: (target: AutoTarget) => Promise<Response>
   onJevError?: (error: unknown) => void
@@ -187,6 +189,9 @@ export async function handleAutoRequest(input: {
   dependencies: AutoRouterDependencies
 }): Promise<Response> {
   const { request, body, identity, dependencies } = input
+  if (!dependencies.routingConfigured) {
+    return autoError(404, "auto_router_not_configured", "Auto isn't available yet: the AI Gateway is missing its routing key. Ask your administrator, or choose another model.")
+  }
   const config = await dependencies.loadConfig({ organizationId: identity.organizationId })
   if (!config) return autoError(404, "auto_router_unavailable", "Auto isn't set up for your organization. Choose another model.")
   const candidates = autoCandidates(config, await dependencies.loadMemberGatewayAccess(identity), dependencies.catalog)

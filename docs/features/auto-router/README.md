@@ -150,7 +150,7 @@ answered it, before and after reloading the chat. Run them with
 ## Operating it
 
 Gateway environment (see `ee/apps/gateway/README.md`): `TYPESAFE_API_KEY`
-(required for Jev; without it every prompt takes the fallback route),
+(required: without it Auto is off, see below),
 optional `TYPESAFE_BASE_URL`, `AUTO_ROUTER_JEV_MODEL` (`jev-latest`),
 `AUTO_ROUTER_JEV_TIMEOUT_MS` (`4000`), and `DEN_DEPLOYMENT=cloud` so the gateway
 resolves cloud-only features the same way Den API does.
@@ -159,6 +159,27 @@ Watch for `[gateway] Auto Router could not ask Jev` warnings (Jev errors or
 timeouts) and `auto_router_*` error codes in responses:
 `auto_router_unavailable` (404, off or unconfigured),
 `auto_router_no_models` (403, the member can use none of the routes).
+
+## Without the TypeSafe key
+
+Only the gateway holds the key. Den asks it through `GET /auto-router/status`
+(a boolean, cached for a minute) and reports `routing: "ready" | "missing_key" |
+"unknown"` on `GET /v1/org/auto-router`. While the key is missing:
+
+- **Enable** is muted with "Needs a routing key on the AI Gateway", and clicking
+  it opens a dialog telling the admin to ask whoever runs the instance to add
+  `TYPESAFE_API_KEY` (Helm: `secret.values.typesafeApiKey`) and restart the gateway.
+- An already enabled router shows "Auto is paused" with the same steps, and
+  routes cannot be edited (Den refuses `enabled: true` with
+  `auto_router_not_configured`).
+- Den's connect answers 404, so desktops drop Auto, and the gateway answers
+  `auto_router_not_configured` to any Auto request still in flight.
+
+`unknown` (the gateway could not be reached) does not block anything.
+
+![Enable without the key](auto-router-missing-key.png)
+
+![The setup dialog](auto-router-setup-dialog.png)
 
 ## Turning it off
 

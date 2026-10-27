@@ -6,6 +6,16 @@ import { denForAppWeb, signedInAppWeb } from "./signed-in-app-web.ts";
 import { isRecord } from "./library.ts";
 
 /**
+ * The gateway's Jev settings. A real TYPESAFE_API_KEY in the test's
+ * environment is used as is. Otherwise the gateway gets a placeholder key and
+ * an unreachable TypeSafe URL: routing counts as configured, every Jev call
+ * fails at once, and Auto takes its fallback route without leaving the machine.
+ */
+function jevEnvironment(typesafe: string | undefined): Record<string, string> {
+  return typesafe ? { TYPESAFE_API_KEY: typesafe } : { TYPESAFE_API_KEY: "auto-router-proof-placeholder", TYPESAFE_BASE_URL: "http://127.0.0.1:9" };
+}
+
+/**
  * Auto Router: a real Den (cloud deployment, `autoRouter` on for the seeded
  * organization), a real AI Gateway with one Anthropic-protocol provider whose
  * only upstream is the deterministic Acme mock, and the owner signed in on
@@ -18,7 +28,7 @@ export async function autoRouterWorld(seed: Seed) {
     const upstream = await startAcmeUpstream(stack);
     const gateway = await gatewayEnvironment(upstream.baseUrl);
     const typesafe = process.env.TYPESAFE_API_KEY?.trim();
-    const env = { ...gateway.env, DEN_DEPLOYMENT: "cloud", ...(typesafe ? { TYPESAFE_API_KEY: typesafe } : {}) };
+    const env = { ...gateway.env, DEN_DEPLOYMENT: "cloud", ...jevEnvironment(typesafe) };
     const den = stack.use(await seed.den({ env, org: { name: "Auto Router proof", admin: { name: "Router owner" } } }));
     if (!den.database) throw new Error("The Auto Router world needs its disposable local database.");
     await startAcmeGateway(stack, den.database.url, { baseUrl: gateway.baseUrl, env });
@@ -42,6 +52,39 @@ export async function autoRouterWorld(seed: Seed) {
 }
 
 /**
+ * Auto Router when the AI Gateway has no TypeSafe key: the same real Den and
+ * gateway with the feature on, but no routing key, and the owner on
+ * AI Gateway › AI Providers.
+ */
+export async function autoRouterMissingKeyWorld(seed: Seed) {
+  const stack = new AsyncDisposableStack();
+  try {
+    const upstream = await startAcmeUpstream(stack);
+    const gateway = await gatewayEnvironment(upstream.baseUrl);
+    const env = { ...gateway.env, DEN_DEPLOYMENT: "cloud" };
+    const den = stack.use(await seed.den({ env, org: { name: "Auto Router setup proof", admin: { name: "Router owner" } } }));
+    if (!den.database) throw new Error("The Auto Router world needs its disposable local database.");
+    await startAcmeGateway(stack, den.database.url, { baseUrl: gateway.baseUrl, env });
+    await seedAcmeGateway(den.admin, upstream);
+    await enableOrganizationCapabilities(seed, den.admin, { autoRouter: true });
+    const web = await seed.web({ den, signedInAs: den.admin, startPath: "/dashboard/ai-gateway?tab=ai-providers", headless: true, viewport: { width: 1440, height: 1100 } });
+    return {
+      den,
+      web,
+      /** Asks Den to turn Auto on through the API, as a script would; returns the HTTP status. */
+      async tryEnable() {
+        const result = await seed.api(den.admin, "/v1/org/auto-router", { method: "PUT", body: JSON.stringify({ enabled: true, routes: [] }) });
+        return result.response.status;
+      },
+      async [Symbol.asyncDispose]() { await stack.disposeAsync(); },
+    };
+  } catch (error) {
+    await stack.disposeAsync();
+    throw error;
+  }
+}
+
+/**
  * Auto Router on the desktop: the same real Den (cloud, `autoRouter` on) and
  * real AI Gateway over the deterministic Acme upstream, with one Auto route
  * saved by the admin through Den's API, and the app in headless Chrome
@@ -54,7 +97,7 @@ export async function autoRouterDesktopWorld(seed: Seed) {
     const upstream = await startAcmeUpstream(stack);
     const gateway = await gatewayEnvironment(upstream.baseUrl);
     const typesafe = process.env.TYPESAFE_API_KEY?.trim();
-    const env = { ...gateway.env, DEN_DEPLOYMENT: "cloud", ...(typesafe ? { TYPESAFE_API_KEY: typesafe } : {}) };
+    const env = { ...gateway.env, DEN_DEPLOYMENT: "cloud", ...jevEnvironment(typesafe) };
     const { den, webPort } = await denForAppWeb(seed, { env, web: false, org: { name: "Auto Router desktop proof", admin: { name: "Router owner" } } });
     stack.use(den);
     if (!den.database) throw new Error("The Auto Router desktop world needs its disposable local database.");

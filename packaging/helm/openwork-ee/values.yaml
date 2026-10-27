@@ -263,6 +263,7 @@ secret:
     githubConnectorAppWebhookSecret: GITHUB_CONNECTOR_APP_WEBHOOK_SECRET
     initialAdminBootstrapCode: DEN_INITIAL_ADMIN_BOOTSTRAP_CODE
     maintenanceToken: DEN_MAINTENANCE_TOKEN
+    typesafeApiKey: TYPESAFE_API_KEY
   values:
     databaseUrl: mysql://openwork:change-me@mysql:3306/openwork_den
     databaseHost: ""
@@ -287,6 +288,10 @@ secret:
     initialAdminBootstrapCode: ""
     # 24+ characters. Only rendered when set; used by denApi.auditUsage.
     maintenanceToken: ""
+    # TypeSafe API key for Jev, which picks the model for each Auto request
+    # (AI Gateway Auto Model Routing, feature autoRouter). Only rendered when
+    # set; without it Auto always uses its fallback model.
+    typesafeApiKey: ""
 
 installerArtifacts:
   enabled: false
