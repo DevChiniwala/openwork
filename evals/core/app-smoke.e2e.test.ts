@@ -14,9 +14,16 @@ function engineItems(body: unknown): unknown {
   return body;
 }
 
-test("app boots with a control route and meaningful visible content", async ({ world, user, probe }) => {
-  expect(await probe.hash()).toBeTruthy();
-  expect((await probe.text()).trim().length).toBeGreaterThan(40);
+test("app boots with a control route and meaningful visible content", async ({ world, user, probe, evidence }) => {
+  const route = await probe.hash();
+  const visibleTextLength = (await probe.text()).trim().length;
+  expect(route).toBeTruthy();
+  expect(visibleTextLength).toBeGreaterThan(40);
+  evidence.recordAssertionEvidence(
+    "The app boots on a non-empty control route with rendered text",
+    JSON.stringify({ route, visibleTextLength, minimumTextLength: 40 }),
+    Boolean(route) && visibleTextLength > 40,
+  );
   if (world.packaged) {
     await probe.eventually(() => probe.hash(), {
       within: 30_000,
@@ -43,9 +50,19 @@ test("app boots with a control route and meaningful visible content", async ({ w
     if (!workspaceId) throw new Error("The packaged app did not open its empty workspace route.");
     const sessions = await probe.desktopApi(`/workspace/${workspaceId}/opencode2/api/session`);
     expect(sessions.status).toBe(200);
-    expect(engineItems(sessions.body)).toEqual([]);
+    const sessionItems = engineItems(sessions.body);
+    expect(sessionItems).toEqual([]);
     const engine = await world.packagedEngineInfo();
     expect(engine.version).toMatch(/^2\./);
+    evidence.recordAssertionEvidence(
+      "The packaged app starts signed out on an empty workspace served by OpenCode v2",
+      JSON.stringify({ runtime, sessionsStatus: sessions.status, sessions: engineItems(sessions.body), engineVersion: engine.version }),
+      typeof runtime === "object" && runtime !== null
+        && Object.entries(expectedRuntime).every(([key, expected]) => Reflect.get(runtime, key) === expected)
+        && sessions.status === 200
+        && Array.isArray(sessionItems) && sessionItems.length === 0
+        && /^2\./.test(engine.version),
+    );
   } else {
     expect(world.workspace?.workspaceId).toBeTruthy();
     await user.looks([

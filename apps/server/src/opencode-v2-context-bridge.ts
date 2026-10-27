@@ -15,6 +15,8 @@ const requestSchema = z.object({
   name: z.enum(["openwork_context", "openwork_query", "openwork_execute", "openwork_skills", "openwork_skill_read", "openwork_drive_upload", "openwork_gmail_draft", ...DRIVE_FILE_ACTIONS]),
   input: z.unknown(),
   sessionId: z.string().max(256).optional(),
+  // Marks a tool snapshot admitted to Code Mode; direct tools keep working when the rollout is off.
+  codeMode: z.boolean().optional(),
   // The calling tool's place in its chat, where a Drive approval is shown.
   caller: z.object({
     directory: z.string().min(1).max(4096), messageId: z.string().min(1).max(256),
@@ -128,7 +130,10 @@ function bridgeAffordances(value: unknown): unknown {
 export async function createV2ContextBridge(
   hostRequest: (path: string, init?: RequestInit) => Promise<unknown>,
   engine?: () => EngineConnection | undefined,
+  options: { nativeAffordanceCodeMode?: () => Promise<boolean> } = {},
 ) {
+  const enabled = async () => await options.nativeAffordanceCodeMode?.().catch(() => false) === true;
+  const codeMode = await enabled();
   const token = randomBytes(32).toString("base64url");
   const plugin = await OpenWorkExtensionsPreview();
   const server = await serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
@@ -138,6 +143,10 @@ export async function createV2ContextBridge(
       const text = await request.text();
       if (text.length > 64_000) return new Response(null, { status: 413 });
       const call = requestSchema.parse(JSON.parse(text));
+      // A captured Code Mode executor cannot keep batching writes after the kill switch.
+      if (call.name === "openwork_execute" && call.codeMode && (!codeMode || !await enabled())) {
+        return Response.json({ error: "feature_disabled" }, { status: 403 });
+      }
       let deadline = AbortSignal.timeout(60_000);
       const read = (path: string, init?: RequestInit) => {
         const signal = AbortSignal.any([request.signal, deadline, ...(init?.signal ? [init.signal] : [])]);
@@ -243,7 +252,7 @@ export async function createV2ContextBridge(
         const context: unknown = JSON.parse(await plugin.tool.openwork_context.execute());
         const filtered = bridgeAffordances(context);
         return JSON.stringify(isRecord(filtered) ? { ...filtered, instructions: {
-          context: "Use openwork_query for the discovered read-only affordances and openwork_execute for the session.group commands. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
+          context: "Use openwork_query for the discovered read-only affordances and openwork_execute for the session.group commands. When Code Mode exposes these tools, discover their exact paths with search and compose them there, preserving exceptions and verifying the resulting groups. For other conversations, use session.search then session.read. Session reads include current activity and background-agent counts."
         } } : filtered);
       });
       return new Response(result, { headers: { "Content-Type": "application/json" } });
@@ -252,6 +261,6 @@ export async function createV2ContextBridge(
     }
   } });
   const browser = await createV2BrowserBridge().catch(async error => { await server.stop(); await plugin.dispose(); throw error; });
-  return { url: `http://127.0.0.1:${server.port}/read`, token, browser: { url: browser.url, token: browser.token },
+  return { url: `http://127.0.0.1:${server.port}/read`, token, codeMode, browser: { url: browser.url, token: browser.token },
     close: async () => { await browser.close(); await server.stop(); await plugin.dispose(); } };
 }

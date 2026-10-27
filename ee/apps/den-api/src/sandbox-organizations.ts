@@ -1,16 +1,12 @@
-import { randomUUID } from "node:crypto"
 import { and, count, desc, eq, inArray, isNotNull, isNull } from "@openwork-ee/den-db/drizzle"
 import {
   ExternalMcpConnectionTable,
   GatewayProviderTable,
   MemberTable,
-  OrganizationBenefitSettingTable,
-  OrganizationGrantTable,
   OrganizationTable,
   SandboxOrganizationTable,
 } from "@openwork-ee/den-db/schema"
 import { createDenTypeId, normalizeDenTypeId, type DenTypeId } from "@openwork-ee/utils/typeid"
-import { INFERENCE_USAGE_CONVERSION_FACTOR } from "@openwork/types/den/inference"
 import {
   SANDBOX_WORKPLACE_APPS,
   type Sandbox,
@@ -85,11 +81,6 @@ export function sandboxConnectorUrls(baseUrl: string) {
   return SANDBOX_WORKPLACE_APPS.map(app => ({ ...app, url: `${root}/${app.key}/mcp` }))
 }
 
-async function setFreeAuto(organizationId: DenTypeId<"organization">, setting: "enabled" | "disabled", actor: UserId) {
-  await db.insert(OrganizationBenefitSettingTable).values({ organizationId, feature: "freeAuto", setting, updatedByUserId: actor })
-    .onDuplicateKeyUpdate({ set: { setting, updatedByUserId: actor, updatedAt: new Date() } })
-}
-
 async function serialize(rows: SandboxRow[], now = new Date()): Promise<Sandbox[]> {
   if (rows.length === 0) return []
   const ids = rows.map(row => row.organizationId)
@@ -129,15 +120,15 @@ async function serialize(rows: SandboxRow[], now = new Date()): Promise<Sandbox[
 }
 
 /**
- * Stops included models for sandboxes whose time ran out. Membership, connectors and data stay; extending the
- * sandbox turns included models back on. Runs whenever sandboxes are listed or joined.
+ * Records sandboxes whose time ran out as closed. Free Auto already stops at expiry without this (Den API and the
+ * Gateway check the sandbox row: sandboxFreeAutoStopped). Membership, connectors and data stay; extending the
+ * sandbox reopens it. Runs whenever sandboxes are listed or joined.
  */
-export async function closeExpiredSandboxes(actor: UserId | null, now = new Date()) {
+export async function closeExpiredSandboxes(now = new Date()) {
   const rows = await db.select().from(SandboxOrganizationTable).where(isNull(SandboxOrganizationTable.closedAt))
   for (const row of rows) {
     if (row.expiresAt > now) continue
     await db.update(SandboxOrganizationTable).set({ closedAt: now }).where(and(eq(SandboxOrganizationTable.id, row.id), isNull(SandboxOrganizationTable.closedAt)))
-    await setFreeAuto(row.organizationId, "disabled", actor ?? row.createdByUserId)
   }
 }
 
@@ -146,8 +137,8 @@ export function sandboxDefaults(): SandboxDefaults {
   return { workplaceUrl: env.sandbox.workplaceUrl, gatewayModels: gateway?.modelIds ?? [], gatewayProviderId: gateway?.providerId ?? null }
 }
 
-export async function listSandboxes(actor: UserId): Promise<Sandbox[]> {
-  await closeExpiredSandboxes(actor)
+export async function listSandboxes(): Promise<Sandbox[]> {
+  await closeExpiredSandboxes()
   const rows = await db.select().from(SandboxOrganizationTable).orderBy(desc(SandboxOrganizationTable.createdAt)).limit(200)
   return serialize(rows)
 }
@@ -159,7 +150,7 @@ export async function getSandbox(id: DenTypeId<"sandboxOrganization">): Promise<
 
 /**
  * Creates an ordinary organization owned by the admin, then makes it a sandbox: included models on (Workbot
- * defaults to them), optional extra Free Auto usage that expires with the sandbox, one per-person OAuth
+ * defaults to them), Free Auto until the sandbox closes or expires, one per-person OAuth
  * connector for each fictional workplace app, and a join link. Every member connects their own account, so
  * each person's workplace data stays separate.
  */
@@ -188,18 +179,10 @@ export async function createSandbox(actor: UserId, input: SandboxCreateInput): P
 
   await updateOrganizationFeatureOverrides({
     organizationId,
-    changes: { organizationGrants: true, workbotIncludedModels: true },
+    changes: { workbotIncludedModels: true },
     source: "platform",
     setByUserId: actor,
   })
-  await setFreeAuto(organizationId, "enabled", actor)
-  if (input.extraFreeAutoUsd !== null) {
-    await db.insert(OrganizationGrantTable).values({
-      id: createDenTypeId("organizationGrant"), organizationId, requestId: randomUUID(), feature: "freeAuto", kind: "usage",
-      amount: Math.round(input.extraFreeAutoUsd * INFERENCE_USAGE_CONVERSION_FACTOR), startsAt: new Date(), expiresAt,
-      reason: "Sandbox organization usage", createdByUserId: actor,
-    })
-  }
 
   const [owner] = await db.select({ id: MemberTable.id }).from(MemberTable)
     .where(and(eq(MemberTable.organizationId, organizationId), eq(MemberTable.userId, actor), isNull(MemberTable.removedAt))).limit(1)
@@ -248,21 +231,19 @@ export async function rotateSandboxLink(id: DenTypeId<"sandboxOrganization">) {
 }
 
 /** Adds days from now, or from the current end if it is later, and reopens a closed or expired sandbox. */
-export async function extendSandbox(actor: UserId, id: DenTypeId<"sandboxOrganization">, days: number) {
+export async function extendSandbox(id: DenTypeId<"sandboxOrganization">, days: number) {
   const [row] = await db.select().from(SandboxOrganizationTable).where(eq(SandboxOrganizationTable.id, id)).limit(1)
   if (!row) return null
   const start = Math.max(Date.now(), row.expiresAt.getTime())
   await db.update(SandboxOrganizationTable).set({ expiresAt: new Date(start + days * DAY_MS), closedAt: null }).where(eq(SandboxOrganizationTable.id, id))
-  await setFreeAuto(row.organizationId, "enabled", actor)
   return getSandbox(id)
 }
 
-/** Stops new joins and included models now. The organization, its members and their data are kept. */
-export async function closeSandbox(actor: UserId, id: DenTypeId<"sandboxOrganization">) {
+/** Stops new joins and Free Auto now (sandboxFreeAutoStopped). The organization, its members and their data are kept. */
+export async function closeSandbox(id: DenTypeId<"sandboxOrganization">) {
   const [row] = await db.select().from(SandboxOrganizationTable).where(eq(SandboxOrganizationTable.id, id)).limit(1)
   if (!row) return null
   if (!row.closedAt) await db.update(SandboxOrganizationTable).set({ closedAt: new Date() }).where(eq(SandboxOrganizationTable.id, id))
-  await setFreeAuto(row.organizationId, "disabled", actor)
   return getSandbox(id)
 }
 
@@ -331,7 +312,7 @@ export async function joinSandbox(input: { token: string; userId: string; email:
     await tx.insert(MemberTable).values({ id: memberId, organizationId: row.organizationId, userId, role: readJoinRole(org.metadata), joinedAt: new Date() })
     return { status: "added", organizationId: row.organizationId, memberId }
   })
-  if (result.status === "expired") await closeExpiredSandboxes(null)
+  if (result.status === "expired") await closeExpiredSandboxes()
   if (result.status === "joined" && result.alreadyMember) {
     // Someone who joined as a member before the sandbox became admin-joining is promoted when they open the link again.
     const [org] = await db.select({ metadata: OrganizationTable.metadata }).from(OrganizationTable).where(eq(OrganizationTable.id, result.organizationId)).limit(1)

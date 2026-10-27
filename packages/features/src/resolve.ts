@@ -73,6 +73,9 @@ export const RETIRED_FEATURE_KEYS = [
   "localProviderMirror", "organizationAutomationSettings", "agentConnectionRemoval",
   "workbotCommandPalette", "usageLimitUpgrade", "removeOpencodeZen",
   "desktopSignInReturn", "claudeHistoryImport", "orgPrompts",
+  // Removed (2026-10): an organization's plan and seats are set in one place in /admin (Billing);
+  // Stripe-billed Enterprise is a plain /admin control and organization grants are gone.
+  "enterprisePlan", "organizationGrants",
 ] as const
 
 export function isFeatureKey(value: string): value is FeatureKey {

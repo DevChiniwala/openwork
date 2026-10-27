@@ -108,7 +108,7 @@ jobs:
           pnpm --filter @openwork-ee/headless-runner test:service-health
           pnpm --filter @openwork-ee/workbot test:service-readiness
           # Den web does not install tsx in CI; keep its JSX config with the API-owned loader.
-          TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/diagnostics/*.test.ts' '../den-web/components/diagnostics/*.test.tsx' '../den-web/components/admin/services/*.test.ts' '../den-web/components/admin/feature-change.test.ts' '../den-web/components/services/*.test.tsx' '../den-web/app/(den)/dashboard/_lib/diagnostics-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts'
+          TSX_TSCONFIG_PATH=../den-web/tsconfig.json pnpm --filter @openwork-ee/den-api exec node --conditions=development --import tsx --test '../den-web/components/diagnostics/*.test.ts' '../den-web/components/diagnostics/*.test.tsx' '../den-web/components/admin/services/*.test.ts' '../den-web/components/admin/feature-change.test.ts' '../den-web/components/services/*.test.tsx' '../den-web/app/(den)/dashboard/_lib/diagnostics-access.test.ts' '../den-web/app/(den)/_lib/service-readiness.test.ts' '../den-web/app/(den)/dashboard/_components/workbot-proactive-section.test.tsx'
           bun test apps/app/tests/deployment-service-readiness.test.ts apps/app/tests/opencode-zen-removal.test.ts apps/app/tests/activation-card-model.test.ts apps/app/tests/connector-readiness.test.ts
       - name: Boot the app provider tree
         run: pnpm test:boot
@@ -123,8 +123,8 @@ jobs:
         run: pnpm --filter @openwork/calendar test
       - name: Test fork authorization and free screening policy
         run: node --test .github/scripts/contributor-pr.test.mjs .github/scripts/contributor-screen.test.mjs .github/scripts/warden-check.test.mjs .github/scripts/warden-report.test.mjs .github/scripts/warden-fast.test.mjs .github/scripts/setup-browser.test.mjs
-      - name: Test on-demand PR proof review builds
-        run: node --test .github/scripts/pr-proof-review-build.test.mjs .github/scripts/pr-proof-artifacts.test.mjs
+      - name: Test on-demand PR proof review builds and CI timing
+        run: node --test .github/scripts/pr-proof-review-build.test.mjs .github/scripts/pr-proof-selection.test.mjs .github/scripts/ci-time-to-green.test.mjs
       - name: Test desktop and cloud computer access and interruption
         run: |
           pnpm --filter @openwork/computer-use build
@@ -144,7 +144,7 @@ jobs:
           node --test apps/desktop/test/engine-diagnosis.test.mjs apps/desktop/test/sidecar-layout.test.mjs apps/desktop/scripts/electron-after-sign.test.cjs apps/server/test/inference-node-export.test.mjs
           pnpm --dir evals exec vitest run --config vitest.config.ts --project pr packages/hosts/src/local-surface-log.test.ts
       - name: Test providers reaching OpenCode v2 and the organization's provider rule
-        run: bun test apps/server/test/engine-v2-provider-mapping.test.ts apps/server/test/opencode-v2-local-auth.test.ts
+        run: bun test apps/server/test/engine-v2-provider-mapping.test.ts apps/server/test/opencode-v2-local-auth.test.ts apps/server/test/engine-v2-upkeep-warning.test.ts
       - name: Test the self-hosted web UI stays on its own origin
         run: bun --conditions=development test apps/server/test/web-ui-origin.test.ts
       - name: Test OneDrive and SharePoint pulls and saves
@@ -155,6 +155,8 @@ jobs:
           bun test apps/server/test/windows-env-names.test.ts
       - name: Test the desktop reads Apps as large as Den builds them
         run: bun test apps/server/test/mcp-app-resource-cache.test.ts
+      - name: Test the agent's Automation listing reads every schedule kind
+        run: bun test apps/server/test/connect-automation-catalog.test.ts
       - name: Setup headless Chrome for locator regression
         uses: ./.github/actions/setup-browser
       - name: Run eval framework tests (spec lint and its fixtures)
@@ -175,7 +177,7 @@ jobs:
       - name: Run Den API security tests
         run: |
           pnpm --filter @openwork-ee/den-api build:workspace-dependencies
-          pnpm dev:den:mysql
+          pnpm ci:den:mysql
           pnpm --filter @openwork-ee/den-api test:api
       - name: Check sandbox contracts and adapters (no cloud resources)
         run: |
@@ -383,7 +385,7 @@ jobs:
           pnpm --filter @openwork/types build
           pnpm --filter @openwork-ee/den-db build
           pnpm --filter @openwork/email build
-          pnpm dev:den:mysql
+          pnpm ci:den:mysql
           pnpm --filter @openwork/desktop prepare:sidecar
       # One file at a time: every local Den boot resets den-web's shared .next/dev
       # build directory, so parallel Den specs crash each other's Den web.

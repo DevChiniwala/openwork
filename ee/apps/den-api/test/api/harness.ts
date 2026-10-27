@@ -19,6 +19,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { createDenDb, ensureSchemaRepairs } from "@openwork-ee/den-db"
+import { inlineIndexes } from "./schema-statements.js"
 
 const execFileAsync = promisify(execFile)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -96,7 +97,7 @@ async function schemaStatements(): Promise<string[]> {
   )
   const start = stdout.indexOf("CREATE ")
   if (start < 0) throw new Error(`drizzle-kit export produced no schema:\n${stdout.slice(0, 500)}`)
-  return stdout.slice(start).split(/;\s*\n/).map((statement) => statement.trim()).filter(Boolean)
+  return inlineIndexes(stdout.slice(start).split(/;\s*\n/).map((statement) => statement.trim()).filter(Boolean))
 }
 
 /** A MySQL connection pool (never PlanetScale's HTTP client) for one database URL. */

@@ -1,4 +1,5 @@
 import { startupPhase } from "./startup-phase.js";
+import { engineV2UpkeepWarning } from "./engine-v2-upkeep-warning.js";
 import { acquireHistoryCopyLock } from "./opencode-v2-history-lock.js";
 import { createV2ContextBridge } from "./opencode-v2-context-bridge.js";
 import { createV2ProviderSessionBridge } from "./opencode-v2-provider-session.js";
@@ -10,7 +11,7 @@ import {
 } from "./opencode-v2-migration.js";
 import { executionRules } from "./managed-policy-rules.js";
 import { agentPermissionEngineMcpDenial, agentPermissionRulesOf } from "./agent-permission-engine.js";
-import { registeredOrganizationMcpServers } from "./connect-mcp-server-catalog.js";
+import { CONNECT_MCP_APP_HOST_CAPABILITY_HEADER, registeredOrganizationMcpServers } from "./connect-mcp-server-catalog.js";
 import { waitForEngineSkillChanges } from "./opencode-v2-skill-settle.js";
 import { MCP_READINESS_RPC_ID } from "./opencode-v2-mcp-readiness.js";
 import { execFile } from "node:child_process";
@@ -114,7 +115,7 @@ export interface EngineV2PreviewStatus {
   catalogModelIds: string[];
   lastMirroredAt?: string;
   lastError?: string;
-  /** Most recent upkeep step that did not finish in time or was rejected; requests proceeded. */
+  /** Timestamped, client-safe upkeep summary. Never contains raw errors or workspace paths. */
   lastWarning?: string;
   migration: EngineV2MigrationStatus;
   /** This profile has chats saved before OpenCode v2. */
@@ -464,6 +465,20 @@ export async function waitForEngineV2Catalog(
   };
 }
 
+/**
+ * The v2 engine lists organization skills as native skills
+ * (openwork-cloud-skills-v2), so Den need not repeat them in Connect's server
+ * instructions. Den only drops that list when it also serves native delivery.
+ */
+const CONNECT_NATIVE_SKILLS_CAPABILITY = "native-skills-v1";
+
+function withClientCapability(headers: Record<string, string>, capability: string): Record<string, string> {
+  const key = Object.keys(headers).find((name) => name.toLowerCase() === CONNECT_MCP_APP_HOST_CAPABILITY_HEADER)
+    ?? CONNECT_MCP_APP_HOST_CAPABILITY_HEADER;
+  const existing = (headers[key] ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  return existing.includes(capability) ? headers : { ...headers, [key]: [...existing, capability].join(",") };
+}
+
 /** Translate only fields supported by the pinned v2 MCP API. */
 export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
@@ -486,7 +501,9 @@ export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string,
     ...(typeof value.oauth.clientSecret === "string" ? { client_secret: value.oauth.clientSecret } : {}),
     ...(typeof value.oauth.scope === "string" ? { scope: value.oauth.scope } : {}),
   } : value.oauth === false ? false : undefined;
-  return { type: "remote", url: value.url, headers: strings(value.headers),
+  const headers = strings(value.headers);
+  return { type: "remote", url: value.url,
+    headers: name === "openwork-cloud" ? withClientCapability(headers, CONNECT_NATIVE_SKILLS_CAPABILITY) : headers,
     // Only the managed Connect endpoint needs modern discovery and per-request
     // clientInfo. Keep third-party servers on the engine's legacy default.
     ...(name === "openwork-cloud" ? { protocol: "auto" } : {}),
@@ -532,6 +549,7 @@ export function createEngineV2Preview(options: {
   env?: Pick<EnvService, "list" | "onChange">;
   deferStart?: boolean;
   hostReadRequest?: (path: string, init?: RequestInit) => Promise<unknown>;
+  resolveNativeAffordanceCodeMode?: () => Promise<boolean>;
   providerSession?: () => CloudProviderDenSession | null;
   /** Fresh Den resolution on every child start, independent of the cloud sync timer. */
   resolveLiveProviderSync?: () => Promise<boolean>;
@@ -584,7 +602,7 @@ export function createEngineV2Preview(options: {
   let lastMirroredAt: string | undefined;
   let lastError: string | undefined;
   let lastWarning: string | undefined;
-  const warn = (message: string) => { lastWarning = `${new Date().toISOString()} ${message}`; };
+  const warn = (message: string) => { lastWarning = engineV2UpkeepWarning(message); };
   let sidecar: ManagedOpencodeV2Server | undefined;
   let contextBridge: Awaited<ReturnType<typeof createV2ContextBridge>> | undefined;
   let providerSessionBridge: Awaited<ReturnType<typeof createV2ProviderSessionBridge>> | undefined;
@@ -940,7 +958,9 @@ export function createEngineV2Preview(options: {
     // skills now use the same metadata/on-demand Connect path as v1.
     await rm(join(rootDir, "cloud-skills"), { recursive: true, force: true });
     const opencodeModelsUrl = await resolveOpencodeModelsUrl();
-    contextBridge = options.hostReadRequest ? await createV2ContextBridge(options.hostReadRequest, connection) : undefined;
+    contextBridge = options.hostReadRequest ? await createV2ContextBridge(options.hostReadRequest, connection, {
+      nativeAffordanceCodeMode: options.resolveNativeAffordanceCodeMode,
+    }) : undefined;
     providerSessionBridge = options.providerSession ? await createV2ProviderSessionBridge(() =>
       ownsGateway() ? options.providerSession?.() ?? null : null) : undefined;
     const globalSkills = globalSkillDirectories();

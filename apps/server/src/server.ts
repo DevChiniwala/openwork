@@ -648,6 +648,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult & {
   const engineV2Preview: EngineV2Preview = createEngineV2Preview({ config, env, deferStart: true,
     resolveLiveProviderSync,
     historyImportError: (error) => logger.log("warn", "Copying chats saved before OpenCode v2 failed; retrying on a later start", { error }),
+    resolveNativeAffordanceCodeMode: async () => (await managedDesktopPolicy(config).current())?.nativeAffordanceCodeMode === true,
     providerSession: () => cloudProviderSync.currentSession(),
     hostReadRequest: async (path, init) => {
       // Internal dispatch retains the host credential in this process. The

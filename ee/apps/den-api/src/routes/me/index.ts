@@ -25,6 +25,7 @@ import { memberPromptsSchema } from "@openwork/types/den/prompts"
 import { getOrganizationFeatures } from "../../features.js"
 import { DenEmailSendError, sendEmail } from "../../utils/email/send-email.js"
 import { registerMeActivationRoutes } from "./activation.js"
+import { registerMeAgentRoutes } from "./agent.js"
 
 const DOWNLOAD_LINK_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 const DOWNLOAD_LINK_RATE_LIMIT_MAX = 5
@@ -165,6 +166,7 @@ async function checkDownloadLinkRateLimit(userId: string, now: number) {
 
 export function registerMeRoutes<T extends { Variables: AuthContextVariables & Partial<UserOrganizationsContext> & Partial<OrganizationContextVariables> }>(app: Hono<T>) {
   registerMeActivationRoutes(app)
+  registerMeAgentRoutes(app)
 
   app.get(
     "/v1/me",
@@ -478,6 +480,7 @@ export function registerMeRoutes<T extends { Variables: AuthContextVariables & P
         // Compatibility field for published desktops: Connect is always on.
         connectEnabled: true,
         liveProviderSync: features.liveProviderSync,
+        nativeAffordanceCodeMode: features.nativeAffordanceCodeMode,
         // Compatibility fields for published desktops: both behaviors are now always on.
         localProviderMirror: true,
         removeOpencodeZen: true,
