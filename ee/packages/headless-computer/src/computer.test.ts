@@ -67,6 +67,31 @@ test("idle policy uses stop when pause is absent", async () => {
   await computers.delete("idle")
 })
 
+test("a computer pauses from its stored time after the process that used it is gone", async () => {
+  const f = fixture()
+  const due = new Map<string, number>()
+  const pauses = { set: (sessionId: string, at: number) => { due.set(sessionId, at) }, clear: (sessionId: string) => { due.delete(sessionId) } }
+  const before = Date.now()
+  const used = new Computers({ provider: f.provider, idlePauseMs: 60_000, keepDays: 1, pauses }, { readFile: async () => ({ text: "" }) })
+  const box = await used.vm("stored")
+  // In use, it is due only once the longest command would be done; released, after one idle period.
+  assert.ok((due.get("stored") ?? 0) >= before + 60_000 + 300_000)
+  used.release("stored")
+  assert.ok((due.get("stored") ?? 0) < before + 60_000 + 300_000)
+  // A new process (a restarted runner or a recycled cell) acts on the stored time without having used the computer.
+  const restarted = new Computers({ provider: f.provider, idlePauseMs: 60_000, keepDays: 1, pauses }, { readFile: async () => ({ text: "" }) })
+  await restarted.pauseIdle("stored")
+  assert.equal((await f.provider.inspect(box)).state, "stopped")
+  assert.equal(due.has("stored"), false)
+  // A paused computer is never woken to check it.
+  const starts = f.provider.fake.count("start")
+  pauses.set("stored", 0)
+  await restarted.pauseIdle("stored")
+  assert.equal(f.provider.fake.count("start"), starts)
+  assert.equal(due.has("stored"), false)
+  await used.delete("stored")
+})
+
 test("desktop stays off on existing computers and opening a paused desktop does not wake it", async () => {
   const f = fixture()
   assert.deepEqual(f.computers.desktopTools, [])

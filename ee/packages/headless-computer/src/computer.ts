@@ -17,6 +17,11 @@ export type ComputerOptions = {
   /** Keep each conversation's computer until it is removed instead of deleting it after keepDays unused. */
   persistent?: boolean
   desktop?: boolean
+  /**
+   * Where each conversation's pause time is kept so it outlives this process (the runner's store). The host runs
+   * `pauseIdle` for the due ones; without it, only this process's timer pauses a computer.
+   */
+  pauses?: { set(sessionId: string, dueAt: number): void; clear(sessionId: string): void }
 }
 /** The desktop guest's viewer port (desktop-guest.mjs). */
 const DESKTOP_VIEWER_PORT = 6080
@@ -194,6 +199,8 @@ export class Computers {
   /** The conversation's VM, created from the snapshot on first use. A paused VM wakes on its next command. */
   async vm(sessionId: string): Promise<SandboxHandle> {
     this.cancelPause(sessionId)
+    // In use: should this process stop before releasing it, it still pauses once the longest command would be done.
+    this.options.pauses?.set(sessionId, Date.now() + this.options.idlePauseMs + MAX_COMMAND_SECONDS * 1000)
     await this.pausing.get(sessionId)
     const prior = this.vms.get(sessionId)
     // Reserve the transition before awaiting provider state. Concurrent viewer
@@ -254,6 +261,22 @@ export class Computers {
     const timer = setTimeout(() => void this.pauseIfIdle(sessionId), this.options.idlePauseMs)
     timer.unref?.()
     this.pauseTimers.set(sessionId, timer)
+    this.options.pauses?.set(sessionId, Date.now() + this.options.idlePauseMs)
+  }
+
+  /**
+   * Pauses the conversation's computer if it is running and idle, for a host acting on a stored pause time
+   * (`pauses`), including after a restart, when this process never used it. It never wakes a paused computer.
+   */
+  async pauseIdle(sessionId: string) {
+    this.cancelPause(sessionId)
+    const known = this.vms.get(sessionId)
+    const box = await (known ? known.then(box => this.provider.inspect(box)) : this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })).catch(() => undefined)
+    // Unknown: look again after another idle period rather than at once.
+    if (box === undefined) return this.options.pauses?.set(sessionId, Date.now() + this.options.idlePauseMs)
+    if (box?.state !== "running") return this.options.pauses?.clear(sessionId)
+    if (!known) this.vms.set(sessionId, Promise.resolve(box))
+    await this.pauseIfIdle(sessionId)
   }
 
   private pauseIfIdle(sessionId: string): Promise<void> {
@@ -267,14 +290,16 @@ export class Computers {
   private async checkIdle(sessionId: string) {
     this.pauseTimers.delete(sessionId)
     const pending = this.vms.get(sessionId)
-    if (!pending) return
+    if (!pending) return this.options.pauses?.clear(sessionId)
     try {
       const vm = await pending
       const jobs = await this.execute(vm, { command: `ls ${WORKSPACE}/.jobs/*.running 2>/dev/null | wc -l`, activity: "maintenance", timeoutMs: 10_000 })
       if (Number(jobs.stdout?.trim() ?? "0") > 0) return this.release(sessionId)
       await (this.provider.blocks?.pause ? this.provider.blocks.pause(vm, { timeoutMs: 30_000 }) : this.provider.stop(vm, { timeoutMs: 30_000 }))
+      this.options.pauses?.clear(sessionId)
     } catch {
-      // Not fatal: Freestyle's own idle timeout pauses it later.
+      // Not fatal: tried again after another idle period, and Freestyle's own idle timeout pauses it later.
+      this.options.pauses?.set(sessionId, Date.now() + this.options.idlePauseMs)
     }
   }
 
@@ -287,6 +312,7 @@ export class Computers {
   /** Deletes the conversation's VM, if it has one. */
   async delete(sessionId: string) {
     this.cancelPause(sessionId)
+    this.options.pauses?.clear(sessionId)
     this.vms.delete(sessionId)
     this.copied.delete(sessionId)
     const box = await this.provider.find({ idempotencyKey: this.slug(sessionId), labels: this.spec(sessionId).labels })
