@@ -85,7 +85,7 @@ def start(expected):
                 pass
             except FileNotFoundError:
                 pass
-        subprocess.run(['/bin/sh', str(ROOT / 'start.sh'), str(STATE), ':99'],
+        subprocess.run(['/bin/sh', str(ROOT / 'start.sh'), str(STATE), ':99', ':100'],
                        env={**ENV, 'WORKBOT_DESKTOP_VNC': '1'}, check=True, timeout=30)
         if not (STATE / 'token').exists():
             (STATE / 'token').write_text(secrets.token_urlsafe(32))
