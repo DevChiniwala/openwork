@@ -261,7 +261,7 @@ function QueuedDraftRow(props: {
             <QueuedDraftContent draft={props.item.draft} />
           </button>
         )}
-        {props.active || props.item.steer ? <span role="status" className="block px-0.5 text-xs text-gray-10">{props.active ? "Sending..." : "Send requested"}</span> : null}
+        {props.active || props.item.steer ? <span role="status" className="block px-0.5 text-xs text-gray-10">{props.active ? "Sending..." : t("composer.queued_send_requested")}</span> : null}
       </div>
       <div className="mt-0.5 flex shrink-0 items-center gap-0.5">
         <button

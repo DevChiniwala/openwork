@@ -309,7 +309,7 @@ function SessionStatusIndicator({ status, isActiveWork, isStarting, isUnread, at
   return (
     <SidebarGlyphSlot>
       {isActiveWork || isStarting ? (
-        <SessionDotMatrixLoader label={isStarting ? "Starting" : isSessionActivityStatus(status) && status !== "idle"
+        <SessionDotMatrixLoader label={isStarting ? t("workspace_list.session_starting") : isSessionActivityStatus(status) && status !== "idle"
           ? getSessionActivityStatusLabel(status)
           : t("workspace_list.session_streaming")} />
       ) : (
@@ -1987,7 +1987,7 @@ export function SessionMenuItem({
   const { dragProps, dropPosition } = useSessionReorderTarget(session.id, workspaceId, draggable);
 
   const accessibleState = isStarting
-    ? `${displayTitle}, Starting`
+    ? `${displayTitle}, ${t("workspace_list.session_starting")}`
     : resolvedActiveWork && isSessionActivityStatus(sessionActivityStatus)
       ? `${displayTitle}, ${getSessionActivityStatusLabel(sessionActivityStatus)}`
       : isNeedsAttentionSessionStatus(sessionActivityStatus)
