@@ -466,6 +466,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  lastUsedSignIn: {
+    label: "Remember last sign-in method",
+    description: "People who last signed in with a password, Google or GitHub skip the email step next time: Den web lists the sign-in methods with a Last used badge, and Single sign-on returns to the email step. Signing in with SSO forgets the method.",
+    category: "experience",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/last-used-sign-in/README.md",
+    deployments: everywhere,
+    default: false,
+  },
 })
 
 export type FeatureKey = keyof typeof FEATURES
