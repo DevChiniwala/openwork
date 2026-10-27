@@ -39,6 +39,7 @@ import {
   tasksSection,
 } from "./tasks.js"
 import { formatBytes, withoutAttachments } from "./tool-files.js"
+import { oneAtATime } from "./one-at-a-time.js"
 import {
   ACTIVE,
   RESUMABLE,
@@ -486,6 +487,8 @@ export class Runner {
   private stopping = false
 
   private readonly pendingTelemetry = new Set<Promise<void>>()
+  /** Screen operations of one conversation and its tasks, one at a time. */
+  private readonly screenTurns = oneAtATime()
 
   private readonly memory: MemoryResolver
 
@@ -980,7 +983,10 @@ export class Runner {
         : taskTools && turn && TASK_TOOL_NAMES.has(call.name)
           ? this.runTaskTool(turn, call.name, call.input, context.held)
         : call.name === "desktop" && store.getSession(sessionId)?.desktop && computer?.desktopRun
-          ? await computer.desktopRun(sessionId, call.input, signal).catch((error: unknown) => ({ output: error instanceof Error ? error.message : "Desktop unavailable", isError: true }))
+          // The conversation and its tasks share one screen: their operations take turns. Stopping a task lets its
+          // operation finish rather than pausing the screen for everyone (aborting one sends the computer's /stop).
+          ? await this.screenTurns(sessionId, () => computer.desktopRun!(sessionId, call.input, kind === "task" ? undefined : signal), signal)
+            .catch((error: unknown) => ({ output: error instanceof Error ? error.message : "Desktop unavailable", isError: true }))
         : computer?.toolNames.has(call.name)
           ? await computer.run(sessionId, call.name, call.input).catch((error: unknown) => ({
               output: `The computer didn't respond: ${error instanceof Error ? error.message : "unknown error"}. Its outcome is unknown; check before repeating it.`,

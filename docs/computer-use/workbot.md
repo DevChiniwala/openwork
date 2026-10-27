@@ -15,10 +15,11 @@ The two views use one conversation computer:
 - **Pause** suspends the VM; reopening the tab leaves it paused until **Resume**.
   Memory, browser tabs and unsaved applications survive VM pause/resume.
 - **Rebuild computer** appears when the computer won't connect. After the person
-  confirms, Workbot stops the current turn and the runner deletes the VM and
-  creates a fresh one from the configured snapshot. The VM's disk, open apps and
-  browser tabs are erased; the chat and its kept Files stay. This is also how a
-  person moves an existing computer onto a rebuilt snapshot.
+  confirms, Workbot stops the current turn and its background tasks, and the
+  runner deletes the VM and creates a fresh one from the configured snapshot. The
+  VM's disk, open apps and browser tabs are erased; the chat and its kept Files
+  stay. This is also how a person moves an existing computer onto a rebuilt
+  snapshot.
 
 Workbot uses its computer in two modes, and the conversation shows each its own way:
 
@@ -30,8 +31,10 @@ Workbot uses its computer in two modes, and the conversation shows each its own 
   shows a live view, and the reply offers **Open Computer**.
 
 A reply shows one card for each kind of work, however often Workbot stops to
-say what it is doing. While it works, the screen card stays below its latest
-words with its live view, which keeps one connection for the whole reply.
+say what it is doing. While it works, its cards sit below its latest words and
+one of them is live: the work running now, or the screen it was just on while it
+talks between steps. Background work takes the screen's live view down; the view
+keeps its connection for a few seconds, so coming back to the screen is instant.
 
 Workbot is told to work like a coworker and read what the person wants. Most of
 the time that is the result, so it works in the background and comes back with
@@ -46,6 +49,14 @@ background work, **Carry on without me** on screen work. Either sends a
 follow-up, which Workbot takes up after its current step. Work the person wants
 to watch stays in the conversation rather than a background task, which works
 out of sight.
+
+Background tasks share the conversation's computer. They are told to work in the
+background, to use the browser only for a page that needs it (in a tab of their
+own) and to leave the apps on screen alone. The runner takes the conversation's
+and its tasks' screen operations one at a time, so they wait for each other
+instead of failing, and stopping a task lets its screen operation finish rather
+than pausing the screen for everyone. A task working on the screen offers
+**Watch** on its card.
 
 The main Workbot conversation's existing `hc-…` computer owns both views. The
 viewer does not create a second computer or accept a sandbox/session id from the

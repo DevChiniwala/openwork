@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import type { RunnerSnapshot } from "@openwork-ee/headless-protocol"
-import { buildWorkbotTurns, workbotInstructions, workbotPageId } from "@openwork-ee/workbot-server"
+import { buildWorkbotTurns, toWorkbotPageEvent, workbotInstructions, workbotPageId } from "@openwork-ee/workbot-server"
 
 const desktop = (id: string, view: "browser" | "computer", operation: string, args: Record<string, unknown>, description?: string) =>
   ({ id, name: "desktop", input: { view, operation, args, ...(description ? { description } : {}) } })
@@ -55,12 +55,40 @@ test("commands run in the background are their own step, apart from work on the 
   assert.deepEqual(steps[0]?.updates, ["Rendering the scene with Blender", "Checking the frames"])
 })
 
+test("a background task on the shared screen can be watched; one working in the background cannot", () => {
+  const bash = (id: string) => ({ id, name: "bash", input: { command: "python3 report.py", description: "Building the report" } })
+  const snapshot = {
+    status: "idle", finalAssistantText: "", hasEarlier: false,
+    turns: [
+      { messageId: "wb_ask", status: "completed", createdAt: 100, error: null },
+      { messageId: "wb_ask.t1", kind: "task", parent: "wb_ask", title: "Check listings", status: "running", createdAt: 110, error: null },
+      { messageId: "wb_ask.t2", kind: "task", parent: "wb_ask", title: "Build the report", status: "running", createdAt: 120, error: null },
+      { messageId: "wb_ask.t3", kind: "task", parent: "wb_ask", title: "Done on screen", status: "completed", createdAt: 130, error: null },
+    ],
+    messages: [
+      { messageId: "wb_ask", role: "user", text: "Check listings and build the report" },
+      { messageId: "wb_ask.t1", role: "assistant", text: "", createdAt: 111, toolCalls: [bash("a1"), desktop("a2", "browser", "open", { url: "https://www.example-homes.test/search" })] },
+      { messageId: "wb_ask.t2", role: "assistant", text: "", createdAt: 121, toolCalls: [desktop("b1", "browser", "open", { url: "https://www.example-homes.test/" }), bash("b2")] },
+      { messageId: "wb_ask.t3", role: "assistant", text: "", createdAt: 131, toolCalls: [desktop("c1", "computer", "computer_launch", { app: "calc" })] },
+    ],
+  } satisfies RunnerSnapshot
+  const [turn] = buildWorkbotTurns(snapshot)
+  assert.deepEqual(turn?.tasks.map((task) => [task.title, task.screen ?? null]), [["Check listings", "browser"], ["Build the report", null], ["Done on screen", null]])
+})
+
+test("a background task's steps reach the page only as a nudge to re-read, never its text or tool names", () => {
+  assert.deepEqual(toWorkbotPageEvent({ type: "tool", messageId: "wb_ask.t1", step: 2, tool: "desktop" }), { type: "task", messageId: "ask.t1" })
+  assert.equal(toWorkbotPageEvent({ type: "text", messageId: "wb_ask.t1", step: 2, delta: "secret draft" }), null)
+  assert.deepEqual(toWorkbotPageEvent({ type: "changed", messageId: "wb_ask.t1", status: "completed" }), { type: "changed", messageId: "ask.t1", status: "completed" })
+  assert.deepEqual(toWorkbotPageEvent({ type: "tool", messageId: "wb_ask", step: 0, tool: "bash" }), { type: "working", messageId: "ask", step: 0, on: "computer", background: true })
+})
+
 test("the browser and background-then-screen nudges are only given when the computer is on", () => {
   const base = { name: "Workbot", organizationName: "Example", firstName: "Alex", timeZone: "UTC", canSchedule: false }
   assert.equal(workbotInstructions(base).includes("check it in your browser"), false)
   assert.ok(workbotInstructions({ ...base, browser: true }).includes("check it in your browser"))
   // Getting it done in the background, and the screen only when it helps, are taught only when there is a screen.
-  for (const rule of ["get it done in the background", "only when it helps", "keep work they want to watch"]) {
+  for (const rule of ["get it done in the background", "only when it helps", "keep work they want to watch", "leave the apps on screen alone"]) {
     assert.equal(workbotInstructions(base).includes(rule), false)
     assert.ok(workbotInstructions({ ...base, browser: true }).includes(rule))
   }

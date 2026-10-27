@@ -299,8 +299,10 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       const body = action
       if (!body.success) return c.json({ error: "invalid_request" }, 400)
       if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
-      // Rebuilding deletes the VM under any running turn, so stop the turn first, as pausing does.
-      if (body.data.action === "pause" || body.data.action === "rebuild") await workbot.stop(actorOf(member))
+      // Rebuilding deletes the VM under any running turn, so stop the turn first, as pausing does, and its background
+      // tasks too: they work on the same computer.
+      if (body.data.action === "rebuild") await workbot.stopAll(actorOf(member))
+      else if (body.data.action === "pause") await workbot.stop(actorOf(member))
       let result = await client.desktopAction(sessionId, body.data.action)
       let rebuilt = body.data.action === "rebuild"
       if (!result.ok && result.error === "desktop_outdated" && body.data.action === "resume" && canRebuild) {

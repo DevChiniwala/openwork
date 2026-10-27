@@ -93,6 +93,8 @@ export type WorkbotTask = {
   update: string | null
   /** Everything it said it did on its computer, oldest first, kept after it is over. */
   updates: string[]
+  /** While it works on the computer's shared screen (its latest computer step), so the page can offer to watch it. */
+  screen?: "browser" | "computer"
 }
 
 export type WorkbotTurn = {
@@ -147,9 +149,10 @@ function tasksOf(snapshot: RunnerSnapshot, parent: string, byTurn: Map<string, R
     .map((entry) => {
       const status = TASK_STATUS[entry.status] ?? "working"
       const open = status === "queued" || status === "working" || status === "paused"
+      const calls = (byTurn.get(entry.messageId) ?? []).flatMap((message) => (message.role === "assistant" ? message.toolCalls : []))
+      const lastComputer = [...calls].reverse().find((call) => COMPUTER_TOOLS.has(call.name))
       // Its plain-language updates: the description it gave each command on its computer.
-      const updates = (byTurn.get(entry.messageId) ?? [])
-        .flatMap((message) => (message.role === "assistant" ? message.toolCalls : []))
+      const updates = calls
         .flatMap((call) => {
           if (!COMPUTER_TOOLS.has(call.name)) return []
           const said = typeof call.input.description === "string" && call.input.description.trim() ? call.input.description.trim() : call.name === "desktop" ? desktopUpdate(call.input) : null
@@ -165,6 +168,7 @@ function tasksOf(snapshot: RunnerSnapshot, parent: string, byTurn: Map<string, R
         finishedAt: open ? null : (entry.updatedAt ?? null),
         update,
         updates,
+        ...(open && lastComputer?.name === "desktop" ? { screen: lastComputer.input.view === "browser" ? "browser" as const : "computer" as const } : {}),
       }
     })
 }

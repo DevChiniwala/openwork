@@ -1532,13 +1532,15 @@ type SwitchTo = { label: string; text: string; send(text: string): void };
 
 /**
  * Workbot's computer work in one reply, as one card per kind of work (its browser, its screen, its background
- * commands), however often it stops to say what it is doing. While it works, the cards it is using go below its latest
- * words: the one it is on now, and the screen it was last on, whose live view stays up for the rest of the reply.
- * The others stay where that work last happened.
+ * commands), however often it stops to say what it is doing. While it works, its cards sit below its latest words in
+ * the order it started each, so they don't jump as it moves between them; once it is done, each settles where that
+ * work last happened. One card is live: the work running now, or, while it talks between steps, the screen it was just
+ * on. Background work takes the screen's live view down; coming back reuses its connection.
  */
 function computerWork(parts: WorkbotPart[], { working, starting, lastIsLive }: { working: boolean; starting: LiveText["working"] | null; lastIsLive: boolean }) {
   const cards = new Map<ComputerSurface, { steps: WorkbotStep[]; last: number }>();
   let screen: ComputerSurface | null = null;
+  let latest: ComputerSurface | null = null;
   let current: ComputerSurface | null = null;
   for (const [index, part] of parts.entries()) {
     if (part.kind !== "steps") continue;
@@ -1550,6 +1552,7 @@ function computerWork(parts: WorkbotPart[], { working, starting, lastIsLive }: {
       card.last = index;
       cards.set(surface, card);
       if (surface !== "background") screen = surface;
+      latest = surface;
       if (lastIsLive && index === parts.length - 1) current = surface;
     }
   }
@@ -1560,17 +1563,15 @@ function computerWork(parts: WorkbotPart[], { working, starting, lastIsLive }: {
       cards.set(surface, { steps: [{ label: "Using my computer", icon: "computer", status: "running", app: null, startedAt: null, finishedAt: null, updates: [], ...(starting.background ? { background: true as const } : {}) }], last: parts.length });
     }
     current = surface;
-    if (surface !== "background") screen = surface;
   }
-  const watch = working ? screen : null;
-  const live = new Set<ComputerSurface>();
-  if (working && current) live.add(current);
-  if (watch) live.add(watch);
+  const live = !working ? null : current ?? (latest !== null && latest !== "background" ? latest : null);
   const placed = new Map<number, ComputerSurface[]>();
-  for (const [surface, card] of cards) if (!live.has(surface)) placed.set(card.last, [...(placed.get(card.last) ?? []), surface]);
-  // Below its latest words: background work first, then the screen it is watched on.
-  const trailing = [...live].sort((a, b) => Number(a === watch) - Number(b === watch));
-  return { cards, live, watch, placed, trailing };
+  const trailing: ComputerSurface[] = [];
+  for (const [surface, card] of cards) {
+    if (working) trailing.push(surface);
+    else placed.set(card.last, [...(placed.get(card.last) ?? []), surface]);
+  }
+  return { cards, live, placed, trailing };
 }
 
 /** Opens the full view of Workbot's browser or computer, without reloading Workbot. */
@@ -1739,14 +1740,13 @@ function TurnView(props: {
   // While it answers, the person can ask it to show its work on screen or carry on without them. (Not `canChange`:
   // that is false while Workbot answers, which is exactly when these are offered.)
   const switchMode = answering ? props.onSwitch : undefined;
-  // A computer card keeps its key wherever it sits, so moving below Workbot's newest words never restarts its live view.
+  // A computer card keeps its key wherever it sits, so moving never restarts its live view.
   const work = computerWork(parts, { working, starting, lastIsLive });
   const card = (surface: ComputerSurface, others: UsedApp[] = []): TurnItem => {
-    const isLive = work.live.has(surface);
+    const isLive = work.live === surface;
     const switchTo = !isLive || !switchMode ? null
-      : surface === work.watch ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: switchMode }
-      : surface === "background" && work.watch === null ? { label: "Show me", text: "Show me what you're doing on screen.", send: switchMode }
-      : null;
+      : surface === "background" ? { label: "Show me", text: "Show me what you're doing on screen.", send: switchMode }
+      : { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: switchMode };
     return { kind: "card", key: `card-${surface}`, surface, steps: work.cards.get(surface)?.steps ?? [], live: isLive, others, switchTo };
   };
   const items: TurnItem[] = [];
@@ -1776,7 +1776,7 @@ function TurnView(props: {
   const runningApps = answering && tail?.kind === "steps" && tail.live && tail.steps.every((step) => step.icon === "app") ? tail : null;
   if (runningApps) items.pop();
   const lastText = items.reduce((found, item, index) => (item.kind === "text" ? index : found), -1);
-  const waiting = answering && !liveText && !lastIsLive && work.live.size === 0;
+  const waiting = answering && !liveText && !lastIsLive && work.live === null;
   const fresh = items.length === 0 && !runningApps;
   const settled = useSettled(waiting && !fresh, 350);
   const dots = waiting && (fresh || settled);
@@ -1950,6 +1950,8 @@ function TaskCard({ task, onRetry, canRetry = true }: { task: WorkbotTask; onRet
     ? task.status === "queued" ? "Waiting to start" : task.status === "paused" ? "Picking it back up" : (task.update ?? "Working on it")
     : outcome === "done" ? "Done" : outcome === "failed" ? "Couldn't finish" : "Stopped";
   const stopping = stop.isPending && stop.variables === task.id;
+  // A task on the computer's shared screen can be watched, like the conversation's own screen work.
+  const watch = running && task.screen && workbotHost().computer === true ? task.screen : null;
   return (
     <WorkCard
       title={task.title}
@@ -1961,14 +1963,26 @@ function TaskCard({ task, onRetry, canRetry = true }: { task: WorkbotTask; onRet
       updates={task.updates}
       action={
         running ? (
-          <button
-            type="button"
-            disabled={stopping}
-            onClick={() => stop.mutate(task.id)}
-            className="h-7 shrink-0 rounded-full px-3 text-[12px] font-medium text-[var(--wb-muted)] transition-colors duration-150 hover:bg-[var(--wb-chip)] hover:text-[var(--wb-text)] disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
-          >
-            {stopping ? "Stopping" : "Stop"}
-          </button>
+          <span className="flex shrink-0 items-center">
+            {watch ? (
+              <button
+                type="button"
+                onClick={() => openSurface(watch)}
+                data-workbot-task-watch
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium text-[var(--wb-text)] transition-colors duration-150 hover:bg-[var(--wb-chip)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
+              >
+                <Monitor size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" />Watch
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={stopping}
+              onClick={() => stop.mutate(task.id)}
+              className="h-7 shrink-0 rounded-full px-3 text-[12px] font-medium text-[var(--wb-muted)] transition-colors duration-150 hover:bg-[var(--wb-chip)] hover:text-[var(--wb-text)] disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
+            >
+              {stopping ? "Stopping" : "Stop"}
+            </button>
+          </span>
         ) : (task.status === "failed" || outcome === "stopped") && onRetry ? (
           <button type="button" disabled={!canRetry} onClick={onRetry} className="h-7 shrink-0 rounded-full px-3 text-[12px] font-medium text-[var(--wb-text)] hover:bg-[var(--wb-chip)] disabled:opacity-50 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">{outcome === "stopped" ? "Run again" : "Try again"}</button>
         ) : null

@@ -17,6 +17,8 @@ export type WorkbotPageEvent =
    * (commands, with no screen to watch), never the tool's name (DESIGN C3).
    */
   | { type: "working"; messageId: string; step: number; on: "computer" | "other"; background?: true }
+  /** A background task started a step: the page re-reads now and then, for the task's progress and its screen. */
+  | { type: "task"; messageId: string }
 
 /** The runner names a background task after the turn that started it: `<messageId>.t1`, `.t2`, … */
 const TASK_ID = /\.t\d+$/
@@ -26,9 +28,13 @@ export function toWorkbotPageEvent(raw: unknown): WorkbotPageEvent | null {
   const parsed = runnerEventSchema.safeParse(raw)
   if (!parsed.success || !parsed.data.messageId.startsWith(WORKBOT_MESSAGE_PREFIX)) return null
   const event = parsed.data
-  // A background task works out of sight: the page only re-reads when one starts, pauses or ends.
-  if (TASK_ID.test(event.messageId) && !(event.type === "changed" && event.status)) return null
   const messageId = event.messageId.slice(WORKBOT_MESSAGE_PREFIX.length)
+  // A background task works out of sight: the page re-reads when one starts, pauses or ends, and now and then while it
+  // works (never its text as it is written).
+  if (TASK_ID.test(event.messageId)) {
+    if (event.type === "changed" && event.status) return { ...event, messageId }
+    return event.type === "tool" ? { type: "task", messageId } : null
+  }
   if (event.type === "tool") {
     if (event.tool === "desktop") return { type: "working", messageId, step: event.step, on: "computer" }
     if (event.tool === "bash" || event.tool === "look") return { type: "working", messageId, step: event.step, on: "computer", background: true }

@@ -307,7 +307,7 @@ export function workbotInstructions(input: {
       "- For anything live on the web (listings, prices, availability, opening hours, a site without a connected app), check it in your browser rather than from memory, and open pages in their own tabs only when they want to go through them with you. In your answer, link each page worth a look by its real address with a short name, one per line, so they can open it.",
     ] : []),
     "- Answer in the chat. Keep replies short; use a short list or a quoted draft when it helps.",
-    `- Like a colleague, take bigger jobs away and come back with them: hand anything more than a quick look to start_task and tell them in a few words that you're on it.${input.browser ? " A task works out of their sight, so keep work they want to watch or shape in this conversation; start_task is for jobs they hand off." : ""} When a task reports back, give them what matters in a line or two and the obvious next step.`,
+    `- Like a colleague, take bigger jobs away and come back with them: hand anything more than a quick look to start_task and tell them in a few words that you're on it.${input.browser ? " A task works out of their sight, so keep work they want to watch or shape in this conversation; start_task is for jobs they hand off. A task shares your computer and its screen with this conversation: in a task, work in the background, use the browser only for a page that needs it, in a tab of its own, leave the apps on screen alone, and if the person has taken the screen, carry on with what doesn't need it." : ""} When a task reports back, give them what matters in a line or two and the obvious next step.`,
     "- Say a background job has started only after start_task succeeds. If it cannot start, say so; never promise a result from work that isn't running.",
     "- React to their message with one emoji (react) when a colleague would, before you reply: 👍 when you're on it or agree, ❤️ for thanks, 😮 or ‼️ when they tell you something surprising, 😂 when it's funny, 🎉 for good news. Not on every message. When a reaction is all a colleague would send back (\"thanks!\", \"ok\", \"sounds good\"), react with final: that is your whole reply.",
     `- Memory: older messages drop out of what you can see, but files under memory/ are always shown to you. Keep them current without being asked: who ${person} is and how they like to work (memory/about.md), the people, projects and threads they care about (memory/people.md, memory/projects.md), and anything they ask you to remember. Write facts, not transcripts; update or remove what is no longer true. Never tell them you are updating memory unless they asked you to remember something.`,
@@ -615,6 +615,18 @@ export async function stopWorkbot(actor: WorkbotActor, deps: WorkbotDeps, chat: 
   return { stopped: stopped.stopped }
 }
 
+const OPEN_TASK = new Set(["queued", "running", "interrupted"])
+
+/** Stops the answer in progress and every unfinished background task: rebuilding the computer erases it under them. */
+export async function stopWorkbotAndTasks(actor: WorkbotActor, deps: WorkbotDeps, chat: WorkbotChat = null) {
+  const client = clientOf(deps)
+  const sessionId = await sessionOf(actor, chat, deps)
+  const read = await client.readSession(sessionId, { turns: WORKBOT_PAGE_TURNS, limit: 200, outputs: "none" })
+  const tasks = read.ok ? read.value.turns.filter((turn) => turn.kind === "task" && OPEN_TASK.has(turn.status)) : []
+  await Promise.all(tasks.map((turn) => client.abort(sessionId, turn.messageId).catch(() => null)))
+  return stopWorkbot(actor, deps, chat)
+}
+
 /** The chat's live event stream from the runner, or null when it can't be opened. */
 export async function openWorkbotEvents(actor: WorkbotActor, signal: AbortSignal, deps: WorkbotDeps, chat: WorkbotChat = null) {
   const client = clientOf(deps)
@@ -682,6 +694,7 @@ export function createWorkbot(deps: WorkbotDeps) {
     retry: (actor: WorkbotActor, input: { id: string; timeZone?: string; chat?: WorkbotChat }) => retryWorkbotMessage(actor, input, deps),
     stop: (actor: WorkbotActor, chat: WorkbotChat = null) => stopWorkbot(actor, deps, chat),
     stopTask: (actor: WorkbotActor, taskId: string, chat: WorkbotChat = null) => stopWorkbotTask(actor, taskId, deps, chat),
+    stopAll: (actor: WorkbotActor, chat: WorkbotChat = null) => stopWorkbotAndTasks(actor, deps, chat),
     deleteMessage: (actor: WorkbotActor, id: string, chat: WorkbotChat = null) => deleteWorkbotMessage(actor, id, deps, chat),
     editMessage: (actor: WorkbotActor, input: { id: string; newId: string; text: string; timeZone?: string; attachments?: string[]; chat?: WorkbotChat; context?: WorkbotViewContext }) =>
       editWorkbotMessage(actor, input, deps),

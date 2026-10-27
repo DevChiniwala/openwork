@@ -63,6 +63,8 @@ const taskSchema = z.object({
   finishedAt: z.number().nullable(),
   update: z.string().nullable().default(null),
   updates: z.array(z.string()).default([]),
+  /** While it works on the computer's shared screen; absent otherwise (and from older servers). */
+  screen: z.enum(["browser", "computer"]).optional(),
 });
 export type WorkbotTask = z.infer<typeof taskSchema>;
 const turnSchema = z.object({
@@ -149,7 +151,11 @@ const liveEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("changed"), messageId: z.string(), status: z.string().optional() }),
   z.object({ type: z.literal("text"), messageId: z.string(), step: z.number(), delta: z.string(), reset: z.boolean().optional() }),
   z.object({ type: z.literal("working"), messageId: z.string(), step: z.number(), on: z.enum(["computer", "other"]), background: z.literal(true).optional() }),
+  z.object({ type: z.literal("task"), messageId: z.string() }),
 ]);
+
+/** While a background task works, the conversation is re-read at most this often, for its progress and screen. */
+const TASK_REFRESH_MS = 4_000;
 
 async function openStream(signal: AbortSignal, chat: string | null) {
   return hostFetch(inChat("/v1/workbot/events", chat), { headers: { Accept: "text/event-stream" }, signal, cache: "no-store" });
@@ -173,6 +179,7 @@ export function useWorkbotLive(enabled: boolean) {
     setLive({});
     const controller = new AbortController();
     let attempt = 0;
+    let taskRefresh: ReturnType<typeof setTimeout> | undefined;
 
     const refresh = async () => {
       const state = refetching.current;
@@ -203,6 +210,10 @@ export function useWorkbotLive(enabled: boolean) {
       const value = event.data;
       if (value.type === "changed") {
         void refresh();
+        return;
+      }
+      if (value.type === "task") {
+        taskRefresh ??= setTimeout(() => { taskRefresh = undefined; void refresh(); }, TASK_REFRESH_MS);
         return;
       }
       setLive((current) => {
@@ -254,7 +265,7 @@ export function useWorkbotLive(enabled: boolean) {
       }
     };
     void run();
-    return () => controller.abort();
+    return () => { controller.abort(); clearTimeout(taskRefresh); };
   }, [enabled, queryClient, chat]);
 
   return { connected, live };
