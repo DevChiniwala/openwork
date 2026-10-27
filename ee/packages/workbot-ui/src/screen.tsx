@@ -30,6 +30,7 @@ import {
 } from "./data";
 import { AppMark, AttachButton, FileBadge, FilesButton, FilesPanel, ImageThumb, isImage, kindLabel, SentAttachments, UploadTray, useFileDrop, type Upload } from "./files";
 import { createComposerState, type ComposerState, type Pending } from "./composer-state";
+import { computerWork, type ComputerSurface } from "./computer-work";
 import { initials } from "./format";
 import { documentLinks, WorkbotMarkdown } from "./markdown";
 import { OpenFileContext } from "./open-file";
@@ -1517,58 +1518,8 @@ function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) 
   );
 }
 
-/** Where on its computer Workbot works: its browser, its screen, or commands in the background with nothing to watch. */
-type ComputerSurface = "browser" | "computer" | "background";
-
-function surfaceOf(step: WorkbotStep): ComputerSurface {
-  return step.surface === "browser" ? "browser" : step.background ? "background" : "computer";
-}
-
 /** The other way of working, offered on a live card: one tap sends it as a follow-up. */
 type SwitchTo = { label: string; text: string; send(text: string): void };
-
-/**
- * Workbot's computer work in one reply, as one card per kind of work (its browser, its screen, its background
- * commands), however often it stops to say what it is doing. While it works, the cards it is using go below its latest
- * words: the one it is on now, and the screen it was last on, whose live view stays up for the rest of the reply.
- * The others stay where that work last happened.
- */
-function computerWork(parts: WorkbotPart[], { working, starting, lastIsLive }: { working: boolean; starting: LiveText["working"] | null; lastIsLive: boolean }) {
-  const cards = new Map<ComputerSurface, { steps: WorkbotStep[]; last: number }>();
-  let screen: ComputerSurface | null = null;
-  let current: ComputerSurface | null = null;
-  for (const [index, part] of parts.entries()) {
-    if (part.kind !== "steps") continue;
-    for (const step of part.steps) {
-      if (step.icon !== "computer") continue;
-      const surface = surfaceOf(step);
-      const card = cards.get(surface) ?? { steps: [], last: index };
-      card.steps.push(step);
-      card.last = index;
-      cards.set(surface, card);
-      if (surface !== "background") screen = surface;
-      if (lastIsLive && index === parts.length - 1) current = surface;
-    }
-  }
-  if (working && starting) {
-    // A step starting before it is stored: commands in the background, or the screen it was last on.
-    const surface: ComputerSurface = starting.background ? "background" : screen ?? "computer";
-    if (!cards.has(surface)) {
-      cards.set(surface, { steps: [{ label: "Using my computer", icon: "computer", status: "running", app: null, startedAt: null, finishedAt: null, updates: [], ...(starting.background ? { background: true as const } : {}) }], last: parts.length });
-    }
-    current = surface;
-    if (surface !== "background") screen = surface;
-  }
-  const watch = working ? screen : null;
-  const live = new Set<ComputerSurface>();
-  if (working && current) live.add(current);
-  if (watch) live.add(watch);
-  const placed = new Map<number, ComputerSurface[]>();
-  for (const [surface, card] of cards) if (!live.has(surface)) placed.set(card.last, [...(placed.get(card.last) ?? []), surface]);
-  // Below its latest words: background work first, then the screen it is watched on.
-  const trailing = [...live].sort((a, b) => Number(a === watch) - Number(b === watch));
-  return { cards, live, watch, placed, trailing };
-}
 
 /** Opens the full view of Workbot's browser or computer, without reloading Workbot. */
 function openSurface(surface: Exclude<ComputerSurface, "background">) {

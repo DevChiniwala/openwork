@@ -50,8 +50,11 @@ Workbot uses its computer in two modes, and the conversation shows each its own 
   shows a live view, and the reply offers **Open Computer**.
 
 A reply shows one card for each kind of work, however often Workbot stops to
-say what it is doing. While it works, the screen card stays below its latest
-words with its live view, which keeps one connection for the whole reply.
+say what it is doing. While it works on screen, the screen card stays below its
+latest words with its live view, also while it says what it is doing, so the
+view keeps one connection. Once it turns to work in the background, the screen
+card goes back to where it was used, without its live view, until Workbot is on
+the screen again.
 
 Workbot is told to work like a coworker and read what the person wants. Most of
 the time that is the result, so it works in the background and comes back with
