@@ -540,3 +540,152 @@ test("Blender scripts reach the bridge with its token, and an open Blender witho
   for (let waited = 0; received.length < 3 && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
   assert.deepEqual(received.at(-1), { token: "secret-token", cancel: true }, "stopping asks Blender to stop the script");
 });
+
+/** A computer whose helper locks each window: every native call is logged as app:tool:start/end. */
+function parallelFixture(options = {}) {
+  const events = [];
+  let connections = 0;
+  const windows = { blender: 11, photoshop: 12, notes: 13 };
+  /** @type {import("@openwork/computer-use/computer-control").ComputerAdapter} */
+  const adapter = {
+    id: "local", label: "This Mac", placement: "local", parallel: true, protocol: COMPUTER_PROTOCOL,
+    setup: async () => ({ setupId: "setup" }),
+    readiness: async () => ({ readiness: "ready", detail: "Ready" }),
+    connect: async ({ onUi, onClose }) => {
+      connections++;
+      let app = "";
+      return {
+        callTool: async (name, args) => {
+          if (name === "computer_open_session") app = String(args.app_id);
+          events.push(`${app}:${name}:start`);
+          await options.beforeTool?.(name, app);
+          events.push(`${app}:${name}:end`);
+          if (name === "computer_open_session") {
+            onUi({ kind: "state", id: `view-${app}`, phase: "working", appID: app, appName: app, windowTitle: app, mode: args.mode, task: args.purpose });
+            return text({ ok: true, session_id: `native-${app}`, window_id: args.window_id ?? windows[app], state: "active" });
+          }
+          if (name === "computer_session_status") return text({ ok: true, state: "active" });
+          if (name === "computer_act") return text({ ok: true, status: "dispatched" });
+          return text({ ok: true, ...(name === "computer_observe" ? { observation_id: `observation-${app}` } : {}) });
+        },
+        notifyUi: async (value) => { if (value.action === "takeover") onUi({ kind: "state", id: `view-${app}`, phase: "paused", canContinue: true }); },
+        close: async () => { onClose(); },
+      };
+    },
+  };
+  const control = createComputerControl({ adapters: [adapter] });
+  return { control, events, connections: () => connections };
+}
+const openApp = (control, sessionId, app, mode = "control", windowId) =>
+  control.execute({ sessionId, name: "computer_open", args: { app_id: app, mode, purpose: `Work in ${app}`, ...(windowId ? { window_id: windowId } : {}) } });
+const click = (control, sessionId, options) =>
+  control.execute({ sessionId, name: "computer_act", args: { observation_id: "observation", action: { type: "click", x: 1, y: 1 } } }, options);
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+test("on a parallel computer two chats each control their own window at the same time", async (t) => {
+  const f = parallelFixture(); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  assert.equal(payload(await openApp(f.control, "chat-blender", "blender")).ok, true);
+  assert.equal(payload(await openApp(f.control, "chat-photoshop", "photoshop")).ok, true);
+  assert.equal(f.connections(), 2, "each chat has its own helper session");
+  const [blender, photoshop] = await Promise.all([click(f.control, "chat-blender"), click(f.control, "chat-photoshop")]);
+  assert.equal(payload(blender).status, "dispatched");
+  assert.equal(payload(photoshop).status, "dispatched");
+  assert.equal((await f.control.snapshot({ sessionId: "chat-photoshop" })).busyElsewhere, false);
+});
+
+test("a window another chat holds is refused before any helper starts", async (t) => {
+  const f = parallelFixture(); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await openApp(f.control, "chat-blender", "blender");
+  const result = payload(await openApp(f.control, "chat-other", "blender", "control", 11));
+  assert.equal(result.code, "window_busy");
+  assert.equal(f.connections(), 1);
+});
+
+test("control calls take turns at the keyboard and pointer, one whole call at a time", async (t) => {
+  const started = deferred(); const gate = deferred();
+  const f = parallelFixture({ beforeTool: async (name, app) => { if (name === "computer_act" && app === "blender") { started.resolve(); await gate.promise; } } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await openApp(f.control, "chat-blender", "blender");
+  await openApp(f.control, "chat-photoshop", "photoshop");
+  const blender = click(f.control, "chat-blender");
+  await started.promise;
+  const photoshop = click(f.control, "chat-photoshop");
+  await settle();
+  assert.ok(!f.events.includes("photoshop:computer_act:start"), "the second chat waits while the first chat's input runs");
+  gate.resolve();
+  await Promise.all([blender, photoshop]);
+  const order = (event) => f.events.indexOf(event);
+  // The first chat's settled look after its input is part of its turn.
+  assert.ok(order("blender:computer_act:end") < order("photoshop:computer_act:start"));
+  assert.ok(f.events.lastIndexOf("blender:computer_observe:end") < order("photoshop:computer_act:start"));
+});
+
+test("looking without control, status and listing apps never wait for another chat's turn", async (t) => {
+  const started = deferred(); const gate = deferred();
+  const f = parallelFixture({ beforeTool: async (name, app) => { if (name === "computer_act" && app === "blender") { started.resolve(); await gate.promise; } } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await openApp(f.control, "chat-blender", "blender");
+  await openApp(f.control, "chat-notes", "notes", "assist");
+  const blender = click(f.control, "chat-blender");
+  await started.promise;
+  assert.equal(payload(await f.control.execute({ sessionId: "chat-notes", name: "computer_observe", args: {} })).ok, true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat-notes", name: "computer_status", args: {} })).ok, true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat-third", name: "computer_discover", args: {} })).ok, true);
+  gate.resolve();
+  await blender;
+});
+
+test("a takeover while a chat waits its turn dispatches nothing for that chat", async (t) => {
+  const started = deferred(); const gate = deferred();
+  const f = parallelFixture({ beforeTool: async (name, app) => { if (name === "computer_act" && app === "blender") { started.resolve(); await gate.promise; } } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await openApp(f.control, "chat-blender", "blender");
+  await openApp(f.control, "chat-photoshop", "photoshop");
+  const blender = click(f.control, "chat-blender");
+  await started.promise;
+  const photoshop = click(f.control, "chat-photoshop");
+  await settle();
+  await f.control.interact({ sessionId: "chat-blender", id: "view-blender", action: "takeover" });
+  gate.resolve();
+  await blender;
+  assert.equal(payload(await photoshop).code, "computer_busy");
+  assert.ok(!f.events.includes("photoshop:computer_act:start"));
+});
+
+test("a call cancelled while it waits its turn leaves the line for the others", async (t) => {
+  const started = deferred(); const gate = deferred();
+  const f = parallelFixture({ beforeTool: async (name, app) => { if (name === "computer_act" && app === "blender") { started.resolve(); await gate.promise; } } });
+  t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await openApp(f.control, "chat-blender", "blender");
+  await openApp(f.control, "chat-photoshop", "photoshop");
+  await openApp(f.control, "chat-notes", "notes");
+  const blender = click(f.control, "chat-blender");
+  await started.promise;
+  const cancel = new AbortController();
+  const photoshop = click(f.control, "chat-photoshop", { signal: cancel.signal });
+  const notes = click(f.control, "chat-notes");
+  await settle();
+  cancel.abort();
+  assert.equal(payload(await photoshop).ok, false);
+  gate.resolve();
+  await blender;
+  assert.equal(payload(await notes).status, "dispatched");
+  assert.ok(!f.events.includes("photoshop:computer_act:start"));
+});
+
+test("chats on different computers no longer block each other", async (t) => {
+  const f = fixture({ remote: true, authority: async () => true }); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.setRemoteEnabled(true);
+  await f.control.choose({ sessionId: "chat-vm", targetId: "vm" });
+  assert.equal(payload(await f.control.execute({ sessionId: "chat-mac", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).ok, true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat-vm", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).ok, true);
+  assert.equal(payload(await f.control.execute({ sessionId: "chat-other", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).code, "computer_busy",
+    "a computer that is not parallel still serves one chat");
+});

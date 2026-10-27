@@ -2,19 +2,66 @@ import AppKit
 import ApplicationServices
 import Darwin
 
-// Held for the session, including while paused. The kernel releases it on exit.
-final class ControlLease {
-    private var fd: Int32 = -1
-    init() throws {
+enum LeaseFiles {
+    static func directory() throws -> URL {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("OpenWork/ComputerUse", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        fd = Darwin.open(directory.appendingPathComponent("control.lock").path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { throw UseError("control_unavailable", "Could not reserve computer control.", next: "human_takeover") }
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
-            Darwin.close(fd); fd = -1
-            throw UseError("computer_busy", "Another Computer Use session has control. Stop it before starting a new one.", next: "human_takeover")
+        return directory
+    }
+    /// An exclusive lock on `path`, or nil when another holder has it. The kernel releases it on exit.
+    static func lock(_ path: String) throws -> Int32? {
+        for _ in 0..<3 {
+            let fd = Darwin.open(path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
+            guard fd >= 0 else { throw UseError("control_unavailable", "Could not reserve computer control.", next: "human_takeover") }
+            guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { Darwin.close(fd); return nil }
+            // A releasing holder unlinks its file: only a lock on the file still at `path` counts.
+            var held = stat(), named = stat()
+            if fstat(fd, &held) == 0, lstat(path, &named) == 0, held.st_dev == named.st_dev, held.st_ino == named.st_ino { return fd }
+            flock(fd, LOCK_UN); Darwin.close(fd)
         }
+        return nil
+    }
+}
+
+// One agent per window, held for the session including while paused. Other
+// windows stay free for other chats; FocusLease keeps their input apart.
+final class ControlLease {
+    private var fd: Int32 = -1
+    private let path: String
+    init(pid: pid_t, window: CGWindowID, directory: URL? = nil) throws {
+        path = try (directory ?? LeaseFiles.directory()).appendingPathComponent("window-\(pid)-\(window).lock").path
+        guard let fd = try LeaseFiles.lock(path) else {
+            throw UseError("window_busy", "Another agent is working in this window. Choose another window, or wait for that chat to finish.", next: "open_session")
+        }
+        self.fd = fd
+    }
+    deinit {
+        guard fd >= 0 else { return }
+        unlink(path); flock(fd, LOCK_UN); Darwin.close(fd)
+    }
+}
+
+// The Mac has one keyboard focus and pointer. Held only while a control
+// session brings its window forward, reads it and sends input.
+final class FocusLease {
+    private var fd: Int32
+    private init(fd: Int32) { self.fd = fd }
+    @MainActor static func acquire(directory: URL? = nil, timeout: TimeInterval = 15, check: () throws -> Void) async throws -> FocusLease {
+        let path = try (directory ?? LeaseFiles.directory()).appendingPathComponent("focus.lock").path
+        let started = ProcessInfo.processInfo.systemUptime
+        while true {
+            try Task.checkCancellation(); try check()
+            if let fd = try LeaseFiles.lock(path) { return FocusLease(fd: fd) }
+            guard ProcessInfo.processInfo.systemUptime - started < timeout else {
+                throw UseError("focus_busy", "Another agent kept the keyboard and pointer too long. Nothing was dispatched. Observe again.", next: "observe")
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+    func release() {
+        guard fd >= 0 else { return }
+        flock(fd, LOCK_UN); Darwin.close(fd); fd = -1
     }
     deinit { if fd >= 0 { flock(fd, LOCK_UN); Darwin.close(fd) } }
 }

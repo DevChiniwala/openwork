@@ -345,6 +345,8 @@ export function createLocalComputerAdapter({
     label: platform === "darwin" ? "This Mac" : "This computer",
     placement: /** @type {"local"} */ ("local"),
     protocol: protocolVersion,
+    // The Mac helper locks each window and takes turns at the keyboard and pointer.
+    parallel: platform === "darwin",
     async readiness() {
       const record = companion;
       const state = await inspect();

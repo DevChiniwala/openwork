@@ -1,6 +1,7 @@
-// The computer broker owns per-chat control, the single native session lease,
-// receipts, observations and handoff. Model arguments never select a session,
-// receipt identity, helper command or credential.
+// The computer broker owns per-chat control, each chat's native session lease,
+// each computer's turn at the keyboard and pointer, receipts, observations and
+// handoff. Model arguments never select a session, receipt identity, helper
+// command or credential.
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -91,6 +92,7 @@ function deadline(ms) {
  *   label: string,
  *   placement: "local" | "remote",
  *   protocol: string,
+ *   parallel?: boolean,
  *   readiness: () => Promise<{ readiness: string, detail: string, permissions?: { accessibility: boolean, screenRecording: boolean } }>,
  *   setup?: (permission: "accessibility" | "screenRecording") => Promise<{ setupId: string }>,
  *   dismissSetup?: (setupId?: string) => Promise<void>,
@@ -105,7 +107,10 @@ function deadline(ms) {
  * adapter speaks the same seven-tool contract; Settings picks one for every
  * chat, starting on this computer on a Mac or a Windows PC. connect() owns a dedicated session
  * scope; close() MUST confirm session revocation, not merely disconnect. One
- * controller across all chats and computers, deliberately conservative.
+ * controller across all chats and computers. A `parallel` adapter's helper
+ * locks each window and keeps input apart, so each chat gets its own session
+ * there and control calls take turns at the keyboard and pointer, one call at
+ * a time, never through the model's thinking. Other computers serve one chat.
  * @param {{
  *   adapters: ComputerAdapter[],
  *   runProgram?: (request: import("@openwork/computer-use/runtime").ProgramRequest, host: import("@openwork/computer-use/runtime").ProgramHost, signal: AbortSignal) => Promise<import("@openwork/computer-use/runtime").ProgramResult>,
@@ -148,7 +153,10 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   const scriptRequests = new Map();
   /** Every running script, so turning computer use off stops it. */
   const scripts = new Set();
-  let lease = null;
+  /** Per chat: its native session on its computer. */
+  const leases = new Map();
+  /** Per computer: whose control call has the keyboard and pointer, and who waits. */
+  const slots = new Map();
   let featureEnabled = false;
   let featureGeneration = 0;
   let remoteGeneration = 0;
@@ -159,9 +167,46 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   let saved = null;
   let loadingChoices = null;
   let remembering = Promise.resolve();
-  let tail = Promise.resolve();
   let closed = false;
   let resetting = 0;
+  const leaseOf = (grant) => { const current = leases.get(grant.sessionId); return current?.grant === grant ? current : null; };
+  const leased = (current) => leases.get(current.grant.sessionId) === current;
+  /** The person took over another chat's session on this chat's computer. */
+  const takenOverElsewhere = (grant) => [...grants.values()].some(owner => owner !== grant && owner.handoff && owner.handoffTarget === targetFor(grant).id);
+  /**
+   * Waits for this computer's keyboard and pointer, first come first served.
+   * Resolves to a release function that is safe to call more than once.
+   * @param {string} targetId
+   * @param {AbortSignal} signal
+   * @returns {Promise<() => void>}
+   */
+  function focusSlot(targetId, signal) {
+    signal.throwIfAborted();
+    let slot = slots.get(targetId);
+    if (!slot) slots.set(targetId, slot = { held: false, waiting: [] });
+    const take = () => {
+      slot.held = true;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true; slot.held = false;
+        const next = slot.waiting.shift();
+        if (next) next();
+        else if (slots.get(targetId) === slot) slots.delete(targetId);
+      };
+    };
+    if (!slot.held) return Promise.resolve(take());
+    return new Promise((resolve, reject) => {
+      const admit = () => { signal.removeEventListener("abort", abort); resolve(take()); };
+      const abort = () => {
+        const index = slot.waiting.indexOf(admit);
+        if (index >= 0) slot.waiting.splice(index, 1);
+        reject(signal.reason);
+      };
+      slot.waiting.push(admit);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+  }
   function invalidateObservation(current) {
     current.observationGeneration = (current.observationGeneration ?? 0) + 1;
   }
@@ -207,8 +252,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     });
   }
   function humanPaused(grant) {
-    return Boolean(grant.handoff || lease?.grant === grant && lease.session?.state === "paused"
-      || [...grants.values()].some(owner => owner !== grant && owner.handoff && owner.handoffTarget === targetFor(grant).id));
+    return Boolean(grant.handoff || leaseOf(grant)?.session?.state === "paused" || takenOverElsewhere(grant));
   }
   function pausePrograms(grant, targetId) {
     for (const [sessionId, program] of programs) {
@@ -224,7 +268,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   }
   function disable(grant) {
     grant.enabled = false; advance(grant);
-    if (lease?.grant === grant) invalidateObservation(lease);
+    const current = leaseOf(grant);
+    if (current) invalidateObservation(current);
   }
   async function choices() {
     if (!saved) {
@@ -252,14 +297,15 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     if (closed || resetting) return;
     for (const grant of grants.values()) {
       if (sessionId && grant.sessionId !== sessionId) continue;
-      if (!grant.enabled && lease?.grant !== grant) grant.enabled = true;
+      if (!grant.enabled && !leaseOf(grant)) grant.enabled = true;
     }
   }
-  const serial = (work, limit, signal) => {
-    const previous = tail;
+  // One call at a time per chat. Chats wait on each other only for a computer's focusSlot.
+  const serial = (grant, work, limit, signal) => {
+    const previous = grant.tail ?? Promise.resolve();
     const ready = limit ? limit.wait(() => previous, signal) : previous;
     const result = ready.then(() => { limit?.check(); signal?.throwIfAborted(); return work(); });
-    tail = Promise.all([previous, result.then(() => undefined, () => undefined)]).then(() => undefined);
+    grant.tail = Promise.all([previous, result.then(() => undefined, () => undefined)]).then(() => undefined);
     return result;
   };
   async function grantFor(sessionId) {
@@ -311,7 +357,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     current.inputSequence = -1;
   }
   function assertUiActive(current) {
-    if (lease !== current || current.closing || current.uiEnded || !current.grant.enabled
+    if (!leased(current) || current.closing || current.uiEnded || !current.grant.enabled
       || current.controller.signal.aborted) {
       throw new Error("This computer session ended. Open a fresh session for the requested work.");
     }
@@ -466,7 +512,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         }
         current.cleanupPending = false;
         if (current.grant.handoff) current.grant.handoff.canContinue = true;
-        if (lease === current) lease = null;
+        if (leased(current)) leases.delete(current.grant.sessionId);
         return true;
       })().catch(() => false).finally(() => { current.cleanup = null; });
     }
@@ -482,7 +528,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   }
   // An idle or finished session hands the Mac back without turning the chat off.
   async function release(current, rearmAfter = false) {
-    if (lease !== current || current.closing) return true;
+    if (!leased(current) || current.closing) return true;
     if (rearmAfter) current.releaseRevision = current.grant.revision;
     if (current.busy) { current.releaseWhenIdle = true; return true; }
     current.expectedClose = true;
@@ -492,31 +538,32 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   }
   function armIdleRelease(current) {
     clearTimeout(current.idleTimer);
-    if (lease !== current || current.busy || current.closing) return;
+    if (!leased(current) || current.busy || current.closing) return;
     if (current.releaseWhenIdle) { void release(current); return; }
     current.idleTimer = setTimeout(() => { void release(current); }, idleMs);
     current.idleTimer.unref?.();
   }
   async function view(grant, poll = false) {
-    if (poll && lease?.grant === grant && lease.nativeId && !lease.closing && !lease.busy) {
+    const polled = leaseOf(grant);
+    if (poll && polled?.nativeId && !polled.closing && !polled.busy) {
       const limit = deadline(cleanupMs);
       try {
-        await serial(async () => {
-          const current = lease;
-          if (current?.grant !== grant || current.closing || !current.nativeId || current.busy) return;
+        await serial(grant, async () => {
+          const current = leaseOf(grant);
+          if (!current || current.closing || !current.nativeId || current.busy) return;
           const revision = grant.revision;
           const signal = AbortSignal.any([limit.signal, current.controller.signal]);
           current.work = current.transport.callTool("computer_session_status", { session_id: current.nativeId }, { signal });
           try {
             const result = await limit.wait(() => current.work, signal);
-            if (lease !== current || current.closing || grant.revision !== revision) return;
+            if (!leased(current) || current.closing || grant.revision !== revision) return;
             if (nativeStopped(current, result)) {
               await cleanup(current);
             } else if (result.isError || stateOf(result)?.ok !== true) {
               current.session = { ...current.session, state: "unavailable", reason: stateOf(result)?.message ?? "Native status is unavailable." };
             } else updateSession(current, result);
           } catch {
-            if (lease === current && grant.revision === revision) advance(grant);
+            if (leased(current) && grant.revision === revision) advance(grant);
             await cleanup(current);
           }
         }, limit);
@@ -525,9 +572,9 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     }
     const target = targetFor(grant);
     const status = await readiness(target);
-    const pausedElsewhere = [...grants.values()].some(owner => owner !== grant && owner.handoff && owner.handoffTarget === target.id);
-    const elsewhere = lease && lease.grant !== grant || pausedElsewhere;
-    const current = lease?.grant === grant ? lease : null;
+    const sharedElsewhere = !target.parallel && [...leases.values()].some((other) => other.grant !== grant && other.adapter.id === target.id);
+    const elsewhere = sharedElsewhere || takenOverElsewhere(grant);
+    const current = leaseOf(grant);
     return {
       revision: grant.revision, enabled: featureEnabled && (grant.enabled || Boolean(grant.handoff)),
       ...(grant.timing ? { timing: structuredClone(grant.timing) } : {}),
@@ -575,21 +622,30 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       }
     };
     const admissionSignal = AbortSignal.any([limit.signal, signal, grant.controller.signal]);
-    return serial(async () => {
+    const takenOver = () => failure("computer_busy", "The person took over this computer. They return control with Continue in its owning chat. Nothing was dispatched.");
+    return serial(grant, async () => {
       limit.check(); check();
       if (grant.handoff && !["computer_status", "computer_close"].includes(name)) return failure("session_paused", "The person took over. Wait for Continue in the Computer view.", { state: "paused", next: "human_takeover" });
-      if ([...grants.values()].some(owner => owner !== grant && owner.handoff && owner.handoffTarget === targetFor(grant).id)) return failure("computer_busy", "The person took over this computer. They return control with Continue in its owning chat. Nothing was dispatched.");
-      if (lease && (lease.grant !== grant || lease.closing)) {
-        return failure("computer_busy", lease.closing
+      if (takenOverElsewhere(grant)) return takenOver();
+      const target = targetFor(grant);
+      const own = leases.get(grant.sessionId);
+      const others = [...leases.values()].filter((other) => other.grant !== grant && other.adapter.id === target.id);
+      if (own && (own.grant !== grant || own.closing) || !target.parallel && others.length) {
+        return failure("computer_busy", own?.closing || others.some((other) => other.closing)
           ? "The previous computer session is still stopping. Try again in a moment. Nothing was dispatched."
           : "Another chat is using this computer. It must finish or be stopped first. Nothing was dispatched.");
       }
-      lease ??= { grant, adapter: targetFor(grant), controller: new AbortController(), nativeId: null, session: null, busy: false, handoffGeneration: 0 };
-      const current = lease;
+      // The helper refuses a window another chat holds; say so before starting one.
+      const window = name === "computer_open" ? args.window_id : grant.lastOpen?.window_id;
+      if (Number.isSafeInteger(window) && others.some((other) => other.windowId === window)) {
+        return failure("window_busy", "Another chat is working in this window. Choose another window, or wait for that chat to finish. Nothing was dispatched.");
+      }
+      if (!own) leases.set(grant.sessionId, { grant, adapter: target, controller: new AbortController(), nativeId: null, session: null, busy: false, handoffGeneration: 0 });
+      const current = leases.get(grant.sessionId);
       clearTimeout(current.idleTimer);
       current.busy = true;
       // The engine cancelled this tool: end the native session, keep the chat's permission.
-      const abort = () => { if (lease === current) { current.expectedClose = true; void cleanup(current); } };
+      const abort = () => { if (leased(current)) { current.expectedClose = true; void cleanup(current); } };
       signal.addEventListener("abort", abort, { once: true });
       const active = AbortSignal.any([admissionSignal, current.controller.signal]);
       const progress = () => { limit.check(); active.throwIfAborted(); check(); };
@@ -597,8 +653,19 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       let nativeResult;
       let handoff = false;
       let postReadFailed = false;
+      /** @type {(() => void) | null} */
+      let releaseFocus = null;
       current.work = Promise.resolve().then(async () => {
         progress();
+        // Control mode brings the window forward to look or act, renewals included: take this
+        // computer's turn for the one call, then hand it on while the model thinks.
+        const mode = name === "computer_open" ? args.mode : grant.lastOpen?.mode;
+        const renewing = !current.nativeId && grant.lastOpen && grant.lastTarget === current.adapter.id && !["computer_discover", "computer_close"].includes(name);
+        if (mode === "control" && (["computer_open", "computer_observe", "computer_act"].includes(name) || renewing)) {
+          releaseFocus = await focusSlot(current.adapter.id, active);
+          progress();
+          if (takenOverElsewhere(grant)) return takenOver();
+        }
         if (!current.transport) {
           try {
             current.transport = await current.adapter.connect({
@@ -606,7 +673,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
               onUi: (value) => receiveUi(current, value),
               onClose: () => {
                 clearPresentation(current); current.uiEnded = true;
-                if (lease === current && !current.closing && !current.expectedClose) { advance(grant); void cleanup(current); }
+                if (leased(current) && !current.closing && !current.expectedClose) { advance(grant); void cleanup(current); }
               },
             });
           } catch (error) {
@@ -629,6 +696,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
           const state = stateOf(opened);
           if (opened.isError || !state?.ok || typeof state.session_id !== "string") return opened;
           current.nativeId = state.session_id;
+          if (Number.isSafeInteger(state.window_id)) current.windowId = state.window_id;
           invalidateObservation(current); current.needsObservation = true;
           updateSession(current, opened, args.purpose);
           if (["computer_act", "computer_zoom"].includes(name)) return failure("observation_required", "The internal session was renewed. Observe the current window before input; nothing was dispatched.", { next: "observe", actions_replayed: false });
@@ -652,6 +720,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         if (name === "computer_open") current.opening = null;
         if (name === "computer_open" && state?.ok && typeof state.session_id === "string") {
           current.nativeId = state.session_id;
+          if (Number.isSafeInteger(state.window_id)) current.windowId = state.window_id;
           grant.lastTarget = current.adapter.id;
           grant.lastOpen = { ...args, ...(Number.isSafeInteger(state.window_id) ? { window_id: state.window_id } : {}) };
         }
@@ -707,6 +776,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         // Keep the original native tool active while the person decides.
         // Only status reads follow Continue: never resume or redispatch input.
         handoff = true;
+        releaseFocus?.();
         let status = result;
         do {
           current.needsObservation = true;
@@ -727,7 +797,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         return { ...status, content: [{ type: "text", text: JSON.stringify({ ...state, ...continued, next: "observe", fresh_observation_required: true }) }] };
       });
       const work = current.work;
-      const settled = () => { if (current.work === work) current.work = null; };
+      // The turn ends when the native call does, even after this call timed out.
+      const settled = () => { if (current.work === work) current.work = null; releaseFocus?.(); };
       void work.then(settled, settled);
       try {
         const result = await limit.wait(() => work);
@@ -830,7 +901,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
    */
   async function recoverPermissions(grant, name, args, signal) {
     lastReadiness.delete(targetFor(grant).id);
-    if (lease?.grant === grant) await release(lease);
+    const own = leaseOf(grant);
+    if (own) await release(own);
     const answer = await askPerson(grant, name === "computer_open" ? args : grant.lastOpen ?? args, signal);
     if (answer !== "ready") return setupNotFinished(answer);
     return failure("permissions_restored", name === "computer_open"
@@ -842,9 +914,9 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     async presentation(input) {
       if (!input || typeof input.visible !== "boolean" || Object.keys(input).some((key) => !["sessionId", "visible"].includes(key))) throw new Error("A chat and explicit monitor visibility are required.");
       const grant = grants.get(input.sessionId);
-      const current = lease;
+      const current = grant ? leaseOf(grant) : null;
       if (!grant || !featureEnabled || !grant.enabled && !grant.handoff) return null;
-      if (current?.grant !== grant || !current.transport?.notifyUi || current.closing) return grant.handoff ? structuredClone(grant.handoff) : null;
+      if (!current || !current.transport?.notifyUi || current.closing) return grant.handoff ? structuredClone(grant.handoff) : null;
       try { assertUiActive(current); } catch { clearPresentation(current); return null; }
       if (!current.presentation) return null;
       const id = current.presentation.id;
@@ -855,7 +927,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         assertUiActive(current);
       } catch {
         clearPresentation(current);
-        if (lease === current && !current.closing) { disable(grant); void cleanup(current); }
+        if (leased(current) && !current.closing) { disable(grant); void cleanup(current); }
         return null;
       }
       return current.presentation?.id === id ? structuredClone(current.presentation) : null;
@@ -864,14 +936,14 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       if (!input || !["takeover", "resume"].includes(input.action) || !uiText(input.id, 128) || !input.id
         || Object.keys(input).some((key) => !["sessionId", "id", "action"].includes(key))) throw new Error("Choose Take over or Continue for this computer session.");
       const grant = grants.get(input.sessionId);
-      const current = lease;
+      const current = grant ? leaseOf(grant) : null;
       if (featureEnabled && grant?.handoff?.id === input.id && input.action === "resume"
-        && (current?.grant !== grant || current.closing)) {
-        if (current?.grant === grant && !await cleanup(current)) throw new Error(COMPUTER_STOP_GUIDANCE);
+        && (!current || current.closing)) {
+        if (current && !await cleanup(current)) throw new Error(COMPUTER_STOP_GUIDANCE);
         advance(grant); grant.handoff = null; grant.enabled = true;
         return; // Future work opens a fresh target; interrupted actions stay cancelled.
       }
-      if (!current || current.grant !== grant || !current.transport?.notifyUi) throw new Error("This chat does not own an active computer session.");
+      if (!current || !current.transport?.notifyUi) throw new Error("This chat does not own an active computer session.");
       assertUiActive(current);
       const presentation = current.presentation;
       if (!presentation || presentation.id !== input.id) throw new Error("This computer view is out of date. Refresh before acting.");
@@ -891,7 +963,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         // Reducing authority must not wait on a pending resume.
         try { await current.transport.notifyUi({ id: input.id, action: "takeover" }); }
         catch (error) {
-          if (lease === current && !current.closing) { disable(current.grant); await cleanup(current); }
+          if (leased(current) && !current.closing) { disable(current.grant); await cleanup(current); }
           throw error;
         }
         return;
@@ -903,7 +975,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         try {
           assertUiActive(current);
         } catch (error) {
-          if (lease === current && !current.closing) { disable(current.grant); await cleanup(current); }
+          if (leased(current) && !current.closing) { disable(current.grant); await cleanup(current); }
           throw error;
         }
         const live = current.presentation;
@@ -915,7 +987,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         current.handoffGeneration++;
         try { await current.transport.notifyUi({ id: input.id, action: "resume" }); }
         catch (error) {
-          if (lease === current && !current.closing) { disable(current.grant); await cleanup(current); }
+          if (leased(current) && !current.closing) { disable(current.grant); await cleanup(current); }
           throw error;
         }
       } finally { current.uiControlPending = false; }
@@ -934,7 +1006,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     async chooseComputer({ targetId } = {}) {
       const adapter = targets.get(String(targetId ?? ""));
       if (!adapter || !offered().includes(adapter)) throw new Error("Choose one of the listed computers.");
-      if (lease && lease.adapter !== adapter && !await cleanup(lease)) throw new Error(COMPUTER_STOP_GUIDANCE);
+      const elsewhere = [...leases.values()].filter((current) => current.adapter !== adapter);
+      if ((await Promise.all(elsewhere.map(cleanup))).includes(false)) throw new Error(COMPUTER_STOP_GUIDANCE);
       for (const grant of grants.values()) {
         if (grant.adapter === adapter) continue;
         advance(grant);
@@ -954,7 +1027,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       const grant = grants.get(sessionId) ?? await grantFor(sessionId);
       grant.handoff = null;
       if (grant.enabled) disable(grant);
-      if (lease?.grant === grant && !await cleanup(lease)) throw new Error(COMPUTER_STOP_GUIDANCE);
+      const own = leaseOf(grant);
+      if (own && !await cleanup(own)) throw new Error(COMPUTER_STOP_GUIDANCE);
       return view(grant);
     },
     /**
@@ -968,7 +1042,8 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       if (!adapter || !offered().includes(adapter)) throw new Error("Choose one of the listed computers.");
       const grant = await grantFor(sessionId);
       if (targetFor(grant) === adapter && grant.adapter === adapter) return view(grant);
-      if (lease?.grant === grant && !await cleanup(lease)) throw new Error(COMPUTER_STOP_GUIDANCE);
+      const own = leaseOf(grant);
+      if (own && !await cleanup(own)) throw new Error(COMPUTER_STOP_GUIDANCE);
       advance(grant);
       grant.adapter = adapter;
       grant.lastOpen = null;
@@ -989,10 +1064,9 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       for (const script of scripts) script.abort(new Error("Computer use was turned off."));
       for (const pending of scriptRequests.values()) pending.settle("aborted");
       for (const request of requests.values()) request.settle("unavailable");
-      if (lease) {
-        lease.expectedClose = true;
-        if (!await cleanup(lease)) throw new Error(COMPUTER_STOP_GUIDANCE);
-      }
+      const running = [...leases.values()];
+      for (const current of running) current.expectedClose = true;
+      if ((await Promise.all(running.map(cleanup))).includes(false)) throw new Error(COMPUTER_STOP_GUIDANCE);
       return false;
     },
     /**
@@ -1011,9 +1085,10 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       remoteEnabled = enabled === true;
       if (!remoteEnabled) for (const program of programs.values()) if (program.remote) program.controller.abort(new Error("Remote computers were turned off."));
       for (const request of requests.values()) request.wake();
-      if (!remoteEnabled && lease?.adapter.placement === "remote") {
-        lease.expectedClose = true;
-        if (!await cleanup(lease)) throw new Error(COMPUTER_STOP_GUIDANCE);
+      if (!remoteEnabled) {
+        const remote = [...leases.values()].filter((current) => current.adapter.placement === "remote");
+        for (const current of remote) current.expectedClose = true;
+        if ((await Promise.all(remote.map(cleanup))).includes(false)) throw new Error(COMPUTER_STOP_GUIDANCE);
       }
       return remoteEnabled;
     },
@@ -1039,7 +1114,7 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
     },
     /** @param {{ permission?: "accessibility" | "screenRecording" }} input */
     async setup({ permission } = {}) {
-      if (closed || resetting || lease) throw new Error("Stop computer use before opening permission setup.");
+      if (closed || resetting || leases.size) throw new Error("Stop computer use before opening permission setup.");
       if (!["accessibility", "screenRecording"].includes(permission)) throw new Error("Choose Accessibility or Screen Recording settings.");
       const local = [...targets.values()].find((target) => target.placement === "local" && typeof target.setup === "function");
       if (!local?.setup) throw new Error("Permission setup is only for this computer.");
@@ -1190,15 +1265,16 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
       // The next turn's first step is not timed against this turn's last.
       const ended = grants.get(sessionId);
       if (ended) ended.lastStepAt = undefined;
-      if (lease?.grant.sessionId === sessionId) return release(lease, true);
+      const own = leases.get(sessionId);
+      if (own) return release(own, true);
       await rearm(sessionId);
       return true;
     },
     /** @param {ChatInput} input */
     async revoke({ sessionId } = {}) {
       for (const grant of grants.values()) if (!sessionId || grant.sessionId === sessionId) disable(grant);
-      if (lease && (!sessionId || lease.grant.sessionId === sessionId)) return cleanup(lease);
-      return true;
+      const stopping = [...leases.values()].filter((current) => !sessionId || current.grant.sessionId === sessionId);
+      return (await Promise.all(stopping.map(cleanup))).every(Boolean);
     },
     async reset(shutdown = false) {
       resetting++;
