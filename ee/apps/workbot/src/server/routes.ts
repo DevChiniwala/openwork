@@ -471,7 +471,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     const scope = chatOf(c)
     if (scope.refused) return scope.refused
     const member = c.get("member")
-    if (body.data.context && (!member.den.workspaceAssistant || (body.data.context.kind === "calendar" ? !member.den.calendar : !member.den.documents))) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
+    if (body.data.context && (!member.den.workspaceAssistant || (body.data.context.kind === "calendar" ? !member.den.calendar : body.data.context.kind === "browser" ? !member.den.computer : !member.den.documents))) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
     if (workbotContextPrompt(body.data.text, body.data.context).length > MAX_MESSAGE_CHARS) return c.json(messageTooLong, 400)
     const retryAfter = rateLimited(member.den.memberId)
     if (retryAfter !== null) return c.json({ error: "rate_limited" as const, retryAfter }, 429)
@@ -565,7 +565,7 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     const scope = chatOf(c)
     if (scope.refused) return scope.refused
     const member = c.get("member")
-    if (body.data.context && (!member.den.workspaceAssistant || (body.data.context.kind === "calendar" ? !member.den.calendar : !member.den.documents))) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
+    if (body.data.context && (!member.den.workspaceAssistant || (body.data.context.kind === "calendar" ? !member.den.calendar : body.data.context.kind === "browser" ? !member.den.computer : !member.den.documents))) return c.json({ error: "feature_disabled", message: "Contextual chat is off for this workspace." }, 403)
     if (workbotContextPrompt(body.data.text, body.data.context).length > MAX_MESSAGE_CHARS) return c.json(messageTooLong, 400)
     const retryAfter = rateLimited(member.den.memberId)
     if (retryAfter !== null) return c.json({ error: "rate_limited" as const, retryAfter }, 429)

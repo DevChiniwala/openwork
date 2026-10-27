@@ -127,6 +127,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   useEffect(() => { if (host.workspaceAssistant || host.browserDemonstrations) setWorkspaceShell(true); }, [host.workspaceAssistant, host.browserDemonstrations]);
   const [documentContext, setDocumentContext] = useState<WorkbotViewContext | null>(null);
   const [calendarContext, setCalendarContext] = useState<WorkbotViewContext | null>(null);
+  const [browserContext, setBrowserContext] = useState<WorkbotViewContext | null>(null);
   const [includeContext, setIncludeContext] = useState(true);
   const [openDocument, setOpenDocument] = useState<DocumentOpenRequest>();
   const [documentsDirty, setDocumentsDirty] = useState(false);
@@ -142,10 +143,11 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const [documentsVisited, setDocumentsVisited] = useState(tab === "documents");
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
   useEffect(() => { if (tab === "documents") setDocumentsVisited(true); if (tab === "calendar") setCalendarVisited(true); }, [tab]);
-  const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : null;
+  const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : tab === "computer" ? browserContext : null;
   // Excluding a view applies to that view only: whatever the person looks at next is shared again.
   const viewKey = !currentContext ? null : currentContext.kind === "document" ? `document:${currentContext.fileId}`
     : currentContext.kind === "documents" ? `documents:${currentContext.view}:${currentContext.folderId}`
+    : currentContext.kind === "browser" ? `browser:${currentContext.url}`
     : `calendar:${currentContext.view}:${currentContext.start}:${currentContext.selected?.id ?? ""}`;
   useEffect(() => { if (viewKey) setIncludeContext(true); }, [viewKey]);
   // Den reports guidedNavigation only with the workspace assistant; each destination keeps its own switch.
@@ -301,7 +303,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
     const trimmed = text.trim();
     if (!trimmed && draft.uploads.length === 0) return;
     const parsed = workbotViewContextSchema.safeParse(includeContext ? currentContext : undefined);
-    const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || host.documents) ? parsed.data : undefined;
+    const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || (parsed.data.kind === "browser" ? host.computer : host.documents)) ? parsed.data : undefined;
     const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, ...(!runSkill && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
     const delivery = sendPending(id);
     if (runSkill) return delivery.then(() => {
@@ -317,7 +319,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const editTurn = (turn: WorkbotTurn, text: string) => {
     const trimmed = text.trim();
     if (!trimmed && turn.attachments.length === 0) return;
-    const context = host.workspaceAssistant && (turn.context?.kind === "calendar" || host.documents) ? turn.context : undefined;
+    const context = host.workspaceAssistant && (turn.context?.kind === "calendar" || (turn.context?.kind === "browser" ? host.computer : host.documents)) ? turn.context : undefined;
     const correctionReference = { messageId: `wb_${turn.id}`, quote: readWorkbotCorrectionPrompt(turn.text).text.slice(0, 1000), sentAt: turn.sentAt };
     const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, correctionOf: turn.id, correctionReference, attachments: turn.attachments });
     sendPending(id);
@@ -376,12 +378,12 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} />}
+            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} onContextChange={setBrowserContext} canTeach={!side} pages={browserPages} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
           </div>
-          <div hidden={!(host.workspaceAssistant || host.browserDemonstrations && tab === "computer") || tab === "home"}><WorkspaceAssistant name={name} context={currentContext} includeContext={includeContext} onIncludeContext={setIncludeContext}
+          <div hidden={!(host.workspaceAssistant || host.browserDemonstrations && tab === "computer") || tab === "home"}><WorkspaceAssistant name={name} context={host.workspaceAssistant ? currentContext : null} includeContext={includeContext} onIncludeContext={setIncludeContext}
             composer={composer} conversation={conversation} onDocument={navigateFromChat} onComputer={navigateComputerFromChat} unavailable={!data} active={(host.workspaceAssistant === true || host.browserDemonstrations === true && tab === "computer") && tab !== "home"}
             reveal={revealChat} stayOpen={guided} /></div>
           {filesEnabled && <FilesPanel open={filesOpen} onClose={() => setFilesOpen(false)} assistantName={name} onOpenFile={file => { setFilesOpen(false); setPreview(file); }} />}
