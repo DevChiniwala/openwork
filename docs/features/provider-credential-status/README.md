@@ -37,12 +37,23 @@ than Authorization values.
 
 ![AI Providers shows Not checked yet for a newly saved synthetic key](./unverified.png)
 
+### Rejected by the provider
+
+![AI Providers shows Key not accepted and Replace key after a real loopback 401](./rejected.png)
+
+### Verified by a successful request
+
+![AI Providers shows Ready to use only after the replacement key answers](./verified.png)
+
 ## Evidence and lifetime
 
 Only outcomes and credential-change revisions are persisted locally, scoped
 to workspace and runtime provider ID. No keys, request payloads, provider
 response bodies or error text enter the health store. Rejection survives
-navigation and reload. Saving a replacement or completing a new sign-in
+navigation and reload when browser persistence is available; blocked or full
+storage never interrupts chat. Durable assistant outcomes recover missed
+lifecycle events, ordered by their completion time so reading an older chat
+cannot overwrite a newer verdict. Saving a replacement or completing a new sign-in
 clears the verdict across workspaces sharing the same credential store;
 removal also clears it before an environment fallback is discovered. Remote
 hosts keep separate credential revisions. A request already running at

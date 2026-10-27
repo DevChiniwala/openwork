@@ -40,6 +40,9 @@ test("a person sees a rejected personal provider key, replaces it, and earns Rea
     await user.type({ label: "Search providers" }, "Fault Lab");
     await user.click({ role: "button", label: /^Fault Lab/ });
     await saveKey(world.rejectedKey);
+    // Reopening must not turn mere configuration/catalog discovery into proof
+    // that this never-used credential works.
+    await user.reload();
     const text = await status("Not checked yet");
     expect(text).not.toContain("Ready to use");
     expect(world.requests()).toHaveLength(0);

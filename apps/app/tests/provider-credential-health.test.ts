@@ -10,6 +10,7 @@ const { __applySessionSyncEventForTest, __createWorkspaceSessionSyncForTest, obs
 const { useSessionActivityStore } = await import("../src/react-app/domains/session/status/session-activity-store");
 afterAll(async () => { if (ownedDom) await GlobalRegistrator.unregister(); });
 
+const defaultStorage = useProviderCredentialHealth.persist.getOptions().storage;
 const workspace = "workspace-fixture";
 const provider = "openrouter";
 const key = credentialHealthKey(workspace, provider);
@@ -217,4 +218,12 @@ test("durable assistant outcomes recover missed lifecycle events without revivin
   useProviderCredentialHealth.getState().changed(workspace, provider);
   observeProviderCredentialMessages(workspace, [failure, success]);
   expect(health()).toBe("unverified");
+});
+
+test("unavailable browser persistence cannot interrupt a chat outcome", () => {
+  if (!defaultStorage) throw new Error("Missing default health persistence");
+  useProviderCredentialHealth.persist.setOptions({ storage: defaultStorage });
+  spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("Storage quota exceeded"); });
+  expect(() => useProviderCredentialHealth.getState().observe(workspace, provider, "rejected", now)).not.toThrow();
+  expect(health()).toBe("rejected");
 });

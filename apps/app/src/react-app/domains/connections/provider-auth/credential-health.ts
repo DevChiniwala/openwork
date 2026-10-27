@@ -27,7 +27,7 @@ export function providerCredentialScope(baseUrl: string): string {
     const url = new URL(baseUrl);
     if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return "device";
     return url.origin + url.pathname.split(/\/workspace\//)[0].replace(/\/opencode2?\/?$/, "");
-  } catch { return baseUrl; }
+  } catch { return "unresolved"; }
 }
 
 type CredentialHealthState = {
@@ -92,9 +92,15 @@ export const useProviderCredentialHealth = create<CredentialHealthState>()(persi
 }), {
   name: "openwork.provider-credential-health.v1",
   storage: createJSONStorage(() => ({
-    getItem: (key) => typeof localStorage === "undefined" ? null : localStorage.getItem(key),
-    setItem: (key, value) => { if (typeof localStorage !== "undefined") localStorage.setItem(key, value); },
-    removeItem: (key) => { if (typeof localStorage !== "undefined") localStorage.removeItem(key); },
+    getItem: (key) => {
+      try { return typeof localStorage === "undefined" ? null : localStorage.getItem(key); } catch { return null; }
+    },
+    setItem: (key, value) => {
+      try { if (typeof localStorage !== "undefined") localStorage.setItem(key, value); } catch { /* Health must never interrupt chat when storage is full or blocked. */ }
+    },
+    removeItem: (key) => {
+      try { if (typeof localStorage !== "undefined") localStorage.removeItem(key); } catch { /* Keep in-memory evidence when persistence is unavailable. */ }
+    },
   })),
   partialize: ({ entries, revisions, configurations, workspaceScopes }) => ({ entries, revisions, configurations, workspaceScopes }),
   merge: (persisted, current) => {
