@@ -58,6 +58,11 @@ wake: schedule (morning + ~3h)  ─┐
 | Calendar changes | Meetings today or tomorrow that someone else added, moved or cancelled | The calendar diff |
 | Waiting on you | External email unanswered for more than about 4 hours, with an offer to draft a reply in Workbot | The schedule |
 
+| Meeting recaps (`workbotAgentRecaps`, off) | About 20 minutes after a meeting with other people ends: its recap (notes email, doc linked in the invite, or the follow-up thread) as a short summary with the member's action items; nothing when there is no recap | The calendar diff (the meeting ended 20 min to 3 h ago) |
+
+Meeting recaps have their own rollout: while `workbotAgentRecaps` is off for a member, the agent is never asked about
+them and the row is hidden in Manage › Workbot. Template versions saved before it read it as on.
+
 Ignored: the member's own changes, declined meetings, all-day events, focus time, out of office, working location,
 meetings with nobody else, anything after tomorrow.
 

@@ -1,4 +1,5 @@
 import { appLogger } from "../observability/logger.js"
+import { organizationFeatureEnabled } from "../features.js"
 import { readMemberGoogleCalendar } from "../routes/org/google-workspace.js"
 import { organizationCloudModel } from "../workbot/model.js"
 import { activeMemberUser, listAgentCandidates, proactiveAllowed, readProactiveSettings } from "./access.js"
@@ -38,6 +39,7 @@ export function defaultAgentWakeDeps(): AgentWakeDeps {
     template: readAgentTemplate,
     user: activeMemberUser,
     calendar: readMemberGoogleCalendar,
+    featureOn: (organizationId, userId, feature) => organizationFeatureEnabled(organizationId, feature, { userId }),
     model: (actor) => organizationCloudModel(actor),
     turn: (input) => runAgentTurn(input, turnDeps),
     sessionId: agentSessionId,

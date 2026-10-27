@@ -12,10 +12,10 @@ const ready: WorkbotProactiveView = {
   runnerReady: true,
 };
 
-function render(view: WorkbotProactiveView = ready, options: { canManage?: boolean; preview?: AgentResponsibility } = {}) {
+function render(view: WorkbotProactiveView = ready, options: { canManage?: boolean; preview?: AgentResponsibility; rolledOut?: AgentResponsibility[] } = {}) {
   return renderToStaticMarkup(
     <WorkbotProactivePanel view={view} canManage={options.canManage ?? true} saving={false} onChange={() => undefined}
-      connectorsHref="/dashboard/mcp-connections" initialPreview={options.preview} />,
+      connectorsHref="/dashboard/mcp-connections" initialPreview={options.preview} rolledOut={options.rolledOut} />,
   );
 }
 
@@ -75,4 +75,11 @@ test("a turned-off responsibility hides its own options, and viewers see every v
   const html = render(ready, { canManage: false });
   for (const label of ["Agents for everyone", "Calendar changes", "Morning brief"]) assert.match(switchFor(html, label) ?? "", /disabled=""/, label);
   assert.ok(text(html).includes("15 min before"));
+});
+
+test("meeting recaps show only where their rollout is on, with their own preview", () => {
+  assert.doesNotMatch(text(render()), /Meeting recaps/);
+  const on = render(ready, { rolledOut: ["meeting_recap"], preview: "meeting_recap" });
+  assert.match(switchFor(on, "Meeting recaps") ?? "", /aria-checked="true"/);
+  assert.match(text(on), /Your action items: send the updated proposal by Thursday\./);
 });

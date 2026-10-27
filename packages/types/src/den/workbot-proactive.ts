@@ -13,7 +13,9 @@ import { z } from "zod"
  * - Each member's own choices: on/off, snooze and muted responsibilities.
  */
 
-export const AGENT_RESPONSIBILITIES = ["morning_brief", "meeting_prep", "calendar_changes", "waiting_on_you"] as const
+export const AGENT_RESPONSIBILITIES = ["morning_brief", "meeting_prep", "calendar_changes", "waiting_on_you", "meeting_recap"] as const
+/** Responsibilities behind their own rollout: hidden, and never active, while the feature is off for the member. */
+export const AGENT_RESPONSIBILITY_FEATURES = { meeting_recap: "workbotAgentRecaps" } as const
 export type AgentResponsibility = (typeof AGENT_RESPONSIBILITIES)[number]
 export const agentResponsibilitySchema = z.enum(AGENT_RESPONSIBILITIES)
 
@@ -23,6 +25,7 @@ export const AGENT_RESPONSIBILITY_COPY: Record<AgentResponsibility, { label: str
   meeting_prep: { label: "Meeting prep", tells: "Before a meeting with people from outside the company: the last email thread with them and what they're waiting on." },
   calendar_changes: { label: "Calendar changes", tells: "Meetings today or tomorrow that someone else added, moved or cancelled." },
   waiting_on_you: { label: "Waiting on you", tells: "Email from people outside the company that has waited more than about 4 hours for your reply, with an offer to draft one." },
+  meeting_recap: { label: "Meeting recaps", tells: "After a meeting with other people: a short summary and your action items, from the notes email, doc or thread." },
 }
 
 export const WORKBOT_PROACTIVE_LEAD_MINUTES = [5, 10, 15, 30, 60] as const
@@ -81,13 +84,15 @@ export const agentTemplateContentSchema = z.object({
     meeting_prep: z.boolean(),
     calendar_changes: z.boolean(),
     waiting_on_you: z.boolean(),
+    /** Added after the first versions: saved versions without it read as on. */
+    meeting_recap: z.boolean().default(true),
   }),
   instructions: z.string().max(AGENT_INSTRUCTIONS_MAX),
 })
 export type AgentTemplateContent = z.infer<typeof agentTemplateContentSchema>
 
 export const DEFAULT_AGENT_TEMPLATE: AgentTemplateContent = {
-  responsibilities: { morning_brief: true, meeting_prep: true, calendar_changes: true, waiting_on_you: true },
+  responsibilities: { morning_brief: true, meeting_prep: true, calendar_changes: true, waiting_on_you: true, meeting_recap: true },
   instructions: "",
 }
 

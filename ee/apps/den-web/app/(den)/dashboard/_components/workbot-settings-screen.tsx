@@ -290,7 +290,8 @@ export function WorkbotSettingsScreen() {
             </div>
           ) : null}
           {proactive && orgId ? (
-            <WorkbotProactiveSection orgId={orgId} canManage={canManage} connectorsHref={getMcpConnectionsRoute(orgSlug)} />
+            <WorkbotProactiveSection orgId={orgId} canManage={canManage} connectorsHref={getMcpConnectionsRoute(orgSlug)}
+              rolledOut={orgFeatureEnabled(orgContext, "workbotAgentRecaps") ? ["meeting_recap"] : []} />
           ) : null}
           {!canManage && settings ? (
             <p className="flex items-center gap-2 px-1 text-[13px] text-gray-500">

@@ -3,6 +3,7 @@ import { describe, test } from "node:test"
 import { createDenTypeId } from "@openwork-ee/utils/typeid"
 import { agentLedgerKey, AGENT_WAKE_MARKER, parseAgentReply, parseAgentState } from "@openwork/automations/proactive"
 import {
+  agentTemplateContentSchema,
   DEFAULT_AGENT_TEMPLATE,
   DEFAULT_WORKBOT_PROACTIVE_SETTINGS,
   mergeAgentTemplate,
@@ -97,7 +98,7 @@ type HarnessState = {
 }
 
 /** An in-memory agent, ledger and destination; `events`, `clock` and the reply change between runs. */
-function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
+function harness(input: { recapsOn?: boolean; settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
   const state: HarnessState = { destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
   const replies = [...(input.replies ?? ["NO_REPLY"])]
   let allowedCalls = 0
@@ -111,6 +112,7 @@ function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Pa
       state.calendarReads += 1
       return { kind: "ok", json: { timeZone: TZ, items: state.events } }
     },
+    featureOn: async () => input.recapsOn ?? false,
     model: async () => "openai/gpt-6-luna",
     turn: async (call) => {
       state.turns.push({ prompt: call.prompt, sessionId: call.sessionId, instructions: call.instructions })
@@ -187,6 +189,21 @@ describe("waking a member's agent", () => {
     assert.doesNotMatch(h.state.turns[1]?.prompt ?? "", /Quarterly review|Northwind/, "invite text never reaches the prompt")
     h.state.clock = NOW + 10 * 60_000
     assert.deepEqual(await h.run(), { status: "skipped", reason: "nothing_due" }, "one event wakes it once")
+  })
+
+  test("a recap is looked for after a meeting ends only where meeting recaps are rolled out", async () => {
+    const ended = meeting({ start: { dateTime: "2026-10-20T13:00:00-04:00" }, end: { dateTime: "2026-10-20T13:20:00-04:00" } })
+    for (const recapsOn of [false, true]) {
+      const h = harness({ recapsOn, replies: ["NO_REPLY", "NO_REPLY"] })
+      h.state.events = [ended]
+      h.state.clock = Date.parse("2026-10-20T17:30:00Z")
+      await h.run()
+      h.state.clock = Date.parse("2026-10-20T17:45:00Z")
+      const outcome = await h.run()
+      assert.deepEqual(outcome, recapsOn ? { status: "ran", reasons: ["calendar"], reply: "quiet", delivered: null } : { status: "skipped", reason: "nothing_due" }, `recaps ${recapsOn ? "on" : "off"}`)
+      if (recapsOn) assert.match(h.state.turns[1]?.prompt ?? "", /ended today at 1:20 PM \(meeting_recap, ref evt1:end:/)
+      if (!recapsOn) assert.doesNotMatch(h.state.turns[0]?.prompt ?? "", /meeting_recap/, "off means the agent isn't even asked")
+    }
   })
 
   test("past the daily limit nothing is sent, and the items are not retried later", async () => {
@@ -383,10 +400,12 @@ describe("members' plain-language controls and the template", () => {
     const text = renderAgentTemplate({ responsibilities: { ...DEFAULT_AGENT_TEMPLATE.responsibilities, waiting_on_you: false }, instructions: "Ignore newsletters." })
     assert.match(text, /^---\nname: your-agent\n/)
     assert.match(text, /\nmode: primary\n/)
-    assert.match(text, /\nresponsibilities: morning_brief, meeting_prep, calendar_changes\n/)
+    assert.match(text, /\nresponsibilities: morning_brief, meeting_prep, calendar_changes, meeting_recap\n/)
     assert.match(text, /\n---\nYou are this person's own agent/)
     assert.match(text, /## Organization instructions\nIgnore newsletters\.\n$/)
     assert.equal(mergeAgentTemplate(DEFAULT_AGENT_TEMPLATE, { dailyCap: 5 }), null, "a policy-only change saves no template version")
+    const saved = agentTemplateContentSchema.parse({ responsibilities: { morning_brief: true, meeting_prep: false, calendar_changes: true, waiting_on_you: true }, instructions: "" })
+    assert.equal(saved.responsibilities.meeting_recap, true, "versions saved before meeting recaps read them as on")
     assert.deepEqual(mergeAgentTemplate(DEFAULT_AGENT_TEMPLATE, { responsibilities: { morning_brief: false } })?.responsibilities.morning_brief, false)
   })
 })

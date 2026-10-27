@@ -11,13 +11,13 @@ import type { DenTypeId } from "@openwork-ee/utils/typeid"
 import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { z } from "zod"
-import { requireFeature } from "../../features.js"
+import { organizationFeatureEnabled, requireFeature } from "../../features.js"
 import { jsonValidator, orgMemberRoute, type OrganizationContextVariables } from "../../middleware/index.js"
 import { invalidRequestSchema, jsonResponse, unauthorizedSchema } from "../../openapi.js"
 import type { AuthContextVariables } from "../../session.js"
 import { readProactiveSettings } from "../../workbot-proactive/access.js"
 import { destinationBlock } from "../../workbot-proactive/deliver.js"
-import { memberAgentOn, memberChoiceChange, mutedOf, type MemberChoices } from "../../workbot-proactive/policy.js"
+import { memberAgentOn, memberChoiceChange, mutedOf, rolledOutResponsibilities, type MemberChoices } from "../../workbot-proactive/policy.js"
 import { readAgentInstance, saveMemberChoices } from "../../workbot-proactive/repository.js"
 import { readAgentTemplate } from "../../workbot-proactive/template.js"
 import { workbotOrigin } from "../../workbot/config.js"
@@ -41,6 +41,7 @@ async function memberAgentView(input: {
   const { settings, row } = input
   const template = await readAgentTemplate(input.organizationId)
   const muted = mutedOf(row)
+  const rolledOut = await rolledOutResponsibilities((feature) => organizationFeatureEnabled(input.organizationId, feature, { userId: input.userId }))
   const on = memberAgentOn(row, settings)
   const destination: MemberAgentView["destination"] = settings.destination === "workbot_dm"
     ? { kind: "workbot_dm", name: "Workbot DM", blocked: await destinationBlock({ organizationId: input.organizationId, userId: input.userId }) }
@@ -49,7 +50,7 @@ async function memberAgentView(input: {
     available: settings.enabled,
     on,
     snoozedUntil: row?.snoozedUntil && row.snoozedUntil.getTime() > Date.now() ? row.snoozedUntil.toISOString() : null,
-    responsibilities: AGENT_RESPONSIBILITIES.map((id) => ({ id, ...AGENT_RESPONSIBILITY_COPY[id], enabled: template.responsibilities[id], muted: muted.has(id) })),
+    responsibilities: AGENT_RESPONSIBILITIES.filter((id) => rolledOut.has(id)).map((id) => ({ id, ...AGENT_RESPONSIBILITY_COPY[id], enabled: template.responsibilities[id], muted: muted.has(id) })),
     destination,
     workingHours: { workingDays: settings.workingDays, startHour: settings.startHour, endHour: settings.endHour, dailyCap: settings.dailyCap },
     nextCheckAt: settings.enabled && on && row?.nextWakeAt ? row.nextWakeAt.toISOString() : null,

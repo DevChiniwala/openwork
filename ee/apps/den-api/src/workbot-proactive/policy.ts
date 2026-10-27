@@ -2,6 +2,7 @@ import { nextWorkingStart, zonedDayStart, type ProactivePolicy } from "@openwork
 import type { AgentInstanceOverrides } from "@openwork-ee/den-db/schema"
 import {
   AGENT_RESPONSIBILITIES,
+  AGENT_RESPONSIBILITY_FEATURES,
   agentResponsibilitySchema,
   type AgentResponsibility,
   type AgentTemplateContent,
@@ -46,6 +47,18 @@ export function enabledOf(template: AgentTemplateContent): Set<AgentResponsibili
 export function activeResponsibilities(template: AgentTemplateContent, row: Pick<MemberChoices, "overrides"> | null): AgentResponsibility[] {
   const muted = mutedOf(row)
   return AGENT_RESPONSIBILITIES.filter((responsibility) => template.responsibilities[responsibility] && !muted.has(responsibility))
+}
+
+export type ResponsibilityFeature = (typeof AGENT_RESPONSIBILITY_FEATURES)[keyof typeof AGENT_RESPONSIBILITY_FEATURES]
+
+/** Responsibilities whose own rollout is on for this member (most have none). */
+export async function rolledOutResponsibilities(isOn: (feature: ResponsibilityFeature) => Promise<boolean>): Promise<Set<AgentResponsibility>> {
+  const allowed = new Set<AgentResponsibility>()
+  for (const responsibility of AGENT_RESPONSIBILITIES) {
+    const feature = responsibility === "meeting_recap" ? AGENT_RESPONSIBILITY_FEATURES.meeting_recap : null
+    if (!feature || (await isOn(feature))) allowed.add(responsibility)
+  }
+  return allowed
 }
 
 /** What a member's request changes. "Snooze until tomorrow" lasts until the next working morning in their zone. */

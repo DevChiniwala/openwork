@@ -252,6 +252,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotAgentRecaps: {
+    label: "Workbot: meeting recaps from Your agent",
+    description: "About 20 minutes after a meeting with other people ends, each member's agent looks for its recap (a notes email, a doc linked in the invite or the follow-up thread) and DMs them a short summary with their action items, or stays quiet when there is none. Admins turn it on or off with the other responsibilities in Manage › Workbot. Needs Workbot: Your agent.",
+    category: "workbot",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-proactive/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",

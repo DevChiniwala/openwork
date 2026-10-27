@@ -7,6 +7,7 @@ import {
   AGENT_INSTRUCTIONS_MAX,
   AGENT_RESPONSIBILITIES,
   AGENT_RESPONSIBILITY_COPY,
+  AGENT_RESPONSIBILITY_FEATURES,
   WORKBOT_PROACTIVE_DAILY_CAPS,
   WORKBOT_PROACTIVE_LEAD_MINUTES,
   type AgentResponsibility,
@@ -85,6 +86,7 @@ export function WorkbotProactivePanel({
   saving,
   onChange,
   connectorsHref,
+  rolledOut = [],
   initialPreview = "morning_brief",
 }: {
   view: WorkbotProactiveView;
@@ -92,8 +94,11 @@ export function WorkbotProactivePanel({
   saving: boolean;
   onChange: (change: WorkbotProactiveSettingsInput) => void;
   connectorsHref: string;
+  /** Responsibilities behind their own rollout that are on for this organization (meeting recaps). */
+  rolledOut?: readonly AgentResponsibility[];
   initialPreview?: AgentResponsibility;
 }) {
+  const visible = AGENT_RESPONSIBILITIES.filter((responsibility) => !(responsibility in AGENT_RESPONSIBILITY_FEATURES) || rolledOut.includes(responsibility));
   const ids = { destination: useId(), days: useId(), cap: useId(), members: useId() };
   const [preview, setPreview] = useState<AgentResponsibility>(initialPreview);
   const { settings, template, slackReady, runnerReady } = view;
@@ -145,7 +150,7 @@ export function WorkbotProactivePanel({
         </div>
       </Row>
 
-      {AGENT_RESPONSIBILITIES.map((responsibility) => (
+      {visible.map((responsibility) => (
         <Row key={responsibility} label={AGENT_RESPONSIBILITY_COPY[responsibility].label} testId={`workbot-proactive-${responsibility}`}>
           {responsibility === "meeting_prep" && template.responsibilities.meeting_prep ? (
             <div className="w-40">
@@ -225,7 +230,7 @@ export function WorkbotProactivePanel({
       <div className="grid gap-3 px-6 py-4" data-testid="workbot-proactive-preview-row">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-[13px] font-medium text-gray-900">Preview</span>
-          <DenSegmented aria-label="Preview message" options={PROACTIVE_PREVIEW_KINDS} value={preview} onChange={setPreview}
+          <DenSegmented aria-label="Preview message" options={PROACTIVE_PREVIEW_KINDS.filter((option) => visible.includes(option.value))} value={preview} onChange={setPreview}
             optionTestId={(kind) => `workbot-proactive-preview-${kind}`} />
         </div>
         <WorkbotProactivePreview kind={preview} leadMinutes={settings.leadMinutes} />
@@ -251,7 +256,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
-export function WorkbotProactiveSection({ orgId, canManage, connectorsHref }: { orgId: string; canManage: boolean; connectorsHref: string }) {
+export function WorkbotProactiveSection({ orgId, canManage, connectorsHref, rolledOut }: { orgId: string; canManage: boolean; connectorsHref: string; rolledOut: readonly AgentResponsibility[] }) {
   const query = useWorkbotProactive(orgId, Boolean(orgId));
   const save = useSaveWorkbotProactive(orgId);
   const headingId = useId();
@@ -275,6 +280,7 @@ export function WorkbotProactiveSection({ orgId, canManage, connectorsHref }: { 
           canManage={canManage}
           saving={save.isPending}
           connectorsHref={connectorsHref}
+          rolledOut={rolledOut}
           onChange={(change) => save.mutate(change)}
         />
       ) : (

@@ -25,7 +25,7 @@ import type { AgentDestinationBlock, WorkbotProactiveSettings } from "@openwork/
 import { appLogger } from "../observability/logger.js"
 import type { MemberCalendarRead } from "../routes/org/google-workspace.js"
 import type { DeliveryResult } from "./deliver.js"
-import { activeResponsibilities, enabledOf, memberAgentOn, mutedOf, proactivePolicy } from "./policy.js"
+import { activeResponsibilities, enabledOf, memberAgentOn, mutedOf, proactivePolicy, rolledOutResponsibilities, type ResponsibilityFeature } from "./policy.js"
 import type { AgentInstanceRow, AgentSettle, DeliveryOutcome } from "./repository.js"
 import type { AgentTemplateVersion } from "./template.js"
 import type { AgentTurnResult } from "./turn.js"
@@ -45,6 +45,8 @@ export type AgentWakeDeps = {
   template: (organizationId: DenTypeId<"organization">) => Promise<AgentTemplateVersion>
   user: (organizationId: DenTypeId<"organization">, memberId: DenTypeId<"member">) => Promise<DenTypeId<"user"> | null>
   calendar: (input: { organizationId: DenTypeId<"organization">; orgMembershipId: DenTypeId<"member">; timeMin: string; timeMax: string }) => Promise<MemberCalendarRead>
+  /** A responsibility's own rollout is on for this member (meeting recaps: `workbotAgentRecaps`). */
+  featureOn: (organizationId: DenTypeId<"organization">, userId: DenTypeId<"user">, feature: ResponsibilityFeature) => Promise<boolean>
   model: (actor: { userId: DenTypeId<"user">; organizationId: DenTypeId<"organization"> }) => Promise<string | null>
   turn: (input: { actor: { userId: string; organizationId: string }; sessionId: string; instructions: string; model: string; prompt: string; messageId: string }) => Promise<AgentTurnResult>
   sessionId: (organizationId: string, memberId: string) => string
@@ -100,7 +102,8 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     return skip(blocked, now + HOUR_MS)
   }
   const template = await deps.template(organizationId)
-  const responsibilities = activeResponsibilities(template, row)
+  const rolledOut = await rolledOutResponsibilities((feature) => deps.featureOn(organizationId, userId, feature))
+  const responsibilities = activeResponsibilities(template, row).filter((responsibility) => rolledOut.has(responsibility))
   if (!responsibilities.length) return skip("no_responsibilities", now + 6 * HOUR_MS, { templateVersionId: template.versionId })
 
   // The event source: one read-only calendar GET as the member. It also tells us their time zone.
@@ -112,7 +115,7 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   }
   const projected = read.kind === "ok" ? projectGoogleCalendarEvents(read.json) : null
   const timeZone = isValidTimeZone(projected?.timeZone) ? projected.timeZone : storedZone ?? "UTC"
-  const calendarResponsibilities = responsibilities.includes("meeting_prep") || responsibilities.includes("calendar_changes")
+  const calendarResponsibilities = responsibilities.includes("meeting_prep") || responsibilities.includes("calendar_changes") || responsibilities.includes("meeting_recap")
   const detected = projected
     ? detectCalendarWakes({ events: projected.events, previous: state.calendar, now, timeZone, leadMinutes: settings.leadMinutes })
     : null
@@ -167,7 +170,7 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   if (result.kind === "message") {
     const decision = decideAgentDelivery({
       items: result.items,
-      enabled: enabledOf(template),
+      enabled: new Set([...enabledOf(template)].filter((responsibility) => rolledOut.has(responsibility))),
       muted: mutedOf(row),
       told: await deps.told(memberId, result.items),
       sentToday: await deps.sentSince(memberId, new Date(zonedDayStart(now, timeZone))),

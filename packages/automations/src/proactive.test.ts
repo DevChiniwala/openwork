@@ -159,12 +159,30 @@ describe("calendar events only wake the agent early", () => {
     assert.deepEqual(wakes(after, previous).wakes, [])
   })
 
+  test("a meeting with other people that ended 20 minutes ago wakes it once for a recap, not on the first look", () => {
+    const ended = project(raw({ id: "done", start: { dateTime: "2026-10-20T13:00:00-04:00" }, end: { dateTime: "2026-10-20T13:25:00-04:00" } }))
+    const previous = checkpoint(ended, now - 5 * 60_000)
+    const recaps = wakes(ended, previous).wakes.filter((w) => w.kind === "meeting_ended")
+    assert.deepEqual(recaps.map((w) => w.ref), [`done:end:${at("2026-10-20T13:25:00")}`])
+    assert.equal(wakes(ended, null).wakes.filter((w) => w.kind === "meeting_ended").length, 0, "the first look only records")
+    assert.equal(wakes(ended, previous, at("2026-10-20T13:40:00")).wakes.filter((w) => w.kind === "meeting_ended").length, 0, "too soon for notes")
+    assert.equal(wakes(ended, previous, at("2026-10-20T16:30:00")).wakes.filter((w) => w.kind === "meeting_ended").length, 0, "too late to matter")
+    const alone = project(raw({ id: "alone", attendees: [{ email: "me@contoso.example", self: true }], start: { dateTime: "2026-10-20T13:00:00-04:00" }, end: { dateTime: "2026-10-20T13:25:00-04:00" } }))
+    assert.equal(wakes(alone, checkpoint(alone, now - 5 * 60_000)).wakes.length, 0, "nobody else, nothing to recap")
+    const [recap] = recaps
+    assert.ok(recap)
+    const prompt = agentWakePrompt({ reasons: [{ kind: "calendar", wake: recap }], lastLook: {}, responsibilities: ["meeting_recap"], instructions: "", now, timeZone: TZ })
+    assert.match(prompt, /A meeting \(calendar event done\) with 3 other people ended today at 1:25 PM \(meeting_recap, ref done:end:\d+\)/)
+    assert.match(prompt, /- meeting_recap: Meeting recap: .*action items/)
+  })
+
   test("the calendar is polled every five minutes, sooner when a prep window opens, never at night", () => {
     const events = project(raw({ start: { dateTime: "2026-10-20T14:10:00-04:00" }, end: { dateTime: "2026-10-20T14:40:00-04:00" } }))
     const base = { events, leadMinutes: 15, policy, timeZone: TZ }
     assert.equal(nextCalendarPoll({ ...base, now: at("2026-10-20T13:52:00") }), at("2026-10-20T13:55:00"))
     assert.equal(nextCalendarPoll({ ...base, now: at("2026-10-20T13:40:00") }), at("2026-10-20T13:45:00"))
     assert.equal(nextCalendarPoll({ ...base, now: at("2026-10-20T18:58:00") }), at("2026-10-21T08:00:00"))
+    assert.equal(nextCalendarPoll({ ...base, now: at("2026-10-20T14:58:00") }), at("2026-10-20T15:00:00"), "exactly when its recap is due")
   })
 
   test("a wake already handed to the agent is remembered", () => {

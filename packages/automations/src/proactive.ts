@@ -41,6 +41,10 @@ export const AGENT_TIMING = {
   checkEveryMs: 3 * HOUR_MS,
   /** How often Den looks at the calendar for events that wake the agent early. */
   calendarPollMs: 5 * MINUTE_MS,
+  /** A meeting's recap is looked for this long after it ends, so notes have time to arrive. */
+  recapDelayMs: 20 * MINUTE_MS,
+  /** Meetings that ended longer ago than this are not recapped. */
+  recapWindowMs: 3 * HOUR_MS,
   /** A pass that could not run (runner or model outage) is tried again after this. */
   retryMs: 15 * MINUTE_MS,
   /** The calendar window events are read in: now until the end of tomorrow. */
@@ -242,6 +246,8 @@ export const AGENT_RESPONSIBILITY_PROMPTS: Record<AgentResponsibility, string> =
     "Calendar changes: meetings today or tomorrow that someone else added, moved or cancelled. Ignore changes the person made.",
   waiting_on_you:
     "Waiting on you: email from people outside the company that has waited more than about 4 hours for the person's reply. Offer to draft a reply in Workbot; never write or send one yourself.",
+  meeting_recap:
+    "Meeting recap: when a meeting with other people has ended, find its recap: a notes email (from a notetaker or a colleague), a doc linked in the invite, or the follow-up thread. Send a short summary and the person's own action items. Say nothing if there is no recap yet.",
 }
 
 /** Session instructions: stable, so the runner's prompt cache keeps hitting from one pass to the next. */
@@ -287,6 +293,10 @@ function describeWake(wake: CalendarWake, now: number, timeZone: string) {
   if (wake.kind === "meeting_soon") {
     const outside = event.others.filter((other) => other.external).length
     return `${meeting} starts ${when}, with ${outside} ${outside === 1 ? "person" : "people"} from outside the company (meeting_prep, ref ${wake.ref})`
+  }
+  if (wake.kind === "meeting_ended") {
+    const ended = event.end !== null ? formatWhen(event.end, now, timeZone) : "recently"
+    return `${meeting} with ${event.others.length} other ${event.others.length === 1 ? "person" : "people"} ended ${ended} (meeting_recap, ref ${wake.ref})`
   }
   if (wake.change === "added") return `${meeting} was added for ${when} by someone else (calendar_changes, ref ${wake.ref})`
   if (wake.change === "cancelled") return `${meeting} ${when} was cancelled by someone else (calendar_changes, ref ${wake.ref})`
@@ -631,13 +641,16 @@ const CHECKPOINT_MAX_EVENTS = 250
 
 export type CalendarWake =
   | { kind: "meeting_soon"; ref: string; event: CalendarEventFacts }
+  | { kind: "meeting_ended"; ref: string; event: CalendarEventFacts }
   | { kind: "calendar_change"; ref: string; change: "added"; event: CalendarEventFacts }
   | { kind: "calendar_change"; ref: string; change: "cancelled"; event: CalendarEventFacts }
   | { kind: "calendar_change"; ref: string; change: "moved"; event: CalendarEventFacts; previousStart: number | null }
 
 /** Which responsibility a wake is for, so a muted or turned-off one never wakes the agent. */
 export function wakeResponsibility(wake: CalendarWake): AgentResponsibility {
-  return wake.kind === "meeting_soon" ? "meeting_prep" : "calendar_changes"
+  if (wake.kind === "meeting_soon") return "meeting_prep"
+  if (wake.kind === "meeting_ended") return "meeting_recap"
+  return "calendar_changes"
 }
 
 /** Someone from outside the company is invited. */
@@ -673,6 +686,11 @@ export function detectCalendarWakes(input: {
     if (attending(event) && event.start !== null && event.start > now && event.start - now <= input.leadMinutes * MINUTE_MS && hasOutsiders(event)) {
       wakes.push({ kind: "meeting_soon", ref: `${event.id}:${event.start}`, event })
     }
+    // A recap once its notes had time to arrive. Not on the first look: that only records the calendar.
+    const sinceEnd = event.end !== null ? now - event.end : null
+    if (previous && attending(event) && event.others.length > 0 && sinceEnd !== null && sinceEnd >= AGENT_TIMING.recapDelayMs && sinceEnd < AGENT_TIMING.recapWindowMs) {
+      wakes.push({ kind: "meeting_ended", ref: `${event.id}:end:${event.end}`, event })
+    }
     if (!previous || event.organizerSelf || event.others.length === 0) continue
     const seen = previous.events[event.id]
     const ref = `${event.id}:${event.updated}`
@@ -706,9 +724,10 @@ export function nextCalendarPoll(input: { now: number; events: CalendarEventFact
   if (!withinWorkingHours(policy, now, timeZone)) return nextWorkingStart(policy, now, timeZone)
   let next = now + AGENT_TIMING.calendarPollMs
   for (const event of input.events) {
-    if (!attending(event) || event.start === null || !hasOutsiders(event)) continue
-    const opens = event.start - input.leadMinutes * MINUTE_MS
-    if (opens > now && opens < next) next = opens
+    if (!attending(event)) continue
+    const opens = event.start !== null && hasOutsiders(event) ? event.start - input.leadMinutes * MINUTE_MS : null
+    const recap = event.end !== null && event.others.length > 0 ? event.end + AGENT_TIMING.recapDelayMs : null
+    for (const at of [opens, recap]) if (at !== null && at > now && at < next) next = at
   }
   next = Math.max(next, now + MINUTE_MS)
   return withinWorkingHours(policy, next, timeZone) ? next : nextWorkingStart(policy, next, timeZone)

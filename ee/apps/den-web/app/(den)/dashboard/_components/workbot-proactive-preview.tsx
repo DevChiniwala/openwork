@@ -10,6 +10,7 @@ export const PROACTIVE_PREVIEW_KINDS: { value: AgentResponsibility; label: strin
   { value: "meeting_prep", label: AGENT_RESPONSIBILITY_COPY.meeting_prep.label },
   { value: "calendar_changes", label: AGENT_RESPONSIBILITY_COPY.calendar_changes.label },
   { value: "waiting_on_you", label: AGENT_RESPONSIBILITY_COPY.waiting_on_you.label },
+  { value: "meeting_recap", label: AGENT_RESPONSIBILITY_COPY.meeting_recap.label },
 ];
 
 function sampleLines(kind: AgentResponsibility, leadMinutes: number): string[] {
@@ -21,6 +22,13 @@ function sampleLines(kind: AgentResponsibility, leadMinutes: number): string[] {
     ];
   }
   if (kind === "calendar_changes") return ["Design review moved to tomorrow at 3:00 PM (was 11:00 AM). The organizer moved it."];
+  if (kind === "meeting_recap") {
+    return [
+      "Recap of Quarterly review, from the notes email:",
+      "They'll renew if pricing holds; legal reviews the contract this week.",
+      "Your action items: send the updated proposal by Thursday.",
+    ];
+  }
   if (kind === "waiting_on_you") {
     return [
       "\u201cRenewal questions\u201d from northwind.example has waited 5 hours for your reply.",
@@ -39,6 +47,7 @@ export function previewTime(kind: AgentResponsibility, leadMinutes: number) {
   if (kind === "morning_brief") return "8:02 AM";
   if (kind === "calendar_changes") return "10:12 AM";
   if (kind === "waiting_on_you") return "2:05 PM";
+  if (kind === "meeting_recap") return "2:52 PM";
   const minutes = 14 * 60 - leadMinutes;
   const hour = Math.floor(minutes / 60);
   return `${hour > 12 ? hour - 12 : hour}:${String(minutes % 60).padStart(2, "0")} ${hour >= 12 ? "PM" : "AM"}`;
