@@ -21,10 +21,10 @@ import {
   type AgentWakeReason,
 } from "@openwork/automations/proactive"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
-import type { WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
+import type { AgentDestination, WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
 import { appLogger } from "../observability/logger.js"
 import type { MemberCalendarRead } from "../routes/org/google-workspace.js"
-import type { DeliveryResult, SelfChannel } from "./deliver.js"
+import type { DeliveryBlock, DeliveryResult } from "./deliver.js"
 import { activeResponsibilities, enabledOf, memberAgentOn, memberDestination, mutedOf, proactivePolicy } from "./policy.js"
 import type { AgentInstanceRow, AgentSettle, DeliveryOutcome } from "./repository.js"
 import type { AgentTemplateVersion } from "./template.js"
@@ -55,10 +55,12 @@ export type AgentWakeDeps = {
   sentSince: (memberId: DenTypeId<"member">, since: Date) => Promise<number>
   holdsLease: (row: AgentInstanceRow) => Promise<boolean>
   settle: (row: AgentInstanceRow, changes: AgentSettle) => Promise<boolean>
-  deliver: (input: { organizationId: DenTypeId<"organization">; memberId: DenTypeId<"member">; userId: DenTypeId<"user">; destination: NonNullable<WorkbotProactiveSettings["destination"]>; knownSelf: SelfChannel | null; text: string }) => Promise<DeliveryResult>
+  /** Why a message couldn't reach the member now (no Slack app, not linked, connection gone), or null. */
+  destinationBlock: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; destination: AgentDestination }) => Promise<DeliveryBlock | null>
+  deliver: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; destination: AgentDestination; text: string }) => Promise<DeliveryResult>
 }
 
-type SkipReason = "off" | "not_allowed" | "opted_out" | "snoozed" | "outside_hours" | "no_destination" | "no_responsibilities" | "no_google" | "nothing_due"
+type SkipReason = "off" | "not_allowed" | "opted_out" | "snoozed" | "outside_hours" | "no_destination" | DeliveryBlock | "no_responsibilities" | "no_google" | "nothing_due"
 type Delivered = "sent" | "failed" | "nothing_new" | "daily_limit" | "quiet_hours" | "snoozed" | null
 
 export type AgentWakeOutcome =
@@ -91,6 +93,13 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   if (storedZone && !withinWorkingHours(policy, now, storedZone)) return skip("outside_hours", nextWorkingStart(policy, now, storedZone))
   const destination = memberDestination(row, settings)
   if (!destination) return skip("no_destination", now + HOUR_MS)
+  // A message that could not arrive is not worth a turn: no Slack app, the member not linked, or their channel's
+  // connection gone. The member's settings say which, and the agent picks up once it is fixed.
+  const blocked = await deps.destinationBlock({ organizationId, userId, destination: destination.destination })
+  if (blocked) {
+    appLogger.info("workbot_agent_destination_blocked", { member_id: memberId, reason: blocked })
+    return skip(blocked, now + HOUR_MS)
+  }
   const template = await deps.template(organizationId)
   const responsibilities = activeResponsibilities(template, row)
   if (!responsibilities.length) return skip("no_responsibilities", now + 6 * HOUR_MS, { templateVersionId: template.versionId })
@@ -154,7 +163,6 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     nextPassAt: passDue ? nextScheduledPass(policy, now, timeZone) : state.nextPassAt,
     woke: rememberWakes(state.woke, wakes.map((wake) => wake.ref)),
   }
-  let overrides = row.overrides
   let delivered: Delivered = null
   if (result.kind === "invalid") appLogger.info("workbot_agent_reply_unparsed", { member_id: memberId })
   if (result.kind === "message") {
@@ -180,11 +188,10 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
         for (const item of rest) await deps.reserve({ organizationId, memberId, item, outcome: "folded" })
         // Right before sending: still this instance's agent, and the feature still on (a kill switch wins).
         const sent = (await deps.holdsLease(row)) && (await deps.allowed(organizationId, userId))
-          ? await deps.deliver({ organizationId, memberId, userId, destination: destination.destination, knownSelf: row.overrides?.selfChannel ?? null, text: cleanAgentMessage(result.message) })
+          ? await deps.deliver({ organizationId, userId, destination: destination.destination, text: cleanAgentMessage(result.message) })
           : { ok: false as const, code: "lease_or_feature_lost" }
         await deps.finish(id, sent.ok ? "sent" : "failed")
         delivered = sent.ok ? "sent" : "failed"
-        if (sent.ok && sent.selfChannel) overrides = { ...row.overrides, selfChannel: sent.selfChannel }
         if (!sent.ok) appLogger.warn("workbot_agent_delivery_failed", { member_id: memberId, code: sent.code })
       }
     }
@@ -195,7 +202,6 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     timeZone,
     templateVersionId: template.versionId,
     failures: 0,
-    ...(overrides !== row.overrides ? { overrides } : {}),
     nextWakeAt: nextWake(nextState.nextPassAt),
   })
   return { status: "ran", reasons: reasons.map((reason) => reason.kind), reply: result.kind, delivered }

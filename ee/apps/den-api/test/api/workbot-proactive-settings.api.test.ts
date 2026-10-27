@@ -35,7 +35,8 @@ test("off until the feature is on and Workbot is deployed; then defaults, policy
   assert.equal(first.status, 200, summary(first))
   assert.deepEqual(field(first.body, "settings"), DEFAULT_WORKBOT_PROACTIVE_SETTINGS)
   assert.deepEqual(field(first.body, "template"), { ...DEFAULT_AGENT_TEMPLATE, versionId: null, version: 1 }, "the built-in template is version 1")
-  assert.deepEqual(field(first.body, "destinations"), [], "no Slack connection yet")
+  assert.equal(field(first.body, "slackReady"), false, "the Workbot Slack app is not installed")
+  assert.equal(field(first.body, "settings", "destination"), "workbot_dm", "messages go out as a Workbot DM by default")
   assert.equal(field(first.body, "runnerReady"), false, "no headless runner is configured")
 
   const { db } = await import("../../src/db.js")
@@ -70,9 +71,9 @@ test("off until the feature is on and Workbot is deployed; then defaults, policy
   const backwards = await owner("PUT", path, { startHour: 18, endHour: 9 })
   assert.equal(backwards.status, 400, summary(backwards))
   assert.equal(field(backwards.body, "error"), "invalid_working_hours")
-  const nowhere = await owner("PUT", path, { destination: { connectionId: "emc_01k0000000000000000000000" } })
-  assert.equal(nowhere.status, 400, summary(nowhere))
-  assert.equal(field(nowhere.body, "error"), "unknown_destination")
+  const channel = await owner("PUT", path, { destination: { kind: "slack_channel", connectionId: "emc_01k0000000000000000000000", channel: "C0SHARED" } })
+  assert.equal(channel.status, 400, `an organization default can't be a channel: ${summary(channel)}`)
+  assert.equal(field((await owner("PUT", path, { destination: null })).body, "settings", "destination"), null)
   assert.equal(field((await owner("GET", path)).body, "settings", "startHour"), 8, "a refused change saves nothing")
 })
 
@@ -88,7 +89,7 @@ test("each member reads and changes only their own agent, in plain terms", async
   assert.equal(before.status, 200, summary(before))
   assert.equal(field(before.body, "available"), true)
   assert.equal(field(before.body, "on"), true, "members start opted in")
-  assert.equal(field(before.body, "destination"), null)
+  assert.deepEqual(field(before.body, "destination"), { kind: "workbot_dm", name: "Workbot DM", channel: null, chosenBy: "organization", blocked: "slack_app_not_installed" }, "the default DM can't arrive without the Slack app, and says so")
 
   const muted = await call("PUT", "/v1/me/agent", { mute: ["calendar_changes"], snooze: "tomorrow" })
   assert.equal(muted.status, 200, summary(muted))
@@ -101,7 +102,7 @@ test("each member reads and changes only their own agent, in plain terms", async
   assert.equal(field(off.body, "snoozedUntil"), null)
   assert.equal(field((await owner("GET", "/v1/me/agent")).body, "on"), true, "another member's agent is untouched")
   assert.equal((await call("PUT", "/v1/me/agent", { mute: ["send_email"] })).status, 400)
-  assert.equal((await call("PUT", "/v1/me/agent", { destination: { connectionId: "emc_01k0000000000000000000000" } })).status, 400)
+  assert.equal((await call("PUT", "/v1/me/agent", { destination: { kind: "slack_channel", connectionId: "emc_01k0000000000000000000000", channel: "C0ALERTS" } })).status, 400, "only a Slack connection in Connectors")
 })
 
 test("the ledger delivers each item at most once and leases keep two instances off one agent", async () => {

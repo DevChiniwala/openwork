@@ -96,14 +96,15 @@ export function WorkbotProactivePanel({
 }) {
   const ids = { destination: useId(), days: useId(), cap: useId(), members: useId() };
   const [preview, setPreview] = useState<AgentResponsibility>(initialPreview);
-  const { settings, template, destinations, runnerReady } = view;
+  const { settings, template, slackReady, runnerReady } = view;
   const locked = !canManage || saving;
-  const destination = settings.destination ? destinations.find((option) => option.connectionId === settings.destination?.connectionId) ?? null : null;
   const switchNote = !runnerReady
     ? "Needs OpenWork's headless runner. Ask your OpenWork operator to set it up."
-    : !destination
+    : !settings.destination
       ? "Choose where messages go first."
-      : null;
+      : !slackReady
+        ? "Needs the Slack app first."
+        : null;
 
   return (
     <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-100 bg-white" data-testid="workbot-proactive-panel">
@@ -120,9 +121,9 @@ export function WorkbotProactivePanel({
         label="Send messages to"
         labelId={ids.destination}
         testId="workbot-proactive-destination"
-        note={destinations.length ? null : (
+        note={slackReady ? null : (
           <>
-            Needs a Slack connection.{" "}
+            Needs the Slack app.{" "}
             <Link href={connectorsHref} className="rounded text-gray-700 underline underline-offset-2 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900">
               Set it up in Connectors
             </Link>
@@ -130,21 +131,16 @@ export function WorkbotProactivePanel({
         )}
       >
         <img src="/integrations/slack.svg" alt="" className="h-4 w-4" />
-        <div className="w-64">
+        <div className="w-56">
           <DenSelect
             aria-labelledby={ids.destination}
             menuWidth="trigger"
-            value={destination?.connectionId ?? "none"}
-            disabled={locked || destinations.length === 0}
-            onChange={(event) => {
-              const chosen = destinations.find((option) => option.connectionId === event.target.value);
-              onChange({ destination: chosen ? { connectionId: chosen.connectionId } : null });
-            }}
+            value={settings.destination ?? "none"}
+            disabled={locked}
+            onChange={(event) => onChange({ destination: event.target.value === "workbot_dm" ? "workbot_dm" : null })}
           >
+            <option value="workbot_dm">A DM from Workbot</option>
             <option value="none">Nowhere yet</option>
-            {destinations.map((option) => (
-              <option key={option.connectionId} value={option.connectionId}>{`${option.name}: their own DM`}</option>
-            ))}
           </DenSelect>
         </div>
       </Row>

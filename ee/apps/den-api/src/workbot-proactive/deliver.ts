@@ -1,29 +1,37 @@
 import { and, eq } from "@openwork-ee/den-db/drizzle"
 import { ExternalMcpConnectionTable } from "@openwork-ee/den-db/schema"
 import { isDenTypeId, type DenTypeId } from "@openwork-ee/utils/typeid"
-import { z } from "zod"
 import type { AgentDestination } from "@openwork/types/den/workbot-proactive"
 import { toolCallFailed } from "../capability-usage.js"
 import { db } from "../db.js"
 import { env } from "../env.js"
 import { DEN_MCP_READ_SCOPE, DEN_MCP_WRITE_SCOPE } from "../mcp/scopes.js"
-import { slackClient, type SlackCall } from "../slack-assistant/protocol.js"
+import {
+  resolveWorkbotDirectMessageTarget,
+  sendWorkbotDirectMessage,
+  type WorkbotDirectMessageResult,
+  type WorkbotDirectMessageTarget,
+} from "../slack-assistant/direct-message.js"
 
 /**
- * Delivery: Den, not the model, sends the message after the delivery policy passed. A destination is a Connect
- * connection plus a target; Den calls that connection's own send tool as the member, exactly as their agent would
- * through Connect. Slack today: Slack's MCP server `slack_send_message`, which posts as the member, to a channel they
- * chose or to their own DM.
+ * Delivery: Den, not the model, sends the message after the delivery policy passed, and the model never picks who
+ * gets it.
+ * - A Workbot DM (the default): from the Workbot Slack app's own bot, so the member is notified.
+ * - A Slack channel the member chose: posted as the member through their Slack connection in Connect
+ *   (Slack's MCP server `slack_send_message`).
  */
 
 export const SLACK_SEND_TOOL = "slack_send_message"
+
+export type DeliveryBlock = "slack_app_not_installed" | "member_not_linked" | "connection_unavailable"
+export type DeliveryResult = { ok: true } | { ok: false; code: DeliveryBlock | "send_failed" }
+
+export type DestinationConnection = Pick<typeof ExternalMcpConnectionTable.$inferSelect, "id" | "credentialMode" | "authType" | "oauthIssuerReviewRequiredAt" | "url">
 
 /**
  * A Slack connection in Connect: Slack's own MCP server, where each person signs in with their own Slack account.
  * The same rule as the Slack assistant's `isSlackConnection`, kept here so delivery doesn't load the assistant.
  */
-export type DestinationConnection = Pick<typeof ExternalMcpConnectionTable.$inferSelect, "id" | "credentialMode" | "authType" | "oauthIssuerReviewRequiredAt" | "url">
-
 export function isSlackDestination(connection: Omit<DestinationConnection, "id">) {
   try {
     return connection.credentialMode === "per_member"
@@ -35,14 +43,11 @@ export function isSlackDestination(connection: Omit<DestinationConnection, "id">
   }
 }
 
-export type SelfChannel = { connectionId: string; channel: string }
-export type DeliveryResult = { ok: true; selfChannel: SelfChannel | null } | { ok: false; code: string }
-
 export type DeliveryDeps = {
+  workbotTarget: (input: { organizationId: string; userId: string }) => Promise<WorkbotDirectMessageTarget>
+  workbotDm: (input: { organizationId: string; userId: string; text: string }) => Promise<WorkbotDirectMessageResult>
   connection: (organizationId: DenTypeId<"organization">, connectionId: string) => Promise<DestinationConnection | null>
-  /** The member's own Slack user id on this connection: their DM with themselves. */
-  selfChannel: (organizationId: DenTypeId<"organization">, connectionId: string, memberId: DenTypeId<"member">) => Promise<string | null>
-  send: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; connectionId: string; channel: string; text: string }) => Promise<boolean>
+  sendAsMember: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; connectionId: string; channel: string; text: string }) => Promise<boolean>
 }
 
 async function readDestinationConnection(organizationId: DenTypeId<"organization">, connectionId: string) {
@@ -55,19 +60,8 @@ async function readDestinationConnection(organizationId: DenTypeId<"organization
   return row ?? null
 }
 
-/** `auth.test` with the member's own Slack token (what Den already does when a member connects Slack). Read-only. */
-async function resolveSlackSelf(organizationId: DenTypeId<"organization">, connectionId: string, memberId: DenTypeId<"member">, client: (token: string) => SlackCall = slackClient) {
-  const connection = await readDestinationConnection(organizationId, connectionId)
-  if (!connection) return null
-  // Loaded lazily: Connect's modules pull in auth and the MCP gateway.
-  const { readConnectedAccountForExternalMcpIdentity } = await import("../capability-sources/external-mcp-connections.js")
-  const account = await readConnectedAccountForExternalMcpIdentity({ connection, orgMembershipId: memberId })
-  if (!account.current || !account.value?.accessToken) return null
-  const parsed = z.object({ user_id: z.string().regex(/^[UW][A-Z0-9]+$/) }).safeParse(await client(account.value.accessToken)("auth.test", {}).catch(() => null))
-  return parsed.success ? parsed.data.user_id : null
-}
-
 async function sendThroughConnect(input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; connectionId: string; channel: string; text: string }) {
+  // Loaded lazily: Connect's modules pull in auth and the MCP gateway.
   const { executeExternalCapability, resolveMcpMemberIdentity } = await import("../mcp/external-capabilities.js")
   const member = await resolveMcpMemberIdentity({ userId: input.userId, organizationId: input.organizationId })
   if (!member) return false
@@ -86,33 +80,39 @@ async function sendThroughConnect(input: { organizationId: DenTypeId<"organizati
 }
 
 export const defaultDeliveryDeps: DeliveryDeps = {
+  workbotTarget: (input) => resolveWorkbotDirectMessageTarget(input),
+  workbotDm: (input) => sendWorkbotDirectMessage(input),
   connection: readDestinationConnection,
-  selfChannel: (organizationId, connectionId, memberId) => resolveSlackSelf(organizationId, connectionId, memberId),
-  send: sendThroughConnect,
+  sendAsMember: sendThroughConnect,
+}
+
+/** Whether a message could reach the member now; null when it can, otherwise why not. Sends nothing. */
+export async function destinationBlock(
+  input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; destination: AgentDestination },
+  deps: Pick<DeliveryDeps, "workbotTarget" | "connection"> = defaultDeliveryDeps,
+): Promise<DeliveryBlock | null> {
+  if (input.destination.kind === "workbot_dm") {
+    const target = await deps.workbotTarget({ organizationId: input.organizationId, userId: input.userId })
+    return target.ok ? null : target.reason
+  }
+  const connection = await deps.connection(input.organizationId, input.destination.connectionId)
+  return connection && isSlackDestination(connection) ? null : "connection_unavailable"
 }
 
 export async function deliverAgentMessage(
-  input: {
-    organizationId: DenTypeId<"organization">
-    memberId: DenTypeId<"member">
-    userId: DenTypeId<"user">
-    destination: AgentDestination
-    /** The member's DM channel learned earlier, if any. */
-    knownSelf: SelfChannel | null
-    text: string
-  },
+  input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; destination: AgentDestination; text: string },
   deps: DeliveryDeps = defaultDeliveryDeps,
 ): Promise<DeliveryResult> {
-  const connection = await deps.connection(input.organizationId, input.destination.connectionId)
-  if (!connection || !isSlackDestination(connection)) return { ok: false, code: "destination_unavailable" }
-  let selfChannel: SelfChannel | null = null
-  let channel = input.destination.channel ?? null
-  if (!channel) {
-    const known = input.knownSelf?.connectionId === connection.id ? input.knownSelf.channel : null
-    channel = known ?? (await deps.selfChannel(input.organizationId, connection.id, input.memberId).catch(() => null))
-    if (!channel) return { ok: false, code: "destination_unresolved" }
-    selfChannel = { connectionId: connection.id, channel }
+  const destination = input.destination
+  if (destination.kind === "workbot_dm") {
+    const sent = await deps.workbotDm({ organizationId: input.organizationId, userId: input.userId, text: input.text })
+    if (sent.ok) return { ok: true }
+    return { ok: false, code: sent.reason === "slack_error" ? "send_failed" : sent.reason }
   }
-  const sent = await deps.send({ organizationId: input.organizationId, userId: input.userId, connectionId: connection.id, channel, text: input.text }).catch(() => false)
-  return sent ? { ok: true, selfChannel } : { ok: false, code: "send_failed" }
+  const connection = await deps.connection(input.organizationId, destination.connectionId)
+  if (!connection || !isSlackDestination(connection)) return { ok: false, code: "connection_unavailable" }
+  const sent = await deps
+    .sendAsMember({ organizationId: input.organizationId, userId: input.userId, connectionId: connection.id, channel: destination.channel, text: input.text })
+    .catch(() => false)
+  return sent ? { ok: true } : { ok: false, code: "send_failed" }
 }

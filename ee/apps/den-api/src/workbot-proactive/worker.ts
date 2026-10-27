@@ -2,7 +2,7 @@ import { appLogger } from "../observability/logger.js"
 import { readMemberGoogleCalendar } from "../routes/org/google-workspace.js"
 import { organizationCloudModel } from "../workbot/model.js"
 import { activeMemberUser, listAgentCandidates, proactiveAllowed, readProactiveSettings } from "./access.js"
-import { deliverAgentMessage } from "./deliver.js"
+import { deliverAgentMessage, destinationBlock } from "./deliver.js"
 import {
   agentSentSince,
   claimDueAgents,
@@ -48,6 +48,7 @@ export function defaultAgentWakeDeps(): AgentWakeDeps {
     sentSince: agentSentSince,
     holdsLease: (row) => holdsAgentLease(row),
     settle: (row, changes) => settleAgent(row, changes),
+    destinationBlock: (input) => destinationBlock(input),
     deliver: (input) => deliverAgentMessage(input),
   }
 }

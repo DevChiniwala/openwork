@@ -1,7 +1,8 @@
 # Workbot: Your agent
 
 Feature `workbotProactive` (cloud and self-hosted, off by default). Author: `benjaminshafii`.
-It also needs Workbot on the deployment (`DEN_WORKBOT_URL`) and the headless runner (`DEN_HEADLESS_RUNNER_URL`).
+It also needs Workbot on the deployment (`DEN_WORKBOT_URL`), the headless runner (`DEN_HEADLESS_RUNNER_URL`) and, for
+the default destination, the Workbot Slack app (Slack assistant) installed for the organization.
 
 Every member gets one persistent background agent, "Your agent", running in the cloud on the standard headless runner.
 With no events at all it is still useful: a morning pass, then a check about every three hours inside working hours,
@@ -18,18 +19,21 @@ wake: schedule (morning + ~3h)  ─┐
                                      delivery step in Den (plain code) ◀──────┘
                                      quiet hours · snooze · mutes · one message per item · daily limit
                                                                               │
-                                     the member's destination (a Connect connection + target) ◀┘
+                                     a DM from the Workbot Slack app (default), or a channel the member chose ◀┘
 ```
 
 1. **Wake** (`den-api/src/workbot-proactive/worker.ts`). A Den loop claims agents whose `next_wake_at` is due, with a
    row lease, so replicas never run one agent twice. `next_wake_at` is the earlier of the next scheduled pass and the
    next calendar look. Only the schedule and calendar events wake an agent; the model never schedules its own.
 2. **Gates** (`wake.ts`). Feature (with member overrides), Workbot deployed, the organization switch, the member's own
-   on/off and snooze, a destination, at least one active responsibility, working days and hours in the member's
-   calendar time zone.
+   on/off and snooze, a destination that can arrive (for a Workbot DM: the Slack app installed and the member's Slack
+   account linked), at least one active responsibility, working days and hours in the member's calendar time zone. A
+   blocked destination skips the turn and is shown in the member's settings, so no model call is wasted.
 3. **Event source** (pure, `@openwork/automations/proactive`). One read-only `events.list` as the member every five
    minutes, diffed against a checkpoint: a meeting with people from outside the company inside the lead time, or a
-   meeting today or tomorrow someone else added, moved or cancelled. Each event wakes the agent once.
+   meeting today or tomorrow someone else added, moved or cancelled. Each event wakes the agent once. The prompt names
+   the event by id, time and attendee counts only: titles, descriptions and organizer names are written by whoever
+   sent the invite, so the agent reads them itself, as data, with its tools.
 4. **The turn** (`turn.ts`). The agent's own durable session (`hs_agent_<hash>`), never the member's Workbot chat
    and never `memoryOf` it. Standard runner tools only, plus Connect tools with a read-scoped MCP token (`mcp:read`):
    Gmail search with `after:`, Calendar events. Not `credentials.readOnly`, which would remove the file tools, so the
@@ -38,10 +42,14 @@ wake: schedule (morning + ~3h)  ─┐
 5. **Delivery step** (`wake.ts`, pure rules in `decideAgentDelivery`). Quiet hours, snooze, responsibilities that are
    off or muted, the ledger (one message per item: responsibility plus the item's ref), and the daily limit. Past the
    limit, items are recorded as `capped` and never retried later.
-6. **Deliver** (`deliver.ts`). Den, not the model, calls the destination connection's own send tool as the member,
-   after policy: Slack's MCP server `slack_send_message` to the member's own DM (their Slack user id, learned once
-   with `auth.test`) or to a channel they chose. Text is cleaned first: no `@channel`/`@here`/user mentions, and links
-   only to the member's own Google workspace.
+6. **Deliver** (`deliver.ts`). Den, not the model, sends after policy, and the model never picks recipients:
+   - **A DM from Workbot** (the default): `sendWorkbotDirectMessage` in `slack-assistant/direct-message.ts` opens the
+     member's DM with the Workbot Slack app's own bot and posts there, so Slack notifies them like any DM. It is the
+     shared helper for anything that notifies a member.
+   - **A Slack channel the member chose**: posted as the member through their Slack connection in Connect (Slack's
+     MCP server, `slack_send_message`). Only the member can choose this; an organization default is never a channel.
+
+   Text is cleaned first: no `@channel`/`@here`/user mentions, and links only to the member's own Google workspace.
 
 ## Responsibilities (day one)
 
@@ -86,21 +94,24 @@ member's agent is a small `agent_instance` row: the template version it last ran
 | Setting | Stored in | Default |
 | --- | --- | --- |
 | Agents for everyone | organization metadata `workbot.proactive.enabled` | off |
-| Send messages to | `workbot.proactive.destination` (a Slack connection in Connectors; each person's own DM) | nowhere |
+| Send messages to | `workbot.proactive.destination`: a DM from Workbot, or nowhere yet (never a channel) | a DM from Workbot |
 | Morning brief, Meeting prep (+ how early), Calendar changes, Waiting on you | the template (meeting lead time in metadata) | all on, 15 min |
 | Instructions for every agent | the template | empty |
 | Working hours | `workingDays`, `startHour`, `endHour` | weekdays, 8–19 |
 | Daily limit | `dailyCap` | 3 per person |
 | Members start | `membersStart` | opted in |
 
-The page previews each kind of message as plain text. The switch stays visible but locked, with the reason, until a
-destination is chosen or when the headless runner is missing (DESIGN.md P4, C5).
+The page previews each kind of message as plain text, as the DM from the Workbot app. The switch stays visible but
+locked, with the reason, when there is nowhere to send messages, when the Slack app is not installed, or when the
+headless runner is missing (DESIGN.md P4, C5).
 
 ## Member controls
 
 `GET /v1/me/agent` answers "what will my agent tell me about?": each responsibility with whether the organization
 turned it on and whether the member muted it, where messages go, the hours and limit. `PUT /v1/me/agent` takes plain
-choices: `on`, `snooze: "tomorrow" | null`, `mute` / `unmute`, `destination`. Both are tagged for Connect, so a member
+choices: `on`, `snooze: "tomorrow" | null`, `mute` / `unmute`, `destination` (`{ kind: "workbot_dm" }`, or
+`{ kind: "slack_channel", connectionId, channel }` to post as themselves). `destination.blocked` says why messages
+can't arrive yet (`slack_app_not_installed`, `member_not_linked`, `connection_unavailable`). Both are tagged for Connect, so a member
 can say "stop telling me about calendar changes" or "snooze until tomorrow" to Workbot. The agent's own `mcp:read`
 token can read them but never change them. There are no buttons on messages and no Slack Home tab.
 
@@ -110,24 +121,33 @@ The agent keeps its notes in its own session's scratch files under `memory/` (wh
 threads it is watching). Den stores only the calendar checkpoint, last looks and schedule. When the shared per-user
 filesystem lands, the notes move to `/files/agents/<agent>/` and the session reads them from there.
 
-## Slack: does a DM to yourself notify you?
+## Slack delivery: why a DM from the Workbot app
 
 Connect's Slack connection is Slack's own MCP server (`https://mcp.slack.com/mcp`, per-member OAuth). Slack's MCP OAuth
-issues user tokens only, and `slack_send_message` needs the user scope `chat:write`, so it posts **as the member**
-(Den's Slack binding checks `auth.test` and refuses bot tokens). A message the member posts into their own DM is their
-own message: Slack notifies people about other people's messages (DMs, mentions, keywords, thread replies), never their
-own, and the DM with yourself is Slack's notes space. So the default destination is a quiet log, not a ping. Not
-live-tested.
+issues user tokens only, so `slack_send_message` posts **as the member** (Den's Slack binding checks `auth.test` and
+refuses bot tokens). Slack never notifies people about their own messages, so a message posted as the member, even in
+their DM with themselves, pings nobody. The default destination is therefore a DM from the Workbot Slack app's own bot
+(the Slack assistant's installation and bot token, the member's linked Slack user id):
 
-Simplest alternative default: an email from OpenWork's own sender to the member's sign-in address. Den already sends
-transactional email; it arrives unread from another sender, so normal mail notifications apply, and it needs no Slack
-app or connection. It is not a Connect connection, so it would be the one exception to "destination = connection +
-target". The other option, a Slack DM from a bot, needs a bot token, which Slack's MCP server does not offer.
+- **A member who never wrote to the app** can be DMed: `conversations.open` with the bot token needs `im:write`, and
+  `chat.postMessage` needs `chat:write`; both are in the app's scopes (`slack-assistant/protocol.ts`), and the
+  manifest has the Messages tab on and writable.
+- **When the member replies in the message's thread**, the Slack assistant reads that thread with the member's own
+  token (`conversations.replies`), so Workbot sees what it sent. A new top-level message in the DM starts a new
+  conversation without it.
+- **Without the Slack app, or before the member links their Slack account**, nothing runs: the wake is skipped with
+  `slack_app_not_installed` or `member_not_linked`, the admin page shows the lock, and `GET /v1/me/agent` shows why.
+
+Not live-tested against a Slack workspace; the unit tests cover the calls Den makes.
 
 ## Safety
 
 - **Read-only through MCP.** The turn's token is `mcp:read`: Den refuses every non-GET capability and every external MCP
-  tool for it. Den delivers with write scope only after the delivery step, with text it cleaned.
+  tool for it. Den delivers only after the delivery step, with text it cleaned.
+- **Invite text stays out of the prompt.** Calendar wakes name events by id and time; the agent reads titles and
+  descriptions as data.
+- **No shared channels by default.** An organization's default is a Workbot DM; only a member can send their own
+  messages to a channel.
 - **No memory pollution.** The agent's reading stays in its own session. Only delivered text leaves it.
 - **At most once.** A ledger row is reserved before sending, so a crash never sends twice. Silence wins on doubt: an
   unparsable answer, a runner outage or a failed model check mean no message.
@@ -156,7 +176,7 @@ from the stored state.
 ```sh
 pnpm dev:den:mysql && pnpm dev:workbot
 # /admin › Features › Workbot: Your agent › on for your organization
-# Connectors › add Slack (Slack's MCP server), then Den › Manage › Workbot › Members' agents
+# Connectors › Slack › install the Workbot Slack app, then Den › Manage › Workbot › Members' agents
 ```
 
 `pnpm --filter @openwork/automations test` and `pnpm --filter @openwork-ee/den-api test` cover the schedule, event
@@ -165,10 +185,10 @@ Google. `evals/proofs/workbot-proactive-settings.proof.test.ts` drives the admin
 
 ## Screenshots
 
-Off, with nowhere to send messages yet (real Den, `workbotProactiveWorld`):
+Off, locked until the Workbot Slack app is installed (real Den, `workbotProactiveWorld`):
 
-![Members' agents, off and locked until a destination is chosen](./admin-agent-off.png)
+![Members' agents, off and locked until the Slack app is installed](./admin-agent-off.png)
 
-On, sending to each person's own Slack DM, with the template at version 3 and the meeting prep preview:
+On, sending a DM from Workbot, with the template at version 3 and the meeting prep preview:
 
 ![Members' agents, on](./admin-agent.png)

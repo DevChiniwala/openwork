@@ -11,25 +11,26 @@ test("an owner sets up members' agents in Manage › Workbot; a member sees only
   // Each change saves at once and the panel waits for it before taking the next one.
   const saved = () => ownerProbe.eventually(() => ownerProbe.dom('[data-testid="workbot-proactive-panel"] button[role="switch"]:not([disabled])'), { within: 30_000, until: (value) => value.elements.length > 0, label: "the last change is saved" });
 
-  await step("before: agents are off, nowhere to send messages, and the switch says so", async () => {
+  await step("before: agents are off and locked until the Workbot Slack app can send the DMs", async () => {
     await owner.see({ role: "switch", label: "Agents for everyone" }, { timeoutMs: 90_000 });
-    await owner.see({ text: "Choose where messages go first." });
+    await owner.see({ text: "Needs the Slack app first." });
+    await owner.see({ text: "A DM from Workbot" });
     await owner.see({ text: "Version 1" });
     const view = await settings();
-    expect(view).toMatchObject({ settings: { enabled: false, destination: null, dailyCap: 3, membersStart: "opted_in" }, template: { version: 1, versionId: null } });
-    expect(view.destinations).toEqual([{ connectionId: world.slackConnectionId, name: "Slack" }]);
+    expect(view).toMatchObject({ settings: { enabled: false, destination: "workbot_dm", dailyCap: 3, membersStart: "opted_in" }, template: { version: 1, versionId: null }, slackReady: false });
     evidence.recordAssertionEvidence(
-      "Off by default with the built-in template; the switch is locked until a destination is chosen",
-      `enabled=${view.settings.enabled}; destination=${view.settings.destination === null ? "none" : "set"}; template version ${view.template.version}; Slack connections: ${view.destinations.length}`,
-      !view.settings.enabled && view.settings.destination === null,
+      "Off by default with the built-in template; messages would go out as a Workbot DM, which needs the Slack app",
+      `enabled=${view.settings.enabled}; destination=${view.settings.destination}; slackReady=${view.slackReady}; template version ${view.template.version}`,
+      !view.settings.enabled && !view.slackReady,
     );
     await owner.screenshot();
   });
 
-  await step("the owner sends messages to each person's Slack DM, turns agents on, and edits the template", async () => {
-    await owner.click({ role: "button", label: "Send messages to" });
-    await owner.click({ role: "option", label: "Slack: their own DM" });
-    await owner.notSee({ text: "Choose where messages go first." }, { timeoutMs: 30_000 });
+  await step("with the Slack app installed, the owner turns agents on and edits the template", async () => {
+    await world.installSlackApp();
+    await owner.reload();
+    await owner.see({ role: "switch", label: "Agents for everyone" }, { timeoutMs: 60_000 });
+    await owner.notSee({ text: "Needs the Slack app first." }, { timeoutMs: 30_000 });
     await saved();
     await owner.click({ role: "switch", label: "Agents for everyone" });
     await saved();
@@ -47,12 +48,12 @@ test("an owner sets up members' agents in Manage › Workbot; a member sees only
     await owner.reload();
     await owner.see({ text: "Version 3" }, { timeoutMs: 60_000 });
     const view = await settings();
-    expect(view.settings).toMatchObject({ enabled: true, destination: { connectionId: world.slackConnectionId } });
+    expect(view).toMatchObject({ slackReady: true, settings: { enabled: true, destination: "workbot_dm" } });
     expect(view.template).toMatchObject({ version: 3, instructions: "Ignore newsletters and automated alerts.", responsibilities: { waiting_on_you: false, morning_brief: true } });
     evidence.recordAssertionEvidence(
       "Saved policy and template",
-      `enabled=${view.settings.enabled}; messages to the Slack connection; template version ${view.template.version} (waiting on you ${view.template.responsibilities.waiting_on_you ? "on" : "off"}, instructions saved)`,
-      view.settings.enabled && view.template.version === 3,
+      `enabled=${view.settings.enabled}; messages as a Workbot DM (Slack app ready=${view.slackReady}); template version ${view.template.version} (waiting on you ${view.template.responsibilities.waiting_on_you ? "on" : "off"}, instructions saved)`,
+      view.settings.enabled && view.slackReady && view.template.version === 3,
     );
     await owner.screenshot();
   });
@@ -63,15 +64,15 @@ test("an owner sets up members' agents in Manage › Workbot; a member sees only
     const read = await memberProbe.api(world.den.members.member, "/v1/org/workbot-settings/proactive");
     expect(read.response.status).toBe(403);
     const own = memberAgentViewSchema.parse((await memberProbe.api(world.den.members.member, "/v1/me/agent")).body);
-    expect(own).toMatchObject({ available: true, on: true, snoozedUntil: null, destination: { name: "Slack", channel: null, chosenBy: "organization" } });
+    expect(own).toMatchObject({ available: true, on: true, snoozedUntil: null, destination: { kind: "workbot_dm", name: "Workbot DM", chosenBy: "organization", blocked: "member_not_linked" } });
     expect(own.responsibilities.filter((entry) => entry.enabled && !entry.muted).map((entry) => entry.label)).toEqual(["Morning brief", "Meeting prep", "Calendar changes"]);
     await member.navigate(`${world.den.ref.webUrl}/dashboard/workbot-settings`);
     await memberProbe.eventually(() => memberProbe.dom('[data-testid="admin-access-state"][data-access-state="locked"], [data-testid="member-dashboard"]'), { within: 60_000, until: (value) => value.elements.length > 0, label: "the member's Workbot settings route is denied" });
     await member.notSee({ role: "switch", label: "Agents for everyone" });
     evidence.recordAssertionEvidence(
-      "A plain member is refused the organization's settings; their own agent follows the template",
-      `GET /v1/org/workbot-settings/proactive → ${read.response.status}; GET /v1/me/agent: on, tells them about ${own.responsibilities.filter((entry) => entry.enabled && !entry.muted).map((entry) => entry.label).join(", ")}; messages go to ${own.destination?.name} (their own DM, chosen by the organization)`,
-      read.response.status === 403 && own.on,
+      "A plain member is refused the organization's settings; their own agent follows the template and says why its DMs can't arrive yet",
+      `GET /v1/org/workbot-settings/proactive → ${read.response.status}; GET /v1/me/agent: on, tells them about ${own.responsibilities.filter((entry) => entry.enabled && !entry.muted).map((entry) => entry.label).join(", ")}; messages as a ${own.destination?.name}, blocked: ${own.destination?.blocked} (their Slack account isn't linked)`,
+      read.response.status === 403 && own.destination?.blocked === "member_not_linked",
     );
     await member.screenshot();
   });

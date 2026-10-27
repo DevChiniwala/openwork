@@ -1,8 +1,8 @@
 import { AGENT_RESPONSIBILITY_COPY, type AgentResponsibility } from "@openwork/types/den/workbot-proactive";
 
 /**
- * A sample message as members get it: plain text from their agent in their own Slack DM. The agent writes the real
- * ones; these use a fictional meeting and company and follow the meeting lead time. Not interactive.
+ * A sample message as members get it: plain text from their agent, in a DM from the Workbot Slack app. The agent
+ * writes the real ones; these use a fictional meeting and company and follow the meeting lead time. Not interactive.
  */
 
 export const PROACTIVE_PREVIEW_KINDS: { value: AgentResponsibility; label: string }[] = [
@@ -44,14 +44,14 @@ export function previewTime(kind: AgentResponsibility, leadMinutes: number) {
   return `${hour > 12 ? hour - 12 : hour}:${String(minutes % 60).padStart(2, "0")} ${hour >= 12 ? "PM" : "AM"}`;
 }
 
-/** Slack's MCP server posts as the member, so in their own DM the message shows as theirs. */
+/** The DM comes from the Workbot Slack app's own bot, so members are notified. */
 export function WorkbotProactivePreview({ kind, leadMinutes }: { kind: AgentResponsibility; leadMinutes: number }) {
   return (
     <div className="flex gap-3 rounded-xl bg-gray-50 px-4 py-3 text-[13px] leading-5 text-gray-900" data-testid="workbot-proactive-preview" data-kind={kind}>
-      <img src="/integrations/slack.svg" alt="" className="mt-0.5 h-8 w-8 shrink-0 rounded-lg border border-gray-200 bg-white p-1.5" />
+      <img src="/openwork-mark.svg" alt="" className="mt-0.5 h-8 w-8 shrink-0 rounded-lg border border-gray-200 bg-white p-1.5" />
       <div className="grid min-w-0 gap-1">
         <p className="flex items-baseline gap-2">
-          <span className="font-semibold">You</span>
+          <span className="font-semibold">OpenWork</span>
           <span className="text-[12px] text-gray-500">{previewTime(kind, leadMinutes)}</span>
         </p>
         {sampleLines(kind, leadMinutes).map((line) => <p key={line}>{line}</p>)}

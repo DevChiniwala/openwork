@@ -6,9 +6,9 @@ import { WorkbotProactivePanel } from "./workbot-proactive-section";
 import { previewTime } from "./workbot-proactive-preview";
 
 const ready: WorkbotProactiveView = {
-  settings: { ...DEFAULT_WORKBOT_PROACTIVE_SETTINGS, enabled: true, destination: { connectionId: "emc_slack" } },
+  settings: { ...DEFAULT_WORKBOT_PROACTIVE_SETTINGS, enabled: true },
   template: { ...DEFAULT_AGENT_TEMPLATE, versionId: null, version: 1 },
-  destinations: [{ connectionId: "emc_slack", name: "Slack" }],
+  slackReady: true,
   runnerReady: true,
 };
 
@@ -32,13 +32,14 @@ test("every setting is one labelled row with its current value, and nothing expl
   for (const label of ["Agents for everyone", "Send messages to", "Morning brief", "Meeting prep", "Calendar changes", "Waiting on you", "Instructions for every agent", "Working hours", "Daily limit", "Members start", "Preview"]) {
     assert.ok(view.includes(label), label);
   }
-  for (const value of ["Slack: their own DM", "15 min before", "Version 1", "Weekdays", "8 AM", "7 PM", "3 per person", "Opted in"]) assert.ok(view.includes(value), value);
+  for (const value of ["A DM from Workbot", "15 min before", "Version 1", "Weekdays", "8 AM", "7 PM", "3 per person", "Opted in"]) assert.ok(view.includes(value), value);
   assert.match(switchFor(render(), "Agents for everyone") ?? "", /aria-checked="true"/);
   assert.match(switchFor(render(), "Waiting on you") ?? "", /aria-checked="true"/);
   assert.doesNotMatch(view, /Needs|first\./, "no lock when everything is ready");
 });
 
-test("the preview is plain text from the agent, with no buttons, and follows the lead time", () => {
+test("the preview is a plain-text DM from the Workbot app, with no buttons, and follows the lead time", () => {
+  assert.match(text(render()), /OpenWork 8:02 AM/);
   assert.match(text(render(ready, { preview: "meeting_prep" })), /Quarterly review starts in 15 min, with 2 people from northwind\.example\./);
   assert.match(text(render({ ...ready, settings: { ...ready.settings, leadMinutes: 60 } }, { preview: "meeting_prep" })), /starts in 1 hour/);
   assert.equal(previewTime("meeting_prep", 30), "1:30 PM");
@@ -48,12 +49,18 @@ test("the preview is plain text from the agent, with no buttons, and follows the
   assert.doesNotMatch(preview, /<button/, "no Mute, Snooze or Turn off buttons in the message");
 });
 
-test("without a Slack connection the destination and the switch are locked with the reason and where to fix it", () => {
-  const html = render({ ...ready, settings: DEFAULT_WORKBOT_PROACTIVE_SETTINGS, destinations: [] });
-  assert.match(text(html), /Needs a Slack connection\. Set it up in Connectors/);
-  assert.match(text(html), /Choose where messages go first\./);
+test("without the Slack app the switch is locked with the reason and where to fix it", () => {
+  const html = render({ ...ready, settings: DEFAULT_WORKBOT_PROACTIVE_SETTINGS, slackReady: false });
+  assert.match(text(html), /Needs the Slack app\. Set it up in Connectors/);
+  assert.match(text(html), /Needs the Slack app first\./);
   assert.match(html, /href="\/dashboard\/mcp-connections"/);
   assert.match(switchFor(html, "Agents for everyone") ?? "", /disabled=""/);
+});
+
+test("with nowhere to send messages the switch says to choose a destination first", () => {
+  const html = render({ ...ready, settings: { ...DEFAULT_WORKBOT_PROACTIVE_SETTINGS, destination: null } });
+  assert.match(text(html), /Choose where messages go first\./);
+  assert.match(text(html), /Nowhere yet/);
 });
 
 test("without the headless runner the switch says who can fix it", () => {

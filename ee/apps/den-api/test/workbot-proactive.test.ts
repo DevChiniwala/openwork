@@ -12,7 +12,8 @@ import {
   type WorkbotProactiveSettings,
 } from "@openwork/types/den/workbot-proactive"
 import type { HeadlessRunnerDeps } from "../src/headless-runner/client.js"
-import type { DeliveryDeps, DestinationConnection } from "../src/workbot-proactive/deliver.js"
+import type { DeliveryBlock, DeliveryDeps, DestinationConnection } from "../src/workbot-proactive/deliver.js"
+import type { WorkbotDirectMessageDeps } from "../src/slack-assistant/direct-message.js"
 import type { AgentInstanceRow, AgentSettle } from "../src/workbot-proactive/repository.js"
 import type { AgentTurnResult } from "../src/workbot-proactive/turn.js"
 import type { AgentWakeDeps } from "../src/workbot-proactive/wake.js"
@@ -25,7 +26,9 @@ process.env.DEN_DB_ENCRYPTION_KEY ??= "synthetic-workbot-proactive-unit-test-enc
 process.env.OPENWORK_DEV_MODE ??= "1"
 const { wakeAgent } = await import("../src/workbot-proactive/wake.js")
 const { runAgentTurn, agentSessionId } = await import("../src/workbot-proactive/turn.js")
-const { deliverAgentMessage } = await import("../src/workbot-proactive/deliver.js")
+const { deliverAgentMessage, destinationBlock } = await import("../src/workbot-proactive/deliver.js")
+const { sendWorkbotDirectMessage } = await import("../src/slack-assistant/direct-message.js")
+const { SlackApiError } = await import("../src/slack-assistant/protocol.js")
 const { createHeadlessRunnerClient } = await import("../src/headless-runner/client.js")
 const { renderAgentTemplate } = await import("../src/workbot-proactive/template.js")
 const policy = await import("../src/workbot-proactive/policy.js")
@@ -37,7 +40,7 @@ const organizationId = createDenTypeId("organization")
 const memberId = createDenTypeId("member")
 const userId = createDenTypeId("user")
 const slackConnectionId = createDenTypeId("externalMcpConnection")
-const settingsOn: WorkbotProactiveSettings = { ...DEFAULT_WORKBOT_PROACTIVE_SETTINGS, enabled: true, destination: { connectionId: slackConnectionId } }
+const settingsOn: WorkbotProactiveSettings = { ...DEFAULT_WORKBOT_PROACTIVE_SETTINGS, enabled: true }
 
 type RawEvent = Record<string, unknown>
 function meeting(overrides: RawEvent = {}): RawEvent {
@@ -81,6 +84,7 @@ function agentRow(overrides: Partial<AgentInstanceRow> = {}): AgentInstanceRow {
 const message = (text: string, items: { responsibility: string; ref: string }[]) => JSON.stringify({ message: text, items })
 
 type HarnessState = {
+  destinations: string[]
   clock: number
   events: RawEvent[]
   row: AgentInstanceRow
@@ -92,8 +96,8 @@ type HarnessState = {
 }
 
 /** An in-memory agent, ledger and destination; `events`, `clock` and the reply change between runs. */
-function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[] }) {
-  const state: HarnessState = { clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
+function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: DeliveryBlock }) {
+  const state: HarnessState = { destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
   const replies = [...(input.replies ?? ["NO_REPLY"])]
   let allowedCalls = 0
   const deps: AgentWakeDeps = {
@@ -131,9 +135,11 @@ function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Pa
       state.row = { ...state.row, ...changes, leaseOwner: "lease-1" }
       return true
     },
+    destinationBlock: async () => input.blocked ?? null,
     deliver: async (call) => {
       state.delivered.push(call.text)
-      return { ok: true, selfChannel: { connectionId: call.destination.connectionId, channel: "U0SELF" } }
+      state.destinations.push(call.destination.kind)
+      return { ok: true }
     },
   }
   return { state, deps, run: () => wakeAgent(state.row, deps) }
@@ -162,7 +168,7 @@ describe("waking a member's agent", () => {
     const h = harness({ replies: [reply, reply] })
     assert.deepEqual(await h.run(), { status: "ran", reasons: ["scheduled"], reply: "message", delivered: "sent" })
     assert.deepEqual(h.state.delivered, ["Northwind is waiting on the renewal proposal (since 9:10 AM)."])
-    assert.deepEqual(h.state.row.overrides?.selfChannel, { connectionId: slackConnectionId, channel: "U0SELF" }, "the member's own DM is learned once")
+    assert.deepEqual(h.state.destinations, ["workbot_dm"], "the organization's default is a DM from Workbot")
     h.state.clock = NOW + 3 * 3_600_000
     assert.deepEqual(await h.run(), { status: "ran", reasons: ["scheduled"], reply: "message", delivered: "nothing_new" })
     assert.equal(h.state.delivered.length, 1)
@@ -176,7 +182,8 @@ describe("waking a member's agent", () => {
     const outcome = await h.run()
     assert.deepEqual(outcome, { status: "ran", reasons: ["calendar"], reply: "message", delivered: "sent" })
     assert.match(h.state.turns[1]?.prompt ?? "", /Woken early by the calendar/)
-    assert.match(h.state.turns[1]?.prompt ?? "", /"Quarterly review" moved to tomorrow at 3:00 PM .*ref evt1:2026-10-20T17:47:00Z/)
+    assert.match(h.state.turns[1]?.prompt ?? "", /A meeting \(calendar event evt1\) moved to tomorrow at 3:00 PM .*ref evt1:2026-10-20T17:47:00Z/)
+    assert.doesNotMatch(h.state.turns[1]?.prompt ?? "", /Quarterly review|Northwind/, "invite text never reaches the prompt")
     h.state.clock = NOW + 10 * 60_000
     assert.deepEqual(await h.run(), { status: "skipped", reason: "nothing_due" }, "one event wakes it once")
   })
@@ -215,6 +222,21 @@ describe("waking a member's agent", () => {
       assert.deepEqual(await h.run(), { status: "skipped", reason })
       assert.equal(h.state.turns.length, 0, reason)
     }
+  })
+
+  test("without the Slack app or a linked Slack account, no turn runs and the reason is recorded", async () => {
+    for (const blocked of ["slack_app_not_installed", "member_not_linked", "connection_unavailable"] as const) {
+      const h = harness({ blocked })
+      assert.deepEqual(await h.run(), { status: "skipped", reason: blocked })
+      assert.equal(h.state.turns.length, 0, blocked)
+      assert.equal(h.state.row.nextWakeAt.getTime(), NOW + 3_600_000)
+    }
+  })
+
+  test("a channel the member chose gets their messages instead of the Workbot DM", async () => {
+    const h = harness({ row: { overrides: { destination: { kind: "slack_channel", connectionId: slackConnectionId, channel: "C0ALERTS" } } }, replies: [message("A thread is waiting.", [{ responsibility: "waiting_on_you", ref: "t1" }])] })
+    await h.run()
+    assert.deepEqual(h.state.destinations, ["slack_channel"])
   })
 
   test("a kill switch between deciding and delivering wins", async () => {
@@ -286,42 +308,71 @@ describe("the turn on the runner", () => {
   })
 })
 
-describe("delivery through Connect", () => {
+describe("delivery", () => {
   const connectionRow: DestinationConnection = { id: slackConnectionId, credentialMode: "per_member", authType: "oauth", oauthIssuerReviewRequiredAt: null, url: "https://mcp.slack.com/mcp" }
-  function deps(selfChannel: string | null) {
-    const sent: { channel: string; text: string }[] = []
-    let selfLookups = 0
+  function deps(dm: Awaited<ReturnType<DeliveryDeps["workbotDm"]>> = { ok: true, channelId: "D1", messageTs: "1.1" }) {
+    const sent: { kind: string; channel?: string; text: string }[] = []
     const value: DeliveryDeps = {
-      connection: async () => connectionRow,
-      selfChannel: async () => {
-        selfLookups += 1
-        return selfChannel
+      workbotTarget: async () => (dm.ok ? { ok: true, connectionId: slackConnectionId, slackUserId: "U1" } : { ok: false, reason: dm.reason === "slack_error" ? "member_not_linked" : dm.reason }),
+      workbotDm: async (call) => {
+        sent.push({ kind: "workbot_dm", text: call.text })
+        return dm
       },
-      send: async (call) => {
-        sent.push({ channel: call.channel, text: call.text })
+      connection: async () => connectionRow,
+      sendAsMember: async (call) => {
+        sent.push({ kind: "slack_channel", channel: call.channel, text: call.text })
         return true
       },
     }
-    return { value, sent, lookups: () => selfLookups }
+    return { value, sent }
   }
-  const base = { organizationId, memberId, userId, text: "Quarterly review moved." }
+  const base = { organizationId, userId, text: "Quarterly review moved." }
 
-  test("sends to the member's own DM, learned once, or to the channel they chose", async () => {
-    const own = deps("U0SELF")
-    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { connectionId: slackConnectionId }, knownSelf: null }, own.value), { ok: true, selfChannel: { connectionId: slackConnectionId, channel: "U0SELF" } })
-    await deliverAgentMessage({ ...base, destination: { connectionId: slackConnectionId }, knownSelf: { connectionId: slackConnectionId, channel: "U0SELF" } }, own.value)
-    assert.equal(own.lookups(), 1)
-    const channel = deps(null)
-    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { connectionId: slackConnectionId, channel: "C0ALERTS" }, knownSelf: null }, channel.value), { ok: true, selfChannel: null })
-    assert.deepEqual(channel.sent, [{ channel: "C0ALERTS", text: "Quarterly review moved." }])
+  test("a Workbot DM by default, or the channel the member chose, posted as them", async () => {
+    const dm = deps()
+    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { kind: "workbot_dm" } }, dm.value), { ok: true })
+    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { kind: "slack_channel", connectionId: slackConnectionId, channel: "C0ALERTS" } }, dm.value), { ok: true })
+    assert.deepEqual(dm.sent, [{ kind: "workbot_dm", text: "Quarterly review moved." }, { kind: "slack_channel", channel: "C0ALERTS", text: "Quarterly review moved." }])
   })
 
-  test("an unresolvable DM or a connection that is not Slack sends nothing", async () => {
-    const unresolved = deps(null)
-    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { connectionId: slackConnectionId }, knownSelf: null }, unresolved.value), { ok: false, code: "destination_unresolved" })
-    const notSlack: DeliveryDeps = { ...unresolved.value, connection: async () => ({ ...connectionRow, url: "https://mcp.example.com/mcp" }) }
-    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { connectionId: slackConnectionId }, knownSelf: null }, notSlack), { ok: false, code: "destination_unavailable" })
-    assert.equal(unresolved.sent.length, 0)
+  test("no Slack app, no linked account or a connection that is not Slack: nothing is sent, and the reason says which", async () => {
+    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { kind: "workbot_dm" } }, deps({ ok: false, reason: "slack_app_not_installed" }).value), { ok: false, code: "slack_app_not_installed" })
+    assert.equal(await destinationBlock({ organizationId, userId, destination: { kind: "workbot_dm" } }, deps({ ok: false, reason: "member_not_linked" }).value), "member_not_linked")
+    const notSlack: DeliveryDeps = { ...deps().value, connection: async () => ({ ...connectionRow, url: "https://mcp.example.com/mcp" }) }
+    assert.deepEqual(await deliverAgentMessage({ ...base, destination: { kind: "slack_channel", connectionId: slackConnectionId, channel: "C0ALERTS" } }, notSlack), { ok: false, code: "connection_unavailable" })
+  })
+})
+
+describe("sendWorkbotDirectMessage", () => {
+  function slackDeps(input: { installed?: boolean; linked?: boolean; fail?: string } = {}) {
+    const calls: { token: string; method: string; body: Record<string, unknown> }[] = []
+    const deps: WorkbotDirectMessageDeps = {
+      installations: async () => (input.installed === false ? [] : [{ connectionId: slackConnectionId, teamId: "T1" }]),
+      linkedSlackUser: async () => (input.linked === false ? null : "U0MEMBER"),
+      botToken: async () => "xoxb-bot",
+      slack: (token) => async (method, body) => {
+        calls.push({ token, method, body })
+        if (input.fail && method === "chat.postMessage") throw new SlackApiError(input.fail)
+        return method === "conversations.open" ? { ok: true, channel: { id: "D0DM" } } : { ok: true, ts: "1700000000.0001" }
+      },
+    }
+    return { deps, calls }
+  }
+  const message = { organizationId, userId, text: "Quarterly review moved to 3 PM." }
+
+  test("opens the DM with the member as the app's bot and posts there, even if they never wrote to it", async () => {
+    const slack = slackDeps()
+    assert.deepEqual(await sendWorkbotDirectMessage(message, slack.deps), { ok: true, channelId: "D0DM", messageTs: "1700000000.0001" })
+    assert.deepEqual(slack.calls.map((call) => [call.token, call.method]), [["xoxb-bot", "conversations.open"], ["xoxb-bot", "chat.postMessage"]])
+    assert.deepEqual(slack.calls[0]?.body, { users: "U0MEMBER" })
+    assert.deepEqual(slack.calls[1]?.body, { channel: "D0DM", text: "Quarterly review moved to 3 PM.", unfurl_links: false, unfurl_media: false })
+  })
+
+  test("answers with a reason instead of throwing", async () => {
+    assert.deepEqual(await sendWorkbotDirectMessage(message, slackDeps({ installed: false }).deps), { ok: false, reason: "slack_app_not_installed" })
+    assert.deepEqual(await sendWorkbotDirectMessage(message, slackDeps({ linked: false }).deps), { ok: false, reason: "member_not_linked" })
+    assert.deepEqual(await sendWorkbotDirectMessage(message, slackDeps({ fail: "messages_tab_disabled" }).deps), { ok: false, reason: "slack_error", code: "messages_tab_disabled" })
+    assert.deepEqual(await sendWorkbotDirectMessage({ ...message, userId: "not-a-user" }, slackDeps().deps), { ok: false, reason: "member_not_linked" })
   })
 })
 
@@ -330,9 +381,9 @@ describe("members' plain-language controls and the template", () => {
     const change = policy.memberChoiceChange({ snooze: "tomorrow", mute: ["calendar_changes", "waiting_on_you"], unmute: ["waiting_on_you"] }, null, settingsOn, NOW, TZ)
     assert.equal(change.snoozedUntil?.toISOString(), "2026-10-21T12:00:00.000Z")
     assert.deepEqual(change.overrides?.muted, ["calendar_changes"])
-    const moved = policy.memberChoiceChange({ destination: { connectionId: slackConnectionId, channel: "C0ALERTS" } }, { overrides: { selfChannel: { connectionId: slackConnectionId, channel: "U0SELF" } } }, settingsOn, NOW, TZ)
-    assert.deepEqual(moved.overrides?.destination, { connectionId: slackConnectionId, channel: "C0ALERTS" })
-    assert.equal(moved.overrides?.selfChannel, null)
+    const moved = policy.memberChoiceChange({ destination: { kind: "slack_channel", connectionId: slackConnectionId, channel: "C0ALERTS" } }, { overrides: { muted: ["morning_brief"] } }, settingsOn, NOW, TZ)
+    assert.deepEqual(moved.overrides, { muted: ["morning_brief"], destination: { kind: "slack_channel", connectionId: slackConnectionId, channel: "C0ALERTS" } })
+    assert.deepEqual(policy.memberDestination(null, settingsOn), { destination: { kind: "workbot_dm" }, chosenBy: "organization" }, "an organization default is never a channel")
     assert.deepEqual(policy.memberChoiceChange({ on: false }, null, settingsOn, NOW, TZ), { status: "off" })
   })
 
@@ -357,11 +408,11 @@ describe("members' plain-language controls and the template", () => {
 describe("organization policy", () => {
   test("missing or broken fields read as defaults, field by field, and invalid hours are refused", () => {
     assert.deepEqual(readWorkbotProactiveSettings(null), DEFAULT_WORKBOT_PROACTIVE_SETTINGS)
-    const stored = readWorkbotProactiveSettings({ workbot: { model: "m", proactive: { enabled: true, dailyCap: 99, startHour: 20, endHour: 9, destination: { connectionId: "emc_x" } } } })
+    const stored = readWorkbotProactiveSettings({ workbot: { model: "m", proactive: { enabled: true, dailyCap: 99, startHour: 20, endHour: 9, destination: { connectionId: "emc_x", channel: "C0SHARED" } } } })
     assert.equal(stored.enabled, true)
     assert.equal(stored.dailyCap, DEFAULT_WORKBOT_PROACTIVE_SETTINGS.dailyCap)
     assert.deepEqual([stored.startHour, stored.endHour], [8, 19])
-    assert.deepEqual(stored.destination, { connectionId: "emc_x" })
+    assert.equal(stored.destination, "workbot_dm", "a stored channel default reads as the Workbot DM default")
     assert.equal(mergeWorkbotProactiveSettings(DEFAULT_WORKBOT_PROACTIVE_SETTINGS, { startHour: 18, endHour: 9 }), null)
     const merged = mergeWorkbotProactiveSettings(DEFAULT_WORKBOT_PROACTIVE_SETTINGS, { enabled: true, instructions: "kept out of policy" })
     assert.ok(merged && !("instructions" in merged))

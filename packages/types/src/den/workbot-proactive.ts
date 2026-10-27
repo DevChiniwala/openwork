@@ -6,8 +6,8 @@ import { z } from "zod"
  *
  * Three kinds of settings, kept apart on purpose:
  * - Organization policy (Den › Manage › Workbot), in the organization's metadata under `workbot.proactive`: on/off,
- *   working hours, the daily limit, whether members start opted in, and the default destination. Den enforces these
- *   in code after every turn.
+ *   working hours, the daily limit, whether members start opted in, and the default destination (a Workbot DM). Den
+ *   enforces these in code after every turn.
  * - The template: what the agent is responsible for and short organization instructions. A versioned agent config
  *   object; each admin save is a new version.
  * - Each member's own choices: on/off, snooze, muted responsibilities and their destination.
@@ -33,11 +33,20 @@ const leadMinutesSchema = z.number().int().refine((value) => WORKBOT_PROACTIVE_L
   message: "Choose 5, 10, 15, 30 or 60 minutes.",
 })
 
-/** Where messages go: a Connect connection (Slack, today) and a target. Without a channel: each person's own DM. */
-export const agentDestinationSchema = z.object({
-  connectionId: z.string().trim().min(1).max(128),
-  channel: z.string().trim().regex(/^[A-Z0-9]{2,32}$/, "Use a Slack conversation id, like C0123ABCD.").nullable().optional(),
-})
+/**
+ * Where a member's messages go.
+ * - `workbot_dm`: a DM from the Workbot Slack app's own bot, which notifies like any DM. The default.
+ * - `slack_channel`: posted as the member, through their Slack connection in Connect, to a channel they chose. Only a
+ *   member can choose this for themselves: an organization default never sends members' summaries to a channel.
+ */
+export const agentDestinationSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("workbot_dm") }),
+  z.object({
+    kind: z.literal("slack_channel"),
+    connectionId: z.string().trim().min(1).max(128),
+    channel: z.string().trim().regex(/^[CG][A-Z0-9]{2,31}$/, "Use a Slack channel id, like C0123ABCD."),
+  }),
+])
 export type AgentDestination = z.infer<typeof agentDestinationSchema>
 
 const workbotProactiveFieldsSchema = z.object({
@@ -53,8 +62,8 @@ const workbotProactiveFieldsSchema = z.object({
   dailyCap: z.number().int().min(1).max(10),
   /** `opted_in`: members get messages and can turn them off. `opted_out`: members turn them on. */
   membersStart: z.enum(["opted_in", "opted_out"]),
-  /** Where members' messages go unless they choose otherwise. Null: nowhere yet. */
-  destination: agentDestinationSchema.nullable(),
+  /** Where members' messages go unless they choose otherwise: a Workbot DM, or nowhere yet. Never a channel. */
+  destination: z.enum(["workbot_dm"]).nullable(),
 })
 
 const hoursInOrder = (value: { startHour: number; endHour: number }) => value.endHour > value.startHour
@@ -71,7 +80,7 @@ export const DEFAULT_WORKBOT_PROACTIVE_SETTINGS: WorkbotProactiveSettings = {
   endHour: 19,
   dailyCap: 3,
   membersStart: "opted_in",
-  destination: null,
+  destination: "workbot_dm",
 }
 
 /** The template's editable content: what the agent is responsible for, and short organization instructions. */
@@ -114,8 +123,8 @@ export const workbotProactiveViewSchema = z.object({
     /** 1 for the built-in default; each admin save adds one. */
     version: z.number().int().min(1),
   }),
-  /** Slack connections in Connect that can deliver messages. */
-  destinations: z.array(z.object({ connectionId: z.string(), name: z.string() })),
+  /** The Workbot Slack app is installed and on, so Workbot can DM members. */
+  slackReady: z.boolean(),
   /** The deployment's headless runner is configured; the agent runs on it. */
   runnerReady: z.boolean(),
 })
@@ -137,8 +146,15 @@ export const memberAgentViewSchema = z.object({
     /** Turned off by the member. */
     muted: z.boolean(),
   })),
-  /** Where messages go, or null when nowhere is set up. */
-  destination: z.object({ connectionId: z.string(), name: z.string(), channel: z.string().nullable(), chosenBy: z.enum(["member", "organization"]) }).nullable(),
+  /** Where messages go, or null when nowhere is set up. `blocked` says why they can't arrive yet. */
+  destination: z.object({
+    kind: z.enum(["workbot_dm", "slack_channel"]),
+    /** "Workbot DM", or the Slack connection's name. */
+    name: z.string(),
+    channel: z.string().nullable(),
+    chosenBy: z.enum(["member", "organization"]),
+    blocked: z.enum(["slack_app_not_installed", "member_not_linked", "connection_unavailable"]).nullable(),
+  }).nullable(),
   workingHours: z.object({ workingDays: z.enum(["weekdays", "everyday"]), startHour: z.number(), endHour: z.number(), dailyCap: z.number() }),
   nextCheckAt: z.string().nullable(),
 })
@@ -152,7 +168,7 @@ export const memberAgentInputSchema = z
     snooze: z.enum(["tomorrow"]).nullable().optional(),
     mute: z.array(agentResponsibilitySchema).max(AGENT_RESPONSIBILITIES.length).optional(),
     unmute: z.array(agentResponsibilitySchema).max(AGENT_RESPONSIBILITIES.length).optional(),
-    /** Null: back to the organization's default. */
+    /** A Workbot DM, or a Slack channel posted as the member. Null: back to the organization's default. */
     destination: agentDestinationSchema.nullable().optional(),
   })
   .strict()

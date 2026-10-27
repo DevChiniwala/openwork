@@ -11,7 +11,7 @@ import { isSlackDestination } from "./deliver.js"
 /**
  * Who has an agent, and where its messages can go. Three switches, all required: the `workbotProactive` feature
  * (with member overrides), Workbot on this deployment (`DEN_WORKBOT_URL`, the same capability that gates Workbot),
- * and the organization's own switch. Messages go to a Connect connection the member has connected (Slack today).
+ * and the organization's own switch. Messages go out as a Workbot DM, or to a Slack channel the member chose.
  */
 
 export async function proactiveAllowed(organizationId: string, userId?: string) {
@@ -32,8 +32,8 @@ export function proactiveRunnerReady(env: Record<string, string | undefined> = p
   return headlessRunnerConfig(env) !== null
 }
 
-/** Slack connections in Connect (Slack's own MCP server, each person signs in) that can deliver messages. */
-export async function listAgentDestinations(organizationId: DenTypeId<"organization">): Promise<{ connectionId: string; name: string }[]> {
+/** Slack connections in Connect (Slack's own MCP server, each person signs in): where a member may post as themselves. */
+export async function listSlackConnections(organizationId: DenTypeId<"organization">): Promise<{ connectionId: string; name: string }[]> {
   const rows = await db.select().from(ExternalMcpConnectionTable).where(eq(ExternalMcpConnectionTable.organizationId, organizationId))
   return rows.filter((row) => isSlackDestination(row)).map((row) => ({ connectionId: row.id, name: row.name }))
 }
