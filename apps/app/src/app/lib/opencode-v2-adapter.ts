@@ -1138,9 +1138,11 @@ export function mapV2SessionError(value: unknown): UnknownError | ApiError {
   const reportedStatus = readNumber(data, "statusCode") ?? readNumber(data, "status");
   const statuses = [readNumber(value, "statusCode"), readNumber(value, "status"), readNumber(data, "status"),
     readNumber(readRecord(value, "response"), "status"), readNumber(readRecord(data, "response"), "status")];
-  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus;
-  const responseBody = readString(data, "responseBody");
-  if (statusCode !== undefined && responseBody !== undefined) {
+  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus ?? statuses.find((status) => status !== undefined);
+  const responseBody = readString(data, "responseBody") ?? readString(value, "responseBody");
+  // A body is optional evidence. Dropping an otherwise explicit HTTP status
+  // makes authentication failures indistinguishable from arbitrary text.
+  if (statusCode !== undefined) {
     const rawHeaders = readRecord(data, "responseHeaders");
     const responseHeaders: Record<string, string> = {};
     for (const [key, header] of Object.entries(rawHeaders ?? {})) {

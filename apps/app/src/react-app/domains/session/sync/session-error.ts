@@ -336,6 +336,9 @@ export function isProviderCredentialRejection(error: unknown): boolean {
   const presentation = presentOpencodeSessionError(error);
   if (presentation.kind !== "provider-credentials" && presentation.kind !== "generic") return false;
   if (presentation.autoAccessWall || presentation.gatewayUsage || presentation.openworkModelsLimit) return false;
+  // Gateway authentication is a client/session problem, not evidence that
+  // the organization's upstream provider rejected its credential.
+  if (/\bOpenWork (?:Gateway|Models) (?:API )?key\b/i.test([fields.message, fields.responseBody].filter(Boolean).join(" "))) return false;
   if (fields.status === 403 || fields.status === 429 || (fields.status !== null && fields.status >= 500)) return false;
   return (fields.name === "APIError" && fields.status === 401)
     || /Provider request failed with HTTP 401\b/i.test(fields.message ?? "")

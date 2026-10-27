@@ -104,6 +104,8 @@ for (const error of [
   { name: "APIError", data: { statusCode: 429, message: "Invalid API key" } },
   { name: "APIError", data: { statusCode: 500, message: "Invalid API key" } },
   { name: "APIError", data: { statusCode: 401, responseBody: '{"error":{"code":"openwork_auth_required"}}' } },
+  { name: "APIError", data: { statusCode: 401, message: "Invalid OpenWork Gateway key.", responseBody: '{"error":{"code":"invalid_api_key"}}' } },
+  { name: "APIError", data: { statusCode: 401, message: "An OpenWork Models key is required." } },
   { name: "APIError", data: { message: "ECONNRESET" } },
   { name: "TimeoutError", data: { message: "Request timed out" } },
   { name: "MessageAbortedError" },
@@ -185,4 +187,17 @@ test("a delayed native start using the old key cannot reject its replacement", (
     __applySessionSyncEventForTest(sync, { type: "session.execution.failed", properties: { sessionID, error: { name: "APIError", data: { statusCode: 401, message: "User not found." } } } });
     expect(health()).toBe("unverified");
   } finally { dispose(); }
+});
+
+test("the native adapter retains a confirmed 401 even when the engine omits the response body", async () => {
+  const { mapV2SessionError } = await import("../src/app/lib/opencode-v2-adapter");
+  for (const raw of [
+    { status: 401, message: "User not found." },
+    { statusCode: 401, data: { message: "User not found." } },
+    { response: { status: 401 }, data: { message: "User not found." } },
+  ]) {
+    const mapped = mapV2SessionError(raw);
+    expect(mapped.name).toBe("APIError");
+    expect(isProviderCredentialRejection(mapped)).toBe(true);
+  }
 });

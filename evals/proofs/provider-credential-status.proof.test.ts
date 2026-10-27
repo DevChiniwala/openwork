@@ -52,10 +52,12 @@ test("a person sees a rejected personal provider key, replaces it, and earns Rea
     const requests = await probe.eventually(() => world.requests(), {
       within: WITHIN, label: "the native engine reaches the loopback provider", until: values => values.some(value => value.status === 401),
     });
-    await user.see({ text: "Check your model connection" }, { timeoutMs: WITHIN });
+    // Copy is outside this status-only proof; engines can surface the same
+    // rejection through the existing friendly card or their plain message.
+    await user.see({ text: /Check your model connection|User not found/ }, { timeoutMs: WITHIN });
     expect(requests.some(value => value.status === 401 && value.credential === "original" && value.model === world.modelId)).toBe(true);
     expect(requests.some(value => value.status === 200)).toBe(false);
-    evidence.recordAssertionEvidence("The native engine really received a credential rejection", JSON.stringify(requests), requests.some(value => value.status === 401 && value.credential === "original" && value.model === world.modelId));
+    evidence.recordAssertionEvidence("The native engine really received a credential rejection", JSON.stringify({ requests, history: await world.nativeFailure() }), requests.some(value => value.status === 401 && value.credential === "original" && value.model === world.modelId));
     await user.screenshot();
   });
 

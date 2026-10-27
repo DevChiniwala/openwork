@@ -91,6 +91,14 @@ export async function providerCredentialStatus(seed: Seed) {
       composerUrl: `${app.webUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/session`,
       // Read-only upstream witnesses; never expose raw Authorization values.
       requests: () => requests.map(request => ({ ...request })),
+      async nativeFailure() {
+        const sessionId = await seed.evalIn(app, () => location.pathname.split("/").at(-1) ?? "");
+        const response = await fetch(`${app.openworkUrl}/workspace/${encodeURIComponent(workspace.workspaceId)}/opencode2/api/session/${encodeURIComponent(sessionId)}/message`, {
+          headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000),
+        });
+        const text = await response.text();
+        return text.replaceAll(rejectedKey, "[synthetic]").replaceAll(replacementKey, "[synthetic]");
+      },
       async [Symbol.asyncDispose]() { await close(upstream); },
     };
   } catch (error) {
