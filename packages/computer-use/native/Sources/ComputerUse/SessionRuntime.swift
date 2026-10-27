@@ -108,7 +108,12 @@ final class SessionRuntime {
             if mode == .control, let current = session {
                 // Initial focus is technical startup, never a human pause/Continue flow.
                 try await takeGap(current)
-                try await takeFront(current)
+                do { try await takeFront(current) }
+                catch let error as UseError where error.code == SharedDesktop.interrupted.code {
+                    // Nothing stays half open: the host opens the session again later.
+                    close()
+                    throw error
+                }
             }
             guard let opened = session, opened.id == id else { throw UseError("session_unavailable", "Access ended while starting. Stop work and wait for a new user request.", next: "human_takeover") }
             return text(["ok": true, "session_id": id, "app_id": identity.bundleID, "app_name": identity.name, "pid": Int(identity.pid),
@@ -647,11 +652,21 @@ final class SessionRuntime {
             try self.checkActive(current, deadline: deadline)
         }, sleep: { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) })
     }
-    /// Brings the selected window to the front, remembering which app had it.
+    /// Brings the selected window to the front, remembering which app had it. A click
+    /// or key of the person's while it comes forward stops whatever was to follow.
     private func takeFront(_ current: Session) async throws {
         handBack.record(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
             target: current.app.pid, own: ProcessInfo.processInfo.processIdentifier, at: ProcessInfo.processInfo.systemUptime)
-        try await focusTarget(current)
+        do {
+            try await SharedDesktop.acquire(now: { ProcessInfo.processInfo.systemUptime },
+                focus: { try await self.focusTarget(current) }, interrupted: { self.personInterrupted(since: $0) })
+        } catch let error as UseError where error.code == SharedDesktop.interrupted.code {
+            // Their input may have landed in the agent's window: the front stays there,
+            // and the read that follows does not take it again.
+            handBack.forget()
+            session?.yielded = true
+            throw error
+        }
     }
     /// Before input: takes a gap in the person's typing, then brings the selected
     /// window back if something else came to the front. Returns whether it refocused.

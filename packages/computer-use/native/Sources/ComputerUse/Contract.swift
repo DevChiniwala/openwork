@@ -318,6 +318,16 @@ enum SharedDesktop {
         try check()
     }
 
+    /// Brings the selected window forward, then stops if the person clicked or typed
+    /// while it came forward: that input may have landed in the agent's window, so
+    /// no control or observation follows.
+    @MainActor static func acquire(now: () -> TimeInterval, focus: () async throws -> Void,
+        interrupted: (TimeInterval) -> Bool) async throws {
+        let baseline = now()
+        try await focus()
+        if interrupted(baseline) { throw SharedDesktop.interrupted }
+    }
+
     /// Brings the selected window back when something else is in front, at most
     /// `refocusLimit` times in one call, so the agent never fights the person for it.
     @MainActor static func returnFocus(used: inout Int, inFront: () -> Bool, focus: () async throws -> Void) async throws -> Bool {
