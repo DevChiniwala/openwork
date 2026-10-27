@@ -275,12 +275,17 @@ final class BoundaryTests: XCTestCase {
         }
         XCTAssertThrowsError(try access.captureDigest(state([record("bad", frame: CGRect(x: 0, y: 0, width: Double.nan, height: 10))])))
         var time: TimeInterval = 100
-        let budget = AXReadBudget(seconds: 0.1, clock: { time })
-        XCTAssertEqual(try budget.timeout(), 0.05, accuracy: 0.0001)
-        time = 100.08
-        XCTAssertEqual(try budget.timeout(), 0.02, accuracy: 0.0001)
-        time = 100.1
-        XCTAssertThrowsError(try budget.timeout())
+        // One accessibility call may use the read's whole remaining time, never more.
+        let budget = AXReadBudget(seconds: 2, clock: { time })
+        XCTAssertEqual(try budget.timeout(), 2, accuracy: 0.0001)
+        time = 101.5
+        XCTAssertEqual(try budget.timeout(), 0.5, accuracy: 0.0001)
+        time = 101.9995
+        XCTAssertThrowsError(try budget.timeout()) { error in
+            XCTAssertEqual((error as? UseError)?.code, "accessibility_timeout")
+        }
+        time = 102
+        XCTAssertThrowsError(try budget.check())
     }
 
     func testHostAppsAndPermissionSurfacesCannotBeControlled() {
