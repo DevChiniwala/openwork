@@ -276,6 +276,68 @@ enum ObservationPreparation {
     }
 }
 
+/// Shares the Mac with the person using it. The agent looks and acts only after
+/// they have left the mouse and keyboard alone for a moment, and it brings its own
+/// window back to the front instead of asking them to hand control back. Only
+/// Take over hands control to the person.
+enum SharedDesktop {
+    static let quiet: TimeInterval = 0.5
+    static let patience: TimeInterval = 10
+    static let refocusLimit = 2
+    static let poll: TimeInterval = 0.05
+
+    /// How long the person has been idle, from the HID system's time since their
+    /// last input. The agent's events go to one process and do not reach the HID
+    /// state; if the latest input lands right after the agent's own post anyway,
+    /// it counts as the agent's.
+    static func personIdle(secondsSinceInput: TimeInterval, buttonDown: Bool, now: TimeInterval, agentPostedAt: TimeInterval?) -> TimeInterval {
+        if buttonDown { return 0 }
+        let input = now - secondsSinceInput
+        if let agentPostedAt, input >= agentPostedAt, input - agentPostedAt < 0.05 { return .infinity }
+        return secondsSinceInput
+    }
+
+    /// Waits until the person has been idle for `quiet`. Returns whether it waited.
+    @MainActor static func waitForPerson(idle: () -> TimeInterval, now: () -> TimeInterval, check: () throws -> Void,
+        waiting: () -> Void, sleep: (TimeInterval) async throws -> Void) async throws -> Bool {
+        let started = now()
+        var waited = false
+        while true {
+            try check()
+            let idleFor = idle()
+            if idleFor >= quiet { return waited }
+            guard now() - started < patience else {
+                throw UseError("person_active", "The person is using the mouse or keyboard, so nothing was sent. Observe again in a few seconds.", next: "observe")
+            }
+            if !waited { waited = true; waiting() }
+            try await sleep(min(max(quiet - idleFor, poll), 0.25))
+        }
+    }
+
+    /// Brings the selected window back when something else is in front, at most
+    /// `refocusLimit` times in one call, so the agent never fights the person for it.
+    @MainActor static func returnFocus(used: inout Int, inFront: () -> Bool, focus: () async throws -> Void) async throws -> Bool {
+        if inFront() { return false }
+        guard used < refocusLimit else { throw contested }
+        used += 1
+        do { try await focus() }
+        catch let error as UseError where error.code == "window_not_frontmost" { throw contested }
+        return true
+    }
+    static let contested = UseError("focus_contested", "Another window keeps coming to the front, so nothing more was sent. Observe again in a few seconds.", next: "observe")
+
+    /// A window in front of the selected one is the person or another app at work,
+    /// not a takeover, so the model looks again instead of waiting for Continue.
+    static func yielding(_ error: UseError) -> UseError {
+        guard error.code == "window_not_frontmost" else { return error }
+        return UseError("focus_lost", "Another window came to the front, so input stopped there. Observe again; the selected window is brought back first.", next: "observe")
+    }
+    static func yielding(_ error: Error) -> Error {
+        guard let use = error as? UseError else { return error }
+        return yielding(use) as UseError
+    }
+}
+
 /// Pointer timing and paths. Apps react to input the way a person produces it:
 /// a press that lasts, a drag that travels and a pause over the drop target.
 enum PointerMotion {

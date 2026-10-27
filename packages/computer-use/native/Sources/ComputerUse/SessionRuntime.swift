@@ -102,6 +102,9 @@ final class SessionRuntime {
             controls.show(app: identity, target: target, mode: mode, purpose: purpose)
             if mode == .control, let current = session {
                 // Initial focus is technical startup, never a human pause/Continue flow.
+                // Let the person pause first; a session that is already open does not
+                // fail over it, since the host may be renewing it before a read.
+                _ = try? await waitForPerson(current)
                 try await focusTarget(current)
             }
             guard let opened = session, opened.id == id else { throw UseError("session_unavailable", "Access ended while starting. Stop work and wait for a new user request.", next: "human_takeover") }
@@ -279,9 +282,11 @@ final class SessionRuntime {
         session?.needsRefresh = true
         controls.update("Refreshing the selected window before continuing…", paused: false)
         var otherWindowFocused = false
-        return try await ObservationPreparation.capture(mode: current.mode, check: {
-            try self.checkActive(current)
-        }, focus: {
+        var returns = 0
+        // Something else in front is the person or another app, not a takeover:
+        // let the person finish, then bring the selected window back.
+        func bringBack() async throws {
+            _ = try await self.waitForPerson(current)
             guard (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) == nil else { return }
             // Another window of this app in front is usually a dialog the last action
             // opened. Raising the target would hide it, or fail behind a modal one;
@@ -290,13 +295,20 @@ final class SessionRuntime {
                 otherWindowFocused = true
                 return
             }
-            try await self.focusTarget(current)
-        }, read: {
+            _ = try await SharedDesktop.returnFocus(used: &returns, inFront: { false }, focus: { try await self.focusTarget(current) })
+        }
+        return try await ObservationPreparation.capture(mode: current.mode, check: {
+            try self.checkActive(current)
+        }, focus: bringBack, read: {
             for attempt in 0..<3 {
                 try self.checkActive(current)
                 do { return try await self.observeAttempt(id, image: image, elements: elements, otherWindowFocused: otherWindowFocused) }
                 catch let error as UseError {
-                    guard error.code == "stale_observation", attempt < 2 else { throw error }
+                    if error.code == "window_not_frontmost", current.mode == .control, attempt < 2 {
+                        try await bringBack()
+                        continue
+                    }
+                    guard error.code == "stale_observation", attempt < 2 else { throw SharedDesktop.yielding(error) }
                     try await Task.sleep(nanoseconds: 75_000_000)
                 }
             }
@@ -427,12 +439,13 @@ final class SessionRuntime {
             session?.receipts.removeValue(forKey: oldest); session?.receiptInputs.removeValue(forKey: oldest)
         }
         guard let observation = current.observation else { throw UseError("observation_required", "Observe this window before acting. Each observation authorizes one act call.", next: "observe") }
-        // The person may be using another app meanwhile; bring the selected window back
-        // before input instead of pausing when they switched away.
-        if current.mode == .control, (try? access.validate(current.target, app: current.app, requireFrontmost: true)) == nil {
-            try await focusTarget(current)
-        }
-        let bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
+        // The person may be using another app meanwhile; once they pause, bring the
+        // selected window back before input instead of pausing when they switched away.
+        var returns = 0
+        var disturbed = try await shareDesktop(current, returns: &returns)
+        let bounds: CGRect
+        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) }
+        catch { throw SharedDesktop.yielding(error) }
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
         if actions.contains(where: \.usesCoordinates), observation.imageDigest == nil {
             throw UseError("image_required", "Coordinates require an observation with an available verified image. Use accessible refs instead.", next: "observe")
@@ -445,7 +458,10 @@ final class SessionRuntime {
         @MainActor func check() throws { try self.checkActive(current, deadline: deadline) }
         @MainActor func checkWindow() throws {
             try check()
-            guard try self.access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) == bounds else {
+            let live: CGRect
+            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) }
+            catch { throw SharedDesktop.yielding(error) }
+            guard live == bounds else {
                 throw UseError("stale_observation", "The window moved during input.", next: "observe")
             }
         }
@@ -465,10 +481,14 @@ final class SessionRuntime {
                 guard !needsObservation, !action.usesCoordinates || !progress.hasInput else {
                     throw UseError("observation_required", "The preceding step may have changed the view or focus. Observe before executing the remaining steps.", next: "observe")
                 }
+                // Between steps, let the person finish and bring the window back if they
+                // switched away. Before any input, the window must still match the
+                // observation; after it, each step re-validates the field or control it uses.
+                if index > 0, try await shareDesktop(current, returns: &returns, deadline: deadline) { disturbed = true }
                 try checkWindow()
                 try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
                 var pointerTarget: AXUIElement?
-                if action.usesCoordinates || (policy == .desktop && index == 0) {
+                if action.usesCoordinates || (policy == .desktop && index == 0) || (disturbed && !progress.hasInput) {
                     let live = try await access.read(current.target, check: check)
                     guard try access.captureDigest(live) == observation.stateDigest else {
                         throw UseError("stale_observation", "The observed window content or focus changed.", next: "observe")
@@ -525,10 +545,10 @@ final class SessionRuntime {
                     try check()
                 }
             } catch let interrupted as InputFailure {
-                failure = interrupted.cause; uncertain = interrupted.mayHaveActed
+                failure = SharedDesktop.yielding(interrupted.cause); uncertain = interrupted.mayHaveActed
                 break
             } catch {
-                failure = (error as? UseError) ?? UseError("action_interrupted", "Input was interrupted. Inspect the receipt; do not repeat it.", next: "human_takeover")
+                failure = (SharedDesktop.yielding(error) as? UseError) ?? UseError("action_interrupted", "Input was interrupted. Inspect the receipt; do not repeat it.", next: "human_takeover")
                 break
             }
         }
@@ -580,6 +600,36 @@ final class SessionRuntime {
         stopWatching()
         input.releaseAll()
         if announce { controls.update(reason, paused: true) }
+    }
+    private static let anyInput = CGEventType(rawValue: ~0)!
+    /// Seconds since the person last used a mouse, trackpad or keyboard. Needs no
+    /// permission beyond the ones computer use already has.
+    private func personIdle() -> TimeInterval {
+        let buttonDown = [CGMouseButton.left, .right, .center].contains { CGEventSource.buttonState(.hidSystemState, button: $0) }
+        return SharedDesktop.personIdle(secondsSinceInput: CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: Self.anyInput),
+            buttonDown: buttonDown, now: ProcessInfo.processInfo.systemUptime, agentPostedAt: input.lastPostedAt)
+    }
+    /// In control mode, waits until the person leaves the mouse and keyboard alone,
+    /// so the agent never takes the window or sends input under their hands.
+    private func waitForPerson(_ current: Session, deadline: TimeInterval? = nil) async throws -> Bool {
+        guard current.mode == .control else { return false }
+        let waited = try await SharedDesktop.waitForPerson(idle: personIdle, now: { self.now }, check: {
+            try self.checkActive(current, deadline: deadline)
+        }, waiting: {
+            self.controls.update("Waiting until you stop using the mouse and keyboard…", paused: false)
+        }, sleep: { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) })
+        if waited { controls.update("Continuing in the selected window…", paused: false) }
+        return waited
+    }
+    /// Before input: waits for the person, then brings the selected window back if
+    /// something else came to the front. Returns whether anything intervened.
+    private func shareDesktop(_ current: Session, returns: inout Int, deadline: TimeInterval? = nil) async throws -> Bool {
+        guard current.mode == .control else { return false }
+        let waited = try await waitForPerson(current, deadline: deadline)
+        let refocused = try await SharedDesktop.returnFocus(used: &returns, inFront: {
+            (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) != nil
+        }, focus: { try await self.focusTarget(current) })
+        return waited || refocused
     }
     private func focusTarget(_ current: Session) async throws {
         guard desktopAvailable else { throw UseError("desktop_unavailable", "The desktop is temporarily unavailable. Observe again when available.", next: "observe") }
