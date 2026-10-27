@@ -60,7 +60,7 @@ test("the browser and background-then-screen nudges are only given when the comp
   assert.equal(workbotInstructions(base).includes("look in your browser"), false)
   assert.ok(workbotInstructions({ ...base, browser: true }).includes("look in your browser"))
   // Background work and showing it on screen are taught only when there is a screen to show it on.
-  for (const rule of ["bring the result on screen", "keep the work open on screen"]) {
+  for (const rule of ["bring the result on screen", "keep the work open on screen", "keep it in this conversation instead"]) {
     assert.equal(workbotInstructions(base).includes(rule), false)
     assert.ok(workbotInstructions({ ...base, browser: true }).includes(rule))
   }

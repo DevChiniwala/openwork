@@ -35,6 +35,11 @@ browser tab) to review or finish together. When the person wants to watch, it
 keeps the work open on screen and changes it there while commands run alongside;
 the screen card keeps its live view while those commands run. Either way it
 says what it is about to change, mentions milestones and shows early previews.
+While it works, the live card offers the other mode in one tap: **Show me** on
+background work, **Carry on without me** on screen work. Either sends a
+follow-up, which Workbot takes up after its current step. Work the person wants
+to watch stays in the conversation rather than a background task, which works
+out of sight.
 
 The main Workbot conversation's existing `hc-…` computer owns both views. The
 viewer does not create a second computer or accept a sandbox/session id from the

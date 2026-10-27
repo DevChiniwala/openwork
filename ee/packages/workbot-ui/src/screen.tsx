@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Pencil } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Monitor, Pencil } from "lucide-react";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
 import { OpenWorkMark } from "./mark";
@@ -1491,7 +1491,7 @@ const UPDATE_HOLD_MS = 1_600;
  * what it is doing, how long), or one quiet line for apps alone ("Using Gmail", then "Used Gmail"). `live` while
  * nothing has been said after it yet, so a card doesn't blink between two commands (DESIGN C3, T1, V6).
  */
-function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) {
+function StepsSegment({ steps, live, onSwitch }: { steps: WorkbotStep[]; live: boolean; /** Asks Workbot to change how it works (show the screen, or carry on in the background); only while it answers. */ onSwitch?: (text: string) => void }) {
   const used = usedApps(steps, null);
   if (used.length === 0) return null;
   const others = used.filter((app) => !app.computer);
@@ -1512,6 +1512,10 @@ function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) 
             steps={steps.filter((step) => step.icon === "computer" && surfaceOf(step) === surface)}
             live={live && (surface === current || surface === screen)}
             others={surface === current ? others : []}
+            switchTo={!live || !onSwitch ? null
+              : surface === screen ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: onSwitch }
+              : surface === "background" && screen === null ? { label: "Show me", text: "Show me what you're doing on screen.", send: onSwitch }
+              : null}
           />
         ))}
       </div>
@@ -1555,7 +1559,8 @@ function openSurface(surface: Exclude<ComputerSurface, "background">) {
  * background (running Blender from the command line) have no screen to watch, so their card never connects one. The
  * browser card links the pages it opened.
  */
-function SurfaceCard({ surface, steps, live, others }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[] }) {
+function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; /** The other way of working, offered while it works: one tap sends it as a follow-up. */ switchTo?: { label: string; text: string; send(text: string): void } | null }) {
+  const [asked, setAsked] = useState(false);
   const updates = steps.flatMap((step) => step.updates);
   const latest = updates.at(-1) ?? null;
   const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
@@ -1578,6 +1583,18 @@ function SurfaceCard({ surface, steps, live, others }: { surface: ComputerSurfac
       footer={
         <>
           {live && watchable && surface !== "background" ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
+          {live && watchable && switchTo && !asked ? (
+            <div className="flex px-2.5 pb-2.5 pt-2" data-workbot-computer-switch>
+              <button
+                type="button"
+                onClick={() => { setAsked(true); switchTo.send(switchTo.text); }}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full bg-[var(--wb-surface)] px-2.5 text-[12px] text-[var(--wb-text)] shadow-[0_0_0_1px_var(--wb-ring)] transition-shadow duration-150 hover:shadow-[0_0_0_1px_var(--wb-disabled)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
+              >
+                {surface === "background" ? <Monitor size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" /> : null}
+                {switchTo.label}
+              </button>
+            </div>
+          ) : null}
           {watchable && pages.length > 0 ? <BrowserPageLinks pages={pages} /> : null}
         </>
       }
@@ -1733,6 +1750,8 @@ function TurnView(props: {
   // One computer, so only the newest reply that used its screen offers to open it, already while it works. Commands run
   // in the background leave nothing on the screen to open.
   const onScreen = (step: WorkbotStep) => step.icon === "computer" && !step.background;
+  // While it answers, the person can ask it to show its work on screen or carry on without them.
+  const switchMode = answering && props.canChange ? props.onSuggestion : undefined;
   const usedComputer = props.latest && ((startingStep !== null && onScreen(startingStep)) || parts.some((part) => part.kind === "steps" && part.steps.some(onScreen)));
   return (
     <>
@@ -1752,10 +1771,10 @@ function TurnView(props: {
               <StreamingText text={item.text} instant={!(props.newestText && index === lastText && watched.current)} />
             </AssistantBubble>
           ) : (
-            <StepsSegment key={item.key} steps={item.steps} live={item.live} />
+            <StepsSegment key={item.key} steps={item.steps} live={item.live} onSwitch={startingStep ? undefined : switchMode} />
           ),
         )}
-        {startingStep ? <StepsSegment steps={[startingStep]} live /> : null}
+        {startingStep ? <StepsSegment steps={[startingStep]} live onSwitch={switchMode} /> : null}
         {slot ? <WaitingSlot>{runningApps ? <StepsSegment steps={runningApps.steps} live /> : dots ? <TypingDots /> : null}</WaitingSlot> : null}
       </div>
       <DocumentOffers links={offers} />
