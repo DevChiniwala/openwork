@@ -621,6 +621,7 @@ export function createEngineV2Preview(options: {
   env?: Pick<EnvService, "list" | "onChange">;
   deferStart?: boolean;
   hostReadRequest?: (path: string, init?: RequestInit) => Promise<unknown>;
+  resolveNativeAffordanceCodeMode?: () => Promise<boolean>;
   providerSession?: () => CloudProviderDenSession | null;
   /** Fresh Den resolution on every child start, independent of the cloud sync timer. */
   resolveLiveProviderSync?: () => Promise<boolean>;
@@ -1046,7 +1047,9 @@ export function createEngineV2Preview(options: {
     // skills now use the same metadata/on-demand Connect path as v1.
     await rm(join(rootDir, "cloud-skills"), { recursive: true, force: true });
     const opencodeModelsUrl = await resolveOpencodeModelsUrl();
-    contextBridge = options.hostReadRequest ? await createV2ContextBridge(options.hostReadRequest, connection) : undefined;
+    contextBridge = options.hostReadRequest ? await createV2ContextBridge(options.hostReadRequest, connection, {
+      nativeAffordanceCodeMode: options.resolveNativeAffordanceCodeMode,
+    }) : undefined;
     providerSessionBridge = options.providerSession ? await createV2ProviderSessionBridge(() =>
       ownsGateway() ? options.providerSession?.() ?? null : null) : undefined;
     const globalSkills = globalSkillDirectories();

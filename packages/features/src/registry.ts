@@ -95,6 +95,17 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  nativeAffordanceCodeMode: {
+    label: "OpenWork commands in Code Mode",
+    description: "Let assistants compose OpenWork queries and sidebar commands in Code Mode using the same checked app actions.",
+    category: "experience",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/development/native-affordance-codemode.md",
+    deployments: everywhere,
+    default: false,
+  },
   libraryConnectorNavigation: {
     label: "Library: connected items and skill previews",
     description: "Open assigned connectors in My Library from Manage and expand skills in plugins and My Library.",

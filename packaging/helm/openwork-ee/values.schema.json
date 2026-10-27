@@ -61,6 +61,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "nativeAffordanceCodeMode": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "OpenWork commands in Code Mode: Let assistants compose OpenWork queries and sidebar commands in Code Mode using the same checked app actions. Renders DEN_FEATURE_NATIVE_AFFORDANCE_CODE_MODE."
+            },
             "libraryConnectorNavigation": {
               "enum": [
                 "",

@@ -60,7 +60,7 @@ export interface ManagedOpencodeV2ServerOptions {
   port?: number;
   env?: Record<string, string>;
   bootTimeoutMs?: number;
-  contextTools?: { url: string; token: string; browser?: { url: string; token: string } };
+  contextTools?: { url: string; token: string; codeMode?: boolean; browser?: { url: string; token: string } };
   /** Session capability travels once over an inherited pipe, never environment or config. */
   providerSession?: { url: string; token: string; enabled: () => boolean };
   permissions?: () => Promise<EnginePermissionRule[]>;
@@ -229,7 +229,7 @@ export function renderOpencodeV2Config(input: {
   /** Applies Settings › Show model reasoning to each agent request. */
   visibleReasoningPluginDirectory?: string;
   contextPluginDirectory?: string;
-  contextTools?: { url: string; token: string; browser?: { url: string; token: string } };
+  contextTools?: { url: string; token: string; codeMode?: boolean; browser?: { url: string; token: string } };
   agentPermissionRules?: AgentPermissionRule[];
   organizationMcp?: OrganizationMcpServers;
   agentPermissionsPluginDirectory?: string;
