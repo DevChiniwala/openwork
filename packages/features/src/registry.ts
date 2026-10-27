@@ -284,6 +284,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  automationIntervalSchedules: {
+    label: "Automations: every few hours",
+    description: "Members and their agents can schedule an Automation to run every few hours, for example every 3 hours between 9:00 and 18:00 on weekdays, instead of once a day or once a week.",
+    category: "automations",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/automation-interval-schedules/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   computerUse: {
     label: "Computer use",
     description: "Let agents use Mac apps or a managed cloud desktop with a live view and Take over and Stop controls. While enabled, requested apps and windows open directly without additional OpenWork approval prompts. GUI access is experimental and is not sandboxed by structured-tool permission rules.",
