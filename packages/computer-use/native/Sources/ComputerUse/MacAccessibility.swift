@@ -218,11 +218,14 @@ struct AXReadBudget {
     init(seconds: TimeInterval = 0.35, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.clock = clock; deadline = clock() + seconds
     }
+    /// Each call may use whatever time the read has left. A fixed per-call cap made
+    /// one slow answer fail as `cannotComplete`, which stops a fail-closed read and
+    /// withholds its screenshot even when the read had time to spare.
     func timeout() throws -> Float {
         try Task.checkCancellation()
         let remaining = deadline - clock()
         guard remaining >= 0.001 else { throw UseError("accessibility_timeout", "The bounded accessibility read did not finish. Observe again or take over.", next: "observe") }
-        return Float(min(0.05, remaining))
+        return Float(remaining)
     }
     func check() throws { _ = try timeout() }
 }
