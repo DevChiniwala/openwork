@@ -683,7 +683,8 @@ test("chats on different computers no longer block each other", async (t) => {
   const f = fixture({ remote: true, authority: async () => true }); t.after(() => f.control.reset(true));
   await f.control.setFeatureEnabled(true);
   await f.control.setRemoteEnabled(true);
-  await f.control.choose({ sessionId: "chat-vm", targetId: "vm" });
+  // A new chat's default computer depends on the platform; choose each one.
+  for (const [sessionId, targetId] of [["chat-mac", "local"], ["chat-vm", "vm"], ["chat-other", "local"]]) await f.control.choose({ sessionId, targetId });
   assert.equal(payload(await f.control.execute({ sessionId: "chat-mac", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).ok, true);
   assert.equal(payload(await f.control.execute({ sessionId: "chat-vm", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).ok, true);
   assert.equal(payload(await f.control.execute({ sessionId: "chat-other", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).code, "computer_busy",
