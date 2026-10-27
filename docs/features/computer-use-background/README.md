@@ -16,8 +16,15 @@ Agents also read the window's accessibility tree first. An observation skips
 the screenshot when the tree names at least eight controls to act on, and the
 agent asks for an image (`include_image: true`) when it needs coordinates.
 
-Blender and Unity read only real pointer input, so sessions in those apps keep
-the current behavior and come to the front, taking turns with other chats.
+Some apps and steps still need the front, and get it the way they did before
+(the window comes forward, then is handed back):
+
+- whole sessions in Blender, Unity, Unreal, games, and apps built with Qt,
+  wxWidgets or Tk, which read only real pointer input;
+- single steps in any app: menu shortcuts (⌘ keys), clicks with modifier
+  keys, hover, drags, and typing in Chromium, Electron and Catalyst apps.
+  When such a step needs the window brought forward and uses coordinates,
+  nothing is sent and the agent is asked to look again.
 
 ## How it works
 
@@ -25,22 +32,27 @@ the current behavior and come to the front, taking turns with other chats.
   (`computerSetBackgroundEnabled`). New sessions on This Mac start the helper
   with background delivery; turning it off hands idle sessions back and the
   next call reopens them in the foreground.
-- The helper decides per session (`InputDelivery`): background for control
-  sessions, foreground for canvas apps or when the private calls below are
-  missing on that macOS. The open result and every action receipt carry
-  `delivery`.
-- Background input makes the window its app's key window without raising it
-  (WindowServer event records through `SLPSPostEventRecordTo`, never
-  `SLPSSetFrontProcessWithOptions`), posts pointer events to the app's process
-  (`SLEventPostToPid` for Chromium, Electron and Catalyst apps, `postToPid` for
-  others), posts keys to the app's process, and primes Chromium's user-gesture
-  check with a press outside every window before a click.
-- Keys are sent only when the target window is the app's key window and the
-  observed field still has focus; otherwise nothing is typed
-  (`background_keys_unavailable`).
-- Background sessions skip the per-computer turn queue, the focus lock and the
+- The helper decides per session (`InputDelivery.decide`): background for
+  control sessions, foreground for the apps above or when the private calls
+  below are missing on that macOS. Background sessions launch apps without
+  activating them. Per step, `InputDelivery.stepNeedsFront` picks the steps
+  that take the front anyway. The open result carries the session's
+  `delivery`; every action receipt carries the step's.
+- Background input never raises the window or activates the app, and never
+  sends the person's front app anything. Before a click it sends the app one
+  WindowServer focus record for the window (`SLPSPostEventRecordTo`); before
+  keys it also sends the make-key pair and reads the app's focused window back.
+  Pointer events go to the app's process (`SLEventPostToPid` for Chromium,
+  Electron and Catalyst apps, `postToPid` for others), with a discarded press
+  outside every window first for Chromium's user-gesture check. Hit tests ask
+  the app, not the screen, what is under the point.
+- Keys are sent only when the app reports the target window as focused and the
+  observed field still has focus. If the app never focuses it, nothing is typed
+  (`background_keys_unavailable`) and the session's later steps take the front.
+- Background steps skip the per-computer turn queue, the focus lock and the
   typing-gap wait. The person's own clicks and typing stop a background step
-  only when they are in the agent's app.
+  only when they are in the agent's app. Steps that take the front use the
+  existing shared-desktop path and the cross-process focus lock.
 
 ## How to try it
 

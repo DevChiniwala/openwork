@@ -26,7 +26,8 @@ final class SessionRuntime {
         let app: AppIdentity
         let target: WindowTarget
         let mode: AccessMode
-        let delivery: InputDelivery
+        /// Background until the app shows it needs the front for keys.
+        var delivery: InputDelivery
         /// Control input that brings the window to the front first.
         var takesFront: Bool { mode == .control && delivery == .foreground }
         var started: TimeInterval
@@ -84,13 +85,20 @@ final class SessionRuntime {
             guard let mode = AccessMode(rawValue: try a.string("mode")) else { throw UseError("invalid_arguments", "mode must be observe, assist, or control.") }
             let purpose = try a.string("purpose", max: 500)
             try access.requirePermissions()
-            let identity = try await AppIdentity.open(appID, pid: pid)
+            // Decided before launch, so a background session never activates the app.
+            let installed = NSRunningApplication.runningApplications(withBundleIdentifier: appID).first?.bundleURL
+                ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: appID)
+            let frameworks = installed.map { (try? FileManager.default.contentsOfDirectory(atPath: $0.appendingPathComponent("Contents/Frameworks").path)) ?? [] } ?? []
+            let delivery = InputDelivery.decide(enabled: backgroundDelivery, available: BackgroundFocus.available, mode: mode, bundleID: appID,
+                info: installed.flatMap { Bundle(url: $0)?.infoDictionary } ?? [:], frameworks: frameworks)
+            let background = delivery == .background
+            let identity = try await AppIdentity.open(appID, pid: pid, activates: !background)
             var windows = try await access.windows(identity)
             if windows.isEmpty {
                 // Reopen a running app's normal window through Launch Services.
                 // Resolve the opened app before reading or dispatching input.
                 if let url = identity.app.bundleURL {
-                    let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = true
+                    let configuration = NSWorkspace.OpenConfiguration(); configuration.activates = !background
                     _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
                     windows = try await access.windows(identity)
                 }
@@ -98,7 +106,7 @@ final class SessionRuntime {
             guard !windows.isEmpty else { throw UseError("window_unavailable", "The app opened, but did not expose a usable window. Check for a sign-in or app dialog, then request a session again.", next: "human_takeover") }
             try Task.checkCancellation()
             let requested = values["window_id"] == nil ? nil : try a.integer("window_id", min: 1, max: Int(UInt32.max))
-            let focusedID = access.focusedWindowID(identity, windows: windows)
+            let focusedID = access.focusedWindowID(identity, windows: windows, requireActive: !background)
             let targetID = try WindowSelection.resolve(ids: windows.map { Int($0.id) }, requested: requested, focused: focusedID,
                 descriptions: windows.map { "\($0.id): \($0.title)" })
             guard let target = windows.first(where: { Int($0.id) == targetID }) else { throw UseError("window_unavailable", "The resolved window closed.", next: "open_session") }
@@ -106,14 +114,10 @@ final class SessionRuntime {
             _ = try access.validate(target, app: identity)
             let reservation = try ControlLease(pid: identity.pid, window: target.id)
             let id = UUID().uuidString.lowercased()
-            let delivery = InputDelivery.decide(enabled: backgroundDelivery, available: BackgroundFocus.available, mode: mode, bundleID: identity.bundleID)
             session = Session(id: id, app: identity, target: target, mode: mode, delivery: delivery, started: now, lastUsed: now, purpose: purpose)
             lease = reservation
             controls.show(app: identity, target: target, mode: mode, purpose: purpose)
-            if delivery == .background {
-                // Ready for keys ahead of time; each action makes the window key again.
-                try? await BackgroundFocus.makeKey(pid: identity.pid, window: target.id)
-            } else if mode == .control, let current = session {
+            if mode == .control, !background, let current = session {
                 // Initial focus is technical startup, never a human pause/Continue flow.
                 let focus = try await FocusLease.acquire(check: { try self.checkActive(current) })
                 defer { focus.release() }
@@ -303,7 +307,10 @@ final class SessionRuntime {
         // Background reads the window where it is: capture works behind other windows.
         let focus = current.takesFront ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focus?.release() }
-        var otherWindowFocused = false
+        // In the background, another focused window of the app is the same signal as
+        // another window in front: usually a dialog the last action opened.
+        var otherWindowFocused = current.mode == .control && current.delivery == .background
+            && access.focusesAnotherWindow(than: current.target, app: current.app)
         var returns = 0
         // Something else in front is the person or another app, not a takeover:
         // bring the selected window back for this read; it is handed back after.
@@ -473,26 +480,32 @@ final class SessionRuntime {
         }
         guard let observation = current.observation else { throw UseError("observation_required", "Observe this window before acting. Each observation authorizes one act call.", next: "observe") }
         let desktopBefore = DesktopState.now()
+        // In the background the person keeps the front, unless a step in this batch
+        // only works while the app is active or follows the real pointer.
+        let route = input.route(for: current.app)
+        let inBackground = current.mode == .control && current.delivery == .background
+        let front = current.takesFront || inBackground && actions.contains { InputDelivery.stepNeedsFront($0, route: route) }
+        let background = inBackground && !front
         // Held through the settle wait, so no other agent's window comes forward mid-batch.
-        let focusLease = current.takesFront ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
+        let focusLease = front ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focusLease?.release() }
         // The person may be using another app meanwhile; bring the selected window back
         // for this step instead of pausing when they switched away. A click or key of
         // theirs from here on stops the step and leaves the computer to them.
-        try await takeGap(current)
+        try await takeGap(current, front: front)
         let moment = ProcessInfo.processInfo.systemUptime
         var returns = 0
-        var disturbed = try await shareDesktop(current, returns: &returns, since: moment)
+        var disturbed = try await shareDesktop(current, returns: &returns, since: moment, front: front)
+        // The observation showed the window behind other work; coordinates need a fresh look.
+        if inBackground, front, disturbed, actions.contains(where: \.usesCoordinates) {
+            throw UseError("observation_required", "This step needs the app in front, so its window was brought forward. Observe again, then repeat the step; nothing was sent.", next: "observe")
+        }
         let bounds: CGRect
-        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.takesFront) }
+        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: front) }
         catch { throw SharedDesktop.yielding(error) }
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
         if actions.contains(where: \.usesCoordinates), observation.imageDigest == nil {
             throw UseError("image_required", "Coordinates require an observation with an image. Use accessible refs, or observe with include_image true.", next: "observe")
-        }
-        // Background: the window takes keys and clicks where it is, behind other windows.
-        if current.delivery == .background, actions.contains(where: { $0.name != "wait" }) {
-            try await BackgroundFocus.makeKey(pid: current.app.pid, window: current.target.id)
         }
         session?.observation = nil; session?.focus = nil; session?.lastUsed = now
         if let intent { controls.narrate(intent) }
@@ -503,7 +516,7 @@ final class SessionRuntime {
         @MainActor func checkWindow() throws {
             try check()
             let live: CGRect
-            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: current.takesFront) }
+            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: front) }
             catch { throw SharedDesktop.yielding(error) }
             guard live == bounds else {
                 throw UseError("stale_observation", "The window moved during input.", next: "observe")
@@ -514,7 +527,7 @@ final class SessionRuntime {
             guard current.mode == .control, self.personInterrupted(since: moment) else { return }
             // In the background the person's input goes to their own front app; it
             // stops the step only once they are working in the agent's app.
-            if current.takesFront || NSWorkspace.shared.frontmostApplication?.processIdentifier == current.app.pid {
+            if front || NSWorkspace.shared.frontmostApplication?.processIdentifier == current.app.pid {
                 throw SharedDesktop.interrupted
             }
         }
@@ -525,6 +538,8 @@ final class SessionRuntime {
         defer { activity?.stop() }
         let windowsBefore = access.windowChanges(current.app)
         var focus = current.focus
+        var activated = false
+        var primed = false
         var needsObservation = false
         var failure: UseError?
         var uncertain = false
@@ -537,7 +552,7 @@ final class SessionRuntime {
                 // Between steps, bring the window back if something else came to the front.
                 // Before any input, the window must still match the observation; after it,
                 // each step re-validates the field or control it uses.
-                if index > 0, try await shareDesktop(current, returns: &returns, since: moment, deadline: deadline) { disturbed = true }
+                if index > 0, try await shareDesktop(current, returns: &returns, since: moment, deadline: deadline, front: front) { disturbed = true }
                 try checkWindow()
                 try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
                 var pointerTarget: AXUIElement?
@@ -548,7 +563,7 @@ final class SessionRuntime {
                     }
                     if action.usesCoordinates {
                         let captured = try await observationImage(current, bounds: bounds, state: live,
-                            requireFrontmost: current.takesFront, check: check)
+                            requireFrontmost: front, check: check)
                         guard access.imageDigest(captured.0) == observation.imageDigest else {
                             throw UseError("stale_observation", "The window image changed. Observe before coordinate input.", next: "observe")
                         }
@@ -558,7 +573,7 @@ final class SessionRuntime {
                         case .drag(let points): point = points[0]
                         default: throw UseError("invalid_arguments", "This action has no coordinates.")
                         }
-                        pointerTarget = try access.checkHit(observation.screenPoint(point), target: current.target, app: current.app)
+                        pointerTarget = try access.checkHit(observation.screenPoint(point), target: current.target, app: current.app, background: background)
                     }
                 }
                 if !progress.hasInput, let focus {
@@ -567,17 +582,32 @@ final class SessionRuntime {
                     default: break
                     }
                 }
-                // Keys go to the app's key window; never type into another window of it.
-                if current.delivery == .background, action.name == "key" || action.name == "type",
-                   !access.isFocusedWindow(current.target, app: current.app) {
-                    throw UseError("background_keys_unavailable", "This window could not take keys in the background, so nothing was typed. Observe again; if it keeps happening the app needs the front.", next: "observe")
+                if background, case .click = action, !activated {
+                    // A background click lands like one in an inactive window unless the app
+                    // treats the window as active first: one focus record, to the app only.
+                    activated = BackgroundFocus.post(pid: current.app.pid, window: current.target.id, makeKey: false)
+                    if activated { try await Task.sleep(nanoseconds: UInt64(BackgroundFocus.settle * 1_000_000_000)) }
+                }
+                if background, action.name == "key" || action.name == "type", !primed {
+                    // Keys go to the app's own key window: make it the selected one inside the
+                    // app and read it back. Never type into another window of the app.
+                    do {
+                        try await BackgroundFocus.primeKeys(routes: { self.access.isFocusedWindow(current.target, app: current.app) },
+                            post: { BackgroundFocus.post(pid: current.app.pid, window: current.target.id, makeKey: true) }, now: { self.now },
+                            check: check, sleep: { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) })
+                    } catch let error as UseError where error.code == BackgroundFocus.keysUnavailable.code {
+                        // This app needs the front for keys: its later steps take it.
+                        session?.delivery = .foreground
+                        throw error
+                    }
+                    primed = true
                 }
                 try check()
                 try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
                 session?.actionCount += 1
                 let path = try await input.execute(action, app: current.app, target: current.target, lease: observation,
                     access: access, records: current.records, focus: focus, pointerTarget: pointerTarget,
-                    check: checkInput, checkWindow: checkWindow, background: current.delivery == .background, feedback: { [weak self] feedback in
+                    check: checkInput, checkWindow: checkWindow, background: background, feedback: { [weak self] feedback in
                         guard let self, self.session?.id == id else { return }
                         self.controls.inputFeedback(feedback)
                     })
@@ -635,7 +665,7 @@ final class SessionRuntime {
         if settled != nil, let changes = windowsBefore.diff(access.windowChanges(current.app), target: current.target.id) {
             receipt["window_changes"] = changes
         }
-        receipt["delivery"] = current.delivery.rawValue
+        receipt["delivery"] = (background ? InputDelivery.background : .foreground).rawValue
         receipt["desktop"] = desktopBefore.changes(to: DesktopState.now())
         if session?.id == id { session?.receipts[requestID] = receipt }
         return text(receipt)
@@ -684,8 +714,8 @@ final class SessionRuntime {
         [CGMouseButton.left, .right, .center].contains { CGEventSource.buttonState(.hidSystemState, button: $0) }
     }
     /// In foreground control, takes the next gap in the person's typing or a held button.
-    private func takeGap(_ current: Session, deadline: TimeInterval? = nil) async throws {
-        guard current.takesFront else { return }
+    private func takeGap(_ current: Session, deadline: TimeInterval? = nil, front: Bool? = nil) async throws {
+        guard front ?? current.takesFront else { return }
         try await SharedDesktop.takeGap(busy: {
             SharedDesktop.personBusy(keyAt: self.lastPersonInput(.keyDown), buttonDown: self.personHoldsButton(),
                 now: ProcessInfo.processInfo.systemUptime)
@@ -712,10 +742,10 @@ final class SessionRuntime {
     /// Before input: takes a gap in the person's typing, then brings the selected
     /// window back if something else came to the front. Returns whether it refocused.
     /// A click or key since the step began (`since`) leaves the front with the person.
-    private func shareDesktop(_ current: Session, returns: inout Int, since step: TimeInterval, deadline: TimeInterval? = nil) async throws -> Bool {
-        guard current.takesFront else { return false }
+    private func shareDesktop(_ current: Session, returns: inout Int, since step: TimeInterval, deadline: TimeInterval? = nil, front: Bool? = nil) async throws -> Bool {
+        guard front ?? current.takesFront else { return false }
         session?.yielded = false
-        try await takeGap(current, deadline: deadline)
+        try await takeGap(current, deadline: deadline, front: true)
         do {
             return try await SharedDesktop.returnFocus(used: &returns, inFront: {
                 (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) != nil
@@ -784,8 +814,8 @@ final class SessionRuntime {
                 }
             }) : nil
             defer { focus?.release() }
-            if current.delivery == .background { try await BackgroundFocus.makeKey(pid: current.app.pid, window: current.target.id) }
-            else { try await focusTarget(current) }
+            // A background session stays behind the person's work; each step readies its window.
+            if current.delivery != .background { try await focusTarget(current) }
             guard session?.id == current.id, session?.generation == current.generation else { return }
             _ = try access.validate(current.target, app: current.app, requireFrontmost: current.takesFront)
             expire(); guard session != nil else { return }
