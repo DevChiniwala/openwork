@@ -48,6 +48,8 @@ export interface HeadlessWebLaunchOptions {
   rotateTokens?: boolean;
   env?: NodeJS.ProcessEnv;
   browserHostSuffix?: string;
+  /** Run the server on OpenCode v2 alone; no v1 engine process is started. */
+  v2Only?: boolean;
 }
 
 export interface HeadlessWebHandle {
@@ -158,6 +160,25 @@ async function probe(url: string): Promise<ProbeResult> {
 
 async function probeOk(url: string): Promise<boolean> {
   return (await probe(url)).ok;
+}
+
+/** A v2-only server answers /health before its engine runs, so also wait for the engine. */
+async function probeServer(manifest: HeadlessRuntimeManifest, v2Only: boolean): Promise<ProbeResult> {
+  const health = await probe(manifest.healthUrl);
+  if (!health.ok || !v2Only) return health;
+  try {
+    const response = await fetch(new URL("/experimental/engine-v2-preview/status", manifest.openworkUrl), {
+      headers: { Authorization: `Bearer ${manifest.token}` },
+      signal: AbortSignal.timeout(1_500),
+    });
+    if (!response.ok) return { ok: false, detail: `${health.detail}; v2 engine status answered ${response.status}` };
+    const status: unknown = await response.json();
+    if (isRecord(status) && status.running === true) return health;
+    const error = isRecord(status) && typeof status.lastError === "string" ? `: ${status.lastError}` : " yet";
+    return { ok: false, detail: `${health.detail}; v2 engine not running${error}` };
+  } catch (error) {
+    return { ok: false, detail: `${health.detail}; v2 engine status ${probeFailure(error)}` };
+  }
 }
 
 async function probeStack(manifest: HeadlessRuntimeManifest): Promise<boolean> {
@@ -645,12 +666,13 @@ function hostLoad(): string {
 async function waitForHealthy(
   manifest: HeadlessRuntimeManifest,
   processes: { server: ChildProcess; web: ChildProcess },
+  v2Only: boolean,
 ): Promise<void> {
   const deadline = Date.now() + HEALTH_TIMEOUT_MS;
   let server: ProbeResult = { ok: false, detail: "not probed" };
   let web: ProbeResult = { ok: false, detail: "not probed" };
   while (Date.now() < deadline) {
-    [server, web] = await Promise.all([probe(manifest.healthUrl), probe(manifest.webUrl)]);
+    [server, web] = await Promise.all([probeServer(manifest, v2Only), probe(manifest.webUrl)]);
     if (server.ok && web.ok) return;
     await delay(500);
   }
@@ -867,7 +889,9 @@ export async function launchHeadlessWeb(options: HeadlessWebLaunchOptions): Prom
     OPENWORK_TOKEN: resolvedTokens.token,
     OPENWORK_HOST_TOKEN: resolvedTokens.hostToken,
     OPENWORK_SERVER_CONFIG: serverConfigPath,
-    OPENWORK_MANAGE_OPENCODE: "1",
+    ...(options.v2Only
+      ? { OPENWORK_MANAGE_OPENCODE: "0", OPENWORK_ENGINE_V2_PREVIEW: "1" }
+      : { OPENWORK_MANAGE_OPENCODE: "1" }),
     OPENWORK_OPENCODE_BIN: env.OPENWORK_OPENCODE_BIN ?? "opencode",
   };
   const pnpmExecPath = env.npm_execpath?.trim();
@@ -927,7 +951,7 @@ export async function launchHeadlessWeb(options: HeadlessWebLaunchOptions): Prom
       waitForSpawn(serverProcess, "openwork-server"),
     ]);
     await writeRuntimeManifest(manifest);
-    await waitForHealthy(manifest, { server: serverProcess, web: webProcess });
+    await waitForHealthy(manifest, { server: serverProcess, web: webProcess }, options.v2Only === true);
     const supervised = await ensureRuntimeSupervisor(manifest, repoRoot, env);
     manifest = supervised.manifest;
     acquiredManifest = manifest;

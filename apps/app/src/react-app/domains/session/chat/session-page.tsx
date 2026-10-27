@@ -488,8 +488,8 @@ export function SessionPage(props: SessionPageProps) {
   const filesRailActive = panelRailActive && activePanelTab?.type !== "browser";
   const showCloudSignIn = shellConfig.cloudSignin && !denAuth.isSignedIn && denAuth.status !== "checking";
   const cloudSignIn = useCloudSignIn();
-  // The browser opens on Den's sign-up tab (label stays "Sign in"); with
-  // `desktopSignInReturn` this conversation stays on screen and sign-in returns to it.
+  // The browser opens on Den's sign-up tab (label stays "Sign in").
+  // This conversation stays on screen and sign-in returns to it.
   const openCloudSignIn = useCallback(() => {
     cloudSignIn({ workspaceId: props.selectedWorkspaceId, sessionId: props.selectedSessionId });
   }, [cloudSignIn, props.selectedSessionId, props.selectedWorkspaceId]);

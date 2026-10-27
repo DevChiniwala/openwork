@@ -132,8 +132,6 @@ export type LocalProvider =
   | { id: string; status: "skipped"; reason: EngineV2SkippedProviderReason };
 
 export interface LocalProviderOptions {
-  /** Translate v1 Provider.Info and report every provider that is skipped. Off keeps the older pass-through. */
-  normalize: boolean;
   /** The organization's provider rule; providers it refuses are never read from the engine or mirrored. */
   allows?: ((providerId: string) => boolean) | null;
 }
@@ -148,7 +146,7 @@ export async function resolveLocalProviders(
   config: EngineV1Connection,
   auth: LocalProviderAuth,
   configured: Record<string, unknown>,
-  options: LocalProviderOptions,
+  options: LocalProviderOptions = {},
 ): Promise<LocalProvider[]> {
   const local = (id: string) => !(id in configured) && !ORGANIZATION_PROVIDER_ID.test(id);
   const ids = [...new Set([...auth.apiKeys.keys(), ...auth.signIns])].filter(local).sort((left, right) => left.localeCompare(right));
@@ -157,7 +155,7 @@ export async function resolveLocalProviders(
   for (const id of ids) {
     if (options.allows && !options.allows(id)) resolved.push({ id, status: "skipped", reason: "policy" });
     else if (!auth.apiKeys.has(id)) {
-      if (options.normalize) resolved.push({ id, status: "skipped", reason: "oauth" });
+      resolved.push({ id, status: "skipped", reason: "oauth" });
     } else wanted.push(id);
   }
   if (!wanted.length || !config.opencodeBaseUrl) return resolved;
@@ -172,10 +170,6 @@ export async function resolveLocalProviders(
   for (const id of wanted) {
     const apiKey = auth.apiKeys.get(id) ?? "";
     const entry = catalog.get(id);
-    if (!options.normalize) {
-      if (entry) resolved.push({ id, status: "ready", definition: entry, apiKey });
-      continue;
-    }
     const normalized = normalizeLocalProviderDefinition(entry);
     resolved.push("definition" in normalized
       ? { id, status: "ready", definition: normalized.definition, apiKey }
@@ -189,7 +183,7 @@ export async function localProviderDefinitions(
   config: EngineV1Connection,
   auth: LocalProviderAuth,
   configured: Record<string, unknown>,
-  options: LocalProviderOptions,
+  options: LocalProviderOptions = {},
 ): Promise<{ providers: Record<string, unknown>; skipped: EngineV2SkippedProvider[] }> {
   const resolved = await resolveLocalProviders(config, auth, configured, options);
   return {

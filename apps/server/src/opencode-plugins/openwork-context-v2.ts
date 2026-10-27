@@ -21,7 +21,7 @@ type Tool = {
 };
 type Context = CloudSkillContext & {
   location?: { directory?: string };
-  options: { url: string; token: string; browser?: { url: string; token: string } };
+  options: { url: string; token: string; codeMode?: boolean; browser?: { url: string; token: string } };
   tool: { transform(callback: (editor: { add(tool: Tool): void }) => void): Promise<{ dispose(): Promise<void> }> };
 };
 
@@ -60,12 +60,13 @@ export default {
             type: "object", properties: { id: { type: "string" }, args: { type: "object", additionalProperties: true } },
             required: ["id"], additionalProperties: false,
           },
-          options: { codemode: false },
+          options: { codemode: context.options.codeMode === true },
           async execute(input, call) {
+            call.signal.throwIfAborted();
             const response = await fetch(context.options.url, {
               method: "POST", redirect: "error", signal: call.signal,
               headers: { Authorization: `Bearer ${context.options.token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ name, input, sessionId: call.sessionID }),
+              body: JSON.stringify({ name, input, sessionId: call.sessionID, ...(context.options.codeMode === true ? { codeMode: true } : {}) }),
             });
             if (!response.ok) throw new Error(`OpenWork ${name === "openwork_execute" ? "command" : "read"} failed (${response.status})`);
             return { content: [{ type: "text", text: await response.text() }] };

@@ -64,16 +64,8 @@ const auth = (apiKeys: Record<string, string>, signIns: string[] = []): LocalPro
   signIns: new Set(signIns),
 });
 
-test("before: the real v1.18.30 OpenRouter entry passed through unchanged maps to nothing", async () => {
-  const local = await localProviderDefinitions(connection(), auth({ openrouter: KEY }), {}, { normalize: false });
-  const mapped = mapRuntimeProvidersToV2Specs(local.providers, new Map(), new Map([["openrouter", KEY]]));
-
-  assert.deepEqual(mapped.specs, []);
-  assert.deepEqual(mapped.skippedProviderIds, ["openrouter"]);
-});
-
-test("after: the real v1.18.30 OpenRouter entry becomes one v2 provider with its models", async () => {
-  const local = await localProviderDefinitions(connection(), auth({ openrouter: KEY }), {}, { normalize: true });
+test("without a rollout or sign-in, the real v1.18.30 OpenRouter entry becomes one v2 provider with its models", async () => {
+  const local = await localProviderDefinitions(connection(), auth({ openrouter: KEY }), {});
   const mapped = mapRuntimeProvidersToV2Specs(local.providers, new Map(), new Map([["openrouter", KEY]]));
 
   assert.deepEqual(local.skipped, []);
@@ -117,7 +109,7 @@ test("after: the real v1.18.30 OpenRouter entry becomes one v2 provider with its
 test("an organization that allows only its own providers mirrors none of the keys added on this computer", async () => {
   const allows = organizationProviderGate({ allowCustomProviders: false });
   const reads = providerReads;
-  const local = await localProviderDefinitions(connection(), auth({ openrouter: KEY, anthropic: "sk-ant-local" }, ["openai"]), {}, { normalize: true, allows });
+  const local = await localProviderDefinitions(connection(), auth({ openrouter: KEY, anthropic: "sk-ant-local" }, ["openai"]), {}, { allows });
 
   assert.deepEqual(local.providers, {});
   assert.deepEqual(local.skipped, [
@@ -145,25 +137,16 @@ test("the organization rule matches the providers v1 keeps in enabled_providers"
 });
 
 test("a ChatGPT-style sign-in is reported as skipped instead of disappearing", async () => {
-  const local = await localProviderDefinitions(connection(), auth({}, ["openai"]), {}, { normalize: true });
+  const local = await localProviderDefinitions(connection(), auth({}, ["openai"]), {});
 
   assert.deepEqual(local.providers, {});
   assert.deepEqual(local.skipped, [{ id: "openai", reason: "oauth" }]);
   assert.ok(!JSON.stringify(local).includes("opencode-oauth-dummy-key"));
 });
 
-test("with the rollout off a sign-in keeps today's behavior, but the organization rule still applies", async () => {
-  const off = await localProviderDefinitions(connection(), auth({}, ["openai"]), {}, { normalize: false });
-  assert.deepEqual(off, { providers: {}, skipped: [] });
-
-  const allows = organizationProviderGate({ allowCustomProviders: false });
-  const blocked = await localProviderDefinitions(connection(), auth({ openrouter: KEY }), {}, { normalize: false, allows });
-  assert.deepEqual(blocked, { providers: {}, skipped: [{ id: "openrouter", reason: "policy" }] });
-});
-
 test("providers without a usable v2 description are skipped with a reason", async () => {
   const keys = { google: "google-local", "github-copilot": "copilot-local", "not-in-catalog": "missing-local", anthropic: "sk-ant-local" };
-  const local = await localProviderDefinitions(connection(), auth(keys), {}, { normalize: true });
+  const local = await localProviderDefinitions(connection(), auth(keys), {});
   const mapped = mapRuntimeProvidersToV2Specs(local.providers, new Map(), new Map(Object.entries(keys)));
 
   // Mixed adapters in one provider, and a provider v1 does not describe.
@@ -178,7 +161,7 @@ test("providers without a usable v2 description are skipped with a reason", asyn
 
 test("organization providers and configured providers are never read from the v1 catalog", async () => {
   const reads = providerReads;
-  const local = await localProviderDefinitions(connection(), auth({ lpr_team: "managed", openwork: "managed", openrouter: KEY }), { openrouter: {} }, { normalize: true });
+  const local = await localProviderDefinitions(connection(), auth({ lpr_team: "managed", openwork: "managed", openrouter: KEY }), { openrouter: {} });
 
   assert.deepEqual(local, { providers: {}, skipped: [] });
   assert.equal(providerReads, reads);
@@ -217,6 +200,13 @@ test("a catalog endpoint off the adapter's own origin is not trusted", () => {
   assert.deepEqual(mapped.skippedProviders, [{ id: "openrouter", reason: "unsupported" }]);
 });
 
+test("local metadata reads retain engine authentication and propagate failures without credentials", async () => {
+  await assert.rejects(
+    localProviderDefinitions({ ...connection(), opencodePassword: "incorrect-secret" }, auth({ openrouter: KEY }), {}),
+    { message: "Could not read locally connected provider metadata" },
+  );
+});
+
 test("auth.json API keys and sign-ins are told apart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openwork-local-auth-"));
   try {
@@ -232,6 +222,8 @@ test("auth.json API keys and sign-ins are told apart", async () => {
     assert.deepEqual([...read.apiKeys], [["openrouter", KEY]]);
     assert.deepEqual([...read.signIns].sort(), ["enterprise", "openai"]);
     assert.deepEqual(await readLocalProviderAuth(join(directory, "missing.json")), { apiKeys: new Map(), signIns: new Set() });
+    await writeFile(path, `invalid-json-${KEY}`);
+    await assert.rejects(readLocalProviderAuth(path), { message: "Could not read local provider credentials" });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

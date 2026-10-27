@@ -339,6 +339,14 @@ export class Store {
       { version: 2, name: "session-storage", up: storageSchema },
       // Session cells: owner directory, owner-scoped memory, forwarding rows, splits (cells-store.ts).
       { version: 3, name: "session-cells", up: migrateCells },
+      // When each conversation's computer is due to pause (see setComputerPause).
+      { version: 4, name: "computer-pauses", up: (db) => db.exec(`
+        CREATE TABLE IF NOT EXISTS computer_pauses (
+          session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+          due_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS computer_pauses_by_due ON computer_pauses (due_at);
+      `) },
     ])
   }
 
@@ -1035,6 +1043,32 @@ export class Store {
       this.db.prepare("DELETE FROM step_schedule WHERE session_id = ? AND message_id = ?").run(sessionId, messageId)
       this.db.prepare("DELETE FROM step_checkpoints WHERE session_id = ? AND message_id = ?").run(sessionId, messageId)
     })
+  }
+
+  /**
+   * When the conversation's computer should pause if it is still idle. Kept here rather than in a timer, so a runner
+   * that restarts (or a cell whose isolate is recycled) still pauses it: the host's background job reads it.
+   */
+  setComputerPause(sessionId: string, dueAt: number) {
+    this.db
+      .prepare("INSERT INTO computer_pauses (session_id, due_at) SELECT id, ? FROM sessions WHERE id = ? ON CONFLICT (session_id) DO UPDATE SET due_at = excluded.due_at")
+      .run(dueAt, sessionId)
+  }
+
+  clearComputerPause(sessionId: string) {
+    this.db.prepare("DELETE FROM computer_pauses WHERE session_id = ?").run(sessionId)
+  }
+
+  dueComputerPauses(now: number): string[] {
+    return this.db
+      .prepare("SELECT session_id FROM computer_pauses WHERE due_at <= ? ORDER BY due_at")
+      .all(now)
+      .map((row) => z.object({ session_id: z.string() }).parse(row).session_id)
+  }
+
+  nextComputerPauseAt(): number | null {
+    const row = z.object({ due_at: z.number().nullable() }).parse(this.db.prepare("SELECT MIN(due_at) AS due_at FROM computer_pauses").get())
+    return row.due_at
   }
 
   /** Step-mode turns whose next step is due, oldest first. */

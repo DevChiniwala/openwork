@@ -285,8 +285,8 @@ export function withFreeInferenceDefaultPinned(metadata: Record<string, unknown>
 }
 
 export function managedModelCatalog(): ManagedModelRecommendation[] {
-  return [{ modelID: INFERENCE_FREE_MODEL_ID, displayName: "Auto", providerName: "OpenWork",
-    summary: "Free automatic model", recommended: true, rank: 1, capabilities: ["tools"] }];
+  return [{ modelID: INFERENCE_FREE_MODEL_ID, displayName: "OpenWork Free", providerName: "OpenWork",
+    summary: "Free model with a usage limit", recommended: true, rank: 1, capabilities: ["tools"] }];
 }
 
 /**

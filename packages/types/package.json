@@ -303,6 +303,14 @@
       "development": "./src/den/workbot-settings.ts",
       "default": "./src/den/workbot-settings.ts"
     },
+    "./den/workbot-proactive": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/workbot-proactive.d.ts",
+        "default": "./src/den/workbot-proactive.ts"
+      },
+      "development": "./src/den/workbot-proactive.ts",
+      "default": "./src/den/workbot-proactive.ts"
+    },
     "./den/default-model": {
       "types": {
         "openwork-build": "./dist/types/src/den/default-model.d.ts",
@@ -310,6 +318,16 @@
       },
       "development": "./src/den/default-model.ts",
       "default": "./src/den/default-model.ts"
+    },
+    "./den/auto-router": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/auto-router.d.ts",
+        "default": "./src/den/auto-router.ts"
+      },
+      "development": "./src/den/auto-router.ts",
+      "bun": "./src/den/auto-router.ts",
+      "browser": "./src/den/auto-router.ts",
+      "default": "./dist/den/auto-router.js"
     },
     "./den/prompts": {
       "types": {
