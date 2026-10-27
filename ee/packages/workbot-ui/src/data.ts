@@ -706,6 +706,35 @@ export async function uploadWorkbotMemberFile(file: File, onProgress: (loaded: n
   });
 }
 
+const uploadApprovalSchema = z.object({ id: z.string(), host: z.string(), files: z.array(z.object({ path: z.string(), name: z.string() })) });
+export type WorkbotUploadApproval = z.infer<typeof uploadApprovalSchema>;
+
+/** Uploads from My files this chat's agent asked to make, waiting for the person. `version` reads them again. */
+export function useWorkbotUploadApprovals(enabled: boolean, version: string) {
+  const chat = useWorkbotChat();
+  return useQuery({
+    queryKey: ["workbot", "uploads", chat ?? "main", version],
+    enabled,
+    queryFn: async () => {
+      const { response, payload } = await requestJson(inChat("/v1/workbot/uploads", chat), { method: "GET" }, 15_000);
+      if (!response.ok) throw new Error(getErrorMessage(payload, "Couldn't check uploads."));
+      return z.object({ approvals: z.array(uploadApprovalSchema) }).parse(payload).approvals;
+    },
+  });
+}
+
+export function useDecideWorkbotUpload() {
+  const queryClient = useQueryClient();
+  const chat = useWorkbotChat();
+  return useMutation({
+    mutationFn: async (input: { id: string; decision: "approve" | "decline" }) => {
+      const { response, payload } = await requestJson(inChat(`/v1/workbot/uploads/${input.id}`, chat), { method: "POST", body: JSON.stringify({ decision: input.decision }) }, 15_000);
+      if (!response.ok) throw new Error(getErrorMessage(payload, "Couldn't record your answer."));
+    },
+    onSettled: async () => queryClient.invalidateQueries({ queryKey: ["workbot", "uploads"] }),
+  });
+}
+
 export async function downloadWorkbotFile(file: { id: string; name: string }, chat: string | null) {
   const url = await fetchWorkbotFileUrl(file.id, chat);
   const link = document.createElement("a");

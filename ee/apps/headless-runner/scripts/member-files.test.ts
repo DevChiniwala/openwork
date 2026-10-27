@@ -28,6 +28,7 @@ import { Runner } from "../src/runner.js"
 import { SavedFiles } from "../src/saved-files.js"
 import { Store } from "../src/store.js"
 import type { Message, ToolCall } from "../src/types.js"
+import { pendingUploadApprovals, uploadApprovalsFor } from "../src/upload-approvals.js"
 import { memoryBlobs } from "./storage-fixture.js"
 
 const token = "test-token-0123456789-0123456789-0123456789"
@@ -292,4 +293,33 @@ test("a chat in its own cell reads and writes its owner's files through the owne
   })
   assert.equal(forged.status, 400)
   for (const entry of stores.values()) entry.store.close()
+})
+
+test("an upload waits for the person's approval of those files for that site, which only the caller can give", async () => {
+  using w = world()
+  let clock = 1_000_000
+  const session = w.store.createSession({ owner, memberFiles: true })
+  const approvals = uploadApprovalsFor(w.store.db, session.id, "msg_1", () => clock)
+  assert.deepEqual(await approvals.approvedHosts(["/files/Downloads/a.csv"]), [])
+  const id = await approvals.request(["/files/Downloads/a.csv"], "expenses.example.test")
+  assert.equal(await approvals.request(["/files/Downloads/a.csv"], "expenses.example.test"), id, "the same ask isn't repeated")
+  const app = w.app(w.runnerWith(scripted([])))
+  const call = (path: string, init: RequestInit = {}) => app.fetch(new Request(`http://runner${path}`, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } }))
+  const pending = z.object({ approvals: z.array(z.object({ id: z.string(), paths: z.array(z.string()), host: z.string(), messageId: z.string().nullable() })) }).parse(await (await call(`/v1/sessions/${session.id}/upload-approvals`)).json())
+  assert.deepEqual(pending.approvals, [{ id, paths: ["/files/Downloads/a.csv"], host: "expenses.example.test", messageId: "msg_1" }])
+  assert.equal((await call(`/v1/sessions/${session.id}/upload-approvals/ua_unknown`, { method: "POST", body: JSON.stringify({ decision: "approve" }) })).status, 404)
+  assert.equal((await call(`/v1/sessions/${session.id}/upload-approvals/${id}`, { method: "POST", body: JSON.stringify({ decision: "approve", host: "evil.example.test" }) })).status, 400)
+  assert.equal((await call(`/v1/sessions/${session.id}/upload-approvals/${id}`, { method: "POST", body: JSON.stringify({ decision: "approve" }) })).status, 200)
+  // Approved: for those files (or fewer of them) and that site only, for a while.
+  clock = Date.now()
+  const now = uploadApprovalsFor(w.store.db, session.id, "msg_2")
+  assert.deepEqual(await now.approvedHosts(["/files/Downloads/a.csv"]), ["expenses.example.test"])
+  assert.deepEqual(await now.approvedHosts(["/files/Downloads/a.csv", "/files/Uploads/b.pdf"]), [])
+  const later = uploadApprovalsFor(w.store.db, session.id, "msg_3", () => Date.now() + 16 * 60_000)
+  assert.deepEqual(await later.approvedHosts(["/files/Downloads/a.csv"]), [], "an approval runs out")
+  // Declined asks aren't pending, and nothing was approved by them.
+  const declined = await now.request(["/files/Uploads/b.pdf"], "expenses.example.test")
+  assert.equal((await call(`/v1/sessions/${session.id}/upload-approvals/${declined}`, { method: "POST", body: JSON.stringify({ decision: "decline" }) })).status, 200)
+  assert.deepEqual(await now.approvedHosts(["/files/Uploads/b.pdf"]), [])
+  assert.deepEqual(pendingUploadApprovals(w.store.db, session.id), [])
 })

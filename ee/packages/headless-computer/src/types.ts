@@ -44,8 +44,19 @@ export interface ComputerMemberFiles {
   write(path: string, bytes: Uint8Array<ArrayBuffer>, input: { kind: "browser"; ifVersion: null; url?: string | null }): Promise<MemberFileWrite>
 }
 
+/**
+ * The person's approvals for uploading files from My files to a site. A page can prompt-inject the agent, so nothing is
+ * uploaded until the person approved those files for that site; the computer only reads approvals and asks for them.
+ */
+export interface UploadApprovals {
+  /** Sites (`host`) the person approved for all of these `/files` paths, while the approval holds. */
+  approvedHosts(paths: string[]): Promise<string[]>
+  /** Asks the person (through the caller) to approve these files for this site; returns the ask's id. */
+  request(paths: string[], host: string): Promise<string>
+}
+
 /** What one desktop call may use beyond the conversation; null My files turns the browser's Downloads back. */
-export type ComputerCallContext = { memberFiles: ComputerMemberFiles | null }
+export type ComputerCallContext = { memberFiles: ComputerMemberFiles | null; uploads?: UploadApprovals }
 
 /**
  * Turns a file into what the model can see: an image or PDF as model input, text as text, or a note. `counts`

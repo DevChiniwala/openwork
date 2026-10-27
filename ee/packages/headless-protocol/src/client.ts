@@ -232,6 +232,9 @@ const memberFilesListSchema = z.object({
   usage: z.object({ bytes: z.number(), files: z.number(), maxBytes: z.number(), maxFileBytes: z.number() }),
 })
 export type RunnerMemberFiles = z.infer<typeof memberFilesListSchema>
+/** An upload from My files the agent asked to make, waiting for the person's answer. */
+export const runnerUploadApprovalSchema = z.object({ id: z.string().regex(/^ua_[a-f0-9]{32}$/), paths: z.array(z.string()), host: z.string(), messageId: z.string().nullable(), createdAt: z.number() })
+export type RunnerUploadApproval = z.infer<typeof runnerUploadApprovalSchema>
 
 export type RunnerResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string }
 
@@ -715,6 +718,20 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
         return null
       }
       return response
+    },
+
+    /** Uploads the agent asked to make in this conversation, waiting for the person's answer (oldest first). */
+    async listUploadApprovals(sessionId: string): Promise<RunnerResult<RunnerUploadApproval[]>> {
+      const { status, payload } = await request(deps, "GET", `${sessionPath(sessionId)}/upload-approvals`)
+      const parsed = z.object({ approvals: z.array(runnerUploadApprovalSchema) }).safeParse(payload)
+      if (status !== 200 || !parsed.success) return { ok: false, status, error: errorCode(payload, `headless_upload_approvals_${status}`) }
+      return { ok: true, value: parsed.data.approvals }
+    },
+
+    /** The person's answer to one of them; false when it isn't pending (anymore). */
+    async decideUploadApproval(sessionId: string, approvalId: string, decision: "approve" | "decline"): Promise<boolean> {
+      const { status } = await request(deps, "POST", `${sessionPath(sessionId)}/upload-approvals/${encodeURIComponent(approvalId)}`, { decision })
+      return status === 200
     },
 
     async deleteMemberFile(fileId: string): Promise<boolean> {

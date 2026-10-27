@@ -45,6 +45,8 @@ function fakeRunner(state: { files: Array<ReturnType<typeof memberFile>>; member
     if (url.pathname === "/v1/files/status") return json(200, { enabled: true, memberFiles: state.memberFiles })
     if (url.pathname === "/v1/sessions" && method === "GET") return json(200, { sessions: [] })
     if (url.pathname.startsWith("/v1/sessions/") && method === "PUT") return json(201, { id: decodeURIComponent(url.pathname.split("/")[3] ?? "") })
+    if (url.pathname.endsWith("/upload-approvals") && method === "GET") return json(200, { approvals: [{ id: `ua_${"2".repeat(32)}`, paths: ["/files/Downloads/a.csv"], host: "expenses.example.test", messageId: "wb_m", createdAt: 1 }] })
+    if (url.pathname.includes("/upload-approvals/") && method === "POST") return json(200, { ok: true, decision: "approve" })
     if (url.pathname.endsWith("/saved-files") && method === "GET") return json(200, { files: [] })
     if (url.pathname.startsWith("/v1/sessions/") && method === "GET") {
       return json(200, {
@@ -143,4 +145,22 @@ test("with the feature off the page sees no My files, its routes don't exist and
   assert.equal((await route({ enabled: true }, "/v1/workbot/my-files?name=a.txt", { method: "POST", body: "a" })).status, 404)
   assert.equal((await route({ enabled: true }, `/v1/workbot/files/${id}`)).status, 404)
   assert.equal((await route({ enabled: true }, `/v1/workbot/files/${id}`, { method: "DELETE" })).status, 404)
+})
+
+test("uploads the agent asked for are listed and answered only for the person's own chat, and only with My files on", async () => {
+  const runner = fakeRunner({ files: [], memberFiles: true })
+  const workbot = workbotWith(runner, true)
+  const sessionId = await workbot.sessionIdOf(actor)
+  const listed = await workbot.listUploadApprovals(actor)
+  assert.deepEqual(listed.map((approval) => [approval.paths, approval.host]), [[["/files/Downloads/a.csv"], "expenses.example.test"]])
+  assert.equal(await workbot.decideUploadApproval(actor, `ua_${"2".repeat(32)}`, "approve"), true)
+  const calls = runner.calls.filter((call) => call.path.includes("/upload-approvals"))
+  assert.deepEqual(calls.map((call) => [call.method, call.path]), [["GET", `/v1/sessions/${sessionId}/upload-approvals`], ["POST", `/v1/sessions/${sessionId}/upload-approvals/ua_${"2".repeat(32)}`]])
+  assert.deepEqual(calls[1]?.body, { decision: "approve" })
+  const off = fakeRunner({ files: [], memberFiles: true })
+  assert.deepEqual(await workbotWith(off, false).listUploadApprovals(actor), [])
+  assert.equal(await workbotWith(off, false).decideUploadApproval(actor, `ua_${"2".repeat(32)}`, "approve"), false)
+  assert.equal(off.calls.some((call) => call.path.includes("/upload-approvals")), false)
+  assert.deepEqual(await (await route({ enabled: true }, "/v1/workbot/uploads")).json(), { approvals: [] }, "off: nothing asks")
+  assert.equal((await route({ enabled: true }, `/v1/workbot/uploads/ua_${"2".repeat(32)}`, { method: "POST", body: JSON.stringify({ decision: "approve" }), headers: { "content-type": "application/json" } })).status, 404)
 })

@@ -5,6 +5,7 @@ import type { SessionEvents } from "./events.js"
 import { FILE_TOOLS, FILE_TOOL_NAMES, isMemoryPath, normalizePath, runFileTool } from "./files.js"
 import { MEMBER_FILE_TOOLS, memberFilesPrompt, memberWriteTarget } from "./member-file-tools.js"
 import { MemberFilesAccess, MemberFilesUnavailableError, memberScopeFor, type MemberFiles } from "./member-files.js"
+import { uploadApprovalsFor } from "./upload-approvals.js"
 import { CellsStore } from "./cells-store.js"
 import { localMemory, MemoryUnavailableError, type MemoryAccess, type MemoryResolver } from "./memory.js"
 import type { McpConnector, ToolSession } from "./mcp.js"
@@ -1001,7 +1002,7 @@ export class Runner {
         : taskTools && turn && TASK_TOOL_NAMES.has(call.name)
           ? this.runTaskTool(turn, call.name, call.input, context.held)
         : call.name === "desktop" && store.getSession(sessionId)?.desktop && computer?.desktopRun
-          ? await computer.desktopRun(sessionId, call.input, signal, { memberFiles: member }).catch((error: unknown) => ({ output: error instanceof Error ? error.message : "Desktop unavailable", isError: true }))
+          ? await computer.desktopRun(sessionId, call.input, signal, { memberFiles: member, ...(member ? { uploads: uploadApprovalsFor(store.db, sessionId, turn?.messageId ?? null) } : {}) }).catch((error: unknown) => ({ output: error instanceof Error ? error.message : "Desktop unavailable", isError: true }))
         : computer?.toolNames.has(call.name)
           ? await computer.run(sessionId, call.name, call.input).catch((error: unknown) => ({
               output: `The computer didn't respond: ${error instanceof Error ? error.message : "unknown error"}. Its outcome is unknown; check before repeating it.`,

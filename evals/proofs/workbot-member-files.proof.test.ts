@@ -75,6 +75,19 @@ test("a member sees every file their chats and browser saved in one My files, op
     await user.screenshot();
   });
 
+  await step("an upload to a website waits for the member: they approve those files for that site, and Workbot goes ahead", async () => {
+    await user.navigate(`${world.url}?approval=1`);
+    await user.see({ text: /Upload october-statement\.csv from My files to expenses\.example\.test\? The site keeps a copy\./ });
+    await user.see({ role: "button", label: "Don't upload" });
+    await user.screenshot();
+    await user.click({ role: "button", label: "Upload" });
+    await probe.eventually(() => world.messages(), { within: 5000, label: "Workbot is told to go ahead", until: (sent) => sent.length === 1 });
+    const answered = world.decisions().join() === JSON.stringify({ decision: "approve" }) && world.messages()[0] === "Go ahead: upload october-statement.csv to expenses.example.test.";
+    evidence.recordAssertionEvidence("Approving records the member's answer and sends it as their message", `${world.decisions().join()} · "${world.messages()[0] ?? ""}"`, answered);
+    expect(answered).toBe(true);
+    await probe.eventually(() => probe.dom("[data-workbot-upload-approval]"), { within: 5000, label: "the card is gone once answered", until: (layout) => layout.elements.length === 0 });
+  });
+
   await step("a member with no files yet sees where they will come from and can add one", async () => {
     await user.navigate(`${world.url}?empty=1`);
     await user.click({ role: "button", label: "My files" });

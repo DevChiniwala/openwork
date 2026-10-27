@@ -795,6 +795,32 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     },
   )
 
+  // Uploads from My files the agent asked to make: the person approves or declines each, for those files and that site.
+  app.get("/v1/workbot/uploads", async (c) => {
+    const scope = chatOf(c)
+    if (scope.refused) return scope.refused
+    if (!memberFilesOn(c)) return c.json({ approvals: [] })
+    const member = c.get("member")
+    try {
+      const approvals = await workbotFor(member).listUploadApprovals(actorOf(member), scope.chat)
+      return c.json({ approvals: approvals.map((approval) => ({ id: approval.id, host: approval.host, files: approval.paths.map((path) => ({ path, name: path.split("/").pop() ?? path })) })) })
+    } catch (error) {
+      if (error instanceof WorkbotUnavailableError) return c.json({ error: error.code }, 409)
+      throw error
+    }
+  })
+  app.post("/v1/workbot/uploads/:approvalId", bodyLimit({ maxSize: 1024 }), async (c) => {
+    const scope = chatOf(c)
+    if (scope.refused) return scope.refused
+    const approvalId = z.string().regex(/^ua_[a-f0-9]{32}$/).safeParse(c.req.param("approvalId"))
+    const body = z.object({ decision: z.enum(["approve", "decline"]) }).strict().safeParse(await c.req.json().catch(() => null))
+    if (!memberFilesOn(c) || !approvalId.success) return c.json({ error: "not_found" }, 404)
+    if (!body.success) return c.json({ error: "invalid_request" }, 400)
+    const member = c.get("member")
+    const decided = await workbotFor(member).decideUploadApproval(actorOf(member), approvalId.data, body.data.decision, scope.chat).catch(() => false)
+    return decided ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404)
+  })
+
   app.get("/v1/workbot/files/:fileId/preview", async (c) => {
     // My files have no page images yet: their preview reads the file itself.
     if (memberFileIdSchema.safeParse(c.req.param("fileId")).success) return c.json({ error: "not_found" }, 404)

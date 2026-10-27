@@ -731,7 +731,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
       ...(passages.length ? {} : { next: "No passage matched. Try other words, or browser_observe with includeText." }) };
   }
   /**
-   * @typedef {{ type?: string, ref?: string, text?: string, checked?: boolean, values?: string[], key?: string, modifiers?: string[], x?: number, y?: number, deltaY?: number }} BrowserAction
+   * @typedef {{ type?: string, ref?: string, text?: string, checked?: boolean, values?: string[], key?: string, modifiers?: string[], x?: number, y?: number, deltaY?: number, paths?: string[], hosts?: string[] }} BrowserAction
    * @param {{ sessionId?: string, operation?: string, args?: { tabId?: string, url?: string, provider?: string, includeImage?: boolean, mode?: string, limit?: number, includeText?: boolean,
    *   query?: {role?: string, name?: string, text?: string, exact?: boolean}, observationId?: string, toolId?: string, input?: unknown, question?: string, maxChars?: number,
    *   action?: BrowserAction, actions?: BrowserAction[], request_id?: string } }} request
@@ -873,6 +873,8 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
           if (action.type === "upload" && (!action.ref || !Array.isArray(action.paths) || !action.paths.length || action.paths.length > MAX_UPLOAD_PATHS || !action.paths.every(path => typeof path === "string" && path.startsWith("/") && path.length <= 1024))) {
             fail("invalid_action", `Upload needs the observed control that opens the file chooser and 1 to ${MAX_UPLOAD_PATHS} file paths.`);
           }
+          // The host passes the sites the person approved these files for; the page must still be on one when it dispatches.
+          if (action.type === "upload" && (!Array.isArray(action.hosts) || !action.hosts.every(host => typeof host === "string"))) fail("approval_required", "Uploading needs the person's approval for this site.");
           if (action.type === "key") keys.set(index, resolveKey(action));
           if (action.type === "scroll" && (!Number.isFinite(action.deltaY) || Math.abs(action.deltaY) > 1200)) fail("invalid_scroll", "Scroll distance must be between -1200 and 1200.");
         }
@@ -963,6 +965,14 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
           };
           if (action.type === "click" || action.type === "scroll" || (action.type === "set_checked" && !point.unchanged)) await pointer();
           if (action.type === "upload") {
+            let site = "";
+            try { site = new URL(contents.getURL()).host; } catch { site = ""; }
+            if (!site || !action.hosts.includes(site)) {
+              const message = "This page isn't on the site the person approved the upload for. Nothing was attached.";
+              if (!batch) fail("approval_required", message);
+              failure = { index, type: action.type, ref: action.ref, code: "approval_required", error: message };
+              break;
+            }
             let attached;
             try { attached = await contents.chooseFiles(action.paths, pointer); }
             catch (error) {

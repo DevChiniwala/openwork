@@ -2,7 +2,7 @@ import { readBrowserTeachingPrompt, readBrowserSkillRunPrompt, replaceBrowserTea
 import { createHash } from "node:crypto"
 import { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
 export { workbotOwner, workbotSessionId, workbotSideChatSessionId, WORKBOT_CHAT_ID } from "@openwork-ee/headless-protocol/workbot-routing"
-import type { HeadlessRunnerClient, RunnerMemberFile, RunnerSavedFile } from "@openwork-ee/headless-protocol"
+import type { HeadlessRunnerClient, RunnerMemberFile, RunnerSavedFile, RunnerUploadApproval } from "@openwork-ee/headless-protocol"
 import { AUTOMATION_CLOUD_DEFAULT_MODEL } from "@openwork/types/automations"
 import { readWorkbotContextPrompt, readWorkbotCorrectionPrompt, workbotContextPrompt, workbotCorrectionPrompt, WORKBOT_MAX_MESSAGE_CHARS, type WorkbotViewContext } from "@openwork/types/workbot-context"
 import { buildWorkbotTurns, GREETING_RUNNER_ID, interruptedTurnIds, threadBusy, WORKBOT_MESSAGE_PREFIX, type FileName, type FileNames, type WorkbotTurn } from "./thread.js"
@@ -712,7 +712,7 @@ export function freeMemberPath(folder: string, name: string, taken: ReadonlySet<
 export async function uploadWorkbotMemberFile(actor: WorkbotActor, input: { name: string; folder?: string; mediaType: string; bytes: ArrayBuffer }, deps: WorkbotDeps) {
   const client = clientOf(deps)
   if (!deps.memberFiles || !(await client.memberFilesEnabled())) throw new WorkbotFilesUnavailableError()
-  const folder = input.folder?.trim().replace(/^\/+|\/+$/g, "") || "Uploads"
+  const folder = input.folder?.split("/").map((part) => part.trim()).filter(Boolean).join("/") || "Uploads"
   const listed = await client.listMemberFiles({ prefix: folder })
   const taken = new Set(listed.ok ? listed.value.files.map((file) => file.path) : [])
   const uploaded = await client.uploadMemberFile({ path: freeMemberPath(folder, input.name, taken), mediaType: input.mediaType, bytes: input.bytes })
@@ -726,6 +726,21 @@ export async function downloadWorkbotMemberFile(fileId: string, deps: WorkbotDep
 
 export async function deleteWorkbotMemberFile(fileId: string, deps: WorkbotDeps) {
   return deps.memberFiles ? clientOf(deps).deleteMemberFile(fileId) : false
+}
+
+/** Uploads from My files this chat's agent asked to make, waiting for the person (only with My files on). */
+export async function listWorkbotUploadApprovals(actor: WorkbotActor, deps: WorkbotDeps, chat: WorkbotChat = null): Promise<RunnerUploadApproval[]> {
+  if (!deps.memberFiles) return []
+  const listed = await clientOf(deps).listUploadApprovals(await sessionOf(actor, chat, deps))
+  if (!listed.ok && listed.status === 404) return []
+  if (!listed.ok) throw new WorkbotUnavailableError("workbot_runner_unavailable")
+  return listed.value
+}
+
+/** The person's answer to one; false when it isn't pending. Never answered for them: only from their own request. */
+export async function decideWorkbotUploadApproval(actor: WorkbotActor, approvalId: string, decision: "approve" | "decline", deps: WorkbotDeps, chat: WorkbotChat = null) {
+  if (!deps.memberFiles) return false
+  return clientOf(deps).decideUploadApproval(await sessionOf(actor, chat, deps), approvalId, decision)
 }
 
 /** Workbot for one host: every operation, bound to its runner and scheduling check. `chat` null is the main chat. */
@@ -759,6 +774,8 @@ export function createWorkbot(deps: WorkbotDeps) {
     uploadMemberFile: (actor: WorkbotActor, input: { name: string; folder?: string; mediaType: string; bytes: ArrayBuffer }) => uploadWorkbotMemberFile(actor, input, deps),
     downloadMemberFile: (fileId: string) => downloadWorkbotMemberFile(fileId, deps),
     deleteMemberFile: (fileId: string) => deleteWorkbotMemberFile(fileId, deps),
+    listUploadApprovals: (actor: WorkbotActor, chat: WorkbotChat = null) => listWorkbotUploadApprovals(actor, deps, chat),
+    decideUploadApproval: (actor: WorkbotActor, approvalId: string, decision: "approve" | "decline", chat: WorkbotChat = null) => decideWorkbotUploadApproval(actor, approvalId, decision, deps, chat),
   }
 }
 export type Workbot = ReturnType<typeof createWorkbot>

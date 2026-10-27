@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import type { SqlDriver } from "./sql.js"
 import { migrateCells } from "./cells-store.js"
 import { migrateMemberFiles } from "./member-files.js"
+import { migrateUploadApprovals } from "./upload-approvals.js"
 import {
   ackIndexUpdate,
   deferIndexUpdate,
@@ -362,7 +363,7 @@ export class Store {
       // Session cells: owner directory, owner-scoped memory, forwarding rows, splits (cells-store.ts).
       { version: 3, name: "session-cells", up: migrateCells },
       // My files: one space per member, outside every conversation (member-files.ts).
-      { version: 4, name: "member-files", up: migrateMemberFiles },
+      { version: 4, name: "member-files", up: (db) => { migrateMemberFiles(db); migrateUploadApprovals(db) } },
     ])
   }
 

@@ -123,14 +123,25 @@ the computer can reach the store.
   replaces a file already in My files: it gets the next free name
   (`statement (2).pdf`). Files still downloading (`.crdownload`) wait for the
   next browser call. Saved downloads are listed in the tool result.
-- **Uploads.** The browser's `act` takes `{type:"upload",ref,paths:["/files/…"]}`.
-  The runner copies each file from My files onto the computer
-  (`/files/.uploads/<hash>/<name>`, same name), then the browser clicks the
-  observed control and answers the file chooser it opens with those files
-  (Chromium's file-chooser interception, on only around that click). Only
+- **Uploads, with the person's approval.** The browser's `act` takes
+  `{type:"upload",ref,paths:["/files/…"]}`. A page can prompt-inject the agent,
+  so an upload never dispatches until the person approved those files for that
+  site: the runner checks the tab's site against approvals (`upload_approvals`,
+  per conversation); without one it records the ask and refuses, and Workbot
+  shows a consent card above the composer ("Upload october-statement.csv from
+  My files to expenses.example.test? The site keeps a copy." Upload / Don't
+  upload). Approving records the answer (only through Workbot's member-authorized
+  route; the model can't) and sends "Go ahead: …" as the person's message. An
+  approval holds for 15 minutes for exactly those files and that site. Then the
+  runner copies each file onto the computer (`/files/.uploads/<hash>/<name>`,
+  same name), and the browser checks again that the page is still on the
+  approved site, clicks the observed control and answers the file chooser it
+  opens (Chromium's file-chooser interception, on only around that click). Only
   regular files under `/files` are accepted, never a link out of it. A file that
   isn't in My files, or a conversation without them, is refused before the
   browser does anything. The desktop app's browser has no uploads.
+
+![An upload waiting for the member's approval](./member-files-upload-approval.png)
 
 **Workbot.** The Files panel shows My files by folder, with where each file
 came from ("From bank.example.test" for a browser download, "Made by Workbot",

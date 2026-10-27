@@ -25,6 +25,9 @@ export async function workbotMemberFiles(_seed: Seed, { place }: { place: Place 
   const now = Date.now();
   const deleted: string[] = [];
   const added: string[] = [];
+  const decisions: string[] = [];
+  const messages: string[] = [];
+  let approvalPending = true;
   const statement = "date,description,amount\n2026-10-01,Coffee beans,18.50\n2026-10-03,Train ticket,23.50\n";
   const file = (id: string, path: string, mediaType: string, size: number, origin: MemberFile["origin"], at: number): MemberFile => ({
     id: `mf_${id.padEnd(32, "0")}`, path, name: path.split("/").pop() ?? path, mediaType, size, version: 1, origin,
@@ -83,6 +86,24 @@ export async function workbotMemberFiles(_seed: Seed, { place }: { place: Place 
             added.push(created.path);
             return json(created, 201);
           }
+          if (url.pathname === "/v1/workbot/uploads" && req.method === "GET") {
+            const asking = on && approvalPending && referring.searchParams.get("approval") === "1";
+            return json({ approvals: asking ? [{ id: `ua_${"1".repeat(32)}`, host: "expenses.example.test", files: [{ path: "/files/Downloads/october-statement.csv", name: "october-statement.csv" }] }] : [] });
+          }
+          if (url.pathname.startsWith("/v1/workbot/uploads/") && req.method === "POST") {
+            let body = "";
+            for await (const chunk of req) body += String(chunk);
+            decisions.push(body);
+            approvalPending = false;
+            return json({ ok: true });
+          }
+          if (url.pathname === "/v1/workbot/messages" && req.method === "POST") {
+            let body = "";
+            for await (const chunk of req) body += String(chunk);
+            const input: unknown = JSON.parse(body);
+            if (typeof input === "object" && input !== null && "text" in input && typeof input.text === "string") messages.push(input.text);
+            return json({ ok: true }, 202);
+          }
           const memberFile = /^\/v1\/workbot\/files\/(mf_[a-f0-9]{32})(\/preview)?$/.exec(url.pathname);
           if (memberFile) {
             const found = files.find((entry) => entry.id === memberFile[1]);
@@ -116,6 +137,8 @@ export async function workbotMemberFiles(_seed: Seed, { place }: { place: Place 
       briefPath,
       deleted: () => [...deleted],
       added: () => [...added],
+      decisions: () => [...decisions],
+      messages: () => [...messages],
       async [Symbol.asyncDispose]() { await resources.disposeAsync(); },
     };
   } catch (error) { await resources.disposeAsync(); throw error; }

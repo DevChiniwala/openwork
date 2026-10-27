@@ -26,7 +26,7 @@ import {
   type WorkbotTask,
   type WorkbotTurn,
 } from "./data";
-import { WorkbotFilesPanel } from "./member-files";
+import { UploadApprovals, WorkbotFilesPanel } from "./member-files";
 import { AppMark, AttachButton, FileBadge, FilesButton, ImageThumb, isImage, kindLabel, SentAttachments, UploadTray, useFileDrop, type Upload } from "./files";
 import { createComposerState, type ComposerState, type Pending } from "./composer-state";
 import { initials } from "./format";
@@ -322,6 +322,8 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   if (workspaceShell) {
     const name = data?.name ?? "Workbot";
     const busy = data?.status === "busy" || pending.some(entry => !entry.failed);
+    // Asks to upload from My files are read again whenever the conversation moves on.
+    const approvalsVersion = `${data?.status ?? ""}:${data?.turns.at(-1)?.id ?? ""}:${data?.turns.at(-1)?.status ?? ""}`;
     const empty = !data?.turns.length && !pending.length;
     const starting = empty && (start.isPending || greetingAwaited);
     const conversation = data ? <Conversation
@@ -339,9 +341,9 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       }}
       onSuggestion={text => submit(text)} starting={starting} intro={null}
     /> : null;
-    const composer = <WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
+    const composer = <><UploadApprovals version={approvalsVersion} onAnswered={text => submit(text)} /><WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
-      onSend={text => submit(text)} onStop={() => stop.mutate()} autoFocus={false} disabled={!data} />;
+      onSend={text => submit(text)} onStop={() => stop.mutate()} autoFocus={false} disabled={!data} /></>;
     const firstName = user?.name?.trim().split(/\s+/)[0] ?? null;
     const home = thread.isPending ? <div className="flex flex-1 items-center justify-center" aria-busy="true" aria-label="Loading conversation"><span className="h-5 w-40 rounded bg-[var(--wb-chip)]" /></div>
       : !data ? <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 text-center text-[13px] text-[var(--wb-muted)]" role="status"><p>Couldn't load your conversation.</p><button type="button" className="rounded-lg px-3 py-2 underline focus-visible:shadow-[var(--wb-focus)]" onClick={() => void thread.refetch()}>Try again</button></div>
@@ -430,6 +432,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   }
 
   const busy = data.status === "busy" || pending.some((entry) => !entry.failed);
+  const approvalsVersion = `${data.status}:${data.turns.at(-1)?.id ?? ""}:${data.turns.at(-1)?.status ?? ""}`;
   const empty = data.turns.length === 0 && pending.length === 0;
   const firstName = user?.name?.trim().split(/\s+/)[0] ?? null;
   if (welcome === "showing" || (welcome === "pending" && pending.length === 0 && needsWelcome(data.turns))) {
@@ -451,6 +454,8 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   // Right after the welcome: the conversation, with Workbot typing its hello. If that can't start, the drawn greeting.
   const starting = empty && (start.isPending || (greetingAwaited && start.data?.started === true));
   const composer = (
+    <>
+    <UploadApprovals version={approvalsVersion} onAnswered={(text) => submit(text)} />
     <WorkbotComposer
       nativeDictation={host.nativeDictation}
       text={draft.text}
@@ -466,6 +471,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       onSend={(text) => submit(text)}
       onStop={() => stop.mutate()}
     />
+    </>
   );
 
   const chatId = navigation?.chat ?? null;

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import { posix } from "node:path"
 import { ensureRunning, isSandboxError, shellQuote, SCOPE_LABEL, withBlocks, type RunSpec, type SandboxHandle, type SandboxProvider, type SandboxSpec } from "@openwork/sandbox"
 import { z } from "zod"
-import type { ComputerCallContext, ComputerFile, ComputerFiles, ComputerMemberFiles, FileReader, ToolResult, ToolSpec } from "./types.js"
+import type { ComputerCallContext, ComputerFile, ComputerFiles, ComputerMemberFiles, FileReader, ToolResult, ToolSpec, UploadApprovals } from "./types.js"
 import { collectDownloads, downloadNotes, DOWNLOADS_DIR, DOWNLOADS_MANIFEST, DOWNLOADS_MARKER, MAX_UPLOAD_FILES, parseScan, SCAN_SCRIPT, uploadPath, type DownloadsReport } from "./browser-files.js"
 import { demonstrationReplySchema, type DemonstrationCommand } from "@openwork/types/browser-demonstration"
 import { Desktop, type DesktopView } from "./desktop.js"
@@ -108,7 +108,7 @@ export class Computers {
       const setup = await this.memberFilesSetup(sessionId, box, member)
       let args = parsed.args
       if (parsed.view === "browser" && parsed.operation === "act") {
-        const staged = await this.stageUploads(box, member, args)
+        const staged = await this.stageUploads(sessionId, box, member, context?.uploads ?? null, args)
         if ("refused" in staged) return staged.refused
         args = staged.args
       }
@@ -354,33 +354,53 @@ export class Computers {
 
   /**
    * The files an `upload` action names (`/files/...`), copied from My files onto the computer, with the action pointed at
-   * the copies. A file that isn't in My files, or a conversation without them, refuses the call before anything runs.
+   * the copies and bound to the site the person approved them for (the browser checks it again as it attaches them). A
+   * file that isn't in My files, a site the person hasn't approved those files for (then they are asked), or a
+   * conversation without My files refuses the call before anything runs.
    */
-  private async stageUploads(box: SandboxHandle, member: ComputerMemberFiles | null, args: Record<string, unknown>): Promise<{ args: Record<string, unknown> } | { refused: ToolResult }> {
+  private async stageUploads(sessionId: string, box: SandboxHandle, member: ComputerMemberFiles | null, approvals: UploadApprovals | null, args: Record<string, unknown>): Promise<{ args: Record<string, unknown> } | { refused: ToolResult }> {
     const actions = Array.isArray(args.actions) ? args.actions : []
     const uploads = actions.filter((action): action is { type: "upload"; paths?: unknown } => typeof action === "object" && action !== null && "type" in action && action.type === "upload")
     if (uploads.length === 0) return { args }
     const refuse = (output: string) => ({ refused: { output, isError: true } })
     if (!member) return refuse("Uploading needs My files, which aren't on for this conversation. Nothing was sent.")
+    if (!approvals || !this.desktop) return refuse("Uploading needs the person's approval, which this conversation can't ask for. Nothing was sent.")
+    // The site the upload goes to: the page open in that tab now.
+    const listed = z.object({ tabs: z.array(z.object({ tabId: z.string(), url: z.string() })).default([]) }).loose().safeParse(await this.desktop.call(box, "/browser/task", { sessionId, operation: "tabs", args: {} }).catch(() => null))
+    const tab = listed.success ? listed.data.tabs.find((entry) => entry.tabId === args.tabId) : undefined
+    let host = ""
+    try {
+      host = tab ? new URL(tab.url).host : ""
+    } catch {
+      host = ""
+    }
+    if (!host) return refuse("That tab isn't open on a website. Open the site's upload page and observe it first. Nothing was sent.")
     const staged = new Map<string, string>()
     for (const upload of uploads) {
       const paths = z.array(z.string().min(1).max(600)).min(1).max(MAX_UPLOAD_FILES).safeParse(upload.paths)
       if (!paths.success) return refuse(`An upload needs paths: 1 to ${MAX_UPLOAD_FILES} files in /files, such as /files/Downloads/report.pdf. Nothing was sent.`)
+      const found = new Map<string, NonNullable<Awaited<ReturnType<ComputerMemberFiles["read"]>>>>()
       for (const path of paths.data) {
         const inside = path.startsWith("/files/") ? path.slice("/files/".length) : ""
         if (!inside || inside.split("/").some((part) => !part || part === "." || part === "..")) return refuse(`${path} isn't in /files. Upload one of their files, such as /files/Downloads/report.pdf. Nothing was sent.`)
-        if (staged.has(path)) continue
-        const found = await member.read(inside)
-        if (!found) return refuse(`There is no file at ${path}. List /files to find it. Nothing was sent.`)
-        const target = uploadPath(inside, found.file.version)
+        const file = staged.has(path) ? null : await member.read(inside)
+        if (!staged.has(path) && !file) return refuse(`There is no file at ${path}. List /files to find it. Nothing was sent.`)
+        if (file) found.set(path, file)
+      }
+      if (!(await approvals.approvedHosts(paths.data)).includes(host)) {
+        await approvals.request(paths.data, host)
+        return refuse(`They haven't approved uploading ${paths.data.join(", ")} to ${host}. Workbot is asking them now: stop here, tell them you need their OK to upload it there, and continue once they approve. Nothing was sent.`)
+      }
+      for (const [path, file] of found) {
+        const target = uploadPath(file.file.path, file.file.version)
         await this.execute(box, { command: `mkdir -p "$FOLDER"`, env: { FOLDER: posix.dirname(target) }, activity: "maintenance", timeoutMs: 30_000 })
-        await this.blocks.files.write(box, target, found.bytes, { timeoutMs: 120_000, mode: 0o660 })
+        await this.blocks.files.write(box, target, file.bytes, { timeoutMs: 120_000, mode: 0o660 })
         staged.set(path, target)
       }
     }
     const rewritten = actions.map((action) => {
       if (typeof action !== "object" || action === null || !("type" in action) || action.type !== "upload" || !("paths" in action) || !Array.isArray(action.paths)) return action
-      return { ...action, paths: action.paths.map((path: unknown) => (typeof path === "string" ? staged.get(path) ?? path : path)) }
+      return { ...action, paths: action.paths.map((path: unknown) => (typeof path === "string" ? staged.get(path) ?? path : path)), hosts: [host] }
     })
     return { args: { ...args, actions: rewritten } }
   }

@@ -2,15 +2,17 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Download, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, Download, Plus, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   downloadWorkbotFile,
   uploadWorkbotMemberFile,
+  useDecideWorkbotUpload,
   useDeleteWorkbotMemberFile,
   useWorkbotChat,
   useWorkbotFiles,
   useWorkbotMemberFiles,
+  useWorkbotUploadApprovals,
   workbotMemberFilesKey,
   type WorkbotFile,
   type WorkbotMemberFile,
@@ -345,4 +347,39 @@ export function MemberFileLink({ path, children }: { path: string; children: Rea
 /** The Files panel: the member's My files where that is on, otherwise the chat's kept files, as before. */
 export function WorkbotFilesPanel(props: { open: boolean; onClose: () => void; assistantName: string; onOpenFile: (file: WorkbotFile | { id: string; name: string; mediaType: string; size: number; updatedAt?: number }) => void }) {
   return workbotHost().memberFiles ? <MemberFilesPanel {...props} /> : <FilesPanel {...props} />;
+}
+
+/**
+ * The person's answer to an upload the agent asked to make (DESIGN T4, P9): what goes where, as one sentence, with
+ * Upload and Don't upload. A page can talk the agent into uploading, so nothing leaves My files without this answer.
+ * Approving also tells the agent to go ahead, as the person's message.
+ */
+export function UploadApprovals({ version, onAnswered }: { version: string; onAnswered: (text: string) => void }) {
+  const enabled = workbotHost().memberFiles === true;
+  const approvals = useWorkbotUploadApprovals(enabled, version);
+  const decide = useDecideWorkbotUpload();
+  const approval = approvals.data?.[0];
+  if (!enabled || !approval) return null;
+  const names = approval.files.map((file) => file.name).join(", ");
+  const answer = (decision: "approve" | "decline") =>
+    decide.mutate({ id: approval.id, decision }, {
+      onSuccess: () => onAnswered(decision === "approve" ? `Go ahead: upload ${names} to ${approval.host}.` : `Don't upload ${names} to ${approval.host}.`),
+    });
+  return (
+    <div data-workbot-upload-approval role="group" aria-label={`Upload ${names} to ${approval.host}`} className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-[var(--wb-surface)] px-4 py-3 shadow-[0_0_0_1px_var(--wb-ring)]">
+      <Upload size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-[var(--wb-muted)]" />
+      <p className="min-w-0 flex-1 text-[13px] leading-5 text-[var(--wb-text)]">
+        Upload <span className="font-medium">{names}</span> from My files to <span className="font-medium">{approval.host}</span>? The site keeps a copy.
+      </p>
+      {decide.isError ? <span role="alert" className="text-[12px] text-[var(--wb-danger)]">{decide.error.message}</span> : null}
+      <span className="flex shrink-0 items-center gap-1">
+        <button type="button" disabled={decide.isPending} onClick={() => answer("decline")} className="h-8 rounded-full px-3 text-[13px] font-medium text-[var(--wb-muted)] hover:bg-[var(--wb-chip)] hover:text-[var(--wb-text)] disabled:opacity-60 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">
+          Don&apos;t upload
+        </button>
+        <button type="button" disabled={decide.isPending} onClick={() => answer("approve")} className="h-8 rounded-full bg-[var(--wb-ink)] px-4 text-[13px] font-medium text-[var(--wb-mark-text)] disabled:opacity-60 focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]">
+          Upload
+        </button>
+      </span>
+    </div>
+  );
 }

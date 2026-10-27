@@ -62,6 +62,8 @@ return credentials or URLs. Public `/health` remains a liveness check. See
 | `PUT` | `/v1/owner/files` | owner header; `?path=&replace=1`, raw body | `201` (or `200` replaced) a file the person adds (origin `upload`); `409 file_exists` without `replace`; `413` past the limits |
 | `GET` | `/v1/owner/files/:fileId` | owner header | the bytes (`mf_…`), with `x-file-name` and `x-file-path` |
 | `DELETE` | `/v1/owner/files/:fileId` | owner header | `204` |
+| `GET` | `/v1/sessions/:id/upload-approvals` | | `{ approvals: [{ id, paths, host, messageId, createdAt }] }`: uploads from My files the agent asked to make, waiting for the person |
+| `POST` | `/v1/sessions/:id/upload-approvals/:approvalId` | `{ decision: "approve" \| "decline" }` | The person's answer, from the caller only; an approval holds 15 minutes for those files and that site. `404 unknown_approval` |
 | `POST` | `/v1/sessions/:id/saved-files` | `?name=`, raw body typed by `Content-Type` | `201` saved file (`fl_…`). Send its id in a turn's `attachments`. `403 files_not_enabled` for a session without `files: true`; `413 file_too_large` or `413 files_full` past the limits |
 | `GET` | `/v1/sessions/:id/saved-files` | | `{ files }`, newest first, `source: user \| agent` |
 | `GET` | `/v1/sessions/:id/saved-files/:fileId` | | the bytes, with `x-file-name` |

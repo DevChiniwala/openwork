@@ -11,6 +11,7 @@ import { formatBytes } from "./tool-files.js"
 import { z } from "zod"
 import { demonstrationCommandSchema } from "@openwork/types/browser-demonstration"
 import { FILE_LIMITS, isMemoryPath, normalizePath } from "./files.js"
+import { decideUploadApproval, pendingUploadApprovals, UPLOAD_APPROVAL_MS } from "./upload-approvals.js"
 import { AGENT_SLUG, MemberFileError, memberSpace, normalizeMemberFolder, normalizeMemberPath, publicFile, shownPath, type MemberFiles } from "./member-files.js"
 import { localMemory, MemoryUnavailableError, type MemoryResolver } from "./memory.js"
 import type { Runner } from "./runner.js"
@@ -669,6 +670,20 @@ export function createApp(input: {
     const body = abortBody.safeParse(await c.req.json().catch(() => ({})))
     if (!body.success) return c.json({ error: "invalid_request", issues: body.error.issues }, 400)
     return c.json({ accepted: runner.abort(c.req.param("id"), body.data.messageId) })
+  })
+
+  // Uploads from My files the agent asked to make (pending until the person answers through the caller; see
+  // upload-approvals.ts). Only the caller can approve: the model never reaches these routes.
+  app.get("/v1/sessions/:id/upload-approvals", (c) => {
+    if (!store.getSession(c.req.param("id"))) return c.json({ error: "unknown_session" }, 404)
+    return c.json({ approvals: pendingUploadApprovals(store.db, c.req.param("id")).map(({ id, paths, host, messageId, createdAt }) => ({ id, paths, host, messageId, createdAt })) })
+  })
+  app.post("/v1/sessions/:id/upload-approvals/:approvalId", async (c) => {
+    if (!store.getSession(c.req.param("id"))) return c.json({ error: "unknown_session" }, 404)
+    const body = z.object({ decision: z.enum(["approve", "decline"]) }).strict().safeParse(await c.req.json().catch(() => null))
+    if (!body.success) return c.json({ error: "invalid_request" }, 400)
+    const decided = decideUploadApproval(store.db, c.req.param("id"), c.req.param("approvalId"), body.data.decision, Date.now())
+    return decided ? c.json({ ok: true, decision: body.data.decision, ...(body.data.decision === "approve" ? { expiresAt: Date.now() + UPLOAD_APPROVAL_MS } : {}) }) : c.json({ error: "unknown_approval" }, 404)
   })
 
   app.get("/v1/sessions/:id/files", async (c) => {

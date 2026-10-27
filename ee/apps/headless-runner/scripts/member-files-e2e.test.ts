@@ -227,6 +227,7 @@ const refNamed = (output: string | undefined, name: string) => {
   if (!ref) throw new Error(`no control named ${name}`)
   return ref
 }
+const tabsOf = (output: string | undefined) => z.object({ tabs: z.array(z.object({ tabId: z.string() })) }).loose().parse(JSON.parse((output ?? "{}").split("\n")[0] ?? "{}")).tabs.map((tab) => tab.tabId)
 const desktop = (operation: string, args: Record<string, unknown>) => ({ name: "desktop", input: { view: "browser", operation, args, description: "Working in the browser" } })
 
 // ---------------------------------------------------------------------------------------------------- the journey
@@ -318,7 +319,17 @@ test("a file the browser downloads in one chat is read by another chat's next tu
           actions: [{ type: "upload", ref: refNamed(results[2], "Statement"), paths: ["/files/Downloads/october-statement.csv"] }, { type: "click", ref: refNamed(results[2], "Send") }],
         }),
       ],
-      "Send a file that isn't there": [desktop("act", { tabId: "none", observationId: "none", actions: [{ type: "upload", ref: "e1", paths: ["/files/Downloads/missing.pdf"] }] })],
+      "Approved: upload october-statement.csv to the expenses site": [
+        desktop("tabs", {}),
+        (results) => desktop("navigate", { tabId: tabsOf(results[0])[0], url: `${siteUrl}/expenses` }),
+        (results) => desktop("observe", { tabId: tabsOf(results[0])[0], mode: "interactive" }),
+        (results) => desktop("act", {
+          tabId: answerOf(results[2]).tabId,
+          observationId: answerOf(results[2]).observationId,
+          actions: [{ type: "upload", ref: refNamed(results[2], "Statement"), paths: ["/files/Downloads/october-statement.csv"] }, { type: "click", ref: refNamed(results[2], "Send") }],
+        }),
+      ],
+      "Send a file that isn't there": [desktop("tabs", {}), (results) => desktop("act", { tabId: tabsOf(results[0])[0], observationId: "none", actions: [{ type: "upload", ref: "e1", paths: ["/files/Downloads/missing.pdf"] }] })],
     })
     const runner = new Runner({ store, model, defaultModel: "test-model", defaultModelApiKey: "test-key", limits, computer, memberFiles })
     const app = createApp({ store, runner, apiToken: token, computer, memberFiles })
@@ -343,17 +354,23 @@ test("a file the browser downloads in one chat is read by another chat's next tu
     assert.deepEqual((await listed()).map((file) => [file.path, file.origin.kind, file.lastWriter.sessionId]), [["Downloads/october-statement.csv", "browser", "hs_e2e_chat_bank"]])
     console.log(`✓ browser download saved to My files: ${download.at(-1)?.split("\n").at(-1)}`)
 
-    // 2. Another chat's next turn reads it with read_file, and its own browser uploads it to the expenses site.
+    // 2. Another chat's next turn reads it with read_file; its browser may upload it only once the person approves.
     const expenses = await turn("hs_e2e_chat_expenses", "msg_expenses", "Send my October statement to the expenses site")
     assert.equal(expenses[0], STATEMENT, "read_file returns the downloaded statement")
-    assert.match(expenses[3] ?? "", /"type":"upload","ref":"e1","outcome":"attached","files":1/)
+    assert.match(expenses[3] ?? "", /They haven't approved uploading \/files\/Downloads\/october-statement\.csv to 127\.0\.0\.1:\d+\. .*Nothing was sent\./)
+    assert.equal(received.length, 0, "nothing reaches the site before the person approves")
+    const asked = z.object({ approvals: z.array(z.object({ id: z.string(), paths: z.array(z.string()), host: z.string() })) }).parse(await (await call("/v1/sessions/hs_e2e_chat_expenses/upload-approvals")).json()).approvals
+    assert.deepEqual(asked.map((approval) => [approval.paths, approval.host]), [[["/files/Downloads/october-statement.csv"], `127.0.0.1:${siteAddress.port}`]])
+    assert.equal((await call(`/v1/sessions/hs_e2e_chat_expenses/upload-approvals/${asked[0]?.id}`, { method: "POST", body: JSON.stringify({ decision: "approve" }) })).status, 200)
+    const approved = await turn("hs_e2e_chat_expenses", "msg_approved", "Approved: upload october-statement.csv to the expenses site")
+    assert.match(approved[3] ?? "", /"type":"upload","ref":"e1","outcome":"attached","files":1/)
     assert.equal(received.length, 1)
     assert.ok(received[0]?.includes('filename="october-statement.csv"') && received[0].includes("2026-10-01,Coffee beans,18.50"), "the site received the file from My files")
-    console.log(`✓ another chat read ${expenses[0]?.split("\n").length} lines and its browser uploaded october-statement.csv (${received[0]?.length} bytes posted)`)
+    console.log(`✓ another chat read ${expenses[0]?.split("\n").length} lines; its upload waited for approval, then the browser uploaded october-statement.csv (${received[0]?.length} bytes posted)`)
 
     // 3. A file that isn't in My files is refused before the browser does anything.
     const missing = await turn("hs_e2e_chat_expenses", "msg_missing", "Send a file that isn't there")
-    assert.match(missing[0] ?? "", /There is no file at \/files\/Downloads\/missing\.pdf\. List \/files to find it\. Nothing was sent\./)
+    assert.match(missing[1] ?? "", /There is no file at \/files\/Downloads\/missing\.pdf\. List \/files to find it\. Nothing was sent\./)
     assert.equal(received.length, 1)
 
     // 4. Deleting the first chat keeps the file; nobody else sees it.
