@@ -325,7 +325,9 @@
         "default": "./src/den/auto-router.ts"
       },
       "development": "./src/den/auto-router.ts",
-      "default": "./src/den/auto-router.ts"
+      "bun": "./src/den/auto-router.ts",
+      "browser": "./src/den/auto-router.ts",
+      "default": "./dist/den/auto-router.js"
     },
     "./den/prompts": {
       "types": {

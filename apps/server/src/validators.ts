@@ -40,6 +40,35 @@ export function validateMcpName(name: string): void {
   }
 }
 
+/**
+ * Provider ids only OpenWork's own sync may define. The Auto Router passes the
+ * "only your organization's providers" policy by id, so a client write that
+ * defines it could point Auto at any endpoint; such writes are refused. Removing
+ * one (`null`) stays allowed.
+ */
+const RESERVED_PROVIDER_IDS = new Set(["openwork-auto"]);
+
+export function isReservedProviderId(id: string): boolean {
+  return RESERVED_PROVIDER_IDS.has(id.trim().toLowerCase());
+}
+
+export function validateUserProviderUpdate(update: Record<string, unknown>): void {
+  for (const [id, value] of Object.entries(update)) {
+    if (value !== null && isReservedProviderId(id)) {
+      throw new ApiError(409, "reserved_provider_id", `${id} is managed by your organization and can't be changed here`);
+    }
+  }
+}
+
+/** Refuses OpenCode config text (JSON or JSONC) that defines a reserved provider. */
+export function validateUserOpencodeConfigText(content: string): void {
+  for (const id of RESERVED_PROVIDER_IDS) {
+    if (new RegExp(`["']${id}["']\\s*:`, "i").test(content)) {
+      throw new ApiError(409, "reserved_provider_id", `${id} is managed by your organization and can't be defined in OpenCode config`);
+    }
+  }
+}
+
 export function validateUserMcpName(name: string): void {
   validateMcpName(name);
   if (isOrganizationMcpName(name)) {

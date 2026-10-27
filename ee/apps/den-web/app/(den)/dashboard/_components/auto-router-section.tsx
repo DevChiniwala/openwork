@@ -187,7 +187,7 @@ function RouteEditor({ route, options, saving, error, onCancel, onSave }: {
         <span className="flex items-center justify-between gap-3">
           <label htmlFor={promptId} className="text-[13px] text-gray-500">Use when</label>
           {prompt.length > AUTO_ROUTER_PROMPT_MAX_LENGTH * 0.8 ? (
-            <span className="text-[12px] text-gray-400">{`${prompt.length} of ${AUTO_ROUTER_PROMPT_MAX_LENGTH}`}</span>
+            <span className="text-[12px] text-gray-500">{`${prompt.length} of ${AUTO_ROUTER_PROMPT_MAX_LENGTH}`}</span>
           ) : null}
         </span>
         <DenTextarea
