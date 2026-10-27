@@ -23,11 +23,11 @@ export type ConnectionStateFacts = ConnectionRepairFacts & {
   oauthClientRequired?: boolean;
   oauthClientConfigured?: boolean;
   /** Undefined means the server predates readiness checks; null means unchecked. */
-  readiness?: { status: "ready" | "could_not_verify" } | null;
+  readiness?: { status: "ready" | "could_not_verify"; failure?: string | null } | null;
 };
 
 export type MemberConnectionState = "needs_admin_setup" | "needs_signin" | "connected" | "available";
-export type ConnectionReadinessState = "needs_admin_setup" | "needs_signin" | "ready" | "could_not_verify";
+export type ConnectionReadinessState = "needs_admin_setup" | "needs_signin" | "ready" | "could_not_verify" | "not_checked";
 
 export function connectionNeedsReconnect(connection: Pick<ConnectionRepairFacts, "needsReconnect" | "missingFeatures">): boolean {
   return connection.needsReconnect === true || (connection.missingFeatures?.length ?? 0) > 0;
@@ -44,6 +44,11 @@ export function canMemberAuthorizeConnection(connection: MemberConnectionAuthori
 
 export function canDisconnectMemberConnection(connection: Pick<MemberConnectionAuthorization, "credentialMode" | "connectedForMe">): boolean {
   return connection.credentialMode === "per_member" && connection.connectedForMe;
+}
+
+/** Only a rejected or missing sign-in asks someone to sign in again. */
+export function readinessSignInFailed(readiness: ConnectionStateFacts["readiness"]): boolean {
+  return readiness?.status === "could_not_verify" && (readiness.failure === "sign_in_rejected" || readiness.failure === "sign_in_required");
 }
 
 /**
@@ -80,10 +85,15 @@ export function deriveConnectionState(connection: ConnectionStateFacts): {
     readiness = null;
   } else if (setupRequired || (shared && !connection.connected)) {
     readiness = "needs_admin_setup";
-  } else if (connection.needsReconnect || (perMember && !connection.connectedForMe)) {
+  } else if (connection.needsReconnect) {
+    readiness = "needs_signin";
+  } else if (connection.readiness?.status === "ready") {
+    readiness = "ready";
+  } else if (readinessSignInFailed(connection.readiness) || (perMember && !connection.connectedForMe)) {
     readiness = "needs_signin";
   } else {
-    readiness = connection.readiness?.status === "ready" ? "ready" : "could_not_verify";
+    // Never checked is not a failure; only a recorded check that did not pass is.
+    readiness = connection.readiness ? "could_not_verify" : "not_checked";
   }
   return { member, readiness };
 }

@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { appendAgentInstructions, createInstructionSection } from "./agent-instruction-compose.js";
+import { correctWorkspaceRoot, workspaceFileGuidance, workspaceFileHooks } from "./workspace-file-destinations.js";
 
 /**
  * OpenWork Capabilities Knowledge Plugin
@@ -27,7 +28,8 @@ export function automationRuntimeKnowledge(runtimeProvider = process.env.DEN_RUN
   const shared = [
     "OpenWork has first-class Automations. Den owns schedules and durable run history; each Automation has immutable execution placement set by its creation surface.",
     "Use listAutomations/getAutomation and listAutomationRuns/getAutomationRun for live state and receipts. Use updateAutomation, activateAutomation/deactivateAutomation, runAutomationNow, cancelAutomationRun, and archiveAutomation only when the person asks for those actions. Deactivation stops future runs but does not cancel a run already in progress.",
-    "Schedules are once, daily, or weekly with an IANA timezone; there is no interval schedule or sub-daily cadence. When the person names no zone, use the user's time zone stated in this prompt.",
+    "Schedules are once, daily, weekly, or interval with an IANA timezone. Interval runs every everyHours (1-24) on the hour, counted from startHour each listed day and stopping before endHour, e.g. every 3 hours from 9 to 18 on weekdays. It needs the organization's every-few-hours schedules: if Den answers automation_interval_schedule_disabled, say so and offer a daily or weekly schedule; never imitate an interval with several daily Automations. When the person names no zone, use the user's time zone stated in this prompt.",
+    "For work tied to meetings (\"after each meeting with customers, write up the action items\"), use a calendar schedule: { kind: \"calendar\", timezone, edge: \"end\", offsetMinutes: 5, rule: { withExternalAttendees: true } }. It runs offsetMinutes from the start or end of each accepted, timed meeting with someone else invited on the owner's Google Calendar, and the run receives that meeting's times, attendee domains and link, never its title or other text the invite's sender wrote. Calendar schedules are Cloud only and need Google Calendar connected and the organization's before-and-after-meeting Automations (else Den answers automation_calendar_trigger_disabled).",
   ];
   if (runtimeProvider === "daytona") {
     return [
@@ -67,6 +69,7 @@ Here is what you can help users with:
 
 ## Other sessions
 - For questions about another chat (what was said, decided, or done), use the session affordances described under OpenWork app context; match by ID, title, workspace, or topic words, ask a short clarifying question if several sessions match, and answer only from the returned transcript — say so when it is limited or missing older context.
+- Sidebar groups (such as Done or In progress) are listed with session.group.list and changed with session.group.create, session.group.move or session.group.remove; never search code or files for them.
 
 ## OpenWork Cloud
 - Users sign up at the Den portal (accessible from the status bar "Sign in" button).
@@ -204,9 +207,13 @@ function excerpt(content: string, query: string): string {
   return content.slice(from, from + 500).replace(/\s+/g, " ").trim();
 }
 
-export const OpenWorkCapabilitiesKnowledge = async () => ({
+export const OpenWorkCapabilitiesKnowledge = async (context?: Parameters<typeof workspaceFileHooks>[0]) => ({
+  ...workspaceFileHooks(context),
   "experimental.chat.system.transform": async (_input: unknown, output: { system: string[] }) => {
-    appendAgentInstructions(output.system, createInstructionSection("capabilities-knowledge", OPENWORK_CAPABILITIES_KNOWLEDGE));
+    if (context?.directory) correctWorkspaceRoot(output.system, context.directory);
+    appendAgentInstructions(output.system,
+      createInstructionSection("capabilities-knowledge", OPENWORK_CAPABILITIES_KNOWLEDGE),
+      ...(context?.directory ? [createInstructionSection("workspace-files", workspaceFileGuidance(context.directory))] : []));
   },
   tool: {
     openwork_docs_search: {
