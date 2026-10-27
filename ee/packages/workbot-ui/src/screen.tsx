@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Pencil } from "lucide-react";
+import { ArrowUp, Check, CircleAlert, Copy, FileText, Globe, Lock, Monitor, Pencil } from "lucide-react";
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
-import { setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
+import { computerViews, setWorkbotHost, workbotHost, type WorkbotHost } from "./host";
 import { OpenWorkMark } from "./mark";
 import { ChatsButton, ChatsDrawer, chatTitle, RemoveChatButton, SideChatTitle, useChatLocation } from "./chats";
 import {
@@ -13,6 +13,7 @@ import {
   useStopWorkbot,
   useStopWorkbotTask,
   useWorkbotChats,
+  useWorkbotConnections,
   useWorkbotLive,
   useWorkbotThread,
   WorkbotChatProvider,
@@ -21,6 +22,7 @@ import {
   uploadWorkbotFile,
   type LiveText,
   type WorkbotAttachment,
+  type WorkbotPart,
   type WorkbotStep,
   type WorkbotPage,
   type WorkbotTask,
@@ -143,6 +145,11 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
   useEffect(() => { if (tab === "documents") setDocumentsVisited(true); if (tab === "calendar") setCalendarVisited(true); }, [tab]);
   const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : null;
+  // Excluding a view applies to that view only: whatever the person looks at next is shared again.
+  const viewKey = !currentContext ? null : currentContext.kind === "document" ? `document:${currentContext.fileId}`
+    : currentContext.kind === "documents" ? `documents:${currentContext.view}:${currentContext.folderId}`
+    : `calendar:${currentContext.view}:${currentContext.start}:${currentContext.selected?.id ?? ""}`;
+  useEffect(() => { if (viewKey) setIncludeContext(true); }, [viewKey]);
   // Den reports guidedNavigation only with the workspace assistant; each destination keeps its own switch.
   const guided = host.workspaceAssistant === true && host.guidedNavigation === true;
   const [revealChat, setRevealChat] = useState(0);
@@ -188,7 +195,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const sentFrom = useRef(new Map<string, string>());
   const followed = useRef(new Set<string>());
   // The same move for Workbot's computer: open it and keep the conversation beside it. Null while it is on screen.
-  const navigateComputerFromChat = guided && host.computer === true && tab !== "computer"
+  const navigateComputerFromChat = guided && computerViews(host).length > 0 && tab !== "computer"
     ? () => { setTab("computer"); setRevealChat(count => count + 1); }
     : null;
   const [preview, setPreview] = useState<WorkbotAttachment | null>(null);
@@ -200,18 +207,14 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const start = useStartWorkbot();
   const stream = useWorkbotLive(true);
   const thread = useWorkbotThread({ turns: turnWindow, awaiting: greetingAwaited || pending.some((entry) => !entry.failed), live: stream.connected });
+  // The welcome lists the person's connections: read them alongside the conversation, not once it has loaded.
+  useWorkbotConnections({ enabled: welcome === "pending" && !side, waiting: false });
   const send = useSendWorkbotMessage();
   const retry = useRetryWorkbotMessage();
   const stop = useStopWorkbot();
   const editMessage = useEditWorkbotMessage();
   const uploads = { uploads: draft.uploads, add: composerState.add, remove: composerState.removeUpload, retry: composerState.retryUpload };
   const data = thread.data?.available ? thread.data : null;
-  // The pages Workbot opened in this chat's browser, oldest first: the Browser view lists them, each with its own link.
-  const browserPages = useMemo(() => {
-    const seen = new Map<string, WorkbotPage>();
-    for (const turn of data?.turns ?? []) for (const part of turn.parts) if (part.kind === "steps") for (const step of part.steps) for (const page of step.pages ?? []) { seen.delete(page.id); seen.set(page.id, page); }
-    return [...seen.values()];
-  }, [data?.turns]);
   useEffect(() => {
     if (!guided || !host.documents || !data) return;
     for (const turn of data.turns) {
@@ -236,11 +239,9 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   }, [preview, data]);
   const filesEnabled = data?.filesEnabled ?? false;
   const addFiles = uploads.add;
-  // The command palette (feature `workbotCommandPalette`). Off: no button, no shortcut, no extra requests.
-  const paletteOn = host.commandPalette === true;
-  const paletteChats = useWorkbotChats(paletteOn && navigation !== null);
+  const paletteChats = useWorkbotChats(navigation !== null);
   const paletteTasks = useMemo(() => (data?.turns ?? []).flatMap((turn) => turn.tasks), [data?.turns]);
-  const palette = paletteOn ? (
+  const palette = (
     <WorkbotCommandPalette
       name={data?.name ?? "Workbot"}
       tab={tab}
@@ -264,7 +265,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       homeHref={host.homeHref}
       connectionsHref={host.connectionsHref ?? null}
     />
-  ) : null;
+  );
   const dragging = useFileDrop(filesEnabled, addFiles);
 
   useEffect(() => {
@@ -293,13 +294,16 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       void queryClient.invalidateQueries({ queryKey: workbotFilesKey });
     }, again);
   };
-  const submit = (text: string, retry?: Pending, runSkill = false) => {
+  // `plain`: a request about how Workbot works (Show me, Carry on without me), never tied to the open view or a teaching
+  // step (a message with view context runs read-only, without the computer it is asking about), and leaving the draft
+  // being typed alone.
+  const submit = (text: string, retry?: Pending, runSkill = false, plain = false) => {
     if (retry) { sendPending(retry.id, true); return; }
     const trimmed = text.trim();
-    if (!trimmed && draft.uploads.length === 0) return;
-    const parsed = workbotViewContextSchema.safeParse(includeContext ? currentContext : undefined);
+    if (!trimmed && (plain || draft.uploads.length === 0)) return;
+    const parsed = workbotViewContextSchema.safeParse(includeContext && !plain ? currentContext : undefined);
     const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || host.documents) ? parsed.data : undefined;
-    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, ...(!runSkill && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
+    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, keepDraft: plain, ...(!runSkill && !plain && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
     const delivery = sendPending(id);
     if (runSkill) return delivery.then(() => {
       const failure = composerState.getSnapshot().pending.find(entry => entry.id === id)?.failed;
@@ -338,7 +342,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         sentFrom.current.set(turn.id, viewRef.current);
         retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: error => setEditErrors(current => ({ ...current, [turn.id]: error })) });
       }}
-      onSuggestion={text => submit(text)} starting={starting} intro={null}
+      onSuggestion={text => submit(text)} onSwitch={text => submit(text, undefined, false, true)} starting={starting} intro={null}
     /> : null;
     const composer = <WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
@@ -373,7 +377,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
             {host.calendar && (calendarVisited || tab === "calendar") && <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={name} onContextChange={setCalendarContext} />}
           </div>
           <div className="flex min-h-0 min-w-0 flex-1" style={{ display: tab === "computer" ? undefined : "none" }} hidden={tab !== "computer"}>
-            {computerVisited && host.computer && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} />}
+            {computerVisited && computerViews(host).length > 0 && <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} />}
           </div>
           </div>
           {previewFile && <PreviewPanel file={previewFile} onClose={() => setPreview(null)} />}
@@ -389,7 +393,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       </OpenDocumentContext.Provider>
     </OpenFileContext.Provider>;
   }
-  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && host.computer)) {
+  if ((tab === "calendar" && host.calendar) || tab === "documents" || (tab === "computer" && computerViews(host).length > 0)) {
     return (
       <div className="workbot flex h-dvh flex-col bg-[var(--wb-bg)] antialiased">
         <WorkbotHeader
@@ -403,7 +407,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         />
         {leavingDocuments && <div className="border-t border-[var(--wb-hairline)] px-4 py-2 text-[13px]" role="status">You have unsaved document edits. <button type="button" className="ml-3 underline" onClick={() => setLeavingDocuments(null)}>Keep editing</button><button type="button" className="ml-3 underline" onClick={() => { const next = leavingDocuments; setLeavingDocuments(null); setDocumentsDirty(false); setTab(next, true); }}>Discard edits and leave Documents</button></div>}
         <div className="flex min-h-0 flex-1 border-t border-[#01162712]">
-          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} pages={browserPages} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
+          {tab === "computer" ? <WorkbotComputer key={`${host.identity?.organizationId}:${host.identity?.principalId}`} onTeachingChange={setTeaching} onRun={text => submit(text, undefined, true)} canTeach={!side} /> : tab === "documents" ? <WorkbotDocuments onDirtyChange={setDocumentsDirty} /> : <WorkbotCalendar connectionsHref={host.connectionsHref ?? null} assistantName={data?.name ?? "Workbot"} />}
         </div>
       </div>
     );
@@ -523,6 +527,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
               retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: (error) => setEditErrors((current) => ({ ...current, [turn.id]: error })) });
             }}
             onSuggestion={(text) => submit(text)}
+            onSwitch={(text) => submit(text, undefined, false, true)}
             starting={starting}
             intro={
               data.hasEarlier
@@ -640,7 +645,7 @@ type WorkbotTab = WorkbotPaletteTab;
 
 /** The pages this person has, in the header's order. */
 function paletteTabs(host: WorkbotHost): WorkbotTab[] {
-  return ["home", ...(host.calendar ? ["calendar" as const] : []), ...(host.documents ? ["documents" as const] : []), ...(host.computer ? ["computer" as const] : [])];
+  return ["home", ...(host.calendar ? ["calendar" as const] : []), ...(host.documents ? ["documents" as const] : []), ...(computerViews(host).length ? ["computer" as const] : [])];
 }
 
 /** Puts the caret in the message box on screen (the Home composer, or the workspace chat's). */
@@ -669,7 +674,7 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
   const beforeLeaveRef = useRef(beforeLeave);
   beforeLeaveRef.current = beforeLeave;
   const [tab, setTabState] = useState<WorkbotTab>(tabFromLocation);
-  const computerEnabled = workbotHost().computer === true;
+  const computerEnabled = computerViews(workbotHost()).length > 0;
   useEffect(() => {
     if (!computerEnabled && tab === "computer") { window.history.replaceState(null, "", `/${preserveSearch ? window.location.search : ""}`); setTabState("home"); }
   }, [computerEnabled, tab, preserveSearch]);
@@ -696,7 +701,7 @@ function useWorkbotTab(beforeLeave?: (next: WorkbotTab) => boolean, preserveSear
 function WorkbotNav({ tab, onTab }: { tab: WorkbotTab; onTab: (tab: WorkbotTab) => void }) {
   return (
     <nav className="ml-4 flex items-center gap-0.5" aria-label="Workbot">
-      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : []), ...(workbotHost().computer ? ["computer" as const] : [])] as const).map((entry) => (
+      {(["home", ...(workbotHost().calendar ? ["calendar" as const] : []), ...(workbotHost().documents ? ["documents" as const] : []), ...(computerViews(workbotHost()).length ? ["computer" as const] : [])] as const).map((entry) => (
         <button
           key={entry}
           type="button"
@@ -901,6 +906,8 @@ function Conversation(props: {
   /** `joined`: the next row is the failed hello's line, which sits right under the greeting as on the first open. */
   intro: { at: number; joined: boolean; node: ReactNode } | null;
   onSuggestion: (text: string) => void;
+  /** Asks Workbot to show its work on screen or carry on without the person, without the open view's context. */
+  onSwitch: (text: string) => void;
   /** Workbot is about to say hello (right after the welcome). */
   starting: boolean;
   /** Whether the person's messages can be edited now (not while Workbot is answering). */
@@ -1009,6 +1016,7 @@ function Conversation(props: {
                       previews={previews.current}
                       onRetry={() => row.turn && props.onRetryTurn(row.turn)}
                       onSuggestion={props.onSuggestion}
+                      onSwitch={props.onSwitch}
                     />
                   ) : row.pending ? (
                     <PendingView
@@ -1484,31 +1492,12 @@ function useHeld<T>(value: T, key: string, minMs: number): T {
 const UPDATE_HOLD_MS = 1_600;
 
 /**
- * Work done between two things Workbot said, where it happened: its computer as a card (the little person at work,
- * what it is doing, how long), or one quiet line for apps alone ("Using Gmail", then "Used Gmail"). `live` while
- * nothing has been said after it yet, so a card doesn't blink between two commands (DESIGN C3, T1, V6).
+ * Work in connected apps between two things Workbot said, as one quiet line ("Using Gmail", then "Used Gmail"), `live`
+ * while nothing has been said after it yet (DESIGN C3, T1). Work on its computer is a card of its own (computerWork).
  */
 function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) {
-  const used = usedApps(steps, null);
-  if (used.length === 0) return null;
-  const others = used.filter((app) => !app.computer);
-  // The browser and the rest of its computer are separate cards, in the order Workbot used them; the newest is live.
-  const surfaces = [...new Set(steps.filter((step) => step.icon === "computer").map((step) => (step.surface === "browser" ? "browser" : "computer") as ComputerSurface))];
-  if (surfaces.length > 0) {
-    return (
-      <div className="flex flex-col gap-2 py-1 pl-1">
-        {surfaces.map((surface, index) => (
-          <SurfaceCard
-            key={surface}
-            surface={surface}
-            steps={steps.filter((step) => step.icon === "computer" && (step.surface === "browser") === (surface === "browser"))}
-            live={live && index === surfaces.length - 1}
-            others={index === surfaces.length - 1 ? others : []}
-          />
-        ))}
-      </div>
-    );
-  }
+  const others = usedApps(steps, null).filter((app) => !app.computer);
+  if (others.length === 0) return null;
   const label = `${live ? "Using" : "Used"} ${joinNames(others.map((app) => app.name))}`;
   return (
     <p
@@ -1528,30 +1517,89 @@ function StepsSegment({ steps, live }: { steps: WorkbotStep[]; live: boolean }) 
   );
 }
 
-type ComputerSurface = "browser" | "computer";
+/** Where on its computer Workbot works: its browser, its screen, or commands in the background with nothing to watch. */
+type ComputerSurface = "browser" | "computer" | "background";
+
+function surfaceOf(step: WorkbotStep): ComputerSurface {
+  return step.surface === "browser" ? "browser" : step.background ? "background" : "computer";
+}
+
+/** The other way of working, offered on a live card: one tap sends it as a follow-up. */
+type SwitchTo = { label: string; text: string; send(text: string): void };
+
+/**
+ * Workbot's computer work in one reply, as one card per kind of work (its browser, its screen, its background
+ * commands), however often it stops to say what it is doing. While it works, the cards it is using go below its latest
+ * words: the one it is on now, and the screen it was last on, whose live view stays up for the rest of the reply.
+ * The others stay where that work last happened.
+ */
+function computerWork(parts: WorkbotPart[], { working, starting, lastIsLive }: { working: boolean; starting: LiveText["working"] | null; lastIsLive: boolean }) {
+  const cards = new Map<ComputerSurface, { steps: WorkbotStep[]; last: number }>();
+  let screen: ComputerSurface | null = null;
+  let current: ComputerSurface | null = null;
+  for (const [index, part] of parts.entries()) {
+    if (part.kind !== "steps") continue;
+    for (const step of part.steps) {
+      if (step.icon !== "computer") continue;
+      const surface = surfaceOf(step);
+      const card = cards.get(surface) ?? { steps: [], last: index };
+      card.steps.push(step);
+      card.last = index;
+      cards.set(surface, card);
+      if (surface !== "background") screen = surface;
+      if (lastIsLive && index === parts.length - 1) current = surface;
+    }
+  }
+  if (working && starting) {
+    // A step starting before it is stored: commands in the background, or the screen it was last on.
+    const surface: ComputerSurface = starting.background ? "background" : screen ?? "computer";
+    if (!cards.has(surface)) {
+      cards.set(surface, { steps: [{ label: "Using my computer", icon: "computer", status: "running", app: null, startedAt: null, finishedAt: null, updates: [], ...(starting.background ? { background: true as const } : {}) }], last: parts.length });
+    }
+    current = surface;
+    if (surface !== "background") screen = surface;
+  }
+  const watch = working ? screen : null;
+  const live = new Set<ComputerSurface>();
+  if (working && current) live.add(current);
+  if (watch) live.add(watch);
+  const placed = new Map<number, ComputerSurface[]>();
+  for (const [surface, card] of cards) if (!live.has(surface)) placed.set(card.last, [...(placed.get(card.last) ?? []), surface]);
+  // Below its latest words: background work first, then the screen it is watched on.
+  const trailing = [...live].sort((a, b) => Number(a === watch) - Number(b === watch));
+  return { cards, live, watch, placed, trailing };
+}
 
 /** Opens the full view of Workbot's browser or computer, without reloading Workbot. */
-function openSurface(surface: ComputerSurface) {
+function openSurface(surface: Exclude<ComputerSurface, "background">) {
   window.history.pushState(null, "", `/${surface}${window.location.search}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 /**
  * Work in Workbot's browser or on the rest of its computer, as one card: what it is doing now in its own words, and
- * while it works a small live view of the screen (when the computer is on for the person). The browser card links
- * the pages it opened.
+ * while it works on a screen a small live view of it (when the computer is on for the person). Commands in the
+ * background (running Blender from the command line) have no screen to watch, so their card never connects one. The
+ * browser card links the pages it opened.
  */
-function SurfaceCard({ surface, steps, live, others }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[] }) {
+function SurfaceCard({ surface, steps, live, others, switchTo = null }: { surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; switchTo?: SwitchTo | null }) {
+  const [asked, setAsked] = useState(false);
   const updates = steps.flatMap((step) => step.updates);
   const latest = updates.at(-1) ?? null;
   const update = useHeld(latest, latest ?? "", UPDATE_HOLD_MS);
   const pages = steps.flatMap((step) => step.pages ?? []).filter((page, index, all) => all.findIndex((entry) => entry.id === page.id) === index);
-  const watchable = workbotHost().computer === true;
-  const name = surface === "browser" ? "the browser" : "my computer";
+  const views = computerViews(workbotHost());
+  // Each view is its own rollout: a card shows a screen only for a view this person has. Work in the background has
+  // no screen of its own, so asking to see it needs at least one.
+  const watchable = surface === "background" ? views.length > 0 : views.includes(surface);
+  const title = surface === "browser" ? `${live ? "Using" : "Used"} the browser`
+    : surface === "background" ? `${live ? "Working" : "Worked"} on my computer`
+    : `${live ? "Using" : "Used"} my computer`;
+  const starting = surface === "browser" ? "Opening the browser" : surface === "background" ? "Running in the background" : "Starting up";
   return (
     <WorkCard
-      title={`${live ? "Using" : "Used"} ${name}`}
-      detail={(live ? update : latest) ?? (live ? (surface === "browser" ? "Opening the browser" : "Starting up") : "Done")}
+      title={title}
+      detail={(live ? update : latest) ?? (live ? starting : "Done")}
       running={live}
       outcome={live ? null : "done"}
       startedAt={steps.find((step) => step.startedAt)?.startedAt ?? null}
@@ -1560,8 +1608,20 @@ function SurfaceCard({ surface, steps, live, others }: { surface: ComputerSurfac
       action={<AppLogos apps={others} />}
       footer={
         <>
-          {live && watchable ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
-          {watchable && pages.length > 0 ? <BrowserPageLinks pages={pages} /> : null}
+          {live && watchable && surface !== "background" ? <div className="px-2.5"><LiveGlimpse view={surface} onOpen={() => openSurface(surface)} /></div> : null}
+          {live && watchable && switchTo && !asked ? (
+            <div className="flex px-2.5 pb-2.5 pt-2" data-workbot-computer-switch>
+              <button
+                type="button"
+                onClick={() => { setAsked(true); switchTo.send(switchTo.text); }}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full bg-[var(--wb-surface)] px-2.5 text-[12px] text-[var(--wb-text)] shadow-[0_0_0_1px_var(--wb-ring)] transition-shadow duration-150 hover:shadow-[0_0_0_1px_var(--wb-disabled)] focus-visible:outline-none focus-visible:shadow-[var(--wb-focus)]"
+              >
+                {surface === "background" ? <Monitor size={12} aria-hidden className="shrink-0 text-[var(--wb-muted)]" /> : null}
+                {switchTo.label}
+              </button>
+            </div>
+          ) : null}
+          {views.includes("browser") && pages.length > 0 ? <BrowserPageLinks pages={pages} /> : null}
         </>
       }
     />
@@ -1624,10 +1684,10 @@ function replyProgress(turn: WorkbotTurn, live: LiveText | null) {
   // Live text is trimmed like the stored text, so a finished bubble carries on instead of starting over.
   const liveText = withoutNextLine((current?.text ?? "").trimStart());
   const last = turn.parts.at(-1);
-  // Its computer starting before the step is stored: the card shows right away, after what it just said.
-  const startingCard = working && !turn.greeting && current?.working?.on === "computer" && !(last?.kind === "steps" && last.steps.some((step) => step.icon === "computer"));
-  const lastIsLive = working && last?.kind === "steps" && !liveText && !startingCard;
-  return { working, liveText, startingCard, lastIsLive };
+  // Its computer starting before the step is stored: its card shows right away, after what it just said.
+  const starting = working && !turn.greeting && current?.working?.on === "computer" ? current.working : null;
+  const lastIsLive = working && last?.kind === "steps" && !liveText;
+  return { working, liveText, starting, lastIsLive };
 }
 
 
@@ -1645,8 +1705,9 @@ function useSettled(flag: boolean, ms: number) {
   return flag && settled;
 }
 
-/** One thing a turn shows: a model call's words (one bubble each) or the steps between them. */
-type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; key: string; steps: WorkbotStep[]; live: boolean };
+/** One thing a turn shows: a model call's words (one bubble each), work in apps between them, or a computer card. */
+type TurnItem = { kind: "text"; key: string; text: string } | { kind: "steps"; key: string; steps: WorkbotStep[]; live: boolean }
+  | { kind: "card"; key: string; surface: ComputerSurface; steps: WorkbotStep[]; live: boolean; others: UsedApp[]; switchTo: SwitchTo | null };
 
 function TurnView(props: {
   canChange: boolean;
@@ -1660,9 +1721,10 @@ function TurnView(props: {
   previews: Record<string, string | null>;
   onRetry: () => void;
   onSuggestion: (text: string) => void;
+  onSwitch: (text: string) => void;
 }) {
   const { turn } = props;
-  const { working, liveText, startingCard, lastIsLive } = replyProgress(turn, props.live);
+  const { working, liveText, starting, lastIsLive } = replyProgress(turn, props.live);
   // An answer watched while it was written keeps revealing at its pace once it's stored; answers already done when the
   // page opened show at once.
   const watched = useRef(working);
@@ -1672,10 +1734,32 @@ function TurnView(props: {
   // One bubble per model call, keyed by that call from its first streamed word to its stored copy, so a bubble never
   // swaps, jumps to its full length or starts over when the conversation is read again (DESIGN P11). Words streamed for
   // an earlier call stay until the stored copy arrives.
+  // The newest message is answered next; a follow-up interrupts the older answer, which only finishes its step.
+  const answering = props.latest && working;
+  // While it answers, the person can ask it to show its work on screen or carry on without them. (Not `canChange`:
+  // that is false while Workbot answers, which is exactly when these are offered.)
+  const switchMode = answering ? props.onSwitch : undefined;
+  // A computer card keeps its key wherever it sits, so moving below Workbot's newest words never restarts its live view.
+  const work = computerWork(parts, { working, starting, lastIsLive });
+  const card = (surface: ComputerSurface, others: UsedApp[] = []): TurnItem => {
+    const isLive = work.live.has(surface);
+    const switchTo = !isLive || !switchMode ? null
+      : surface === work.watch ? { label: "Carry on without me", text: "Carry on without me in the background; no need to show me.", send: switchMode }
+      : surface === "background" && work.watch === null ? { label: "Show me", text: "Show me what you're doing on screen.", send: switchMode }
+      : null;
+    return { kind: "card", key: `card-${surface}`, surface, steps: work.cards.get(surface)?.steps ?? [], live: isLive, others, switchTo };
+  };
   const items: TurnItem[] = [];
   parts.forEach((part, index) => {
-    if (part.kind === "text") items.push({ kind: "text", key: `text-${part.step ?? `part-${index}`}`, text: part.text });
-    else items.push({ kind: "steps", key: `steps-${index}`, steps: part.steps, live: working && index === parts.length - 1 && lastIsLive });
+    if (part.kind === "text") {
+      items.push({ kind: "text", key: `text-${part.step ?? `part-${index}`}`, text: part.text });
+      return;
+    }
+    const here = work.placed.get(index) ?? [];
+    const apps = part.steps.filter((step) => step.icon === "app");
+    // Apps used beside computer work show as logos on its card; on their own, as a quiet line.
+    here.forEach((surface, at) => items.push(card(surface, at === here.length - 1 ? usedApps(apps, null) : [])));
+    if (apps.length > 0 && here.length === 0) items.push({ kind: "steps", key: `steps-${index}`, steps: apps, live: working && index === parts.length - 1 && lastIsLive });
   });
   if (working && props.live) {
     for (const entry of props.live.earlier ?? []) {
@@ -1684,8 +1768,7 @@ function TurnView(props: {
     }
   }
   if (live && liveText) items.push({ kind: "text", key: `text-${live.step}`, text: liveText });
-  // The newest message is answered next; a follow-up interrupts the older answer, which only finishes its step.
-  const answering = props.latest && working;
+  for (const surface of work.trailing) items.push(card(surface));
   // The place Workbot's next words will take, one message line tall: the typing dots, or the app step running right now
   // ("Using Gmail"), then the words themselves, each replacing the last without moving the conversation. Once it has
   // shown, it keeps its place until the words arrive.
@@ -1693,7 +1776,7 @@ function TurnView(props: {
   const runningApps = answering && tail?.kind === "steps" && tail.live && tail.steps.every((step) => step.icon === "app") ? tail : null;
   if (runningApps) items.pop();
   const lastText = items.reduce((found, item, index) => (item.kind === "text" ? index : found), -1);
-  const waiting = answering && !liveText && !startingCard && !lastIsLive;
+  const waiting = answering && !liveText && !lastIsLive && work.live.size === 0;
   const fresh = items.length === 0 && !runningApps;
   const settled = useSettled(waiting && !fresh, 350);
   const dots = waiting && (fresh || settled);
@@ -1706,8 +1789,10 @@ function TurnView(props: {
   const slot = answering && !liveText && (dots || held || running);
   const copyText = parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n\n");
   const offers = useMemo(() => (turn.status === "done" ? documentLinks(copyText) : []), [turn.status, copyText]);
-  // One computer, so only the newest reply that used it offers to open it, already while it works.
-  const usedComputer = props.latest && (Boolean(startingCard) || parts.some((part) => part.kind === "steps" && part.steps.some((step) => step.icon === "computer")));
+  // One computer, so only the newest reply that used its screen offers to open it, already while it works. Commands run
+  // in the background leave nothing on the screen to open.
+  const onScreen = (step: WorkbotStep) => step.icon === "computer" && !step.background;
+  const usedComputer = props.latest && ((starting !== null && !starting.background) || parts.some((part) => part.kind === "steps" && part.steps.some(onScreen)));
   return (
     <>
       <SentAttachments attachments={turn.attachments} localUrls={props.previews} />
@@ -1716,7 +1801,7 @@ function TurnView(props: {
       ) : (
         <UserBubble text={turn.text} reaction={turn.reaction} />
       )}
-      {items.length > 0 || startingCard || slot ? <Gap /> : null}
+      {items.length > 0 || slot ? <Gap /> : null}
       {/* What it said and what it did, in the order it happened: "On it." · the computer card · the answer. */}
       <div className="group/answer flex flex-col">
         {items.map((item, index) =>
@@ -1725,11 +1810,14 @@ function TurnView(props: {
             <AssistantBubble key={item.key} trailing={turn.status === "done" && index === lastText ? <CopyAnswer text={copyText} /> : null}>
               <StreamingText text={item.text} instant={!(props.newestText && index === lastText && watched.current)} />
             </AssistantBubble>
+          ) : item.kind === "card" ? (
+            <div key={item.key} className="py-1 pl-1">
+              <SurfaceCard surface={item.surface} steps={item.steps} live={item.live} others={item.others} switchTo={item.switchTo} />
+            </div>
           ) : (
             <StepsSegment key={item.key} steps={item.steps} live={item.live} />
           ),
         )}
-        {startingCard ? <StepsSegment steps={[{ label: "Using my computer", icon: "computer", status: "running", app: null, startedAt: null, finishedAt: null, updates: [] }]} live /> : null}
         {slot ? <WaitingSlot>{runningApps ? <StepsSegment steps={runningApps.steps} live /> : dots ? <TypingDots /> : null}</WaitingSlot> : null}
       </div>
       <DocumentOffers links={offers} />

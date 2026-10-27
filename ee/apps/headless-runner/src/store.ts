@@ -22,11 +22,14 @@ import { stepStateSchema, type StepState } from "./steps.js"
 import { withoutAttachments } from "./tool-files.js"
 import {
   ACTIVE,
+  DESKTOP_VIEWS,
   attachmentSchema,
+  desktopViewSchema,
   messageSchema,
   repeatLimitsSchema,
   turnStatusSchema,
   type Attachment,
+  type DesktopView,
   type Execution,
   type Message,
   type RepeatLimits,
@@ -49,6 +52,7 @@ const sessionOptions = z.object({
   files: z.boolean().optional(),
   computer: z.boolean().optional(),
   desktop: z.boolean().optional(),
+  desktopViews: z.array(desktopViewSchema).optional(),
   reactions: z.boolean().optional(),
   tasks: z.boolean().optional(),
   documentNavigation: z.boolean().optional(),
@@ -96,6 +100,8 @@ export type Session = {
   files: boolean
   computer: boolean
   desktop: boolean
+  /** The desktop views this conversation may use (see DesktopView); null means all of them. */
+  desktopViews: DesktopView[] | null
   /** Whether the model may react to the person's message with an emoji (the caller shows it). */
   reactions: boolean
   /** Whether the conversation may hand work to background tasks (start_task) and keep talking meanwhile. */
@@ -127,6 +133,7 @@ export type SessionInput = {
   files?: boolean
   computer?: boolean
   desktop?: boolean
+  desktopViews?: DesktopView[] | null
   reactions?: boolean
   tasks?: boolean
   documentNavigation?: boolean
@@ -144,6 +151,7 @@ function optionsOf(input: {
   files?: boolean
   computer?: boolean
   desktop?: boolean
+  desktopViews?: DesktopView[] | null
   reactions?: boolean
   tasks?: boolean
   documentNavigation?: boolean
@@ -157,6 +165,7 @@ function optionsOf(input: {
     ...(input.files !== undefined ? { files: input.files } : {}),
     ...(input.computer !== undefined ? { computer: input.computer } : {}),
     ...(input.desktop !== undefined ? { desktop: input.desktop } : {}),
+    ...(input.desktopViews !== undefined ? { desktopViews: input.desktopViews ?? [...DESKTOP_VIEWS] } : {}),
     ...(input.reactions !== undefined ? { reactions: input.reactions } : {}),
     ...(input.tasks !== undefined ? { tasks: input.tasks } : {}),
     ...(input.documentNavigation !== undefined ? { documentNavigation: input.documentNavigation } : {}),
@@ -177,6 +186,8 @@ function serializeOptions(options: SessionOptions) {
     ...(options.files ? { files: true } : {}),
     ...(options.computer ? { computer: true } : {}),
     ...(options.desktop ? { desktop: true } : {}),
+    // Every view is the default, so only a narrower set is kept, in one order.
+    ...(options.desktopViews && !DESKTOP_VIEWS.every(view => options.desktopViews!.includes(view)) ? { desktopViews: DESKTOP_VIEWS.filter(view => options.desktopViews!.includes(view)) } : {}),
     ...(options.reactions ? { reactions: true } : {}),
     ...(options.tasks ? { tasks: true } : {}),
     ...(options.documentNavigation ? { documentNavigation: true } : {}),
@@ -339,6 +350,14 @@ export class Store {
       { version: 2, name: "session-storage", up: storageSchema },
       // Session cells: owner directory, owner-scoped memory, forwarding rows, splits (cells-store.ts).
       { version: 3, name: "session-cells", up: migrateCells },
+      // When each conversation's computer is due to pause (see setComputerPause).
+      { version: 4, name: "computer-pauses", up: (db) => db.exec(`
+        CREATE TABLE IF NOT EXISTS computer_pauses (
+          session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+          due_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS computer_pauses_by_due ON computer_pauses (due_at);
+      `) },
     ])
   }
 
@@ -540,6 +559,7 @@ export class Store {
       files: options.files ?? false,
       computer: options.computer ?? false,
       desktop: options.desktop ?? false,
+      desktopViews: options.desktopViews ?? null,
       reactions: options.reactions ?? false,
       tasks: options.tasks ?? false,
       documentNavigation: options.documentNavigation ?? false,
@@ -1035,6 +1055,32 @@ export class Store {
       this.db.prepare("DELETE FROM step_schedule WHERE session_id = ? AND message_id = ?").run(sessionId, messageId)
       this.db.prepare("DELETE FROM step_checkpoints WHERE session_id = ? AND message_id = ?").run(sessionId, messageId)
     })
+  }
+
+  /**
+   * When the conversation's computer should pause if it is still idle. Kept here rather than in a timer, so a runner
+   * that restarts (or a cell whose isolate is recycled) still pauses it: the host's background job reads it.
+   */
+  setComputerPause(sessionId: string, dueAt: number) {
+    this.db
+      .prepare("INSERT INTO computer_pauses (session_id, due_at) SELECT id, ? FROM sessions WHERE id = ? ON CONFLICT (session_id) DO UPDATE SET due_at = excluded.due_at")
+      .run(dueAt, sessionId)
+  }
+
+  clearComputerPause(sessionId: string) {
+    this.db.prepare("DELETE FROM computer_pauses WHERE session_id = ?").run(sessionId)
+  }
+
+  dueComputerPauses(now: number): string[] {
+    return this.db
+      .prepare("SELECT session_id FROM computer_pauses WHERE due_at <= ? ORDER BY due_at")
+      .all(now)
+      .map((row) => z.object({ session_id: z.string() }).parse(row).session_id)
+  }
+
+  nextComputerPauseAt(): number | null {
+    const row = z.object({ due_at: z.number().nullable() }).parse(this.db.prepare("SELECT MIN(due_at) AS due_at FROM computer_pauses").get())
+    return row.due_at
   }
 
   /** Step-mode turns whose next step is due, oldest first. */

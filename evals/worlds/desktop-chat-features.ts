@@ -87,6 +87,7 @@ export async function browserFloatingViewWorld(seed: Seed) {
 }
 
 /** Computer use on this Mac. Readiness comes from the real helper and macOS permissions; nothing is faked. */
+/** Computer use with the floating browser also on, as people who try both see the chat header. */
 export async function computerUseWorld(seed: Seed) {
-  return featureDesktop(seed, "computer-use-consent", { computerUse: true }, "Tidy the project folder");
+  return featureDesktop(seed, "computer-use-consent", { computerUse: true, browserFloatingView: true }, "Tidy the project folder");
 }

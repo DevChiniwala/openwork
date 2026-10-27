@@ -19,7 +19,7 @@ import { modelProbeResponse, type ModelProbe } from "./model-probe.js"
 import { CONVERSATION_TABLES, sqlRow, type SessionInput, type StoredMessage, type Store, type Turn } from "./store.js"
 import { LargeBodyUnavailableError, SegmentError, SessionStorage } from "./storage/index.js"
 import { CellsStore } from "./cells-store.js"
-import { ACTIVE, executionSchema, repeatLimitsSchema, turnCredentialsSchema, turnStatusSchema, type SessionComputer } from "./types.js"
+import { ACTIVE, DESKTOP_VIEWS, desktopViewSchema, executionSchema, repeatLimitsSchema, turnCredentialsSchema, turnStatusSchema, type DesktopView, type SessionComputer } from "./types.js"
 
 const createSessionBody = z
   .object({
@@ -31,6 +31,8 @@ const createSessionBody = z
     /** Give this conversation a Linux computer (needs HEADLESS_COMPUTER). Off unless asked for. */
     computer: z.boolean().optional(),
     desktop: z.boolean().optional(),
+    /** The desktop views this conversation may use, at least one; omitted keeps the current ones (all, by default). */
+    desktopViews: z.array(desktopViewSchema).min(1).max(DESKTOP_VIEWS.length).optional(),
     /** Let the model react to the person's message with one emoji (the `react` tool). Off unless asked for. */
     reactions: z.boolean().optional(),
     /** Let the conversation hand longer work to background tasks (start_task) and keep talking. Off unless asked for. */
@@ -221,8 +223,10 @@ export function createApp(input: {
     if (!session?.computer || !session.desktop) return c.json({ error: "desktop_disabled" }, 403)
     const raw: unknown = await c.req.json().catch(() => null)
     c.header("Cache-Control", "no-store")
+    const allows = (view: DesktopView) => !session.desktopViews || session.desktopViews.includes(view)
     try {
       if (c.req.param("operation") === "demonstration" && input.computer?.browserDemonstration) {
+        if (!allows("browser")) return c.json({ error: "desktop_view_disabled" }, 403)
         const body = demonstrationCommandSchema.safeParse(raw)
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
         return c.json(await input.computer.browserDemonstration(session.id, body.data))
@@ -230,6 +234,7 @@ export function createApp(input: {
       if (c.req.param("operation") === "viewer" && input.computer?.desktopViewer) {
         const body = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean(), origin: z.string().url().max(2048) }).strict().safeParse(raw)
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
+        if (!allows(body.data.view)) return c.json({ error: "desktop_view_disabled" }, 403)
         return c.json(await input.computer.desktopViewer(session.id, body.data))
       }
       if (c.req.param("operation") === "action" && input.computer?.desktopAction) {

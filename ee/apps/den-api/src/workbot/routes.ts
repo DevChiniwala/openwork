@@ -58,7 +58,10 @@ const sessionSchema = z.object({
   enabled: z.boolean(),
   /** Workbot may set up recurring work: the organization runs Automations on the headless runner. */
   canSchedule: z.boolean(),
+  /** Workbot may use the native apps on its cloud computer. */
   computer: z.boolean().optional(),
+  /** Workbot may use the browser on its cloud computer; off on older Dens, which gave the browser with `computer`. */
+  browser: z.boolean().optional(),
   browserDemonstrations: z.boolean().optional(),
   /** The Browser view streams the page with Chromium's screencast; off on older Dens. */
   browserLiveView: z.boolean().optional(),
@@ -76,7 +79,7 @@ const sessionSchema = z.object({
   activationChecklist: z.boolean().optional(),
   /** The person can start side chats next to their main chat (while Workbot is on). */
   sideChats: z.boolean(),
-  /** The Cmd+K / Ctrl+K command palette (`workbotCommandPalette`); older Dens omit it: off. */
+  /** Always true for older Workbot clients; the command palette is available by default. */
   commandPalette: z.boolean().optional(),
   /**
    * The model Workbot's turns run on: the organization's default model. Null, and
@@ -388,9 +391,11 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         organization: { id: organization.id, name: organization.name, brandAppName: readBrandAppName(organization.metadata) },
         memberId,
         enabled: true,
+        // Workbot's browser and its other desktop apps share one cloud computer but are rolled out separately.
         computer: features.computerUse && features.remoteComputers,
-        browserDemonstrations: features.browserDemonstrations && features.computerUse && features.remoteComputers,
-        browserLiveView: features.browserLiveView && features.computerUse && features.remoteComputers,
+        browser: features.browserUse && features.remoteComputers,
+        browserDemonstrations: features.browserDemonstrations && features.browserUse && features.remoteComputers,
+        browserLiveView: features.browserLiveView && features.browserUse && features.remoteComputers,
         canSchedule,
         calendar: true,
         documents: features.workbotDocuments,
@@ -402,7 +407,7 @@ export function registerWorkbotRoutes<T extends { Variables: object }>(app: Hono
         usageRecovery: includedModels,
         activationChecklist: features.activationChecklist,
         sideChats: true,
-        commandPalette: features.workbotCommandPalette,
+        commandPalette: true,
         model,
         gatewayModels: true,
         stepTurns: true,

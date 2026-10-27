@@ -19,6 +19,7 @@
     "@openwork-ee/den-db": "workspace:*",
     "@openwork-ee/telemetry": "workspace:*",
     "@openwork-ee/utils": "workspace:*",
+    "@openwork/features": "workspace:*",
     "@openwork/free-auto": "workspace:*",
     "@openwork/types": "workspace:*",
     "@sentry/hono": "^10.65.0",

@@ -840,14 +840,14 @@ const DEFAULT_OPENWORK_EXTENSION_MANIFESTS = [
     icon: { src: "/openwork-mark.svg" },
     composer: { prompt: "Use the OpenWork Browser extension to " },
     setup: { instructions: "OpenWork Browser is ready by default in desktop workspaces." },
-    resources: [{ type: "opencode-plugin", id: "opencode-chrome-devtools", packageName: "opencode-chrome-devtools", required: true }],
+    resources: [{ type: "opencode-plugin", id: "openwork-chrome-devtools", label: "OpenWork browser tools", required: true }],
     contributions: [
       { type: "settings-panel", ref: "openwork.browser.settings", location: "settings-detail" },
       { type: "session-side-panel", ref: "openwork.browser.panel", location: "session-right-pane" },
       { type: "composer-prompt", prompt: "Use the OpenWork Browser extension to ", location: "composer" },
     ],
     enablement: [{ type: "toggle-enabled", ref: "openwork-browser", label: "Enabled" }],
-    lifecycle: { reload: ["plugins", "agents"], detection: ["plugin:opencode-chrome-devtools"] },
+    lifecycle: { reload: ["plugins", "agents"], detection: ["plugin:openwork-chrome-devtools"] },
     defaultEnabled: true,
   },
   {
