@@ -16,8 +16,10 @@ Each view is its own rollout (both on `cloud` and `self_hosted`, owned by
 
 Workspaces that had Workbot's computer before the split keep the Computer view
 and get the Browser view once `browserUse` is turned on for them. Workbot tells
-the runner each chat's views (`desktopViews` on the session); a runner from
-before the split ignores the setting and offers both views until it is updated.
+the runner each chat's views (`desktopViews` on the session), taken from Den's
+answer at that moment rather than a cached session. A runner from before the
+split can't limit the views, so a chat allowed only one gets no desktop there
+until the runner is updated; a chat allowed both keeps both.
 Turning a flag off applies to the next viewer connection and the chat's next
 turn; a viewer already open can outlive it as described under Transport and
 rollout. `bash` and `look` are not views: every Workbot chat keeps them while

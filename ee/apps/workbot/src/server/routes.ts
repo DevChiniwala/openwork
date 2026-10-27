@@ -118,10 +118,10 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     })
 
   /** Workbot bound to this person: their runner conversation, and turn tokens Den mints for them. */
-  const workbotFor = (member: Member) =>
+  const workbotFor = (member: Member, desktopViews = desktopViewsOf(member.den)) =>
     createWorkbot({
       client: runnerClientFor(member),
-      desktopViews: desktopViewsOf(member.den),
+      desktopViews,
       canSchedule: async () => member.den.canSchedule,
       model: async () => member.den.model,
       // Gateway access is validated for this actor and model by Den when minting each turn, not by the runner catalog.
@@ -259,21 +259,24 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     if (operation === "viewer" ? !viewer.success : !action.success) return c.json({ error: "invalid_request" }, 400)
     // Each view is its own rollout: the browser (browserUse) and the native desktop apps (computerUse).
     const view = viewer.success ? viewer.data.view : null
-    const workbot = workbotFor(member)
     const client = runnerClientFor(member)
-    const stillAllowed = async () => {
+    /** The views Den allows right now, or null when this request isn't allowed. The runner is told only these. */
+    const allowedViews = async () => {
       const fresh = await den.session(member.accessToken)
       const views = desktopViewsOf(fresh)
-      return fresh.enabled && (view ? views.includes(view) : views.length > 0) && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
+      const allowed = fresh.enabled && (view ? views.includes(view) : views.length > 0) && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
+      return allowed ? views : null
     }
     try {
-      if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
+      const views = await allowedViews()
+      if (!views) return c.json({ error: "feature_disabled" }, 403)
+      const workbot = workbotFor(member, views)
       let sessionId = await workbot.sessionIdOf(actorOf(member))
       const existing = await client.readSession(sessionId, { turns: 1, limit: 1, outputs: "none" })
       if (!existing.ok && existing.status === 404) sessionId = await workbot.ensureComputer(actorOf(member))
       else {
         if (!existing.ok) return desktopFailure(c, operation, existing.error)
-        const updated = await client.putSession(sessionId, { computer: true, desktop: true, desktopViews: desktopViewsOf(member.den) })
+        const updated = await client.putSession(sessionId, { computer: true, desktop: true, desktopViews: views })
         if (!updated.ok) return desktopFailure(c, operation, updated.error)
       }
       // An outdated computer never connects or resumes and rebuilding is the only fix, so do it instead of asking. Not
@@ -302,12 +305,12 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
         }
         if (!result.ok) return desktopFailure(c, operation, result.error)
         // A cold VM may take longer than the membership cache: verify again before sharing its stream.
-        if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
+        if (!await allowedViews()) return c.json({ error: "feature_disabled" }, 403)
         return c.json(result.value)
       }
       const body = action
       if (!body.success) return c.json({ error: "invalid_request" }, 400)
-      if (!await stillAllowed()) return c.json({ error: "feature_disabled" }, 403)
+      if (!await allowedViews()) return c.json({ error: "feature_disabled" }, 403)
       // Rebuilding deletes the VM under any running turn, so stop the turn first, as pausing does.
       if (body.data.action === "pause" || body.data.action === "rebuild") await workbot.stop(actorOf(member))
       let result = await client.desktopAction(sessionId, body.data.action)

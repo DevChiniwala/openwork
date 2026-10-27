@@ -31,6 +31,24 @@ test("an explicit desktop off value preserves side chats on an older runner", as
   assert.deepEqual(bodies[1], { owner: "owner", ref: "sidechat", computer: true })
 })
 
+test("an older runner that can't limit the desktop's views gives a one-view conversation no desktop", async () => {
+  const bodies: Record<string, unknown>[] = []
+  const client = createHeadlessRunnerClient({
+    config: { url: "http://runner", token: "r".repeat(32) }, maxTokenTtlMs: 60_000, mintToken: async () => ({ token: "synthetic" }),
+    fetch: async (_url, init) => {
+      const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Record<string, unknown>
+      bodies.push(body)
+      const rejected = "desktopViews" in body
+      return new Response(JSON.stringify(rejected ? { error: "invalid_request" } : { id: "hs_fixture" }), { status: rejected ? 400 : 200, headers: { "content-type": "application/json" } })
+    },
+  })
+  assert.equal((await client.putSession("hs_fixture", { computer: true, desktop: true, desktopViews: ["browser"] })).ok, true)
+  assert.deepEqual(bodies.at(-1), { computer: true, desktop: false })
+  // Every view is what the older runner offers anyway.
+  assert.equal((await client.putSession("hs_fixture", { computer: true, desktop: true, desktopViews: ["browser", "computer"] })).ok, true)
+  assert.deepEqual(bodies.at(-1), { computer: true, desktop: true })
+})
+
 test("Computer access uses the signed-in member's conversation and refuses a caller-supplied target", async (t) => {
   const calls: { method: string; url: URL; owner: string | null; body: unknown }[] = []
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } })
@@ -231,6 +249,7 @@ test("Computer asks to reconnect for other desktop failures", async t => {
 
 test("the browser and the native desktop are separate rollouts", async t => {
   let signed = member("alice", false, true)
+  let fresh: Member | null = null
   const calls: { method: string; path: string; body: unknown }[] = []
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } })
   t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
@@ -242,7 +261,7 @@ test("the browser and the native desktop are separate rollouts", async t => {
   })
   const app = new Hono<AppEnv>()
   registerWorkbotRoutes(app, {
-    config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => signed.den },
+    config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => (fresh ?? signed).den },
     member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
   })
   const open = (view: string) => app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view }) })
@@ -260,4 +279,10 @@ test("the browser and the native desktop are separate rollouts", async t => {
   assert.equal((await open("browser")).status, 403)
   const me = await (await app.request("/v1/workbot/me")).json() as { computer: boolean; browser: boolean }
   assert.deepEqual([me.computer, me.browser], [true, false])
+  // A cached session still has the browser after an admin turned it off: the runner is told only what Den allows now.
+  signed = member("alice", true, true)
+  fresh = member("alice", true, false)
+  calls.length = 0
+  assert.equal((await open("computer")).status, 200)
+  assert.deepEqual(calls.find(call => call.method === "PUT")?.body, { computer: true, desktop: true, desktopViews: ["computer"] })
 })

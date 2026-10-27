@@ -258,7 +258,8 @@ export type RunnerCapabilities = {
   tasks?: boolean
   documentNavigation?: boolean
 }
-export type RunnerDesktopView = "browser" | "computer"
+export const RUNNER_DESKTOP_VIEWS = ["browser", "computer"] as const
+export type RunnerDesktopView = (typeof RUNNER_DESKTOP_VIEWS)[number]
 
 /**
  * Who a conversation belongs to and how it is shown to the model: `owner` (the caller's key for one person) and `ref`
@@ -366,10 +367,12 @@ export function createHeadlessRunnerClient(deps: HeadlessRunnerDeps) {
       const extras = { ...(input.repeats ? { repeats: input.repeats } : {}), ...capabilityFields(input) }
       let { status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...extras })
       let compatible: Record<string, unknown> = extras
-      // The newest setting first. An older runner offers every desktop view; the conversation keeps its other settings.
+      // The newest setting first. An older runner can't limit the desktop to some views, so a conversation allowed fewer
+      // than all of them gets no desktop there rather than every view; it keeps its other settings.
       if (unknownSetting(status, payload) && input.desktopViews !== undefined) {
         const { desktopViews: _views, ...rest } = compatible
-        compatible = rest
+        const narrowed = !RUNNER_DESKTOP_VIEWS.every(view => input.desktopViews!.includes(view))
+        compatible = narrowed ? { ...rest, desktop: false } : rest
         ;({ status, payload } = await request(deps, "PUT", sessionPath(id), { ...base, ...compatible }))
       }
       // An older runner has no document-navigation setting: the conversation keeps its other settings and offers links.
