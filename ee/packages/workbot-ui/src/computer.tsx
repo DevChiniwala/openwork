@@ -79,7 +79,7 @@ export function WorkbotComputer({ onTeachingChange, onRun, canTeach = true, page
     // Nobody watching a hidden tab, so stop streaming until it is shown again.
     if (!target || paused || away) return;
     setError(null); setConnected(false); setReconnecting(false); setLivePage(null);
-    return connectDesktopViewer(target, host, { view, control, screencast: host.browserLiveView === true }, {
+    return connectDesktopViewer(target, host, { view, control, wake: true, screencast: host.browserLiveView === true }, {
       paused: () => setPaused(true),
       agentPaused: setAgentPaused,
       connected: () => { setConnected(true); setReconnecting(false); setError(null); },
@@ -153,9 +153,9 @@ type ViewerEvents = {
  * Streams one view of the member's computer into `target`, renewing the connection before the computer closes it and
  * reconnecting a few times when it drops. Returns the function that closes it. With `screencast`, watching the browser
  * uses the computer's page stream; a computer whose image predates it refuses the stream, and the view falls back to
- * noVNC.
+ * noVNC. With `wake`, a paused computer is resumed instead of reported as paused.
  */
-export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeof workbotHost>, options: { view: ComputerView; control: boolean; screencast?: boolean }, events: ViewerEvents) {
+export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeof workbotHost>, options: { view: ComputerView; control: boolean; wake?: boolean; screencast?: boolean }, events: ViewerEvents) {
   const { view, control } = options;
   let disposed = false;
   let screencastRefused = false;
@@ -175,7 +175,7 @@ export function connectDesktopViewer(target: HTMLElement, host: ReturnType<typeo
     const timeout = setTimeout(abort, 195_000);
     try {
       const { response, payload } = await host.requestJson("/v1/workbot/computer/viewer", {
-        method: "POST", body: JSON.stringify({ view, control }), signal: request.signal,
+        method: "POST", body: JSON.stringify({ view, control, ...(options.wake ? { wake: true } : {}) }), signal: request.signal,
       }, 195_000);
       if (disposed) return;
       if (!response.ok) {

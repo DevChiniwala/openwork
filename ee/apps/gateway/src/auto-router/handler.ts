@@ -23,6 +23,7 @@ import { anthropicTranslator } from "./anthropic.js"
 import { bedrockTranslator } from "./bedrock.js"
 import { isJsonObject, openAiChatTranslator, readAutoPrompt, type AutoRouteInfo, type JsonObject } from "./chat.js"
 import { googleTranslator } from "./google.js"
+import { openAiResponsesTranslator } from "./openai-responses.js"
 import { chatToolCallIds, type AutoTranslator, type TranslateResponseInput } from "./protocol.js"
 import type { ReasoningStore } from "./reasoning-store.js"
 import type { AutoRouterConfig, AutoRouterConfigRoute } from "./config.js"
@@ -65,13 +66,16 @@ export function translatorFor(family: ProtocolFamily, npm: string | null): AutoT
     case "microsoft_foundry":
       return anthropicTranslator
     case "openai":
+      // The desktop calls OpenAI through Responses (reasoning effort, summaries,
+      // encrypted reasoning); Chat Completions rejects tools with an effort.
+      return openAiResponsesTranslator({ rest: "responses" })
     case "openai_compatible":
       return openAiChatTranslator({ rest: "chat/completions", reasoningStyle: npm === "@openrouter/ai-sdk-provider" ? "openrouter" : "reasoning_effort" })
     case "mistral":
       return openAiChatTranslator({ rest: "chat/completions", reasoningStyle: "none" })
     case "azure":
-      // Azure OpenAI's v1 API takes the deployment as `model`, like OpenAI.
-      return openAiChatTranslator({ rest: "v1/chat/completions", reasoningStyle: "reasoning_effort" })
+      // Azure OpenAI's v1 API takes the deployment as `model`; the desktop uses its Responses API too.
+      return openAiResponsesTranslator({ rest: "v1/responses" })
     case "bedrock_mantle":
       return openAiChatTranslator({ rest: "chat/completions", reasoningStyle: "reasoning_effort" })
     case "google":

@@ -254,17 +254,17 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
     const operation = c.req.param("operation")
     if (operation !== "viewer" && operation !== "action") return c.json({ error: "not_found" }, 404)
     const raw: unknown = await c.req.json().catch(() => null)
-    const viewer = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean().default(false) }).strict().safeParse(raw)
+    const viewer = z.object({ view: z.enum(["browser", "computer"]), control: z.boolean().default(false), wake: z.boolean().default(false) }).strict().safeParse(raw)
     const action = z.object({ action: z.enum(["continue", "pause", "resume", "rebuild"]) }).strict().safeParse(raw)
     if (operation === "viewer" ? !viewer.success : !action.success) return c.json({ error: "invalid_request" }, 400)
     // Each view is its own rollout: the browser (browserUse) and the native desktop apps (computerUse).
-    const view = viewer.success ? viewer.data.view : null
+    const requestedView = viewer.success ? viewer.data.view : null
     const client = runnerClientFor(member)
     /** The views Den allows right now, or null when this request isn't allowed. The runner is told only these. */
     const allowedViews = async () => {
       const fresh = await den.session(member.accessToken)
       const views = desktopViewsOf(fresh)
-      const allowed = fresh.enabled && (view ? views.includes(view) : views.length > 0) && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
+      const allowed = fresh.enabled && (requestedView ? views.includes(requestedView) : views.length > 0) && fresh.organization.id === member.den.organization.id && fresh.memberId === member.den.memberId
       return allowed ? views : null
     }
     try {
@@ -294,9 +294,18 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
       if (operation === "viewer") {
         const body = viewer
         if (!body.success) return c.json({ error: "invalid_request" }, 400)
-        if (body.data.control) await workbot.stop(actorOf(member))
-        const open = () => client.desktopViewer(sessionId, { ...body.data, origin: new URL(config.publicUrl).origin })
+        const { wake, ...view } = body.data
+        if (view.control) await workbot.stop(actorOf(member))
+        const open = () => client.desktopViewer(sessionId, { ...view, origin: new URL(config.publicUrl).origin })
         let result = await open()
+        // Opening the full view of a paused computer resumes it: Freestyle restores its memory in about a second, so
+        // asking the person to press Resume only adds a round trip. The chat's live glimpse never wakes it.
+        if (wake && result.ok && result.value.state === "paused") {
+          let resumed = await client.desktopAction(sessionId, "resume")
+          if (!resumed.ok && resumed.error === "desktop_outdated" && canRebuild) resumed = await rebuildOutdated()
+          if (!resumed.ok) return desktopFailure(c, operation, resumed.error)
+          result = await open()
+        }
         if (!result.ok && result.error === "desktop_outdated" && canRebuild) {
           const rebuilt = await rebuildOutdated()
           if (!rebuilt.ok) return desktopFailure(c, operation, rebuilt.error, true)

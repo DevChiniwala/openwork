@@ -64,9 +64,13 @@ the reply (for example "Claude Haiku 5.5 · High").
    Each upstream protocol has a translator (`ee/apps/gateway/src/auto-router/`):
    - Anthropic Messages (Anthropic, Claude on Vertex, Microsoft Foundry):
      `anthropic.ts`. Effort uses adaptive thinking on Claude 4.6 and later.
-   - OpenAI Chat Completions (OpenAI, OpenAI-compatible, OpenRouter, Mistral,
-     Azure OpenAI's v1 API, Bedrock's OpenAI-compatible endpoint): `chat.ts`,
-     with `reasoning_effort` (OpenRouter: `reasoning.effort`).
+   - OpenAI Responses (OpenAI, Azure OpenAI's v1 API): `openai-responses.ts`,
+     the same way the desktop calls them: `reasoning.effort` with
+     `summary: "auto"` and encrypted reasoning, stateless (`store: false`).
+     Chat Completions rejects function tools with a reasoning effort.
+   - OpenAI Chat Completions (OpenAI-compatible, OpenRouter, Mistral,
+     Bedrock's OpenAI-compatible endpoint): `chat.ts`, with
+     `reasoning_effort` (OpenRouter: `reasoning.effort`).
    - Gemini generateContent (Google AI Studio and Vertex AI): `google.ts`,
      with `thinkingLevel` (Gemini 3) or `thinkingBudget` (2.5), JSON Schema
      cleaned to Gemini's subset.
@@ -74,7 +78,8 @@ the reply (for example "Claude Haiku 5.5 · High").
      for Claude 4.6 and later.
    Requests and responses (JSON and streams) are translated both ways.
 6. Provider reasoning that must be replayed after a tool call (Claude's signed
-   thinking, Gemini thought signatures, Bedrock reasoning blocks) cannot travel
+   thinking, Gemini thought signatures, Bedrock reasoning blocks, OpenAI
+   encrypted reasoning items) cannot travel
    through Chat Completions. The gateway stores it for an hour, encrypted, in
    `auto_router_reasoning` keyed by organization and tool call id, so any
    gateway instance can continue the turn. If it is missing anyway, that
