@@ -66,25 +66,35 @@ final class SharedDesktopTests: XCTestCase {
 
     func testTheFrontGoesBackToTheAppThatHadIt() {
         var handBack = SharedDesktop.HandBack()
-        handBack.record(frontmost: 40, target: 7, own: 3)
+        handBack.record(frontmost: 40, target: 7, own: 3, at: 10)
         // A second raise in the same moment does not replace who had the front.
-        handBack.record(frontmost: 50, target: 7, own: 3)
-        XCTAssertEqual(handBack.take(frontmost: 7, target: 7), 40)
+        handBack.record(frontmost: 50, target: 7, own: 3, at: 11)
+        XCTAssertEqual(handBack.take(frontmost: 7, target: 7, lastPersonInput: 9), 40)
         XCTAssertNil(handBack.pid)
         // The target itself and the helper are never handed the front.
-        handBack.record(frontmost: 7, target: 7, own: 3)
-        handBack.record(frontmost: 3, target: 7, own: 3)
+        handBack.record(frontmost: 7, target: 7, own: 3, at: 12)
+        handBack.record(frontmost: 3, target: 7, own: 3, at: 12)
         XCTAssertNil(handBack.pid)
     }
 
     func testAPersonWhoAlreadyMovedOnIsLeftWhereTheyAre() {
         var handBack = SharedDesktop.HandBack()
-        handBack.record(frontmost: 40, target: 7, own: 3)
-        XCTAssertNil(handBack.take(frontmost: 60, target: 7))
+        handBack.record(frontmost: 40, target: 7, own: 3, at: 10)
+        XCTAssertNil(handBack.take(frontmost: 60, target: 7, lastPersonInput: 9))
         XCTAssertNil(handBack.pid)
-        handBack.record(frontmost: 40, target: 7, own: 3)
+        handBack.record(frontmost: 40, target: 7, own: 3, at: 10)
         handBack.forget()
-        XCTAssertNil(handBack.take(frontmost: 7, target: 7))
+        XCTAssertNil(handBack.take(frontmost: 7, target: 7, lastPersonInput: 9))
+    }
+
+    func testTypingInTheAgentsWindowKeepsTheFrontThere() {
+        var handBack = SharedDesktop.HandBack()
+        handBack.record(frontmost: 40, target: 7, own: 3, at: 10)
+        // A key 20 ms after the agent's own post is filtered out of interrupts, but it
+        // still keeps the front in the agent's window, so later keys stay there too.
+        XCTAssertFalse(SharedDesktop.persons(inputAt: 10.52, agentPostedAt: 10.5))
+        XCTAssertNil(handBack.take(frontmost: 7, target: 7, lastPersonInput: 10.52))
+        XCTAssertNil(handBack.pid)
     }
 
     @MainActor

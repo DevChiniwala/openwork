@@ -337,18 +337,22 @@ enum SharedDesktop {
     /// The app the agent took the front from, given back once its moment ends.
     struct HandBack {
         private(set) var pid: pid_t?
+        private(set) var takenAt: TimeInterval?
         /// The first app in front wins: one moment can raise the target more than once.
-        mutating func record(frontmost: pid_t?, target: pid_t, own: pid_t) {
+        mutating func record(frontmost: pid_t?, target: pid_t, own: pid_t, at now: TimeInterval) {
             guard pid == nil, let frontmost, frontmost != target, frontmost != own else { return }
-            pid = frontmost
+            pid = frontmost; takenAt = now
         }
         /// Returns the app to give the front back to, only while the agent's window
-        /// still has it: a person who already moved on is left where they are.
-        mutating func take(frontmost: pid_t?, target: pid_t) -> pid_t? {
-            defer { pid = nil }
-            return frontmost == target ? pid : nil
+        /// still has it and the person has not clicked or typed since it was taken.
+        /// `lastPersonInput` is unfiltered: input that might be the agent's own still
+        /// keeps the front where it is, so typing never moves to another app.
+        mutating func take(frontmost: pid_t?, target: pid_t, lastPersonInput: TimeInterval) -> pid_t? {
+            defer { forget() }
+            guard frontmost == target, let takenAt, lastPersonInput <= takenAt else { return nil }
+            return pid
         }
-        mutating func forget() { pid = nil }
+        mutating func forget() { pid = nil; takenAt = nil }
     }
 
     /// A window in front of the selected one is the person or another app at work,

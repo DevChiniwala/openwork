@@ -649,7 +649,7 @@ final class SessionRuntime {
     /// Brings the selected window to the front, remembering which app had it.
     private func takeFront(_ current: Session) async throws {
         handBack.record(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
-            target: current.app.pid, own: ProcessInfo.processInfo.processIdentifier)
+            target: current.app.pid, own: ProcessInfo.processInfo.processIdentifier, at: ProcessInfo.processInfo.systemUptime)
         try await focusTarget(current)
     }
     /// Before input: takes a gap in the person's typing, then brings the selected
@@ -667,19 +667,20 @@ final class SessionRuntime {
     private func scheduleHandBack() {
         handBackTimer?.invalidate(); handBackTimer = nil
         guard handBack.pid != nil else { return }
-        let ended = ProcessInfo.processInfo.systemUptime
         let timer = Timer(timeInterval: SharedDesktop.handBackDelay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.giveBack(since: ended) }
+            MainActor.assumeIsolated { self?.giveBack() }
         }
         RunLoop.main.add(timer, forMode: .common)
         handBackTimer = timer
     }
-    private func giveBack(since ended: TimeInterval? = nil) {
+    private func giveBack() {
         handBackTimer?.invalidate(); handBackTimer = nil
-        // A click or key since the moment ended means the person already chose where to be.
-        if let ended, personInterrupted(since: ended) { handBack.forget(); return }
-        guard !busy, let current = session, !current.paused,
-              let pid = handBack.take(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier, target: current.app.pid),
+        guard !busy, let current = session, !current.paused else { return }
+        // Any click or key since the front was taken, even one that might be the
+        // agent's own, means the person may be working in the agent's window.
+        let latest = Self.interruptions.map { lastPersonInput($0) }.max() ?? -.infinity
+        guard let pid = handBack.take(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                  target: current.app.pid, lastPersonInput: latest),
               let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
         _ = AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         app.activate(options: [])
