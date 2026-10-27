@@ -76,7 +76,7 @@ export function registerTelemetryRoutes<T extends { Variables: TelemetryRouteVar
 
       try {
         const accepted = batch.events.filter((event) => isKnownTelemetryEventType(event.type)
-          && !event.type.startsWith("workbot.") && event.type !== "connection.connected" && event.source !== "workbot")
+          && !event.type.startsWith("workbot.") && !event.type.startsWith("activation.") && event.type !== "connection.connected" && event.source !== "workbot")
 
         const eventRows = accepted.map((event) => ({
           id: createDenTypeId("telemetryEvent"),

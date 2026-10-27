@@ -4,7 +4,7 @@ import { describeRoute, type DescribeRouteOptions } from "hono-openapi"
 import { z } from "zod"
 import { documentIdSchema, documentSaveSchema, editorDocumentSchema } from "@openwork/documents/model"
 import { openExcel, openWord, patchExcel, patchWord } from "@openwork/documents/office"
-import { organizationFeatureEnabled } from "../../features.js"
+import { MicrosoftGraphScopeError } from "../../capability-sources/microsoft-graph.js"
 import { jsonValidator, paramValidator, queryValidator } from "../../middleware/index.js"
 import { jsonResponse } from "../../openapi.js"
 import type { OrgRouteVariables } from "./shared.js"
@@ -21,8 +21,10 @@ const errorSchema = z.object({ error: z.string(), message: z.string() })
 
 type Context = Parameters<MiddlewareHandler<{ Variables: OrgRouteVariables }>>[0]
 export type MicrosoftDocumentsAccess =
-  | { ok: true; accessToken: string; canWrite: boolean }
+  /** `otherDrives`: whether other people's drives and SharePoint are reachable, to read and to save. */
+  | { ok: true; accessToken: string; canWrite: boolean; otherDrives: { read: boolean; write: boolean } }
   | { ok: false; reply: Response }
+type Granted = Extract<MicrosoftDocumentsAccess, { ok: true }>
 
 export type MicrosoftDocumentsOptions = {
   memberRoute: MiddlewareHandler<{ Variables: OrgRouteVariables }>
@@ -45,11 +47,11 @@ export function registerMicrosoftDocumentRoutes<T extends { Variables: OrgRouteV
   const graphUrl = (path: string) => new URL(path.replace(/^\/+/, ""), graphRoot)
   const guard: MiddlewareHandler<{ Variables: OrgRouteVariables }> = async (c, next) => {
     const context = c.get("organizationContext")
-    if (!context || !(await organizationFeatureEnabled(context.organization.id, "workbotDocuments"))) return c.json({ error: "feature_disabled", message: "Documents is off for this workspace." }, 403)
+    if (!context?.features.workbotDocuments) return c.json({ error: "feature_disabled", message: "Documents is off for this workspace." }, 403)
     await next()
   }
   const description = (operationId: string, summary: string, schema: z.ZodType) => {
-    const options: DescribeRouteOptions & { "x-mcp": false } = { operationId, tags: ["Documents"], "x-mcp": false, summary, description: "Requires organization membership and Documents, and the member's Microsoft 365 connection with OneDrive read access. Saves also require OneDrive write access and a matching file version.", responses: { 200: jsonResponse("Document result.", schema), 400: jsonResponse("Unsupported file or edit.", errorSchema), 409: jsonResponse("Connect Microsoft 365, or reload the changed file.", errorSchema) } }
+    const options: DescribeRouteOptions & { "x-mcp": false } = { operationId, tags: ["Documents"], "x-mcp": false, summary, description: "Requires organization membership and Documents, and the member's Microsoft 365 connection with OneDrive read access. Other people's drives and SharePoint need the read-all-files permission. Saves also require Document editing, OneDrive write access (full file access outside the member's own OneDrive) and a matching file version.", responses: { 200: jsonResponse("Document result.", schema), 400: jsonResponse("Unsupported file or edit.", errorSchema), 409: jsonResponse("Connect Microsoft 365, or reload the changed file.", errorSchema) } }
     return describeRoute(options)
   }
   const failure = (c: Context, message: string) => c.json({ error: "document_unavailable", message }, 400)
@@ -73,12 +75,27 @@ export function registerMicrosoftDocumentRoutes<T extends { Variables: OrgRouteV
     if (response.status === 412) return { ok: false, reply: c.json({ error: "drive_conflict", message: "This file changed in OneDrive. Your edits are kept here; reload the file before saving again." }, 409) } as const
     return { ok: false, reply: c.json({ error: "microsoft_graph_error", message: `Microsoft 365 returned HTTP ${response.status}.${detail}` }, 502) } as const
   }
-  const item = async (c: Context, accessToken: string, fileId: string) => {
+  /** The member's own drive, for connections limited to it. */
+  const ownDrive = async (c: Context, accessToken: string) => {
+    const url = graphUrl("me/drive"); url.searchParams.set("$select", "id")
+    const result = await graph(c, accessToken, url); if (!result.ok) return result
+    const drive = z.object({ id: z.string() }).safeParse(await result.response.json().catch(() => null))
+    if (!drive.success) return { ok: false, reply: c.json({ error: "microsoft_graph_error", message: "Microsoft 365 did not report your OneDrive." }, 502) } as const
+    return { ok: true, id: drive.data.id } as const
+  }
+  /** Like the file routes, other drives and SharePoint need the all-files permission: read-all to read, full access to save. */
+  const reachable = async (c: Context, access: Granted, driveId: string, write: boolean) => {
+    if (write ? access.otherDrives.write : access.otherDrives.read) return { ok: true } as const
+    const own = await ownDrive(c, access.accessToken); if (!own.ok) return own
+    return own.id === driveId ? { ok: true } as const : { ok: false, reply: c.json({ error: "needs_connection", message: new MicrosoftGraphScopeError().message }, 409) } as const
+  }
+  const item = async (c: Context, access: Granted, fileId: string, write = false) => {
     const ids = decodeMicrosoftDocumentId(fileId)
     if (!ids) return { ok: false, reply: failure(c, "This is not a OneDrive file.") } as const
+    const allowed = await reachable(c, access, ids.driveId, write); if (!allowed.ok) return allowed
     const path = `drives/${encodeURIComponent(ids.driveId)}/items/${encodeURIComponent(ids.itemId)}`
     const url = graphUrl(path); url.searchParams.set("$select", FIELDS)
-    const result = await graph(c, accessToken, url); if (!result.ok) return result
+    const result = await graph(c, access.accessToken, url); if (!result.ok) return result
     const parsed = graphItemSchema.safeParse(await result.response.json().catch(() => null))
     if (!parsed.success || parsed.data.folder || !parsed.data.file) return { ok: false, reply: failure(c, "This OneDrive item is not a file.") } as const
     return { ok: true, ids, path, file: parsed.data, mimeType: parsed.data.file.mimeType ?? "application/octet-stream", revision: parsed.data.eTag ?? "" } as const
@@ -116,18 +133,25 @@ export function registerMicrosoftDocumentRoutes<T extends { Variables: OrgRouteV
     } else if (input.view === "recent") {
       url = graphUrl("me/drive/recent"); url.searchParams.set("$top", String(PAGE_SIZE))
     } else if (input.folderId === "shared") {
+      if (!access.otherDrives.read) return c.json({ error: "needs_connection", message: new MicrosoftGraphScopeError().message }, 409)
       url = graphUrl("me/drive/sharedWithMe")
     } else if (input.folderId === "root") {
       url = graphUrl("me/drive/root/children"); url.searchParams.set("$top", String(PAGE_SIZE)); url.searchParams.set("$select", FIELDS)
     } else {
       const ids = decodeMicrosoftDocumentId(input.folderId)
       if (!ids) return failure(c, "This is not a OneDrive folder.")
+      const allowed = await reachable(c, access, ids.driveId, false); if (!allowed.ok) return allowed.reply
       url = graphUrl(`drives/${encodeURIComponent(ids.driveId)}/items/${encodeURIComponent(ids.itemId)}/children`); url.searchParams.set("$top", String(PAGE_SIZE)); url.searchParams.set("$select", FIELDS)
     }
     const result = await graph(c, access.accessToken, url); if (!result.ok) return result.reply
     const listing = graphListingSchema.safeParse(await result.response.json().catch(() => null))
     if (!listing.success) return c.json({ error: "microsoft_graph_error", message: "Microsoft 365 returned an unexpected file list." }, 502)
-    const files = listing.data.value.flatMap(raw => { const entry = microsoftDocumentItem(raw); return entry ? [entry] : [] })
+    let files = listing.data.value.flatMap(raw => { const entry = microsoftDocumentItem(raw); return entry ? [entry] : [] })
+    if (!access.otherDrives.read) {
+      // Recent files and shortcuts can point into other drives this connection may not open.
+      const own = await ownDrive(c, access.accessToken); if (!own.ok) return own.reply
+      files = files.filter(file => decodeMicrosoftDocumentId(file.id)?.driveId === own.id)
+    }
     const next = listing.data["@odata.nextLink"]
     c.header("cache-control", "no-store")
     return c.json({ files, nextCursor: next ? Buffer.from(next, "utf8").toString("base64url") : null })
@@ -136,9 +160,10 @@ export function registerMicrosoftDocumentRoutes<T extends { Variables: OrgRouteV
   const params = z.object({ fileId: documentIdSchema })
   const metadataSchema = z.object({ id: documentIdSchema, name: z.string(), mimeType: z.string(), modifiedTime: z.string().nullable(), size: z.number().nullable(), openUrl: z.string().nullable() })
   app.get(`${base}/:fileId/metadata`, description("getMicrosoft365DocumentMetadata", "Read a OneDrive file's details without its content", metadataSchema), options.memberRoute, guard, paramValidator(params), queryValidator(z.object({}).strict()), async c => {
+    if (!c.get("organizationContext")?.features.workbotWorkspaceAssistant) return c.json({ error: "feature_disabled", message: "Opening document links is off for this workspace." }, 403)
     const access = await options.access(c); if (!access.ok) return access.reply
     const { fileId } = c.req.valid("param")
-    const meta = await item(c, access.accessToken, fileId); if (!meta.ok) return meta.reply
+    const meta = await item(c, access, fileId); if (!meta.ok) return meta.reply
     c.header("cache-control", "no-store")
     return c.json({ id: fileId, name: meta.file.name ?? "Untitled", mimeType: meta.mimeType, modifiedTime: meta.file.lastModifiedDateTime ?? null, size: meta.file.size ?? null, openUrl: officeUrl(meta.file.webUrl) })
   })
@@ -147,8 +172,9 @@ export function registerMicrosoftDocumentRoutes<T extends { Variables: OrgRouteV
   app.get(`${base}/:fileId/editor`, description("openMicrosoft365DocumentEditor", "Open a OneDrive file in the inline editor", editorDocumentSchema), options.memberRoute, guard, paramValidator(params), queryValidator(editorQuery), async c => {
     const access = await options.access(c); if (!access.ok) return access.reply
     const { fileId } = c.req.valid("param"); const input = c.req.valid("query")
-    const meta = await item(c, access.accessToken, fileId); if (!meta.ok) return meta.reply
-    const common = { fileId, name: meta.file.name ?? "Untitled", revision: meta.revision, canEdit: access.canWrite && !!meta.revision, connectionId: "microsoft-365" }
+    const meta = await item(c, access, fileId); if (!meta.ok) return meta.reply
+    const canEdit = c.get("organizationContext")!.features.workbotDocumentEditing && access.canWrite && !!meta.revision && (await reachable(c, access, meta.ids.driveId, true)).ok
+    const common = { fileId, name: meta.file.name ?? "Untitled", revision: meta.revision, canEdit, connectionId: "microsoft-365" }
     c.header("cache-control", "no-store")
     try {
       if (meta.mimeType === XLSX || meta.mimeType === DOCX || meta.mimeType.startsWith("text/")) {
@@ -162,11 +188,12 @@ export function registerMicrosoftDocumentRoutes<T extends { Variables: OrgRouteV
   })
 
   app.post(`${base}/:fileId/editor`, description("saveMicrosoft365DocumentEdits", "Save explicit inline edits to the same OneDrive file", z.object({ ok: z.literal(true) })), options.memberRoute, guard, bodyLimit({ maxSize: 2 * 1024 * 1024 }), paramValidator(params), jsonValidator(documentSaveSchema), async c => {
+    if (!c.get("organizationContext")!.features.workbotDocumentEditing) return c.json({ error: "feature_disabled", message: "Document editing is off for this workspace." }, 403)
     const access = await options.access(c); if (!access.ok) return access.reply
     if (!access.canWrite) return c.json({ error: "read_only", message: "The Microsoft 365 connector doesn't allow saving to OneDrive. An admin can enable OneDrive write access." }, 403)
     const { fileId } = c.req.valid("param"); const save = c.req.valid("json")
     if (save.connectionId !== "microsoft-365") return failure(c, "This edit belongs to another connection.")
-    const meta = await item(c, access.accessToken, fileId); if (!meta.ok) return meta.reply
+    const meta = await item(c, access, fileId, true); if (!meta.ok) return meta.reply
     if (!meta.revision || meta.revision !== save.revision) return c.json({ error: "drive_conflict", message: "This file changed in OneDrive. Your edits are kept here; reload the file before saving again." }, 409)
     c.header("cache-control", "no-store")
     try {
@@ -190,7 +217,7 @@ export function registerMicrosoftDocumentRoutes<T extends { Variables: OrgRouteV
   app.get(`${base}/:fileId/content`, description("readMicrosoft365DocumentContent", "Preview a OneDrive PDF or image", z.unknown()), options.memberRoute, guard, paramValidator(params), queryValidator(z.object({ connectionId: z.literal("microsoft-365") }).strict()), async c => {
     const access = await options.access(c); if (!access.ok) return access.reply
     const { fileId } = c.req.valid("param")
-    const meta = await item(c, access.accessToken, fileId); if (!meta.ok) return meta.reply
+    const meta = await item(c, access, fileId); if (!meta.ok) return meta.reply
     if (!PREVIEWS.has(meta.mimeType)) return failure(c, "This file has no safe inline preview.")
     try {
       const source = await download(c, access.accessToken, meta.path); if (!source.ok) return source.reply

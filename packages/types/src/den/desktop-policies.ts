@@ -420,10 +420,19 @@ export const desktopConfigSchema = desktopPolicyValueSchema
     brandIconUrl: z.string().url().max(2048).optional(),
     brandAccentColor: z.enum(brandAccentColorValues).optional(),
     automationsEnabled: z.boolean().optional(),
+    /** This desktop may run the member's Desktop Automations. Missing means: follow automationsEnabled. */
+    desktopAutomationsEnabled: z.boolean().optional(),
+    /** The organization can create Cloud Automations. Missing means: ask the execution target list. */
+    cloudAutomationsEnabled: z.boolean().optional(),
     dashboardEnabled: z.boolean().optional(),
     connectEnabled: z.boolean().optional(),
     /** Whether the server may start the live OpenCode provider engine. Missing means off. */
     liveProviderSync: z.boolean().optional(),
+    nativeAffordanceCodeMode: z.boolean().optional(),
+    /** Compatibility for older clients: true. Current hosts always mirror personal API keys into OpenCode v2. */
+    localProviderMirror: z.boolean().optional(),
+    /** Compatibility for older clients: true. Current clients always remove retired OpenCode Zen models. */
+    removeOpencodeZen: z.boolean().optional(),
     onboardingPrompts: onboardingPromptsSchema.optional(),
     onboardingPromptDescriptions: onboardingPromptDescriptionsSchema.optional(),
     /** The member's agent permissions, present when the organization has them on. */
@@ -834,9 +843,14 @@ export function normalizeDesktopConfig(value: unknown): DesktopConfig {
     ...(brandIconUrl !== undefined ? { brandIconUrl } : {}),
     ...(brandAccentColor !== undefined ? { brandAccentColor } : {}),
     ...(automationsEnabled !== undefined ? { automationsEnabled } : {}),
+    ...(typeof raw?.desktopAutomationsEnabled === "boolean" ? { desktopAutomationsEnabled: raw.desktopAutomationsEnabled } : {}),
+    ...(typeof raw?.cloudAutomationsEnabled === "boolean" ? { cloudAutomationsEnabled: raw.cloudAutomationsEnabled } : {}),
     ...(dashboardEnabled !== undefined ? { dashboardEnabled } : {}),
     ...(connectEnabled !== undefined ? { connectEnabled } : {}),
     ...(typeof raw?.liveProviderSync === "boolean" ? { liveProviderSync: raw.liveProviderSync } : {}),
+    ...(typeof raw?.nativeAffordanceCodeMode === "boolean" ? { nativeAffordanceCodeMode: raw.nativeAffordanceCodeMode } : {}),
+    ...(typeof raw?.localProviderMirror === "boolean" ? { localProviderMirror: raw.localProviderMirror } : {}),
+    ...(typeof raw?.removeOpencodeZen === "boolean" ? { removeOpencodeZen: raw.removeOpencodeZen } : {}),
     ...(onboardingPromptConfig !== undefined ? onboardingPromptConfig : {}),
     ...(agentPermissions.success ? { agentPermissions: agentPermissions.data } : {}),
     ...(defaultModel.success ? { defaultModel: defaultModel.data } : {}),

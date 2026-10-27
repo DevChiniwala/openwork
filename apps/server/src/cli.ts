@@ -263,7 +263,7 @@ if (args.web) {
     logger.log("info", "Anyone who can reach this URL is signed in automatically. Keep it on a private network or pass --no-bootstrap-token.");
   }
   if (browserHost !== "localhost" && browserHost !== "127.0.0.1") {
-    logger.log("info", "Browsers require HTTPS for a non-localhost origin; put a TLS proxy (e.g. tailscale serve) in front.");
+    logger.log("info", "Browsers require HTTPS for a non-localhost origin; put a TLS proxy (e.g. tailscale serve) in front and pass its name with --allowed-hosts.");
   }
   if (args.open) openInBrowser(browserUrl);
   void checkForUpdate({ currentVersion: pkg.version, env: process.env }).then((latest) => {
@@ -297,6 +297,7 @@ if (args.verbose) {
   logger.log("info", `Read-only: ${config.readOnly ? "true" : "false"}`);
   logger.log("info", `Approval: ${config.approval.mode} (${config.approval.timeoutMs}ms)`);
   logger.log("info", `CORS origins: ${config.corsOrigins.join(", ")}`);
+  if (config.allowedHosts) logger.log("info", `Allowed hosts: loopback, IP addresses, ${[config.host, ...config.allowedHosts].join(", ")}`);
   logger.log("info", `Authorized roots: ${config.authorizedRoots.join(", ")}`);
   logger.log("info", `Token source: ${config.tokenSource}`);
   logger.log("info", `Host token source: ${config.hostTokenSource}`);

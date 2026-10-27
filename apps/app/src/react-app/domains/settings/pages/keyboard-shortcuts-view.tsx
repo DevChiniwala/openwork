@@ -370,7 +370,7 @@ export function KeyboardShortcutsView(props: KeyboardShortcutsViewProps) {
   };
 
   const chatShortcuts = [
-    { label: "New chat", keys: formatChord("Mod+N", os) },
+    { label: "New session", keys: formatChord("Mod+N", os) },
     { label: "Command palette", keys: formatChord("Mod+K", os) },
     { label: "Next saved model", keys: os === "macos" ? "⌃⇧M" : favoriteModelShortcutLabel },
     { label: "Cycle reasoning", keys: thinkingModeShortcutLabel(thinkingOs) },
