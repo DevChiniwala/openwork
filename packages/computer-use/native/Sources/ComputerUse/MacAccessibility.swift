@@ -279,6 +279,22 @@ final class MacAccessibility {
         return windows.first(where: { CFEqual(focused, $0.element) }).map { Int($0.id) }
     }
 
+    /// The app's on-screen windows, for spotting what an action opened. Reads
+    /// only window numbers, layers and titles; never window content.
+    func windowChanges(_ app: AppIdentity) -> WindowChanges {
+        var changes = WindowChanges(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier == app.pid)
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        for window in info where (window[kCGWindowOwnerPID as String] as? Int32) == app.pid {
+            guard let id = (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let layer = (window[kCGWindowLayer as String] as? NSNumber)?.intValue,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds), frame.width > 20, frame.height > 20 else { continue }
+            if layer == 0 { changes.windows[id] = window[kCGWindowName as String] as? String ?? "Untitled window" }
+            else if layer < Int(CGWindowLevelForKey(.dockWindow)) { changes.panels.insert(id) }
+        }
+        return changes
+    }
+
     func validate(_ target: WindowTarget, app: AppIdentity, requireFrontmost: Bool = false) throws -> CGRect {
         try requirePermissions()
         try app.validate()
@@ -631,4 +647,41 @@ final class MacAccessibility {
     func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? { try? checkedAttribute(element, name, AXReadBudget()) }
     func elementAttribute(_ element: AXUIElement, _ name: String) -> AXUIElement? { try? checkedElement(element, name, AXReadBudget()) }
     func frame(_ element: AXUIElement) -> CGRect? { try? checkedFrame(element, AXReadBudget()) }
+}
+
+/// Notes when the target app last reported an accessibility change while input
+/// is in flight. It records only the time, never element content.
+@MainActor
+final class AXActivity {
+    private static let notifications = [kAXFocusedUIElementChangedNotification, kAXFocusedWindowChangedNotification,
+        kAXValueChangedNotification, kAXCreatedNotification, kAXUIElementDestroyedNotification, kAXWindowCreatedNotification,
+        kAXTitleChangedNotification, kAXSelectedTextChangedNotification, kAXSelectedChildrenChangedNotification,
+        kAXSelectedRowsChangedNotification, kAXRowCountChangedNotification, kAXMenuOpenedNotification,
+        kAXMenuClosedNotification, kAXLayoutChangedNotification, kAXMovedNotification, kAXResizedNotification]
+    private(set) var last: TimeInterval = 0
+    private let observer: AXObserver
+    private let element: AXUIElement
+    private let clock: () -> TimeInterval
+    private var active = true
+
+    init?(pid: pid_t, clock: @escaping () -> TimeInterval) {
+        var created: AXObserver?
+        guard AXObserverCreate(pid, { _, _, _, refcon in
+            guard let refcon else { return }
+            let activity = Unmanaged<AXActivity>.fromOpaque(refcon).takeUnretainedValue()
+            MainActor.assumeIsolated { activity.last = activity.clock() }
+        }, &created) == .success, let created else { return nil }
+        observer = created
+        self.clock = clock
+        element = AXUIElementCreateApplication(pid)
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        for name in Self.notifications { _ = AXObserverAddNotification(observer, element, name as CFString, refcon) }
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
+    }
+    func stop() {
+        guard active else { return }
+        active = false
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
+        for name in Self.notifications { _ = AXObserverRemoveNotification(observer, element, name as CFString) }
+    }
 }

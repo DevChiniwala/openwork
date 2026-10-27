@@ -14,7 +14,28 @@ final class MacInput {
         guard let symbol = dlsym(library, "CGEventSetWindowLocation") else { return nil }
         return unsafeBitCast(symbol, to: SetWindowLocation.self)
     }()
+    private typealias PostToPid = @convention(c) (pid_t, CGEvent) -> Void
+    // SkyLight's post runs WindowServer's activity monitoring, which Chromium,
+    // Electron and Catalyst require before they treat input as live. AppKit
+    // reads the public post; each event is posted once, by one route.
+    private static let skyLightPost: PostToPid? = {
+        guard let library = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY),
+              let symbol = dlsym(library, "SLEventPostToPid") else { return nil }
+        return unsafeBitCast(symbol, to: PostToPid.self)
+    }()
+    // AppKit routes a pointer event to a window by this field. NSEvent's mouse
+    // events set it; scroll events have no NSEvent factory, so set it the same
+    // way and read every event back before posting it.
+    private static let windowNumberField = CGEventField(rawValue: 51)
+    private static let gestureField = CGEventField(rawValue: 58)
+    private static let modifierKeys: [(flag: CGEventFlags, code: CGKeyCode)] = [
+        (.maskCommand, 55), (.maskShift, 56), (.maskAlternate, 58), (.maskControl, 59)]
     private var heldPointer: (pid: pid_t, point: CGPoint, windowID: CGWindowID, frame: CGRect, flags: CGEventFlags)?
+    private var heldModifiers: (pid: pid_t, flags: CGEventFlags)?
+    private var lastPointer: (pid: pid_t, windowID: CGWindowID, point: CGPoint)?
+    private var routes: [pid_t: PointerRoute] = [:]
+    // One gesture's events share a group so the app coalesces them as one.
+    private var gesture: Int64 = 0
     private struct DispatchFeedback {
         let action: String
         let frame: CGRect
@@ -23,15 +44,17 @@ final class MacInput {
         var uncertain = false
         var point: CGPoint?
         var lastTypedAt: TimeInterval = -.infinity
+        var lastMovedAt: TimeInterval = -.infinity
     }
     private var feedback: DispatchFeedback?
 
     func releaseAll(interrupted: Bool = true) {
         if let heldPointer { try? mouse(.leftMouseUp, heldPointer.point, heldPointer.pid, 1, heldPointer.windowID, heldPointer.frame, heldPointer.flags) }
         heldPointer = nil
+        releaseModifiers()
         if interrupted { report(.uncertain) }
     }
-    private func report(_ phase: InputFeedback.Phase, point: CGPoint? = nil) {
+    private func report(_ phase: InputFeedback.Phase, point: CGPoint? = nil, force: Bool = false) {
         guard var context = feedback else { return }
         if phase == .uncertain {
             guard context.didDispatch, !context.uncertain else { return }
@@ -47,6 +70,11 @@ final class MacInput {
             guard now - context.lastTypedAt >= 0.2 else { feedback = context; return }
             context.lastTypedAt = now
         }
+        // A drag or hover path is many small moves; the cursor needs ~30 a second.
+        if phase == .move && !force {
+            guard now - context.lastMovedAt >= 0.033 else { feedback = context; return }
+            context.lastMovedAt = now
+        }
         feedback = context
         context.send(InputFeedback(action: context.action, phase: phase, screenPoint: context.point, frame: context.frame))
     }
@@ -55,6 +83,10 @@ final class MacInput {
                  check: () throws -> Void, checkWindow: () throws -> Void,
                  feedback send: @escaping (InputFeedback) -> Void = { _ in }) async throws -> String {
         feedback = DispatchFeedback(action: action.name, frame: lease.frame, send: send)
+        gesture = Int64(UInt32.random(in: 1...UInt32.max))
+        if routes[app.pid] == nil {
+            routes[app.pid] = PointerRoute.classify(bundleID: app.bundleID, info: app.app.bundleURL.flatMap { Bundle(url: $0)?.infoDictionary } ?? [:])
+        }
         var finished = false
         defer {
             if !finished { releaseAll() }
@@ -95,51 +127,60 @@ final class MacInput {
             case .move(let point):
                 let screen = try lease.screenPoint(point)
                 try access.checkHit(screen, target: target, app: app, expected: pointerTarget)
-                try mouse(.mouseMoved, screen, app.pid, 0, target.id, lease.frame, check: check)
+                // Hover menus and tracking areas respond to the pointer arriving, not appearing.
+                var steps = [screen]
+                if let last = lastPointer, last.pid == app.pid, last.windowID == target.id, lease.frame.contains(last.point) {
+                    steps = PointerMotion.path([last.point, screen], maxStep: 24, maxEvents: 8)
+                }
+                for step in steps {
+                    try check(); try checkWindow()
+                    try mouse(.mouseMoved, step, app.pid, 0, target.id, lease.frame, check: check)
+                    if step != screen { try await Task.sleep(nanoseconds: PointerMotion.step) }
+                }
+                report(.move, point: screen, force: true)
             case .click(let point, let count, let flags):
                 let screen = try lease.screenPoint(point)
                 let hit = try access.checkHit(screen, target: target, app: app, expected: pointerTarget)
-                for click in 1...count {
-                    try check(); try checkWindow()
+                try modifiers(flags, pid: app.pid, check: check)
+                try await InputDispatch.press(clicks: count, check: check, validate: {
+                    try checkWindow()
                     try access.checkHit(screen, target: target, app: app, expected: hit)
-                    if click == 1 {
-                        try await InputDispatch.pointerDown(check: check, validate: {
-                            try checkWindow()
-                            try access.checkHit(screen, target: target, app: app, expected: hit)
-                        }, move: {
-                            try self.mouse(.mouseMoved, screen, app.pid, 0, target.id, lease.frame, flags, check: check)
-                        }, down: {
-                            try self.mouse(.leftMouseDown, screen, app.pid, click, target.id, lease.frame, flags, check: check)
-                        })
-                    } else {
-                        try mouse(.leftMouseDown, screen, app.pid, click, target.id, lease.frame, flags, check: check)
-                    }
-                    try mouse(.leftMouseUp, screen, app.pid, click, target.id, lease.frame, flags)
-                    try check()
-                    if click < count { try await Task.sleep(nanoseconds: 70_000_000) }
-                }
+                }, move: {
+                    try self.mouse(.mouseMoved, screen, app.pid, 0, target.id, lease.frame, flags, check: check)
+                }, down: { click in
+                    try self.mouse(.leftMouseDown, screen, app.pid, click, target.id, lease.frame, flags, check: check)
+                }, up: { click in
+                    try self.mouse(.leftMouseUp, screen, app.pid, click, target.id, lease.frame, flags)
+                })
+                releaseModifiers()
             case .scroll(let point, let dx, let dy):
                 let screen = try lease.screenPoint(point)
                 try access.checkHit(screen, target: target, app: app, expected: pointerTarget)
-                guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: dy, wheel2: dx, wheel3: 0) else {
-                    throw UseError("input_failed", "Could not create a scroll event.")
+                // Views scroll what is under the pointer: put it there, then scroll in steps.
+                try mouse(.mouseMoved, screen, app.pid, 0, target.id, lease.frame, check: check)
+                for (index, step) in PointerMotion.scrollSteps(dx: dx, dy: dy).enumerated() {
+                    if index > 0 { try await Task.sleep(nanoseconds: PointerMotion.scrollStep) }
+                    try check(); try checkWindow()
+                    try scroll(screen, dx: step.dx, dy: step.dy, pid: app.pid, windowID: target.id, frame: lease.frame)
                 }
-                event.location = screen
-                event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(target.id))
-                event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(target.id))
-                try check()
-                post(event, app.pid)
                 report(.dispatched, point: screen)
             case .key(let key, let flags):
                 try access.checkFocus(focus, target: target, app: app, requireField: ["backspace", "delete"].contains(key))
                 let code = try keyCode(key, flags: flags)
+                try modifiers(flags, pid: app.pid, check: check)
                 try keyboard(code, flags: flags, text: nil, pid: app.pid, check: check)
+                releaseModifiers()
             case .type(let text):
                 try await InputDispatch.type(text, check: check, validate: {
                     try checkWindow()
                     try access.checkFocus(focus, target: target, app: app, requireField: true)
-                }, send: { chunk in
-                    try self.keyboard(0, flags: [], text: chunk, pid: app.pid, check: check)
+                }, send: { character in
+                    // Line breaks and tabs are their real keys: some fields ignore them as text.
+                    switch character {
+                    case "\n", "\r", "\r\n": try self.keyboard(36, flags: [], text: "\r", pid: app.pid, check: check)
+                    case "\t": try self.keyboard(48, flags: [], text: "\t", pid: app.pid, check: check)
+                    default: try self.keyboard(0, flags: [], text: character, pid: app.pid, check: check)
+                    }
                 })
             case .drag(let points):
                 let points = try points.map(lease.screenPoint)
@@ -148,21 +189,24 @@ final class MacInput {
                     await Task.yield()
                 }
                 guard let first = points.first else { throw UseError("invalid_arguments", "Drag path is empty.") }
-                try await InputDispatch.pointerDown(check: check, validate: {
+                // Apps start a drag only after the pointer travels past a threshold
+                // and drop only onto a target they have seen it hover over.
+                try await InputDispatch.drag(from: first, through: PointerMotion.path(points), check: check, validate: { point in
                     try checkWindow()
-                    try access.checkHit(first, target: target, app: app, expected: pointerTarget)
-                }, move: {
-                    try self.mouse(.mouseMoved, first, app.pid, 0, target.id, lease.frame, check: check)
-                }, down: {
-                    try self.mouse(.leftMouseDown, first, app.pid, 1, target.id, lease.frame, check: check)
+                    if point == first {
+                        try access.checkHit(point, target: target, app: app, expected: pointerTarget)
+                    } else if points.contains(point) {
+                        try access.checkHit(point, target: target, app: app)
+                    }
+                }, move: { point in
+                    try self.mouse(.mouseMoved, point, app.pid, 0, target.id, lease.frame, check: check)
+                }, down: { point in
+                    try self.mouse(.leftMouseDown, point, app.pid, 1, target.id, lease.frame, check: check)
+                }, drag: { point in
+                    try self.mouse(.leftMouseDragged, point, app.pid, 1, target.id, lease.frame, check: check)
+                }, up: { point in
+                    try self.mouse(.leftMouseUp, point, app.pid, 1, target.id, lease.frame)
                 })
-                defer { releaseAll(interrupted: false) }
-                for point in points.dropFirst() {
-                    try await Task.sleep(nanoseconds: 20_000_000)
-                    try check(); try checkWindow()
-                    try access.checkHit(point, target: target, app: app)
-                    try mouse(.leftMouseDragged, point, app.pid, 1, target.id, lease.frame, check: check)
-                }
             }
             try check()
             finished = true
@@ -172,9 +216,14 @@ final class MacInput {
             throw InputFailure(cause: cause, mayHaveActed: feedback?.didDispatch == true)
         }
     }
-    private func post(_ event: CGEvent, _ pid: pid_t) {
+    private func post(_ event: CGEvent, _ pid: pid_t, pointer: Bool = false) {
         event.setIntegerValueField(.eventSourceUnixProcessID, value: Int64(ProcessInfo.processInfo.processIdentifier))
-        event.postToPid(pid)
+        event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
+        if pointer, routes[pid] == .skyLight, let skyLightPost = Self.skyLightPost {
+            skyLightPost(pid, event)
+        } else {
+            event.postToPid(pid)
+        }
     }
     private func mouse(_ type: CGEventType, _ point: CGPoint, _ pid: pid_t, _ count: Int, _ windowID: CGWindowID, _ frame: CGRect, _ flags: CGEventFlags = [], check: () throws -> Void = {}) throws {
         guard let setWindowLocation = Self.setWindowLocation else {
@@ -207,11 +256,72 @@ final class MacInput {
         event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
         event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
         event.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+        if let gestureField = Self.gestureField { event.setIntegerValueField(gestureField, value: gesture) }
+        if type == .mouseMoved || type == .leftMouseDragged, let last = lastPointer, last.pid == pid, last.windowID == windowID {
+            // Canvases and games read relative motion from these fields.
+            event.setIntegerValueField(.mouseEventDeltaX, value: Int64((point.x - last.point.x).rounded()))
+            event.setIntegerValueField(.mouseEventDeltaY, value: Int64((point.y - last.point.y).rounded()))
+        }
+        try verifyTargeted(event, windowID: windowID, local: location)
         if type != .leftMouseUp { try Task.checkCancellation(); try check() }
-        post(event, pid)
+        post(event, pid, pointer: true)
+        lastPointer = (pid, windowID, point)
         if type == .leftMouseDown || type == .leftMouseDragged { heldPointer = (pid, point, windowID, frame, flags) }
         if type == .leftMouseUp { heldPointer = nil }
         report(type == .leftMouseDown ? .down : type == .leftMouseUp ? .up : .move, point: point)
+    }
+    private func scroll(_ point: CGPoint, dx: Int32, dy: Int32, pid: pid_t, windowID: CGWindowID, frame: CGRect) throws {
+        guard let setWindowLocation = Self.setWindowLocation, let windowNumberField = Self.windowNumberField else {
+            throw UseError("unsupported_pointer_input", "This macOS version does not support scoped pointer input. Use accessible app controls instead.", next: "human_takeover")
+        }
+        guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: dy, wheel2: dx, wheel3: 0) else {
+            throw UseError("input_failed", "Could not create a scroll event.")
+        }
+        event.location = point
+        setWindowLocation(event, CGPoint(x: point.x - frame.minX, y: point.y - frame.minY))
+        event.setIntegerValueField(windowNumberField, value: Int64(windowID))
+        event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
+        event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
+        if let gestureField = Self.gestureField { event.setIntegerValueField(gestureField, value: gesture) }
+        try verifyTargeted(event, windowID: windowID, local: NSPoint(x: point.x - frame.minX, y: frame.maxY - point.y))
+        post(event, pid, pointer: true)
+        feedback?.didDispatch = true
+    }
+    /// Reads the event back the way AppKit will on receipt, so input that would
+    /// reach another window or point is never posted.
+    private func verifyTargeted(_ event: CGEvent, windowID: CGWindowID, local: NSPoint) throws {
+        guard let native = NSEvent(cgEvent: event), native.windowNumber == Int(windowID),
+              abs(native.locationInWindow.x - local.x) < 1, abs(native.locationInWindow.y - local.y) < 1 else {
+            throw UseError("unsupported_pointer_input", "This macOS version did not address pointer input to the selected window. Use accessible app controls instead.", next: "human_takeover")
+        }
+    }
+    /// Apps that track modifier keys themselves (canvases, games, Electron
+    /// shortcuts) need to see them go down before the click or key.
+    private func modifiers(_ flags: CGEventFlags, pid: pid_t, check: () throws -> Void) throws {
+        var held = CGEventFlags()
+        for key in Self.modifierKeys where flags.contains(key.flag) {
+            try Task.checkCancellation(); try check()
+            held.insert(key.flag)
+            try modifier(key.code, flags: held, pid: pid)
+            heldModifiers = (pid, held)
+        }
+    }
+    private func releaseModifiers() {
+        guard let held = heldModifiers else { return }
+        heldModifiers = nil
+        var remaining = held.flags
+        for key in Self.modifierKeys.reversed() where remaining.contains(key.flag) {
+            remaining.remove(key.flag)
+            try? modifier(key.code, flags: remaining, pid: held.pid)
+        }
+    }
+    private func modifier(_ code: CGKeyCode, flags: CGEventFlags, pid: pid_t) throws {
+        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) else {
+            throw UseError("input_failed", "Could not create a modifier key event.")
+        }
+        event.type = .flagsChanged
+        event.flags = flags
+        post(event, pid)
     }
     private func keyCode(_ key: String, flags: CGEventFlags) throws -> CGKeyCode {
         if let code = NativeKey.navigation[key] { return code }

@@ -37,6 +37,7 @@ final class SessionRuntime {
         var receipts: [String: [String: Any]] = [:]
         var receiptInputs: [String: Data] = [:]
         var focus: ElementRecord?
+        var baseline: ActionBaseline?
     }
     init(policy: RuntimePolicy = .desktop, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.policy = policy; self.clock = clock
@@ -277,16 +278,23 @@ final class SessionRuntime {
         let current = try current(id)
         session?.needsRefresh = true
         controls.update("Refreshing the selected window before continuing…", paused: false)
+        var otherWindowFocused = false
         return try await ObservationPreparation.capture(mode: current.mode, check: {
             try self.checkActive(current)
         }, focus: {
-            if (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) == nil {
-                try await self.focusTarget(current)
+            guard (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) == nil else { return }
+            // Another window of this app in front is usually a dialog the last action
+            // opened. Raising the target would hide it, or fail behind a modal one;
+            // input raises the target only when the model acts on it again.
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == current.app.pid {
+                otherWindowFocused = true
+                return
             }
+            try await self.focusTarget(current)
         }, read: {
             for attempt in 0..<3 {
                 try self.checkActive(current)
-                do { return try await self.observeAttempt(id, image: image, elements: elements) }
+                do { return try await self.observeAttempt(id, image: image, elements: elements, otherWindowFocused: otherWindowFocused) }
                 catch let error as UseError {
                     guard error.code == "stale_observation", attempt < 2 else { throw error }
                     try await Task.sleep(nanoseconds: 75_000_000)
@@ -295,10 +303,11 @@ final class SessionRuntime {
             throw UseError("stale_observation", "The window is still changing. Observe again.", next: "observe")
         })
     }
-    private func observeAttempt(_ id: String, image: Bool, elements filter: String) async throws -> [[String: Any]] {
+    private func observeAttempt(_ id: String, image: Bool, elements filter: String, otherWindowFocused: Bool = false) async throws -> [[String: Any]] {
         let current = try current(id)
         session?.observation = nil; session?.records = []; session?.focus = nil
-        let bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
+        let frontmost = current.mode == .control && !otherWindowFocused
+        let bounds = try access.validate(current.target, app: current.app, requireFrontmost: frontmost)
         @MainActor func check() throws { try self.checkActive(current) }
         var state = try await access.read(current.target, check: check)
         var png: Data?
@@ -306,7 +315,7 @@ final class SessionRuntime {
         var width = max(1, Int(bounds.width)); var height = max(1, Int(bounds.height))
         if image {
             do {
-                let captured = try await observationImage(current, bounds: bounds, state: state, check: check)
+                let captured = try await observationImage(current, bounds: bounds, state: state, requireFrontmost: frontmost, check: check)
                 png = captured.0; width = captured.1; height = captured.2
             } catch {
                 try check()
@@ -322,7 +331,7 @@ final class SessionRuntime {
             }
         }
         try check()
-        guard try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) == bounds else {
+        guard try access.validate(current.target, app: current.app, requireFrontmost: frontmost) == bounds else {
             throw UseError("stale_observation", "The window moved during the observation.", next: "observe")
         }
         var effectiveFilter = filter
@@ -340,8 +349,11 @@ final class SessionRuntime {
             imageDigest: png.map(access.imageDigest), validFor: policy.observationSeconds)
         try check()
         let observedFocus = state.focusRecord.flatMap { focus in shown.first { CFEqual($0.element, focus.element) } }
+        let afterAction = current.baseline.flatMap { baseline in
+            baseline.generation == current.generation ? baseline.changes(stateDigest: observation.stateDigest, imageDigest: observation.imageDigest) : nil
+        }
         session?.observation = observation; session?.records = shown; session?.focus = observedFocus
-        session?.lastUsed = now; session?.needsRefresh = false
+        session?.lastUsed = now; session?.needsRefresh = false; session?.baseline = nil
         controls.update("Window observed. Ready for the next action.", paused: false)
         var imageInfo: [String: Any] = ["width": width, "height": height, "included": png != nil, "coordinate_space": "image_pixels"]
         if let imageFailure { imageInfo["unavailable"] = imageFailure.payload }
@@ -349,6 +361,8 @@ final class SessionRuntime {
             "window_title": current.target.title, "mode": current.mode.rawValue, "image": imageInfo, "elements": elements,
             "truncated": state.truncated, "protected_fields": state.protectedFrames.count,
             "content_trust": "untrusted_app_content", "next": "act_once_then_observe"]
+        if let afterAction { payload["after_action"] = afterAction }
+        if otherWindowFocused { payload["other_window_focused"] = true }
         if policy == .embedded {
             payload["elements_filter"] = effectiveFilter; payload["elements_total"] = visible.count
             payload["observation_seconds"] = Int(policy.observationSeconds)
@@ -363,9 +377,10 @@ final class SessionRuntime {
     /// Observations are compact JPEGs: image tokens and upload time dominate each step.
     /// The re-capture that guards coordinate input uses the same encoding, so digests compare.
     static let observationMimeType = "image/jpeg"
-    private func observationImage(_ current: Session, bounds: CGRect, state: WindowState, check: () throws -> Void) async throws -> (Data, Int, Int, Int64) {
+    private func observationImage(_ current: Session, bounds: CGRect, state: WindowState, requireFrontmost: Bool,
+                                  check: () throws -> Void) async throws -> (Data, Int, Int, Int64) {
         try await access.capture(target: current.target, app: current.app, bounds: bounds, state: state,
-            maxLongSide: 1280, jpegQuality: 0.8, requireFrontmost: current.mode == .control, check: check)
+            maxLongSide: 1280, jpegQuality: 0.8, requireFrontmost: requireFrontmost, check: check)
     }
 
     /// A sharper look at part of the current observation, for reading only. It
@@ -435,6 +450,11 @@ final class SessionRuntime {
             }
         }
         var progress = BatchProgress(actions: actions.map(\.name))
+        // Watch for the app's reaction from the first event on, so the wait
+        // after input ends when the app has finished changing.
+        let activity = actions.contains(where: \.changesWindow) ? AXActivity(pid: current.app.pid, clock: clock) : nil
+        defer { activity?.stop() }
+        let windowsBefore = access.windowChanges(current.app)
         var focus = current.focus
         var needsObservation = false
         var failure: UseError?
@@ -454,7 +474,8 @@ final class SessionRuntime {
                         throw UseError("stale_observation", "The observed window content or focus changed.", next: "observe")
                     }
                     if action.usesCoordinates {
-                        let captured = try await observationImage(current, bounds: bounds, state: live, check: check)
+                        let captured = try await observationImage(current, bounds: bounds, state: live,
+                            requireFrontmost: current.mode == .control, check: check)
                         guard access.imageDigest(captured.0) == observation.imageDigest else {
                             throw UseError("stale_observation", "The window image changed. Observe before coordinate input.", next: "observe")
                         }
@@ -511,11 +532,25 @@ final class SessionRuntime {
                 break
             }
         }
+        var settled: Bool?
+        if progress.hasInput || uncertain {
+            session?.baseline = ActionBaseline(generation: current.generation, stateDigest: observation.stateDigest, imageDigest: observation.imageDigest)
+            do {
+                settled = try await InputSettle.wait(since: now, lastActivity: { activity?.last ?? 0 }, now: { self.now },
+                    check: check, sleep: { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) })
+            } catch {
+                if failure == nil { failure = (error as? UseError) ?? UseError("action_interrupted", "Control ended after dispatch.", next: "human_takeover") }
+            }
+        }
         if failure == nil {
             do { try check() }
             catch { failure = (error as? UseError) ?? UseError("action_interrupted", "Control ended after dispatch.", next: "human_takeover") }
         }
-        let receipt = progress.receipt(requestID: requestID, failure: failure, uncertain: uncertain, detailed: policy == .embedded)
+        var receipt = progress.receipt(requestID: requestID, failure: failure, uncertain: uncertain, detailed: policy == .embedded)
+        if let settled { receipt["settled"] = settled }
+        if settled != nil, let changes = windowsBefore.diff(access.windowChanges(current.app), target: current.target.id) {
+            receipt["window_changes"] = changes
+        }
         if session?.id == id { session?.receipts[requestID] = receipt }
         return text(receipt)
     }
