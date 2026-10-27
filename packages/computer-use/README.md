@@ -117,6 +117,15 @@ node apps/desktop/scripts/prepare-computer-use-helper.mjs --force --outdir apps/
 
 `prepare-computer-use-helper.mjs` builds the release binary and assembles and
 signs the helper app; desktop dev and packaged builds run it automatically.
+
+Unit tests cannot show that input reaches real apps. To check a signed build
+on your Mac, run it with computer use on, stop any chat using the computer,
+and run `pnpm --filter @openwork/computer-use prove:mac-apps`. It drives
+Calculator and TextEdit through the desktop's local bridge, broker and helper,
+as the agent does, with a fixed plan and no model. Each scenario checks a real
+outcome (Calculator's display, a file saved on disk) and reports the time of
+every call. `--only calculator-press,textedit-type` picks scenarios; `--json
+<file>` saves the results. Leave the mouse and keyboard alone while it runs.
 Pointer input relies on an availability-checked lookup of the private
 `CGEventSetWindowLocation` symbol; without it, pointer actions fail explicitly
 while accessible controls keep working.
