@@ -14,7 +14,7 @@ function engineItems(body: unknown): unknown {
   return body;
 }
 
-test("app boots with a control route and meaningful visible content", async ({ world, user, probe, evidence }) => {
+test("app boots with a control route and meaningful visible content", async ({ world, user, probe, evidence, step }) => {
   const route = await probe.hash();
   const visibleTextLength = (await probe.text()).trim().length;
   expect(route).toBeTruthy();
@@ -64,10 +64,22 @@ test("app boots with a control route and meaningful visible content", async ({ w
         && /^2\./.test(engine.version),
     );
   } else {
-    expect(world.workspace?.workspaceId).toBeTruthy();
-    await user.looks([
-      "A ready OpenWork workspace composer with meaningful visible content is on screen",
-      "No generic error or 'Something went wrong' crash message is visible",
-    ]);
+    await step("The workspace opens with an editable composer and no crash message", async () => {
+      const workspaceId = world.workspace?.workspaceId;
+      expect(workspaceId).toBeTruthy();
+      // Readiness and crash absence are deterministic checks, not deferred vision judgments.
+      await user.press("Escape");
+      await user.see("composer", { editable: true, text: "" });
+      await user.see("Run task");
+      const text = await probe.text();
+      const crashMessage = /Something went wrong|Application error|Cannot find module|Maximum update depth exceeded/i.exec(text)?.[0] ?? null;
+      expect(crashMessage).toBeNull();
+      evidence.recordAssertionEvidence(
+        "The workspace has an empty editable composer and no crash message",
+        JSON.stringify({ workspaceId, composer: { editable: true, text: "" }, runTaskVisible: true, crashMessage }),
+        Boolean(workspaceId) && crashMessage === null,
+      );
+      await user.screenshot();
+    });
   }
 });
