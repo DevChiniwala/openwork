@@ -64,7 +64,8 @@ the reply (for example "Claude Haiku 5.5 · High").
    its own thinking level. Jev never sees provider or model ids. Requests that
    continue the turn (tool results) reuse the turn's choice for an hour, so the
    model, its thinking and its prompt cache stay consistent.
-4. If Jev is not configured, fails, times out (4s) or answers nothing usable,
+4. If Jev fails, times out (4s) or answers nothing usable (without the
+   TypeSafe key Auto is off altogether, see below),
    the default model (the first route, or the first one the member can use
    when their access excludes it) is used at its thinking level.
 5. The request is rewritten under the member's own `gwm_…` alias for that
@@ -156,7 +157,9 @@ member's Gateway key is answered by that model (with real Jev when
 `TYPESAFE_API_KEY` is set). A second test signs the app (headless Chrome, v2
 engine) in to the same kind of Den and gateway: the member picks Auto (first in
 the picker), asks a question, gets the upstream's reply, and sees which model
-answered it, before and after reloading the chat. Run them with
+answered it, before and after reloading the chat. A third test runs the gateway
+without the TypeSafe key: **Turn on** is muted, opens the setup dialog, and Den
+refuses turning on and the desktop connect. Run them with
 `pnpm evals:e2e auto-router --local`.
 
 ## Operating it
@@ -178,7 +181,7 @@ Only the gateway holds the key. Den asks it through `GET /auto-router/status`
 (a boolean, cached for a minute) and reports `routing: "ready" | "missing_key" |
 "unknown"` on `GET /v1/org/auto-router`. While the key is missing:
 
-- **Enable** is muted with "Needs a routing key on the AI Gateway", and clicking
+- **Turn on** is muted with "Needs a routing key on the AI Gateway", and clicking
   it opens a dialog telling the admin to ask whoever runs the instance to add
   `TYPESAFE_API_KEY` (Helm: `secret.values.typesafeApiKey`) and restart the gateway.
 - An already enabled router shows "Auto is paused" with the same steps, and
@@ -189,7 +192,7 @@ Only the gateway holds the key. Den asks it through `GET /auto-router/status`
 
 `unknown` (the gateway could not be reached) does not block anything.
 
-![Enable without the key](auto-router-missing-key.png)
+![Turn on without the key](auto-router-missing-key.png)
 
 ![The setup dialog](auto-router-setup-dialog.png)
 

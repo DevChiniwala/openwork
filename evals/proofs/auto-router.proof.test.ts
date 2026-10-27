@@ -191,19 +191,19 @@ desktopTest("a member picks Auto and sees which model answered their question", 
   });
 });
 
-missingKeyTest("without the gateway's routing key, Enable explains how to add it instead of turning Auto on", async ({ world, user, probe, step, evidence }) => {
-  await step("before: Enable is muted and says why", async () => {
+missingKeyTest("without the gateway's routing key, Turn on explains how to add it instead of turning Auto on", async ({ world, user, probe, step, evidence }) => {
+  await step("before: Turn on is muted and says why", async () => {
     await user.see({ testId: "auto-router-section" }, { timeoutMs: 60_000 });
     await user.see({ testId: "auto-router-missing-key" }, { timeoutMs: 30_000 });
     const settings = await probe.api(world.den.admin, "/v1/org/auto-router");
     expect(isRecord(settings.body) && settings.body.routing).toBe("missing_key");
     const enable = await probe.dom('[data-testid="auto-router-enable"][data-blocked="missing-key"]');
     expect(enable.elements).toHaveLength(1);
-    evidence.recordAssertionEvidence("Den knows the gateway has no routing key", `routing=${String(isRecord(settings.body) ? settings.body.routing : null)}; Enable blocked=${enable.elements.length === 1}`, enable.elements.length === 1);
+    evidence.recordAssertionEvidence("Den knows the gateway has no routing key", `routing=${String(isRecord(settings.body) ? settings.body.routing : null)}; Turn on blocked=${enable.elements.length === 1}`, enable.elements.length === 1);
     await user.screenshot();
   });
 
-  await step("after: clicking Enable opens the setup dialog and nothing is enabled", async () => {
+  await step("after: clicking Turn on opens the setup dialog and nothing is enabled", async () => {
     await user.click({ testId: "auto-router-enable" });
     await user.see({ testId: "auto-router-setup-dialog" }, { timeoutMs: 10_000 });
     await user.see({ text: "Auto Router needs a routing key" });

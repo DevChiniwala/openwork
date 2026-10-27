@@ -54,7 +54,7 @@ export async function autoRouterWorld(seed: Seed) {
 /**
  * Auto Router when the AI Gateway has no TypeSafe key: the same real Den and
  * gateway with the feature on, but no routing key, and the owner on
- * AI Gateway › AI Providers.
+ * AI Gateway › Auto Router.
  */
 export async function autoRouterMissingKeyWorld(seed: Seed) {
   const stack = new AsyncDisposableStack();
@@ -65,15 +65,15 @@ export async function autoRouterMissingKeyWorld(seed: Seed) {
     const den = stack.use(await seed.den({ env, org: { name: "Auto Router setup proof", admin: { name: "Router owner" } } }));
     if (!den.database) throw new Error("The Auto Router world needs its disposable local database.");
     await startAcmeGateway(stack, den.database.url, { baseUrl: gateway.baseUrl, env });
-    await seedAcmeGateway(den.admin, upstream);
+    const provider = await seedAcmeGateway(den.admin, upstream);
     await enableOrganizationCapabilities(seed, den.admin, { autoRouter: true });
-    const web = await seed.web({ den, signedInAs: den.admin, startPath: "/dashboard/ai-gateway?tab=ai-providers", headless: true, viewport: { width: 1440, height: 1100 } });
+    const web = await seed.web({ den, signedInAs: den.admin, startPath: "/dashboard/ai-gateway?tab=auto-router", headless: true, viewport: { width: 1440, height: 1100 } });
     return {
       den,
       web,
       /** Asks Den to turn Auto on through the API, as a script would; returns the HTTP status. */
       async tryEnable() {
-        const result = await seed.api(den.admin, "/v1/org/auto-router", { method: "PUT", body: JSON.stringify({ enabled: true, routes: [] }) });
+        const result = await seed.api(den.admin, "/v1/org/auto-router", { method: "PUT", body: JSON.stringify({ enabled: true, routes: [{ providerId: provider.providerId, modelId: ACME_MODEL, thinkingLevel: "default" }] }) });
         return result.response.status;
       },
       async [Symbol.asyncDispose]() { await stack.disposeAsync(); },

@@ -23,7 +23,7 @@ const notConfiguredSchema = z
   .object({ error: z.literal("auto_router_not_configured"), message: z.string() })
   .meta({ ref: "AutoRouterNotConfiguredError" })
 
-export const AUTO_ROUTER_NOT_CONFIGURED_MESSAGE = "The AI Gateway is missing its routing key. Ask the person who runs your OpenWork instance to add a TypeSafe API key to the AI Gateway, then enable Auto Router."
+export const AUTO_ROUTER_NOT_CONFIGURED_MESSAGE = "The AI Gateway is missing its routing key. Ask the person who runs your OpenWork instance to add a TypeSafe API key to the AI Gateway, then turn on the Auto Router."
 
 const writeProblemSchema = z
   .object({ error: z.enum(["unknown_model", "unsupported_thinking_level"]), route: z.number().int(), message: z.string() })
