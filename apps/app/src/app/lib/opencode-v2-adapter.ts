@@ -41,6 +41,7 @@ import {
   type BackgroundShellNotice,
   type EngineShell,
 } from "./background-shell-tasks";
+import { SUBAGENT_NOTICE_KEY, readSubagentCompletion, subagentNoticeLabel, type SubagentNotice } from "./subagent-notices";
 
 type RequestOptions = {
   signal?: AbortSignal;
@@ -901,17 +902,27 @@ function mapV2UserPart(part: Part): Part[] {
  * sees one plain sentence, and the row keeps its details in part metadata.
  */
 function backgroundShellNoticeMessage(id: string, sessionID: string, created: number, notice: BackgroundShellNotice): V2MappedMessage {
+  return noticeMessage(id, sessionID, created, backgroundShellNoticeLabel(notice), { [BACKGROUND_SHELL_NOTICE_KEY]: notice });
+}
+
+/** A background sub-agent's completion notice, as one row that opens its chat. */
+function subagentNoticeMessage(id: string, sessionID: string, created: number, notice: SubagentNotice): V2MappedMessage {
+  return noticeMessage(id, sessionID, created, subagentNoticeLabel(notice), { [SUBAGENT_NOTICE_KEY]: notice });
+}
+
+function noticeMessage(id: string, sessionID: string, created: number, text: string, metadata: Record<string, unknown>): V2MappedMessage {
   return {
     info: { id, sessionID, role: "system", time: { created } },
-    parts: [{
-      id: `${id}:0`,
-      messageID: id,
-      sessionID,
-      type: "text",
-      text: backgroundShellNoticeLabel(notice),
-      metadata: { [BACKGROUND_SHELL_NOTICE_KEY]: notice },
-    }],
+    parts: [{ id: `${id}:0`, messageID: id, sessionID, type: "text", text, metadata }],
   };
+}
+
+/** The transcript row for an engine completion notice, if the message is one. */
+function completionNoticeMessage(id: string, sessionID: string, created: number, payload: unknown): V2MappedMessage | null {
+  const shell = readBackgroundShellCompletion(payload);
+  if (shell) return backgroundShellNoticeMessage(id, sessionID, created, shell);
+  const subagent = readSubagentCompletion(payload);
+  return subagent ? subagentNoticeMessage(id, sessionID, created, subagent) : null;
 }
 
 function mapV2Message(
@@ -922,14 +933,13 @@ function mapV2Message(
   if (!isRecord(value)) return null;
   // Native instruction/catalog updates belong to the model context, not the
   // visible conversation. Filter by role so identical user text is preserved.
-  // The one exception is a background command's completion notice, which the
-  // chat shows as a short row.
+  // The exceptions are a background command's or sub-agent's completion
+  // notice, which the chat shows as a short row.
   if (messageRole(value) === "system") {
-    const notice = readBackgroundShellCompletion(value);
     const id = readString(value, "id") ?? readString(value, "messageID");
-    if (!notice || !id) return null;
+    if (!id) return null;
     const created = readNumber(readRecord(value, "time"), "created") ?? readNumber(value, "timestamp") ?? 0;
-    return backgroundShellNoticeMessage(id, readString(value, "sessionID") ?? sessionID, created, notice);
+    return completionNoticeMessage(id, readString(value, "sessionID") ?? sessionID, created, value);
   }
   const id = readString(value, "id") ?? readString(value, "messageID");
   if (!id) return null;
@@ -1517,6 +1527,15 @@ export function translateV2Event(
           { type: "message.updated", properties: { info: notice.info } },
           ...notice.parts.map((part): OpencodeEvent => ({ type: "message.part.updated", properties: { part } })),
         ] : []),
+      ];
+    }
+    const subagent = readString(item, "type") === "synthetic" ? readSubagentCompletion(payload) : null;
+    if (sessionID && messageID && subagent) {
+      const created = readNumber(value, "created") ?? readNumber(properties, "timestamp") ?? Date.now();
+      const notice = subagentNoticeMessage(messageID, sessionID, created, subagent);
+      return [
+        { type: "message.updated", properties: { info: notice.info } },
+        ...notice.parts.map((part): OpencodeEvent => ({ type: "message.part.updated", properties: { part } })),
       ];
     }
     if (!sessionID || !messageID || readString(item, "type") !== "user" || !payload) return null;
