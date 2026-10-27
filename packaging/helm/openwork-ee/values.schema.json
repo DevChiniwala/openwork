@@ -421,6 +421,16 @@
               ],
               "description": "Desktop: honest AI provider key status: AI Providers says \"Not checked yet\" for a key that has not answered a chat, and \"Key not accepted\" with Replace key (or ask your admin, for organization providers) after the provider rejects it, instead of always \"Ready to use\". Renders DEN_FEATURE_PROVIDER_CREDENTIAL_STATUS."
             },
+            "outlookAttachments": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Outlook attachments: Agents read the files attached to Outlook messages and create Outlook drafts and replies with workspace files attached, after the member approves each draft. Drafts are never sent. Renders DEN_FEATURE_OUTLOOK_ATTACHMENTS."
+            },
             "sessionTokenHashing": {
               "enum": [
                 "",

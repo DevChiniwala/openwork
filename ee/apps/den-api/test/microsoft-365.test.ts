@@ -137,3 +137,129 @@ test("calendar invitations need confirmation, while events without attendees do 
   assert.deepEqual(invite.attendees, [{ emailAddress: { address: "blair@example.test" }, type: "required" }])
   assert.equal("confirmNotifications" in invite, false)
 })
+
+test("Outlook attachments list with their kind, and only file attachments are downloaded", async () => {
+  const listed = graph(() => json(200, { value: [
+    { "@odata.type": "#microsoft.graph.fileAttachment", id: "att-file", name: "plan.pdf", contentType: "application/pdf", size: 4, isInline: false },
+    { "@odata.type": "#microsoft.graph.itemAttachment", id: "att-item", name: "Forwarded", contentType: "", size: 900, isInline: false },
+  ] }))
+  assert.deepEqual((await listed.client.listMailAttachments("message-1")).map(({ id, kind }) => [id, kind]), [["att-file", "file"], ["att-item", "item"]])
+  assert.equal(listed.calls[0].url.pathname, "/v1.0/me/messages/message-1/attachments")
+
+  const file = graph(({ url }) => url.pathname.endsWith("/$value")
+    ? new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 })
+    : json(200, { "@odata.type": "#microsoft.graph.fileAttachment", id: "att-file", name: "plan.pdf", contentType: "application/pdf", size: 4 }))
+  const downloaded = await file.client.getMailAttachment("message-1", "att-file")
+  assert.equal(downloaded.contentBase64, Buffer.from([1, 2, 3, 4]).toString("base64"))
+  assert.equal(file.calls[1].url.pathname, "/v1.0/me/messages/message-1/attachments/att-file/$value")
+
+  const item = graph(() => json(200, { "@odata.type": "#microsoft.graph.itemAttachment", id: "att-item", name: "Forwarded" }))
+  assert.equal((await item.client.getMailAttachment("message-1", "att-item")).contentUnavailableReason, "not_a_file")
+  assert.equal(item.calls.length, 1)
+
+  const large = graph(() => json(200, { "@odata.type": "#microsoft.graph.fileAttachment", id: "att-big", name: "video.mp4", size: 11 * 1024 * 1024 }))
+  assert.equal((await large.client.getMailAttachment("message-1", "att-big")).contentUnavailableReason, "file_too_large")
+  assert.equal(large.calls.length, 1)
+})
+
+test("an Outlook attachment is added once as a file attachment and never retried", async () => {
+  const ok = graph(() => json(201, { "@odata.type": "#microsoft.graph.fileAttachment", id: "att-1", name: "plan.pdf" }))
+  await ok.client.addMailAttachment("draft-1", { name: "plan.pdf", contentType: "application/pdf", content: new Uint8Array([1, 2]) })
+  assert.equal(ok.calls.length, 1)
+  assert.equal(ok.calls[0].init.redirect, "error")
+  assert.deepEqual(JSON.parse(String(ok.calls[0].init.body)), {
+    "@odata.type": "#microsoft.graph.fileAttachment", name: "plan.pdf", contentType: "application/pdf", contentBytes: "AQI=",
+  })
+
+  const lost = graph(() => { throw new TypeError("fetch failed") })
+  await assert.rejects(lost.client.addMailAttachment("draft-1", { name: "plan.pdf", contentType: "application/pdf", content: new Uint8Array([1]) }), MicrosoftGraphMutationOutcomeUnknownError)
+  assert.equal(lost.calls.length, 1)
+})
+
+function outlookRoutes(respond: (call: Call) => Response, features: { outlookAttachments: boolean } = { outlookAttachments: true }) {
+  const graphFetch = graph(respond)
+  const app = new Hono()
+  const member: Parameters<typeof registerMicrosoft365Routes>[1]["memberRoute"] = async (c, next) => {
+    c.set("organizationContext", { organization: { id: "org_unit" }, currentMember: { id: "member_unit" }, features } as never)
+    await next()
+  }
+  registerMicrosoft365Routes(app as never, {
+    graphBaseUrl: GRAPH,
+    fetch: graphFetch.fetch,
+    memberRoute: member,
+    transportRoute: member,
+    resolveAccessToken: async () => ({ kind: "ok", accessToken: "synthetic-token", scopes: ["Mail.Read", "Mail.ReadWrite"], enabledFeatures: ["mailRead", "mailDraft"] }),
+  })
+  const upload = (payload: unknown, files: File[]) => {
+    const form = new FormData()
+    for (const file of files) form.append("file", file)
+    form.append("payload", JSON.stringify(payload))
+    return app.request("/v1/direct-uploads/microsoft-365/mail-drafts", { method: "POST", body: form })
+  }
+  return { calls: graphFetch.calls, upload, get: (path: string) => app.request(`/v1/capabilities/microsoft-365/${path}`) }
+}
+
+const plan = () => new File([new Uint8Array([1, 2, 3])], "plan.pdf", { type: "application/pdf" })
+const newDraft = { to: ["blair@example.test"], subject: "Plan", body: "Attached." }
+
+test("a draft with workspace attachments is created, then each file is attached, and it is never sent", async () => {
+  const { calls, upload } = outlookRoutes(({ url }) => url.pathname.endsWith("/attachments")
+    ? json(201, { "@odata.type": "#microsoft.graph.fileAttachment", id: "att-1", name: "plan.pdf" })
+    : json(201, { id: "draft-1", isDraft: true, subject: "Plan" }))
+  const response = await upload(newDraft, [plan()])
+  assert.equal(response.status, 200)
+  const body = await response.json()
+  assert.equal(body.draft.id, "draft-1")
+  assert.equal(body.draft.hasAttachments, true)
+  assert.deepEqual(body.attachments, [{ name: "plan.pdf", contentType: "application/pdf", size: 3 }])
+  assert.deepEqual(calls.map(({ url, init }) => `${init.method} ${url.pathname}`), [
+    "POST /v1.0/me/messages",
+    "POST /v1.0/me/messages/draft-1/attachments",
+  ])
+})
+
+test("a reply draft with attachments uses createReply on the selected message", async () => {
+  const { calls, upload } = outlookRoutes(({ url }) => url.pathname.endsWith("/attachments")
+    ? json(201, { id: "att-1" })
+    : json(201, { id: "reply-1", isDraft: true }))
+  assert.equal((await upload({ replyToMessageId: "message-1", comment: "Here it is." }, [plan()])).status, 200)
+  assert.equal(calls[0].url.pathname, "/v1.0/me/messages/message-1/createReply")
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), { comment: "Here it is." })
+})
+
+test("when a file cannot be attached, the new draft moves to Deleted Items", async () => {
+  const { calls, upload } = outlookRoutes(({ url, init }) => {
+    if (init.method === "DELETE") return new Response(null, { status: 204 })
+    if (url.pathname.endsWith("/attachments")) return json(413, { error: { code: "ErrorAttachmentSizeLimitExceeded" } })
+    return json(201, { id: "draft-1", isDraft: true })
+  })
+  const response = await upload(newDraft, [plan()])
+  assert.equal(response.status, 502)
+  assert.match((await response.json()).message, /moved to Deleted Items/)
+  assert.deepEqual(calls.map(({ url, init }) => `${init.method} ${url.pathname}`).at(-1), "DELETE /v1.0/me/messages/draft-1")
+})
+
+test("draft uploads refuse bad files or payloads before calling Outlook", async () => {
+  const { calls, upload } = outlookRoutes(() => json(201, { id: "draft-1", isDraft: true }))
+  assert.equal((await upload(newDraft, [])).status, 400)
+  assert.equal((await upload(newDraft, [new File([new Uint8Array(3_000_001)], "big.bin")])).status, 400)
+  assert.equal((await upload({ ...newDraft, replyToMessageId: "message-1" }, [plan()])).status, 400)
+  assert.equal(calls.length, 0)
+})
+
+test("with Outlook attachments off, the routes are not found and Outlook is never called", async () => {
+  const { calls, upload, get } = outlookRoutes(() => json(200, { value: [] }), { outlookAttachments: false })
+  assert.equal((await get("mail-attachments/message-1")).status, 404)
+  assert.equal((await get("mail-attachment/message-1/att-1")).status, 404)
+  assert.equal((await upload(newDraft, [plan()])).status, 404)
+  assert.equal(calls.length, 0)
+})
+
+test("Outlook attachment reads leave the capability catalog while the rollout is off", async () => {
+  const { nativeOperationAvailableToCapabilities } = await import("../src/mcp/catalog-availability.js")
+  for (const path of ["/v1/capabilities/microsoft-365/mail-attachments/{messageId}", "/v1/capabilities/microsoft-365/mail-attachment/{messageId}/{attachmentId}"]) {
+    assert.equal(nativeOperationAvailableToCapabilities({ outlookAttachmentsEnabled: false }, { path }), false)
+    assert.equal(nativeOperationAvailableToCapabilities({ outlookAttachmentsEnabled: true }, { path }), true)
+  }
+  assert.equal(nativeOperationAvailableToCapabilities({ outlookAttachmentsEnabled: false }, { path: "/v1/capabilities/microsoft-365/mail-message/{messageId}" }), true)
+})
