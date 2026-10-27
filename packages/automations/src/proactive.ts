@@ -514,6 +514,9 @@ const googleTimeSchema = z.object({ dateTime: z.string().optional(), date: z.str
 const googleEventSchema = z.object({
   id: z.string().min(1).max(1024),
   status: z.string().optional(),
+  summary: z.string().optional(),
+  hangoutLink: z.string().optional(),
+  htmlLink: z.string().optional(),
   created: z.string().optional(),
   updated: z.string().optional(),
   eventType: z.string().optional(),
@@ -547,6 +550,16 @@ export type CalendarEventFacts = {
   updated: string
   organizerSelf: boolean
   declined: boolean
+  /** The person said yes, or organizes it. Not answered, maybe and no do not count. */
+  accepted: boolean
+  /**
+   * The invite's title, written by whoever sent it. Kept for rules a person
+   * writes ("titles containing…") and as data in a run; the agent's wake
+   * prompt never includes it.
+   */
+  title: string | null
+  /** The meeting's Google Meet link, else its Calendar page, else null. */
+  link: string | null
   /** A real meeting (Google's `default` type), not focus time, out of office or a working location. */
   meeting: boolean
   /** Everyone else invited, without rooms and resources. */
@@ -602,6 +615,9 @@ export function projectGoogleCalendarEvents(raw: unknown, selfEmail?: string | n
       updated: event.updated ?? "",
       organizerSelf: event.organizer?.self === true,
       declined: self?.responseStatus === "declined",
+      accepted: self ? self.responseStatus === "accepted" : event.organizer?.self === true,
+      title: event.summary?.trim().slice(0, 300) || null,
+      link: safeProactiveLink(event.hangoutLink) ?? safeProactiveLink(event.htmlLink),
       meeting: !event.eventType || event.eventType === "default",
       others,
     })

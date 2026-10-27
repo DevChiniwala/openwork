@@ -51,6 +51,31 @@ export const automationIntervalScheduleSchema = z.object({
   path: ["endHour"],
 })
 
+/** Furthest a calendar trigger may run from its meeting's start or end, in minutes either way. */
+export const AUTOMATION_CALENDAR_OFFSET_MAX_MINUTES = 120
+
+/**
+ * Runs around each meeting on the owner's primary Google Calendar instead of
+ * on a clock: `offsetMinutes` from the meeting's `edge` (negative is before).
+ * Only meetings the owner accepted (or organizes), with someone else invited,
+ * that are timed rather than all-day count; `rule` narrows them further. It
+ * has no clock occurrences, so `nextDueAt` stays null; Den reads the calendar
+ * and claims each meeting once. Cloud placement only.
+ */
+export const automationCalendarScheduleSchema = z.object({
+  kind: z.literal("calendar"),
+  /** The zone meeting times are shown in, to the person and in the run. */
+  timezone: timezoneSchema,
+  edge: z.enum(["start", "end"]),
+  offsetMinutes: z.number().int().min(-AUTOMATION_CALENDAR_OFFSET_MAX_MINUTES).max(AUTOMATION_CALENDAR_OFFSET_MAX_MINUTES),
+  rule: z.object({
+    /** Only meetings with someone whose email domain differs from the owner's. */
+    withExternalAttendees: z.boolean().default(false),
+    /** Only meetings whose title contains this text, ignoring case. */
+    titleIncludes: z.string().trim().min(1).max(120).optional(),
+  }).strict().default({ withExternalAttendees: false }),
+})
+
 export const automationScheduleSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("once"), timezone: timezoneSchema, at: timestampSchema }),
   z.object({
@@ -67,12 +92,18 @@ export const automationScheduleSchema = z.discriminatedUnion("kind", [
     minute: z.number().int().min(0).max(59),
   }),
   automationIntervalScheduleSchema,
+  automationCalendarScheduleSchema,
 ])
+/**
+ * Why a run starts: a clock schedule or, for `calendar`, a moment around each
+ * meeting. One field per revision, so a revision always has exactly one.
+ */
 export type AutomationSchedule = z.infer<typeof automationScheduleSchema>
 export type AutomationScheduleKind = AutomationSchedule["kind"]
 export type AutomationIntervalSchedule = Extract<AutomationSchedule, { kind: "interval" }>
+export type AutomationCalendarSchedule = Extract<AutomationSchedule, { kind: "calendar" }>
 
-export const AUTOMATION_SCHEDULE_KINDS = ["once", "daily", "weekly", "interval"] as const satisfies readonly AutomationScheduleKind[]
+export const AUTOMATION_SCHEDULE_KINDS = ["once", "daily", "weekly", "interval", "calendar"] as const satisfies readonly AutomationScheduleKind[]
 
 /**
  * The schedule kinds released desktops can read. They parse `schedule`
@@ -770,6 +801,29 @@ export const automationRunnerTokenResponseSchema = z.object({
 }).meta({ ref: "AutomationRunnerTokenResponse" })
 export type AutomationRunnerTokenResponse = z.infer<typeof automationRunnerTokenResponseSchema>
 
+/**
+ * The meeting a calendar-triggered run is about, captured when Den claimed
+ * it. Everything here comes from the calendar invite; the title is written by
+ * whoever sent it, so a run receives it as data, never as instructions.
+ */
+export const automationMeetingContextSchema = z.object({
+  kind: z.literal("calendar_meeting"),
+  eventId: z.string().trim().min(1).max(1_024),
+  title: z.string().max(300).nullable(),
+  start: timestampSchema,
+  end: timestampSchema,
+  /** Email domains of everyone else invited, without rooms; never full addresses. */
+  attendeeDomains: z.array(z.string().max(253)).max(50),
+  externalAttendees: z.number().int().nonnegative(),
+  /** A Google Meet or Calendar link, or null. */
+  link: z.string().max(2_048).nullable(),
+}).meta({ ref: "AutomationMeetingContext" })
+export type AutomationMeetingContext = z.infer<typeof automationMeetingContextSchema>
+
+export const automationRunTriggerContextSchema = z.discriminatedUnion("kind", [automationMeetingContextSchema])
+  .meta({ ref: "AutomationRunTriggerContext" })
+export type AutomationRunTriggerContext = z.infer<typeof automationRunTriggerContextSchema>
+
 export const automationRunSchema = z.object({
   id: idSchema,
   automationId: idSchema,
@@ -793,6 +847,8 @@ export const automationRunSchema = z.object({
   resultSummary: z.string().max(20_000).nullable(),
   codemodeReceiptId: idSchema.nullable().optional(),
   validatedResult: z.unknown().optional(),
+  /** What started a calendar-triggered run; absent for clock and manual runs. */
+  triggerContext: automationRunTriggerContextSchema.nullable().optional(),
   usage: automationUsageSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,

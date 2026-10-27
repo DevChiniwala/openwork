@@ -1,3 +1,4 @@
+import { describeCalendarMoment } from "@openwork/types/automation-schedule"
 import type { AutomationSchedule } from "@openwork/types/automations"
 
 import { compareDates, type CalendarRange, type LocalDate } from "./time"
@@ -25,6 +26,13 @@ export function describeSchedule(schedule: AutomationSchedule, displayTimeZone: 
   const zone = schedule.timezone === displayTimeZone ? "" : ` ${timeZoneLabel(schedule.timezone, Date.now(), locale)}`
   if (schedule.kind === "once") {
     return `Once on ${new Intl.DateTimeFormat(locale, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: schedule.timezone }).format(new Date(schedule.at))}${zone}`
+  }
+  if (schedule.kind === "calendar") {
+    const rule = [
+      schedule.rule.withExternalAttendees ? " with people outside your organization" : "",
+      schedule.rule.titleIncludes ? ` titled with "${schedule.rule.titleIncludes}"` : "",
+    ].join("")
+    return `${describeCalendarMoment(schedule)}${rule}`
   }
   if (schedule.kind === "interval") {
     const every = schedule.everyHours === 1 ? "Every hour" : `Every ${schedule.everyHours} hours`

@@ -1,5 +1,6 @@
 import {
   automationScheduleSchema,
+  type AutomationCalendarSchedule,
   type AutomationSchedule,
 } from "@openwork/types/automations"
 
@@ -129,7 +130,8 @@ function resolveLocalOccurrence(
   return sameLocalDate(localDateTime(high, timezone), date) ? { timestamp: high, shifted: true } : null
 }
 
-type RecurringSchedule = Exclude<AutomationSchedule, { kind: "once" }>
+/** Schedules that repeat on the clock; a calendar trigger has no clock occurrences. */
+type RecurringSchedule = Exclude<AutomationSchedule, { kind: "once" | "calendar" }>
 
 function isScheduledDay(schedule: RecurringSchedule, weekday: number): boolean {
   return schedule.kind === "daily" || schedule.daysOfWeek.includes(weekday)
@@ -197,6 +199,7 @@ export function automationOccurrences(
   if (schedule.kind === "once") {
     return { occurrences: schedule.at > options.after ? [schedule.at] : [], warnings: [] }
   }
+  if (schedule.kind === "calendar") return { occurrences: [], warnings: [] }
 
   const after = Math.floor(options.after)
   const start = localDateTime(after, schedule.timezone)
@@ -249,6 +252,7 @@ export function automationOccurrencesInRange(
   if (schedule.kind === "once") {
     return { occurrences: schedule.at >= from && schedule.at < to ? [schedule.at] : [], truncated, warnings: [] }
   }
+  if (schedule.kind === "calendar") return { occurrences: [], truncated, warnings: [] }
 
   const occurrences: number[] = []
   const warnings = new Set<string>()
@@ -343,9 +347,30 @@ export function formatAutomationSchedule(schedule: AutomationSchedule, locale?: 
   if (schedule.kind === "weekly") {
     return `Weekly · ${formatAutomationWeekdays(schedule.daysOfWeek, locale)} · ${clockLabel(schedule.hour, schedule.minute)} · ${schedule.timezone}`
   }
+  if (schedule.kind === "calendar") {
+    const parts = [describeCalendarMoment(schedule)]
+    if (schedule.rule.withExternalAttendees) parts.push("with people outside the organization")
+    if (schedule.rule.titleIncludes) parts.push(`titles containing "${schedule.rule.titleIncludes}"`)
+    parts.push(schedule.timezone)
+    return parts.join(" · ")
+  }
   const parts = [schedule.everyHours === 1 ? "Every hour" : `Every ${schedule.everyHours} hours`]
   if (schedule.startHour !== 0 || schedule.endHour !== 24) parts.push(`${clockLabel(schedule.startHour)}–${clockLabel(schedule.endHour)}`)
   if (schedule.daysOfWeek.length < 7) parts.push(formatAutomationWeekdays(schedule.daysOfWeek, locale))
   parts.push(schedule.timezone)
   return parts.join(" · ")
+}
+
+/**
+ * When a calendar trigger runs, in words: "After each meeting (+5 min)",
+ * "15 min before each meeting", "As each meeting starts".
+ */
+export function describeCalendarMoment(schedule: Pick<AutomationCalendarSchedule, "edge" | "offsetMinutes">): string {
+  const minutes = Math.abs(schedule.offsetMinutes)
+  if (schedule.edge === "end") {
+    if (schedule.offsetMinutes === 0) return "After each meeting"
+    return schedule.offsetMinutes > 0 ? `After each meeting (+${minutes} min)` : `${minutes} min before each meeting ends`
+  }
+  if (schedule.offsetMinutes === 0) return "As each meeting starts"
+  return schedule.offsetMinutes < 0 ? `${minutes} min before each meeting` : `${minutes} min into each meeting`
 }
