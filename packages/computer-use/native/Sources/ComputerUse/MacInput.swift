@@ -102,7 +102,18 @@ final class MacInput {
                 for click in 1...count {
                     try check(); try checkWindow()
                     try access.checkHit(screen, target: target, app: app, expected: hit)
-                    try mouse(.leftMouseDown, screen, app.pid, click, target.id, lease.frame, flags, check: check)
+                    if click == 1 {
+                        try await InputDispatch.pointerDown(check: check, validate: {
+                            try checkWindow()
+                            try access.checkHit(screen, target: target, app: app, expected: hit)
+                        }, move: {
+                            try self.mouse(.mouseMoved, screen, app.pid, 0, target.id, lease.frame, flags, check: check)
+                        }, down: {
+                            try self.mouse(.leftMouseDown, screen, app.pid, click, target.id, lease.frame, flags, check: check)
+                        })
+                    } else {
+                        try mouse(.leftMouseDown, screen, app.pid, click, target.id, lease.frame, flags, check: check)
+                    }
                     try mouse(.leftMouseUp, screen, app.pid, click, target.id, lease.frame, flags)
                     try check()
                     if click < count { try await Task.sleep(nanoseconds: 70_000_000) }
@@ -137,9 +148,14 @@ final class MacInput {
                     await Task.yield()
                 }
                 guard let first = points.first else { throw UseError("invalid_arguments", "Drag path is empty.") }
-                try check(); try checkWindow()
-                try access.checkHit(first, target: target, app: app, expected: pointerTarget)
-                try mouse(.leftMouseDown, first, app.pid, 1, target.id, lease.frame, check: check)
+                try await InputDispatch.pointerDown(check: check, validate: {
+                    try checkWindow()
+                    try access.checkHit(first, target: target, app: app, expected: pointerTarget)
+                }, move: {
+                    try self.mouse(.mouseMoved, first, app.pid, 0, target.id, lease.frame, check: check)
+                }, down: {
+                    try self.mouse(.leftMouseDown, first, app.pid, 1, target.id, lease.frame, check: check)
+                })
                 defer { releaseAll(interrupted: false) }
                 for point in points.dropFirst() {
                     try await Task.sleep(nanoseconds: 20_000_000)
