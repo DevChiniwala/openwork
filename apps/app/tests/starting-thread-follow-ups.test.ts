@@ -79,6 +79,12 @@ test("a steer is admitted once the first turn is admitted, never during an uncer
   expect(canAdmitNextQueuedItem(at({ kind: "admission_unknown", itemId: "q1", messageID: "msg_1", at: 1 }), true)).toBe(false);
   expect(canAdmitNextQueuedItem(at({ kind: "halted", itemId: "q1", reason: "needs_input" }), true)).toBe(false);
 
+  // After a blocked, cancelled or stopped send the queue is ready again; a requested
+  // send must not wait for a completion that will never come (and hold rows behind it).
+  for (const resolution of ["needs_input", "rejected", "terminal_failure", "admitted_running"] as const) {
+    expect(canAdmitNextQueuedItem(at({ kind: "ready" }, { itemId: "q1", resolution }), true)).toBe(true);
+  }
+
   // Plain queued rows still wait for an idle, ready queue.
   expect(canAdmitNextQueuedItem(at({ kind: "running", itemId: "q1" }))).toBe(false);
   expect(canAdmitNextQueuedItem(at({ kind: "ready" }))).toBe(true);

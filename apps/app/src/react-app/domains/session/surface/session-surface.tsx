@@ -2437,6 +2437,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
     if (archived || !archiveStateKnown || pendingStopsRef.current.has(sessionOwner)
       || sessionWorkHeld(props.opencodeBaseUrl, props.sessionId)) return;
+    // A one-step run seeded without a snapshot sends whatever the composer holds
+    // once it can; queueing now would empty it and strand that first send.
+    if (hasComposerAutoSend(props.sessionId)) return;
     const current = useComposerStateStore.getState().sessions[props.sessionId];
     if (!current || (!current.draft.trim() && current.attachments.length === 0)) return;
     const savedComposer = snapshotComposerSessionState(current);
