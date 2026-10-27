@@ -468,6 +468,9 @@ static class OpenWorkComputerUse {
   static void TakeGap() {
     var clock = Stopwatch.StartNew();
     while (Person.Busy() && clock.ElapsedMilliseconds < 500) Thread.Sleep(25);
+    // Never raise under a held button, however long it is held: the release of a
+    // drag begun in another app would land in the agent's window as a drop.
+    if (Person.HoldsButton()) throw PersonInterrupted();
   }
 
   // Windows lets only the app the person is using change the foreground. Joining
@@ -597,8 +600,11 @@ static class OpenWorkComputerUse {
     // The agent holds no button outside its own input, so a button down here is the person's.
     public static bool Busy() {
       long key = Interlocked.Read(ref lastKey);
-      return key >= 0 && Now - key < 200
-        || (Native.GetAsyncKeyState(0x01) & 0x8000) != 0 || (Native.GetAsyncKeyState(0x02) & 0x8000) != 0
+      return key >= 0 && Now - key < 200 || HoldsButton();
+    }
+
+    public static bool HoldsButton() {
+      return (Native.GetAsyncKeyState(0x01) & 0x8000) != 0 || (Native.GetAsyncKeyState(0x02) & 0x8000) != 0
         || (Native.GetAsyncKeyState(0x04) & 0x8000) != 0;
     }
   }
