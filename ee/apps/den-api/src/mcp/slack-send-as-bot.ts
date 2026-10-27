@@ -34,7 +34,7 @@ import { scoreText, tokenize, type CapabilityMatch } from "./search.js"
 export const SLACK_SEND_AS_BOT_CAPABILITY = "slack_send_as_bot"
 
 export const SLACK_SEND_AS_BOT_SUMMARY =
-  "Send a Slack message as the OpenWork bot instead of as you. Use it to notify the user (they get a real Slack notification) or to post in a channel on OpenWork's behalf. To post as the user, use slack_send_message."
+  "Send a Slack message as the OpenWork bot instead of as you, so the user gets a real Slack notification. Use target me whenever they want something sent to themselves: \"send me…\", \"DM me\", \"message me\", \"notify me\", \"ping me when it's done\", \"remind me\", \"let me know\", also in Automations. Use target channel to post in a channel on OpenWork's behalf. To post as the user (\"as me\"), use slack_send_message; it never notifies them about their own message."
 
 /** Slack's recommended maximum for a message's text. */
 const TEXT_MAX = 4_000
@@ -56,7 +56,32 @@ export const SLACK_SEND_AS_BOT_ARGUMENTS_SCHEMA = {
 }
 
 /** Words people use when they want the bot rather than themselves; scored below the name and summary. */
-const SEARCH_EXTRA_TOKENS = "notify notification ping dm direct alert remind tell bot openwork app done finished"
+const SEARCH_EXTRA_TOKENS = "notify notified notification ping alert remind reminder tell bot openwork app done finished"
+
+/**
+ * The person themselves. Capability search drops "me" as a filler word, which makes "send me the summary on Slack"
+ * read like "send the summary on Slack"; here it is the whole point.
+ */
+const SELF_WORDS = new Set(["me", "myself"])
+/** Being told something: enough with "me" alone ("DM me", "notify me", "ping me when it's done"). */
+const NOTIFY_WORDS = new Set(["dm", "dms", "notify", "notified", "notification", "notifications", "ping"])
+/** Words that mean a Slack message to them only when Slack is named ("send me the summary on Slack", "remind me on Slack"). */
+const SEND_WORDS = new Set(["send", "message", "post", "remind", "reminder", "alert", "know", "tell"])
+/** Another channel named: not a Slack message. */
+const OTHER_CHANNEL_WORDS = new Set(["email", "mail", "gmail", "inbox", "outlook", "sms", "teams", "discord", "whatsapp", "telegram"])
+/** For a message to themselves, these count like words of the name. */
+const SELF_NOTIFICATION_ALIASES = "notify notified notification ping dm remind reminder alert know myself"
+
+/** "As me" or "from me": they want to post as themselves, which is slack_send_message's job. */
+function asTheUser(tokens: string[]) {
+  return tokens.some((token, index) => (token === "as" || token === "from") && SELF_WORDS.has(tokens[index + 1] ?? ""))
+}
+
+/** A Slack message to the person themselves: "notify me", "DM me", "send me the summary on Slack". */
+function slackMessageToThemselves(tokens: string[]) {
+  if (!tokens.some((token) => SELF_WORDS.has(token)) || tokens.some((token) => OTHER_CHANNEL_WORDS.has(token))) return false
+  return tokens.some((token) => NOTIFY_WORDS.has(token)) || (tokens.includes("slack") && tokens.some((token) => SEND_WORDS.has(token)))
+}
 
 export const SLACK_SEND_AS_BOT_LIMITS = { perDay: 20, perMinute: 5 } as const
 const MINUTE_MS = 60_000
@@ -66,11 +91,22 @@ export function isSlackSendAsBotCapabilityName(name: string): boolean {
   return name === SLACK_SEND_AS_BOT_CAPABILITY
 }
 
+/**
+ * Ranks for messages to the person themselves ("send me…", "notify me", "DM me", "ping me when it's done"), where
+ * slack_send_message would post as them and never notify them, above the Slack connection's tools: mentioning
+ * themselves counts as a full-weight word and the notification words count like the name. Otherwise the score is the
+ * plain one, so "DM my teammate", "show me my Slack messages" or "send a Slack message" keep the Slack connection's
+ * tools first. Asking to post "as me" lists nothing here.
+ */
 export function searchSlackSendAsBotCapability(query: string): CapabilityMatch[] {
   const queryTokens = tokenize(query)
-  if (queryTokens.length === 0) return []
+  if (queryTokens.length === 0 || asTheUser(queryTokens)) return []
   const exact = query.trim().toLowerCase() === SLACK_SEND_AS_BOT_CAPABILITY
-  const score = scoreText(tokenize(SLACK_SEND_AS_BOT_CAPABILITY), tokenize(SLACK_SEND_AS_BOT_SUMMARY), queryTokens, tokenize(SEARCH_EXTRA_TOKENS))
+  const toThemselves = slackMessageToThemselves(queryTokens)
+  const nameTokens = [...tokenize(SLACK_SEND_AS_BOT_CAPABILITY), ...(toThemselves ? tokenize(SELF_NOTIFICATION_ALIASES) : [])]
+  const score = scoreText(nameTokens, tokenize(SLACK_SEND_AS_BOT_SUMMARY), queryTokens, tokenize(SEARCH_EXTRA_TOKENS))
+    // One word's full weight (name, summary and extra) for the person themselves.
+    + (toThemselves ? 6 + 2 + 1 : 0)
     // The same promotion an exact catalog name gets (search.ts).
     + (exact ? queryTokens.length * (6 + 2 + 1) + 1 : 0)
   if (score <= 0) return []

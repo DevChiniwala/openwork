@@ -20,6 +20,11 @@ own bot instead. It shows up in capability search next to the Slack connection's
 | "Post this in #team as OpenWork" | `slack_send_as_bot`, target `channel` |
 | "Post this as me", "reply to my teammate for me" | the Slack connection's `slack_send_message` |
 
+Capability search ranks it above the Slack connection's tools when the person wants something sent to themselves
+("send me… on Slack", "notify me", "DM me", "remind me on Slack"), lists it below them otherwise, and leaves it out
+when they ask to post "as me". While it is available, the gateway's instructions add the same rule in one sentence,
+for chats and for writing and running Automations.
+
 Arguments: `target` (`me` or `channel`), `text` (Slack mrkdwn, up to 4,000 characters), `channelId` (a channel ID such
 as `C0123ABCD`, for `channel`) and an optional `threadTs` to reply in a thread.
 

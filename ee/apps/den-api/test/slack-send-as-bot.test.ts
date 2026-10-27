@@ -33,7 +33,9 @@ const {
   executeCapability,
   slackSendAsBotAvailable,
 } = await import("../src/mcp/capability-registry.js")
-const { searchCapabilitySourceFilter } = await import("../src/mcp/search.js")
+const { compareCapabilityMatches, searchCapabilitySourceFilter, tokenize } = await import("../src/mcp/search.js")
+const { scoreExternalTool } = await import("../src/mcp/external-search-selection.js")
+const { buildExternalCapabilityName } = await import("../src/mcp/external-capabilities.js")
 const { loadConnectFullTools } = await import("../src/mcp/connect-full-tool-sources.js")
 const { createAgentMcpServer } = await import("../src/mcp/agent-server.js")
 const { SlackApiError } = await import("../src/slack-assistant/protocol.js")
@@ -332,6 +334,61 @@ describe("channel posts from the bot", () => {
   })
 })
 
+describe("routing: who a Slack message comes from", () => {
+  // The Slack connection's tools as Slack's MCP server describes them (trimmed; the member's user id replaced).
+  const slackTools = [
+    { name: "slack_send_message", description: "Sends a message to a Slack channel or user. To DM a user, use their user_id as channel_id. If the user wants to send a message to themselves, the current logged in user's user_id is U0EXAMPLE. Return the message link to the user. Thread replies: set thread_ts to parent message timestamp, reply_broadcast=true to also post to channel. Use slack_search_channels to find channel IDs, slack_search_users to find user IDs. If user has not reviewed the message, use slack_send_message_draft instead." },
+    { name: "slack_schedule_message", description: "Schedules a message for future delivery to a Slack channel. Does NOT send immediately — use slack_send_message for that." },
+    { name: "slack_send_message_draft", description: "Creates a draft message in a Slack channel. The draft is saved to the user's \"Drafts & Sent\" in Slack without sending it." },
+    { name: "slack_read_channel", description: "Reads messages from a Slack channel in reverse chronological order (newest first). To read DM history, use a user_id as channel_id. Read-only." },
+    { name: "slack_search_public", description: "Searches for messages, files in public Slack channels ONLY." },
+    { name: "slack_create_conversation", description: "Create a channel, DM, or group DM. Returns a channel_id for use with slack_send_message, slack_send_message_draft, or slack_schedule_message." },
+  ]
+  const sendAsUser = buildExternalCapabilityName("emc_slack", "slack_send_message")
+
+  /** Capability names best first, scored and ordered the way search_capabilities merges a Slack probe with this source. */
+  function ranked(query: string) {
+    const queryTokens = tokenize(query)
+    const external = slackTools.map((tool) => ({
+      name: buildExternalCapabilityName("emc_slack", tool.name), method: "MCP", path: tool.name, score: scoreExternalTool("Slack", tool, queryTokens),
+      summary: tool.description, pathParams: [], queryParams: [], hasBody: true,
+    }))
+    return [...external, ...searchSlackSendAsBotCapability(query)].filter((match) => match.score > 0).sort(compareCapabilityMatches).map((match) => match.name)
+  }
+
+  test("asking for something sent to themselves ranks slack_send_as_bot first, above slack_send_message", () => {
+    for (const query of [
+      "send me the summary on Slack", "notify me on Slack", "notify myself on Slack", "DM me", "ping me when it's done",
+      "message me on Slack", "remind me on Slack", "every morning send me the summary on Slack", "let me know on Slack when it's done",
+      "send a Slack DM to myself", "notify me",
+    ]) {
+      const names = ranked(query)
+      assert.equal(names[0], SLACK_SEND_AS_BOT_CAPABILITY, query)
+      if (names.includes(sendAsUser)) assert.ok(names.indexOf(SLACK_SEND_AS_BOT_CAPABILITY) < names.indexOf(sendAsUser), query)
+    }
+  })
+
+  test("posting as themselves, or to someone else, keeps slack_send_message first", () => {
+    for (const query of ["post this in #team as me", "reply to my teammate as me", "send it from me in #team"]) {
+      const names = ranked(query)
+      assert.equal(names[0], sendAsUser, query)
+      assert.equal(names.includes(SLACK_SEND_AS_BOT_CAPABILITY), false, query)
+    }
+    for (const query of ["DM my teammate on Slack", "send a slack message", "slack send message"]) {
+      const names = ranked(query)
+      assert.ok(names.indexOf(sendAsUser) < names.indexOf(SLACK_SEND_AS_BOT_CAPABILITY), query)
+    }
+  })
+
+  test("\"me\" alone, reading Slack, or another channel gets no boost", () => {
+    assert.deepEqual(searchSlackSendAsBotCapability("show me my calendar"), [])
+    assert.notEqual(ranked("show me my slack messages")[0], SLACK_SEND_AS_BOT_CAPABILITY)
+    const boosted = searchSlackSendAsBotCapability("notify me on Slack")[0]?.score ?? 0
+    const byEmail = searchSlackSendAsBotCapability("notify me by email")[0]?.score ?? 0
+    assert.ok(byEmail < 6 && boosted > byEmail * 4, `${byEmail} vs ${boosted}`)
+  })
+})
+
 function registryContext(input: { scopes: string[]; enabled: boolean; member?: boolean }) {
   return createCapabilityRegistryContext({
     app: new Hono(),
@@ -370,8 +427,11 @@ describe("slack_send_as_bot on the gateway", () => {
 
     const [match] = searchSlackSendAsBotCapability("slack send message")
     assert.ok(match)
-    assert.equal(match.summary, "Send a Slack message as the OpenWork bot instead of as you. Use it to notify the user (they get a real Slack notification) or to post in a channel on OpenWork's behalf. To post as the user, use slack_send_message.")
-    assert.equal(SLACK_SEND_AS_BOT_SUMMARY, match.summary)
+    assert.equal(match.summary, SLACK_SEND_AS_BOT_SUMMARY)
+    assert.ok(match.summary.startsWith("Send a Slack message as the OpenWork bot instead of as you, so the user gets a real Slack notification."))
+    for (const phrase of ["Use target me", "\"send me…\"", "\"DM me\"", "\"notify me\"", "\"ping me when it's done\"", "\"remind me\"", "also in Automations", "To post as the user (\"as me\"), use slack_send_message"]) {
+      assert.ok(match.summary.includes(phrase), phrase)
+    }
     const tool = capabilitySearchMatch(match)
     assert.deepEqual(tool.inputSchema, SLACK_SEND_AS_BOT_ARGUMENTS_SCHEMA)
     assert.deepEqual(tool.annotations, { readOnlyHint: false })
@@ -452,9 +512,9 @@ describe("slack_send_as_bot on the gateway", () => {
       }
     }
     const search = await instructions({ slackSendAsBot: true })
-    assert.match(search, /notify the user in Slack .* use slack_send_as_bot; to post as the user, use the Slack connection's slack_send_message\./)
+    assert.match(search, /To notify the user or "send me" something on Slack \(DM me, ping me, remind me, let me know; also in Automations and their instructions\), use slack_send_as_bot with target me; slack_send_message posts as the user and does not notify them, so use it only to post as the user\./)
     const full = await instructions({ slackSendAsBot: true, toolView: "full" })
-    assert.match(full, /use openwork-bot\.slack_send_as_bot;/)
+    assert.match(full, /use openwork-bot\.slack_send_as_bot with target me;/)
     for (const text of [search, full]) assert.ok(Buffer.byteLength(text, "utf8") <= 2048)
     assert.doesNotMatch(await instructions({}), /slack_send_as_bot/)
   })

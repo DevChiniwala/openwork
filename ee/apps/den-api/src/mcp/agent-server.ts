@@ -77,7 +77,7 @@ const REMOTE_SESSION_STATUS_INSTRUCTIONS = "To follow remote sessions, call remo
 /** Rolled out with `slackSendAsBot` for callers who may write; who a Slack message comes from decides the tool. */
 function slackSendAsBotInstructions(toolView: ConnectToolView = "search"): string {
   const tool = toolView === "full" ? "openwork-bot.slack_send_as_bot" : "slack_send_as_bot"
-  return `To notify the user in Slack ("ping me", "DM me when it's done") or post as OpenWork, use ${tool}; to post as the user, use the Slack connection's slack_send_message.`
+  return `To notify the user or "send me" something on Slack (DM me, ping me, remind me, let me know; also in Automations and their instructions), use ${tool} with target me; slack_send_message posts as the user and does not notify them, so use it only to post as the user.`
 }
 
 /**
