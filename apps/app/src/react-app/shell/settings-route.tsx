@@ -1006,7 +1006,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     if (autoClient) void autoClient.desktopFreePreferences().then((value) => {
       if (generation === autoGeneration.current) setAutoPreferences(value);
     }).catch(() => {
-      if (generation === autoGeneration.current) setAutoError("Could not verify Auto on this device. Reopen settings to retry.");
+      if (generation === autoGeneration.current) setAutoError("Could not verify OpenWork Free on this device. Reopen settings to retry.");
     });
     return () => { autoGeneration.current++; };
   }, [autoClient]);
@@ -1025,7 +1025,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } catch {
       if (generation !== autoGeneration.current) return;
       setAutoPreferences(null);
-      setAutoError("Could not verify the change to Auto. Check its state before retrying.");
+      setAutoError("Could not verify the change to OpenWork Free. Check its state before retrying.");
       try { const value = await autoClient.desktopFreePreferences(); if (generation === autoGeneration.current) setAutoPreferences(value); } catch {}
     } finally {
       if (generation === autoGeneration.current) setAutoBusy(false);

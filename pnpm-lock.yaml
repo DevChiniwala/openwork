@@ -1014,6 +1014,9 @@ importers:
       '@openwork-ee/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@openwork/features':
+        specifier: workspace:*
+        version: link:../../../packages/features
       '@openwork/free-auto':
         specifier: workspace:*
         version: link:../../../packages/free-auto

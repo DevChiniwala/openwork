@@ -128,6 +128,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  autoRouter: {
+    label: "AI Gateway: Auto Router",
+    description: "Admins describe when to use each AI Gateway model, and members can pick Auto: each prompt goes to the model and thinking level that fits it best.",
+    category: "models",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "OmarMcAdam",
+    docs: "docs/features/auto-router/README.md",
+    deployments: ["cloud"],
+    default: false,
+  },
   mermaidZoom: {
     label: "Desktop: zoom into diagrams",
     description: "Mermaid diagrams in chat and file previews can be zoomed, panned and opened full screen so large diagrams are readable.",

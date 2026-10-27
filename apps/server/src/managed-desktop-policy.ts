@@ -11,8 +11,8 @@ import { policyDenial, policyRequestActions, type ManagedPolicyAction } from "./
 import { agentPermissionDenial, agentPermissionRulesOf } from "./agent-permission-engine.js";
 
 const services = new WeakMap<ServerConfig, ManagedDesktopPolicy>();
-/** Org-managed providers: Den-imported (lpr_), Gateway (ipr_) and hosted OpenWork Models. */
-const MANAGED_PROVIDER = /^(?:lpr_|ipr_)|^openwork$/i;
+/** Org-managed providers: Den-imported (lpr_), Gateway (ipr_), hosted OpenWork Models and the Auto Router. */
+const MANAGED_PROVIDER = /^(?:lpr_|ipr_)|^openwork(?:-auto)?$/i;
 /** One member's sign-in: another member of the same organization has another token. */
 function sessionKey(session: CloudProviderDenSession) { return `${session.baseUrl}\n${session.orgId}\n${session.token}`; }
 // The first cold read previously had 10s; keep two reads under the 15s plugin budget and one read under the 10s session-install budget.

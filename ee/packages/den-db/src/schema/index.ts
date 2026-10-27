@@ -1,5 +1,6 @@
 export * from "./agent-permissions"
 export * from "./default-models"
+export * from "./auto-router"
 export * from "./prompts"
 export * from "./auth"
 export * from "./managed-deployments"

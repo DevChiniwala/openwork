@@ -319,6 +319,14 @@
       "development": "./src/den/default-model.ts",
       "default": "./src/den/default-model.ts"
     },
+    "./den/auto-router": {
+      "types": {
+        "openwork-build": "./dist/types/src/den/auto-router.d.ts",
+        "default": "./src/den/auto-router.ts"
+      },
+      "development": "./src/den/auto-router.ts",
+      "default": "./src/den/auto-router.ts"
+    },
     "./den/prompts": {
       "types": {
         "openwork-build": "./dist/types/src/den/prompts.d.ts",

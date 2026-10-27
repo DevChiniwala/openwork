@@ -91,6 +91,16 @@
               ],
               "description": "Apps: built-in libraries: Apps built in OpenWork can use icons, charts, animation, 3D and SVG drawing from pinned libraries bundled into each App, with no remote scripts or network access. Renders DEN_FEATURE_MCP_APP_LIBRARIES."
             },
+            "autoRouter": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "AI Gateway: Auto Router: Admins describe when to use each AI Gateway model, and members can pick Auto: each prompt goes to the model and thinking level that fits it best. Renders DEN_FEATURE_AUTO_ROUTER."
+            },
             "mermaidZoom": {
               "enum": [
                 "",

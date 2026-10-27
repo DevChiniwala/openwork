@@ -192,7 +192,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
       </ProviderList> : ready ? <p className="text-sm text-muted-foreground">{t("settings.no_providers_connected")}</p> : null}
 
       {props.autoError ? <SettingsNotice tone="error">{props.autoError}</SettingsNotice> : null}
-      {props.autoPreferences && !props.autoPreferences.canEnable ? <p className="text-xs text-muted-foreground">Auto is unavailable on this device or blocked by your organization administrator.</p> : null}
+      {props.autoPreferences && !props.autoPreferences.canEnable ? <p className="text-xs text-muted-foreground">OpenWork Free is unavailable on this device or blocked by your organization administrator.</p> : null}
       {props.providerConnectError ? <SettingsNotice tone="error">{props.providerConnectError}</SettingsNotice> : null}
       {props.providerDisconnectStatus ? <SettingsNotice>{props.providerDisconnectStatus}</SettingsNotice> : null}
       {props.providerDisconnectError ? <SettingsNotice tone="error">{props.providerDisconnectError}</SettingsNotice> : null}
