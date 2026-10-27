@@ -82,6 +82,7 @@ function scope(c: {
       firstPartyDesktop: modelAttentionCapable,
     }),
     intervalSchedules: context.features.automationIntervalSchedules,
+    calendarTriggers: context.features.automationCalendarTriggers,
   }
 }
 
@@ -141,6 +142,12 @@ function failure(error: unknown): { status: 400 | 403 | 404 | 409; body: { error
   }
   if (error.message === "automation_interval_schedule_disabled") {
     return { status: 400, body: { error: error.message, message: "Every-few-hours schedules are not turned on for this organization. Choose a once, daily or weekly schedule." } }
+  }
+  if (error.message === "automation_calendar_trigger_disabled") {
+    return { status: 400, body: { error: error.message, message: "Before- and after-meeting Automations are not turned on for this organization. Choose a clock schedule instead." } }
+  }
+  if (error.message === "automation_calendar_trigger_cloud_only") {
+    return { status: 400, body: { error: error.message, message: "Automations that run around meetings run in OpenWork Cloud. Create it as a Cloud Automation, or choose a clock schedule to run it on a desktop." } }
   }
   if (error.message === "automation_cloud_worker_required") {
     return { status: 409, body: { error: error.message, message: "Set up OpenWork Cloud before creating a Cloud Automation." } }

@@ -1121,6 +1121,13 @@
       "when": 1793077527383,
       "tag": "0160_automation_interval_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "5",
+      "when": 1793079251966,
+      "tag": "0161_automation_calendar_trigger",
+      "breakpoints": true
     }
   ]
 }

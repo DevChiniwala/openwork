@@ -49,7 +49,7 @@ export const automationIntervalScheduleSchema = z.object({
 }).refine((schedule) => schedule.endHour > schedule.startHour, {
   message: "endHour must be after startHour",
   path: ["endHour"],
-})
+}).describe("Every everyHours hours on the hour, counted from startHour on each listed day (0 = Sunday) and stopping before endHour, in timezone. Needs the organization's every-few-hours schedules.")
 
 /** Furthest a calendar trigger may run from its meeting's start or end, in minutes either way. */
 export const AUTOMATION_CALENDAR_OFFSET_MAX_MINUTES = 120
@@ -74,7 +74,7 @@ export const automationCalendarScheduleSchema = z.object({
     /** Only meetings whose title contains this text, ignoring case. */
     titleIncludes: z.string().trim().min(1).max(120).optional(),
   }).strict().default({ withExternalAttendees: false }),
-})
+}).describe("Runs offsetMinutes (negative is before) from the start or end of each meeting on the owner's primary Google Calendar: timed meetings they accepted or organize, with someone else invited. Cloud Automations only; needs Google Calendar connected and the organization's before-and-after-meeting Automations.")
 
 export const automationScheduleSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("once"), timezone: timezoneSchema, at: timestampSchema }),
