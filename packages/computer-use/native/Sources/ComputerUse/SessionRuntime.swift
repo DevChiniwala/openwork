@@ -627,13 +627,14 @@ final class SessionRuntime {
         if announce { controls.update(reason, paused: true) }
     }
     private static let interruptions: [CGEventType] = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
-    /// When the person last produced HID input of this type, in uptime. Reads only
-    /// timing, with no permission beyond the ones computer use already has.
+    /// When the person last produced physical input of this type, in uptime. The
+    /// HID system state holds only device input, never the agent's process-targeted
+    /// events. Reads only timing, with no permission beyond computer use's own.
     private func lastPersonInput(_ type: CGEventType) -> TimeInterval {
         ProcessInfo.processInfo.systemUptime - CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type)
     }
     private func personInterrupted(since start: TimeInterval) -> Bool {
-        Self.interruptions.contains { SharedDesktop.personInterrupted(inputAt: lastPersonInput($0), since: start, agentPostedAt: input.lastPostedAt) }
+        Self.interruptions.contains { SharedDesktop.personInterrupted(inputAt: lastPersonInput($0), since: start) }
     }
     /// In control mode, takes the next gap in the person's typing or a held button.
     private func takeGap(_ current: Session, deadline: TimeInterval? = nil) async throws {
@@ -641,7 +642,7 @@ final class SessionRuntime {
         try await SharedDesktop.takeGap(busy: {
             let buttonDown = [CGMouseButton.left, .right, .center].contains { CGEventSource.buttonState(.hidSystemState, button: $0) }
             return SharedDesktop.personBusy(keyAt: self.lastPersonInput(.keyDown), buttonDown: buttonDown,
-                now: ProcessInfo.processInfo.systemUptime, agentPostedAt: self.input.lastPostedAt)
+                now: ProcessInfo.processInfo.systemUptime)
         }, now: { self.now }, check: {
             try self.checkActive(current, deadline: deadline)
         }, sleep: { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) })

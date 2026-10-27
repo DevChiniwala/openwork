@@ -2,27 +2,18 @@ import XCTest
 @testable import ComputerUse
 
 final class SharedDesktopTests: XCTestCase {
-    func testOnlyThePersonsOwnInputCounts() {
-        XCTAssertTrue(SharedDesktop.persons(inputAt: 99, agentPostedAt: nil))
-        // Input landing right after the agent's own post is the agent's.
-        XCTAssertFalse(SharedDesktop.persons(inputAt: 99.82, agentPostedAt: 99.8))
-        // Input clearly after the agent's post, or before it, is the person's.
-        XCTAssertTrue(SharedDesktop.persons(inputAt: 99.9, agentPostedAt: 99.8))
-        XCTAssertTrue(SharedDesktop.persons(inputAt: 99.7, agentPostedAt: 99.8))
-    }
-
     func testOnlyTypingOrAHeldButtonIsBusy() {
-        XCTAssertTrue(SharedDesktop.personBusy(keyAt: 99.9, buttonDown: false, now: 100, agentPostedAt: nil))
-        XCTAssertTrue(SharedDesktop.personBusy(keyAt: 0, buttonDown: true, now: 100, agentPostedAt: nil))
-        XCTAssertFalse(SharedDesktop.personBusy(keyAt: 99, buttonDown: false, now: 100, agentPostedAt: nil))
-        // The agent's own typing never holds it up.
-        XCTAssertFalse(SharedDesktop.personBusy(keyAt: 99.95, buttonDown: false, now: 100, agentPostedAt: 99.94))
+        XCTAssertTrue(SharedDesktop.personBusy(keyAt: 99.9, buttonDown: false, now: 100))
+        XCTAssertTrue(SharedDesktop.personBusy(keyAt: 0, buttonDown: true, now: 100))
+        XCTAssertFalse(SharedDesktop.personBusy(keyAt: 99, buttonDown: false, now: 100))
     }
 
     func testAClickOrKeyAfterTheMomentBeganInterruptsIt() {
-        XCTAssertTrue(SharedDesktop.personInterrupted(inputAt: 10.3, since: 10, agentPostedAt: nil))
-        XCTAssertFalse(SharedDesktop.personInterrupted(inputAt: 9.9, since: 10, agentPostedAt: nil))
-        XCTAssertFalse(SharedDesktop.personInterrupted(inputAt: 10.31, since: 10, agentPostedAt: 10.3))
+        XCTAssertTrue(SharedDesktop.personInterrupted(inputAt: 10.3, since: 10))
+        XCTAssertFalse(SharedDesktop.personInterrupted(inputAt: 9.9, since: 10))
+        // Even a millisecond after the moment began, and right after the agent's own
+        // input: device input is never discounted by timing.
+        XCTAssertTrue(SharedDesktop.personInterrupted(inputAt: 10.001, since: 10))
         XCTAssertEqual(SharedDesktop.interrupted.next, "observe")
     }
 
@@ -90,10 +81,9 @@ final class SharedDesktopTests: XCTestCase {
     func testTypingInTheAgentsWindowKeepsTheFrontThere() {
         var handBack = SharedDesktop.HandBack()
         handBack.record(frontmost: 40, target: 7, own: 3, at: 10)
-        // A key 20 ms after the agent's own post is filtered out of interrupts, but it
-        // still keeps the front in the agent's window, so later keys stay there too.
-        XCTAssertFalse(SharedDesktop.persons(inputAt: 10.52, agentPostedAt: 10.5))
-        XCTAssertNil(handBack.take(frontmost: 7, target: 7, lastPersonInput: 10.52))
+        // A key of the person's moments after the front was taken keeps it in the
+        // agent's window, so their later keys stay there too.
+        XCTAssertNil(handBack.take(frontmost: 7, target: 7, lastPersonInput: 10.02))
         XCTAssertNil(handBack.pid)
     }
 

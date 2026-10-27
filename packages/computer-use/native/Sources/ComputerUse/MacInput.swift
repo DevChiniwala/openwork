@@ -33,8 +33,6 @@ final class MacInput {
     private var heldPointer: (pid: pid_t, point: CGPoint, windowID: CGWindowID, frame: CGRect, flags: CGEventFlags)?
     private var heldModifiers: (pid: pid_t, flags: CGEventFlags)?
     private var lastPointer: (pid: pid_t, windowID: CGWindowID, point: CGPoint)?
-    /// Uptime of the agent's last event, so it is never mistaken for the person's.
-    private(set) var lastPostedAt: TimeInterval?
     private var routes: [pid_t: PointerRoute] = [:]
     // One gesture's events share a group so the app coalesces them as one.
     private var gesture: Int64 = 0
@@ -218,7 +216,6 @@ final class MacInput {
     private func post(_ event: CGEvent, _ pid: pid_t, pointer: Bool = false) {
         event.setIntegerValueField(.eventSourceUnixProcessID, value: Int64(ProcessInfo.processInfo.processIdentifier))
         event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
-        lastPostedAt = ProcessInfo.processInfo.systemUptime
         if pointer, routes[pid] == .skyLight, let skyLightPost = Self.skyLightPost {
             skyLightPost(pid, event)
         } else {

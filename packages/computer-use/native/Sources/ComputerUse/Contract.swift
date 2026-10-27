@@ -290,23 +290,19 @@ enum SharedDesktop {
     static let handBackDelay: TimeInterval = 0.4
     static let poll: TimeInterval = 0.05
 
-    /// Whether HID input at `inputAt` was the person's. The agent's events go to one
-    /// process and do not reach the HID state; if one lands right after the agent's
-    /// own post anyway, it counts as the agent's.
-    static func persons(inputAt: TimeInterval, agentPostedAt: TimeInterval?) -> Bool {
-        guard let agentPostedAt else { return true }
-        return !(inputAt >= agentPostedAt && inputAt - agentPostedAt < 0.05)
-    }
+    // Input times come from the HID system state, which only physical devices
+    // update. The agent's events go to one process and never enter it, so every
+    // time read here is the person's: nothing is discounted by timing.
 
     /// Mid-keystroke or holding a button: raising another window now would send the
     /// person's next key or drag into it.
-    static func personBusy(keyAt: TimeInterval, buttonDown: Bool, now: TimeInterval, agentPostedAt: TimeInterval?) -> Bool {
-        buttonDown || (now - keyAt < typingGap && persons(inputAt: keyAt, agentPostedAt: agentPostedAt))
+    static func personBusy(keyAt: TimeInterval, buttonDown: Bool, now: TimeInterval) -> Bool {
+        buttonDown || now - keyAt < typingGap
     }
 
     /// A click or key press of the person's after the agent's moment began.
-    static func personInterrupted(inputAt: TimeInterval, since start: TimeInterval, agentPostedAt: TimeInterval?) -> Bool {
-        inputAt > start && persons(inputAt: inputAt, agentPostedAt: agentPostedAt)
+    static func personInterrupted(inputAt: TimeInterval, since start: TimeInterval) -> Bool {
+        inputAt > start
     }
     static let interrupted = UseError("person_interrupted", "The person clicked or typed, so this step stopped and the computer is theirs for now. Observe again to continue.", next: "observe")
 
