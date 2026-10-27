@@ -470,6 +470,8 @@ export const FEATURES = defineFeatures({
   outlookAttachments: {
     label: "Outlook attachments",
     description: "Agents read the files attached to Outlook messages and create Outlook drafts and replies with workspace files attached, after the member approves each draft. Drafts are never sent.",
+    category: "connect",
+    added: "2026-10-26",
     since: "2026-10",
     author: "reachjalil",
     docs: "docs/features/outlook-attachments/README.md",
