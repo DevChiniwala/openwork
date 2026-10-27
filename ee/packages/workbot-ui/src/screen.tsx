@@ -296,13 +296,16 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
       void queryClient.invalidateQueries({ queryKey: workbotFilesKey });
     }, again);
   };
-  const submit = (text: string, retry?: Pending, runSkill = false) => {
+  // `plain`: a request about how Workbot works (Show me, Carry on without me), never tied to the open view or a teaching
+  // step (a message with view context runs read-only, without the computer it is asking about), and leaving the draft
+  // being typed alone.
+  const submit = (text: string, retry?: Pending, runSkill = false, plain = false) => {
     if (retry) { sendPending(retry.id, true); return; }
     const trimmed = text.trim();
-    if (!trimmed && draft.uploads.length === 0) return;
-    const parsed = workbotViewContextSchema.safeParse(includeContext ? currentContext : undefined);
+    if (!trimmed && (plain || draft.uploads.length === 0)) return;
+    const parsed = workbotViewContextSchema.safeParse(includeContext && !plain ? currentContext : undefined);
     const context = host.workspaceAssistant && parsed.success && (parsed.data.kind === "calendar" || host.documents) ? parsed.data : undefined;
-    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, ...(!runSkill && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
+    const id = composerState.enqueue({ id: newMessageId(), text: trimmed, context, keepDraft: plain, ...(!runSkill && !plain && teaching ? { teachingId: teaching.id, teachingStepId: teaching.stepId } : {}) });
     const delivery = sendPending(id);
     if (runSkill) return delivery.then(() => {
       const failure = composerState.getSnapshot().pending.find(entry => entry.id === id)?.failed;
@@ -341,7 +344,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
         sentFrom.current.set(turn.id, viewRef.current);
         retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: error => setEditErrors(current => ({ ...current, [turn.id]: error })) });
       }}
-      onSuggestion={text => submit(text)} starting={starting} intro={null}
+      onSuggestion={text => submit(text)} onSwitch={text => submit(text, undefined, false, true)} starting={starting} intro={null}
     /> : null;
     const composer = <WorkbotComposer teaching={teaching} text={draft.text} onText={composerState.setText} name={name} busy={busy} stopping={stop.isPending} filesEnabled={filesEnabled} nativeDictation={host.nativeDictation}
       uploads={uploads.uploads} onFiles={addFiles} onRemoveUpload={uploads.remove} onRetryUpload={uploads.retry}
@@ -526,6 +529,7 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
               retry.mutate(turn.id, { onSuccess: () => setEditErrors(current => { const next = { ...current }; delete next[turn.id]; return next; }), onError: (error) => setEditErrors((current) => ({ ...current, [turn.id]: error })) });
             }}
             onSuggestion={(text) => submit(text)}
+            onSwitch={(text) => submit(text, undefined, false, true)}
             starting={starting}
             intro={
               data.hasEarlier
@@ -904,6 +908,8 @@ function Conversation(props: {
   /** `joined`: the next row is the failed hello's line, which sits right under the greeting as on the first open. */
   intro: { at: number; joined: boolean; node: ReactNode } | null;
   onSuggestion: (text: string) => void;
+  /** Asks Workbot to show its work on screen or carry on without the person, without the open view's context. */
+  onSwitch: (text: string) => void;
   /** Workbot is about to say hello (right after the welcome). */
   starting: boolean;
   /** Whether the person's messages can be edited now (not while Workbot is answering). */
@@ -1012,6 +1018,7 @@ function Conversation(props: {
                       previews={previews.current}
                       onRetry={() => row.turn && props.onRetryTurn(row.turn)}
                       onSuggestion={props.onSuggestion}
+                      onSwitch={props.onSwitch}
                     />
                   ) : row.pending ? (
                     <PendingView
@@ -1701,6 +1708,7 @@ function TurnView(props: {
   previews: Record<string, string | null>;
   onRetry: () => void;
   onSuggestion: (text: string) => void;
+  onSwitch: (text: string) => void;
 }) {
   const { turn } = props;
   const { working, liveText, startingCard, startingStep, lastIsLive } = replyProgress(turn, props.live);
@@ -1751,7 +1759,7 @@ function TurnView(props: {
   // in the background leave nothing on the screen to open.
   const onScreen = (step: WorkbotStep) => step.icon === "computer" && !step.background;
   // While it answers, the person can ask it to show its work on screen or carry on without them.
-  const switchMode = answering && props.canChange ? props.onSuggestion : undefined;
+  const switchMode = answering && props.canChange ? props.onSwitch : undefined;
   const usedComputer = props.latest && ((startingStep !== null && onScreen(startingStep)) || parts.some((part) => part.kind === "steps" && part.steps.some(onScreen)));
   return (
     <>
