@@ -42,7 +42,7 @@ export const SCRIPT_APPS = Object.freeze(["applescript", "jxa", "blender"]);
 const setupNotFinished = (answer) => failure("not_allowed", answer === "dismissed"
   ? "The person dismissed computer setup. Nothing was dispatched. Do not ask again unless they bring it up; continue another way."
   : answer === "unavailable" ? "Computer use is not turned on in this OpenWork app. Use connected apps or the browser instead."
-  : "Computer setup did not finish in time. Nothing was dispatched. Tell the person it is waiting for the Computer card in the chat.");
+  : "Computer setup did not finish in time. Nothing was dispatched. Tell the person to finish it in Settings > Computer use, then ask again.");
 // A call made in the wrong order dispatched nothing: report it without revoking or closing anything.
 const SEQUENCE_CODES = new Set(["session_open", "session_required"]);
 const uiText = (value, limit) => typeof value === "string" && value.length <= limit;
