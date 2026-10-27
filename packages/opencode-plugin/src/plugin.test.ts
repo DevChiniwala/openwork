@@ -15,7 +15,7 @@ import type {
   RemoteMcpConfig,
 } from "./opencode.ts"
 import { createPlugin, readOptions } from "./plugin.ts"
-import { createDesktopProviderPlugin as createDesktopProviderPluginSource, isDesktopSessionEndpoint, readDesktopSession } from "./desktop.ts"
+import { createDesktopProviderPlugin as createDesktopProviderPluginSource, checkDesktopSession, isDesktopSessionEndpoint } from "./desktop.ts"
 import { createHash } from "node:crypto"
 import type { DenSession, Fetch } from "./den.ts"
 import { setTimeout as delay } from "node:timers/promises"
@@ -455,7 +455,7 @@ test("desktop bridge accepts only literal loopback and never follows redirects o
   for (const value of ["http://example.test/session", "https://127.0.0.1/session", "http://localhost/session", "http://user@127.0.0.1/session"]) assert.equal(isDesktopSessionEndpoint(value), false)
   assert.equal(isDesktopSessionEndpoint("http://127.0.0.1:1234/session"), true)
   let calls = 0
-  const session = await readDesktopSession(async (_url, init) => {
+  const check = await checkDesktopSession(async (_url, init) => {
     calls++
     assert.equal(new Headers(init?.headers).get("authorization"), "Bearer process-capability")
     assert.equal(init?.redirect, "error")
@@ -463,8 +463,24 @@ test("desktop bridge accepts only literal loopback and never follows redirects o
       inferenceOrigin: "http://127.0.0.1:1234", inferenceKey: `ow_local_${"b".repeat(64)}` })
   }, "http://127.0.0.1:1234/session", "process-capability")
   assert.equal(calls, 1)
-  assert.equal(session?.identity, "a".repeat(64))
-  assert.ok(!JSON.stringify(session).includes(SESSION_TOKEN))
+  assert.equal(check.kind === "session" ? check.value.identity : null, "a".repeat(64))
+  assert.ok(!JSON.stringify(check).includes(SESSION_TOKEN))
+})
+
+test("desktop session check: only an explicit 2xx null is a sign-out; every failure is unknown", async () => {
+  const endpoint = "http://127.0.0.1:1234/session"
+  const kind = async (fetcher: Fetch, capability: string | undefined = "capability") =>
+    (await checkDesktopSession(fetcher, endpoint, capability)).kind
+  assert.equal(await kind(async () => Response.json(null)), "signed_out")
+  assert.equal(await kind(async () => Response.json(null, { status: 500 })), "unknown")
+  assert.equal(await kind(async () => Response.json(null, { status: 401 })), "unknown")
+  assert.equal(await kind(async () => new Response("<html>", { status: 200 })), "unknown")
+  assert.equal(await kind(async () => Response.json({ apiBaseUrl: API, token: SESSION_TOKEN, orgId: ORG_ID })), "unknown")
+  assert.equal(await kind(async () => { throw new TypeError("fetch failed") }), "unknown")
+  assert.equal(await kind(async () => { throw new DOMException("The operation timed out.", "TimeoutError") }), "unknown")
+  // No capability and no process broker: nothing answered, so nothing is known.
+  assert.equal(await kind(async () => assert.fail("no direct fetch without a capability"), undefined), "unknown")
+  assert.equal((await checkDesktopSession(async () => Response.json(null), "http://example.test/session", "capability")).kind, "unknown")
 })
 
 test("desktop provider-only mode reacts to local org changes and sign-out without inventory polling", async () => {
