@@ -162,6 +162,8 @@ jobs:
           bun test apps/server/test/engine-auto-upgrade-boot.test.ts apps/server/test/engine-auto-upgrade.test.ts apps/server/test/engine-auto-upgrade-safety.test.ts
       - name: Test providers reaching OpenCode v2 and the organization's provider rule
         run: bun test apps/server/test/engine-v2-provider-mapping.test.ts apps/server/test/opencode-v2-local-auth.test.ts
+      - name: Test OpenCode v2 starting again after it fails or exits
+        run: bun test apps/server/test/engine-v2-restart.test.ts
       - name: Test the self-hosted web UI stays on its own origin
         run: bun --conditions=development test apps/server/test/web-ui-origin.test.ts
       - name: Test OneDrive and SharePoint pulls and saves
