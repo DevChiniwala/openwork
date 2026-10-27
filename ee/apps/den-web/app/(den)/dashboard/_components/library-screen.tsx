@@ -46,6 +46,7 @@ import { useDenToast } from "./den-toast";
 import { requestJson, getRequestError } from "../../_lib/den-flow";
 import { pluginQueryKeys } from "./plugin-data";
 import { LibraryPluginSkills } from "./library-plugin-skills";
+import { MyAgentLibraryEntry, myAgentAvailable } from "./my-agent-screen";
 
 function itemHref(orgSlug: string | null, item: LibraryItem): string {
   if (item.type === "connection") return getLibraryConnectorRoute(orgSlug, item.id);
@@ -219,6 +220,8 @@ function LibraryContent() {
         title="My Library"
         size="compact"
       />
+
+      {myAgentAvailable(orgContext) ? <MyAgentLibraryEntry /> : null}
 
       {library.error ? (
         <p className="rounded-2xl border border-gray-100 bg-white px-5 py-4 text-[13px] text-red-600">

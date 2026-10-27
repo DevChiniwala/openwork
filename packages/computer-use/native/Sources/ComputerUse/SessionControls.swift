@@ -59,6 +59,12 @@ final class FocusLease {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
     }
+    /// The lease only when no other agent holds it right now; never waits.
+    static func attempt(directory: URL? = nil) -> FocusLease? {
+        guard let path = try? (directory ?? LeaseFiles.directory()).appendingPathComponent("focus.lock").path,
+              let fd = try? LeaseFiles.lock(path) else { return nil }
+        return FocusLease(fd: fd)
+    }
     func release() {
         guard fd >= 0 else { return }
         flock(fd, LOCK_UN); Darwin.close(fd); fd = -1

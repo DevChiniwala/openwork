@@ -21,11 +21,14 @@ import {
   type AgentWakeReason,
 } from "@openwork/automations/proactive"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
-import type { AgentDestinationBlock, WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
+import type { AgentCheckKind, AgentCheckReason, AgentDestinationBlock, AgentResponsibility, WorkbotProactiveSettings } from "@openwork/types/den/workbot-proactive"
+import type { AgentMemberCheckMessage } from "@openwork-ee/den-db/schema"
 import { appLogger } from "../observability/logger.js"
 import type { MemberCalendarRead } from "../routes/org/google-workspace.js"
+import { describeAgentCheck, type AgentCheckRecord } from "./checks.js"
 import type { DeliveryResult } from "./deliver.js"
 import { activeResponsibilities, enabledOf, memberAgentOn, mutedOf, proactivePolicy } from "./policy.js"
+import { memberLimits, memberPolicy, parseStoredPreferences } from "./preferences.js"
 import type { AgentCheckCount, AgentInstanceRow, AgentSettle, DeliveryOutcome } from "./repository.js"
 import type { AgentTemplateVersion } from "./template.js"
 import type { AgentTurnResult } from "./turn.js"
@@ -60,10 +63,14 @@ export type AgentWakeDeps = {
   deliver: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; text: string }) => Promise<DeliveryResult>
   /** Adds a completed pass to the organization's daily counters (the admin's health view). */
   recordChecks: (input: { organizationId: DenTypeId<"organization">; day: string; counts: readonly AgentCheckCount[] }) => Promise<void>
+  /** My agent (`workbotAgentLibrary`) is on for this member: their words, narrower limits and check records. */
+  library: (organizationId: DenTypeId<"organization">, userId: DenTypeId<"user">) => Promise<boolean>
+  /** Keeps one check for the member to read ("Last check at 11:20 AM. Stayed quiet."). */
+  recordCheck: (record: AgentCheckRecord) => Promise<void>
 }
 
 type SkipReason = "off" | "not_allowed" | "opted_out" | "snoozed" | "outside_hours" | "no_destination" | AgentDestinationBlock | "no_responsibilities" | "no_google" | "nothing_due"
-type Delivered = "sent" | "failed" | "nothing_new" | "daily_limit" | "quiet_hours" | "snoozed" | null
+type Delivered = "sent" | "failed" | "nothing_new" | "daily_limit" | "quiet_hours" | "quiet_window" | "snoozed" | null
 
 export type AgentWakeOutcome =
   | { status: "skipped"; reason: SkipReason }
@@ -88,28 +95,67 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   const userId = await deps.user(organizationId, memberId)
   if (!userId || !(await deps.allowed(organizationId, userId))) return skip("not_allowed", now + HOUR_MS)
   if (!memberAgentOn(row, settings)) return skip("opted_out", now + 6 * HOUR_MS)
-  if (row.snoozedUntil && row.snoozedUntil.getTime() > now) return skip("snoozed", row.snoozedUntil.getTime())
 
-  const policy = proactivePolicy(settings)
+  // My agent: the member's narrower limits, their own words, and a record of each check they can read. Off, the
+  // agent runs exactly as before on the organization's policy.
+  const library = await deps.library(organizationId, userId).catch(() => false)
+  const limits = memberLimits(settings, library ? row.overrides : null)
+  const policy = library ? memberPolicy(limits) : proactivePolicy(settings)
+  const state = parseAgentState(row.state)
+  // Skips repeat until their cause is fixed; keyed by the pass they hold up, they stay one record.
+  const slot = String(state.nextPassAt ?? "first")
+  const record = async (input: { reason: AgentCheckReason; key: string; kind?: AgentCheckKind; responsibilities?: readonly AgentResponsibility[]; message?: AgentMemberCheckMessage | null }) => {
+    if (!library) return
+    const described = describeAgentCheck({ reason: input.reason, responsibilities: input.responsibilities, limits })
+    await deps.recordCheck({
+      organizationId,
+      memberId,
+      key: input.key,
+      at: now,
+      kind: input.kind ?? "scheduled",
+      reason: input.reason,
+      outcome: described.outcome,
+      summary: described.summary,
+      responsibilities: [...new Set(input.responsibilities ?? [])],
+      message: input.message ?? null,
+    }).catch(() => appLogger.warn("workbot_agent_check_unrecorded", { member_id: memberId, reason: input.reason }))
+  }
+
+  if (row.snoozedUntil && row.snoozedUntil.getTime() > now) {
+    await record({ reason: "snoozed", key: `snoozed:${row.snoozedUntil.getTime()}` })
+    return skip("snoozed", row.snoozedUntil.getTime())
+  }
+
   const storedZone = isValidTimeZone(row.timeZone) ? row.timeZone : null
-  if (storedZone && !withinWorkingHours(policy, now, storedZone)) return skip("outside_hours", nextWorkingStart(policy, now, storedZone))
-  if (settings.destination !== "workbot_dm") return skip("no_destination", now + HOUR_MS)
+  if (storedZone && !withinWorkingHours(policy, now, storedZone)) {
+    const opens = nextWorkingStart(policy, now, storedZone)
+    await record({ reason: "outside_hours", key: `outside_hours:${opens}` })
+    return skip("outside_hours", opens)
+  }
+  if (settings.destination !== "workbot_dm") {
+    await record({ reason: "no_destination", key: `no_destination:${slot}` })
+    return skip("no_destination", now + HOUR_MS)
+  }
   // A message that could not arrive is not worth a turn: no Slack app, or the member's Slack not linked. The
   // member's settings say which, and the agent picks up once it is fixed.
   const blocked = await deps.destinationBlock({ organizationId, userId })
   if (blocked) {
     appLogger.info("workbot_agent_destination_blocked", { member_id: memberId, reason: blocked })
+    await record({ reason: blocked, key: `${blocked}:${slot}` })
     return skip(blocked, now + HOUR_MS)
   }
   const template = await deps.template(organizationId)
   const responsibilities = activeResponsibilities(template, row)
-  if (!responsibilities.length) return skip("no_responsibilities", now + 6 * HOUR_MS, { templateVersionId: template.versionId })
+  if (!responsibilities.length) {
+    await record({ reason: "nothing_to_check", key: `nothing_to_check:${slot}` })
+    return skip("no_responsibilities", now + 6 * HOUR_MS, { templateVersionId: template.versionId })
+  }
 
   // The event source: one read-only calendar GET as the member. It also tells us their time zone.
-  const state = parseAgentState(row.state)
   const read = await deps.calendar({ organizationId, orgMembershipId: memberId, timeMin: iso(now - 15 * 60_000), timeMax: iso(now + AGENT_TIMING.horizonMs + 2 * HOUR_MS) })
   if (read.kind === "needs_connection" || read.kind === "policy_blocked" || read.kind === "missing_scope") {
     appLogger.info("workbot_agent_google_unavailable", { member_id: memberId, reason: read.kind })
+    await record({ reason: "google_disconnected", key: `google_disconnected:${slot}` })
     return skip("no_google", now + Math.min(6, row.failures + 1) * HOUR_MS, { failures: row.failures + 1 })
   }
   const projected = read.kind === "ok" ? projectGoogleCalendarEvents(read.json) : null
@@ -127,7 +173,9 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
 
   // Someone new: the first look learns their zone; outside their hours it only records the calendar.
   if (!withinWorkingHours(policy, now, timeZone)) {
-    return skip("outside_hours", nextWorkingStart(policy, now, timeZone), { state: JSON.stringify(observed), timeZone })
+    const opens = nextWorkingStart(policy, now, timeZone)
+    await record({ reason: "outside_hours", key: `outside_hours:${opens}` })
+    return skip("outside_hours", opens, { state: JSON.stringify(observed), timeZone })
   }
 
   const passDue = state.nextPassAt === null || state.nextPassAt <= now
@@ -136,10 +184,13 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     ...wakes.map((wake) => ({ kind: "calendar" as const, wake })),
   ]
   if (!reasons.length) return skip("nothing_due", nextWake(state.nextPassAt).getTime(), { state: JSON.stringify(observed), timeZone, failures: 0 })
+  const morning = reasons.some((reason) => reason.kind === "scheduled" && reason.morning)
+  const kind: AgentCheckKind = morning ? "morning" : passDue ? "scheduled" : "calendar"
 
   // A pass that can't run keeps the calendar where it was, so its events wake the next try too.
   const retry = async (reply: "unavailable", code: string): Promise<AgentWakeOutcome> => {
     appLogger.info("workbot_agent_turn_unavailable", { member_id: memberId, code })
+    await record({ reason: "agent_unavailable", key: `agent_unavailable:${slot}`, kind })
     await deps.settle(row, { timeZone, failures: row.failures + 1, nextWakeAt: new Date(now + AGENT_TIMING.retryMs) })
     return { status: "ran", reasons: reasons.map((reason) => reason.kind), reply, delivered: null }
   }
@@ -151,7 +202,15 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     sessionId: deps.sessionId(organizationId, memberId),
     instructions: AGENT_INSTRUCTIONS,
     model,
-    prompt: agentWakePrompt({ reasons, lastLook: state.lastLook, responsibilities, instructions: template.instructions, now, timeZone }),
+    prompt: agentWakePrompt({
+      reasons,
+      lastLook: state.lastLook,
+      responsibilities,
+      instructions: template.instructions,
+      now,
+      timeZone,
+      wishes: library ? { preferences: parseStoredPreferences(row.preferences).words, quietWindow: limits.quietWindow } : null,
+    }),
     messageId: deps.messageId(memberId, row.nextWakeAt.getTime()),
   })
   if (result.kind === "unavailable") return retry("unavailable", result.code)
@@ -166,7 +225,12 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
   }
   let delivered: Delivered = null
   const deliveredFor = new Set<string>()
-  if (result.kind === "invalid") appLogger.info("workbot_agent_reply_unparsed", { member_id: memberId })
+  // What the member reads about this check: quiet unless the reply says otherwise.
+  let outcome: { reason: AgentCheckReason; responsibilities?: AgentResponsibility[]; message?: AgentMemberCheckMessage | null } | null = { reason: "nothing_new" }
+  if (result.kind === "invalid") {
+    appLogger.info("workbot_agent_reply_unparsed", { member_id: memberId })
+    outcome = { reason: "unreadable_reply" }
+  }
   if (result.kind === "message") {
     const decision = decideAgentDelivery({
       items: result.items,
@@ -178,10 +242,16 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
       at: deps.now(),
       timeZone,
       snoozedUntil: row.snoozedUntil?.getTime() ?? null,
+      quietWindow: library ? limits.quietWindow : null,
+      urgent: result.urgent === true,
     })
+    outcome = { reason: "already_told" }
     if (decision.kind === "drop") {
       delivered = decision.reason
       if (decision.reason === "daily_limit") for (const item of decision.items) await deps.reserve({ organizationId, memberId, item, outcome: "capped" })
+      const held = decision.reason === "daily_limit" || decision.reason === "quiet_window" ? decision.items.map((item) => item.responsibility) : []
+      const reason: AgentCheckReason = decision.reason === "quiet_hours" ? "outside_hours" : decision.reason === "nothing_new" ? "already_told" : decision.reason
+      outcome = { reason, responsibilities: held }
     } else {
       const [first, ...rest] = decision.items
       const id = first ? await deps.reserve({ organizationId, memberId, item: first }) : null
@@ -196,11 +266,16 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
         delivered = sent.ok ? "sent" : "failed"
         if (sent.ok) for (const item of decision.items) deliveredFor.add(item.responsibility)
         if (!sent.ok) appLogger.warn("workbot_agent_delivery_failed", { member_id: memberId, code: sent.code })
+        const about = decision.items.map((item) => item.responsibility)
+        // Lost the lease (another instance has the agent) or the feature: not this member's failure to read about.
+        outcome = sent.ok
+          ? { reason: "sent", responsibilities: about, message: sent.message ?? null }
+          : sent.code === "lease_or_feature_lost" ? null : { reason: "send_failed", responsibilities: about }
       }
     }
   }
+  if (outcome) await record({ ...outcome, key: `ran:${now}`, kind })
   // The admin's health view: every responsibility the pass asked about, and whether it produced a message.
-  const morning = reasons.some((reason) => reason.kind === "scheduled" && reason.morning)
   const asked = responsibilities.filter((responsibility) => responsibility !== "morning_brief" || morning)
   await deps.recordChecks({
     organizationId,

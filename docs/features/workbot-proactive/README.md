@@ -119,6 +119,10 @@ yet (`slack_app_not_installed`, `member_not_linked`). Both are tagged for Connec
 can say "stop telling me about calendar changes" or "snooze until tomorrow" to Workbot. The agent's own `mcp:read`
 token can read them but never change them. There are no buttons on messages and no Slack Home tab.
 
+With [My agent in the Library](../workbot-agent-library/README.md) (`workbotAgentLibrary`, off) members also see each
+check and why it stayed quiet, tell it what they care about in their own words, narrow its hours or limit, and undo
+any change, from chat or the Library page.
+
 ## Where notes live
 
 The agent keeps its notes in its own session's scratch files under `memory/` (what it already told the member,
@@ -173,7 +177,7 @@ from the stored state.
    hour past the daily limit; a cancelled meeting tomorrow.
 2. Follow-ups ("remind me", "tell me when"): no `schedule_wake` tool yet.
 3. Copying delivered text into the member's Workbot conversation.
-4. A member settings page in Den web (the API and Connect capability exist).
+4. A member settings page in Den web: now Library › My agent, behind `workbotAgentLibrary`.
 5. Desktop notifications as a destination.
 
 ## Try it locally

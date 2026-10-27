@@ -17,6 +17,8 @@ final class SessionRuntime {
     private var watchTimer: Timer?
     private var watchCapture: Task<Void, Never>?
     private var lastWatchCaptureAt: TimeInterval = -.infinity
+    private var handBack = SharedDesktop.HandBack()
+    private var handBackTimer: Timer?
 
     private struct Session {
         let id: String
@@ -38,6 +40,8 @@ final class SessionRuntime {
         var receiptInputs: [String: Data] = [:]
         var focus: ElementRecord?
         var baseline: ActionBaseline?
+        /// The person interrupted the last step; the read right after it leaves the front to them.
+        var yielded = false
     }
     init(policy: RuntimePolicy = .desktop, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.policy = policy; self.clock = clock
@@ -61,7 +65,8 @@ final class SessionRuntime {
         }
         guard !busy else { throw UseError("busy", "A computer operation is still running. Calls must be sequential.", next: "wait") }
         watch.invalidate(); watchCapture?.cancel(); MCPOutput.shared.discardUnsentFrame()
-        busy = true; defer { busy = false }
+        handBackTimer?.invalidate(); handBackTimer = nil
+        busy = true; defer { busy = false; scheduleHandBack() }
         switch name {
         case "computer_discover":
             try a.only([])
@@ -104,7 +109,13 @@ final class SessionRuntime {
                 // Initial focus is technical startup, never a human pause/Continue flow.
                 let focus = try await FocusLease.acquire(check: { try self.checkActive(current) })
                 defer { focus.release() }
-                try await focusTarget(current)
+                try await takeGap(current)
+                do { try await takeFront(current) }
+                catch let error as UseError where error.code == SharedDesktop.interrupted.code {
+                    // Nothing stays half open: the host opens the session again later.
+                    close()
+                    throw error
+                }
             }
             guard let opened = session, opened.id == id else { throw UseError("session_unavailable", "Access ended while starting. Stop work and wait for a new user request.", next: "human_takeover") }
             return text(["ok": true, "session_id": id, "app_id": identity.bundleID, "app_name": identity.name, "pid": Int(identity.pid),
@@ -284,9 +295,18 @@ final class SessionRuntime {
         let focus = current.mode == .control ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focus?.release() }
         var otherWindowFocused = false
-        return try await ObservationPreparation.capture(mode: current.mode, check: {
-            try self.checkActive(current)
-        }, focus: {
+        var returns = 0
+        // Something else in front is the person or another app, not a takeover:
+        // bring the selected window back for this read; it is handed back after.
+        func bringBack() async throws {
+            // Right after the person interrupted a step, read without taking the front.
+            // The next action takes it and re-checks the window against this read.
+            if self.session?.yielded == true {
+                self.session?.yielded = false
+                otherWindowFocused = true
+                return
+            }
+            try await self.takeGap(current)
             guard (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) == nil else { return }
             // Another window of this app in front is usually a dialog the last action
             // opened. Raising the target would hide it, or fail behind a modal one;
@@ -295,13 +315,20 @@ final class SessionRuntime {
                 otherWindowFocused = true
                 return
             }
-            try await self.focusTarget(current)
-        }, read: {
+            _ = try await SharedDesktop.returnFocus(used: &returns, inFront: { false }, focus: { try await self.takeFront(current) })
+        }
+        return try await ObservationPreparation.capture(mode: current.mode, check: {
+            try self.checkActive(current)
+        }, focus: bringBack, read: {
             for attempt in 0..<3 {
                 try self.checkActive(current)
                 do { return try await self.observeAttempt(id, image: image, elements: elements, otherWindowFocused: otherWindowFocused) }
                 catch let error as UseError {
-                    guard error.code == "stale_observation", attempt < 2 else { throw error }
+                    if error.code == "window_not_frontmost", current.mode == .control, attempt < 2 {
+                        try await bringBack()
+                        continue
+                    }
+                    guard error.code == "stale_observation", attempt < 2 else { throw SharedDesktop.yielding(error) }
                     try await Task.sleep(nanoseconds: 75_000_000)
                 }
             }
@@ -436,11 +463,15 @@ final class SessionRuntime {
         let focusLease = current.mode == .control ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focusLease?.release() }
         // The person may be using another app meanwhile; bring the selected window back
-        // before input instead of pausing when they switched away.
-        if current.mode == .control, (try? access.validate(current.target, app: current.app, requireFrontmost: true)) == nil {
-            try await focusTarget(current)
-        }
-        let bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
+        // for this step instead of pausing when they switched away. A click or key of
+        // theirs from here on stops the step and leaves the computer to them.
+        try await takeGap(current)
+        let moment = ProcessInfo.processInfo.systemUptime
+        var returns = 0
+        var disturbed = try await shareDesktop(current, returns: &returns, since: moment)
+        let bounds: CGRect
+        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) }
+        catch { throw SharedDesktop.yielding(error) }
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
         if actions.contains(where: \.usesCoordinates), observation.imageDigest == nil {
             throw UseError("image_required", "Coordinates require an observation with an available verified image. Use accessible refs instead.", next: "observe")
@@ -453,9 +484,16 @@ final class SessionRuntime {
         @MainActor func check() throws { try self.checkActive(current, deadline: deadline) }
         @MainActor func checkWindow() throws {
             try check()
-            guard try self.access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) == bounds else {
+            let live: CGRect
+            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control) }
+            catch { throw SharedDesktop.yielding(error) }
+            guard live == bounds else {
                 throw UseError("stale_observation", "The window moved during input.", next: "observe")
             }
+        }
+        @MainActor func checkInput() throws {
+            try check()
+            if current.mode == .control, self.personInterrupted(since: moment) { throw SharedDesktop.interrupted }
         }
         var progress = BatchProgress(actions: actions.map(\.name))
         // Watch for the app's reaction from the first event on, so the wait
@@ -469,14 +507,18 @@ final class SessionRuntime {
         var uncertain = false
         for (index, action) in actions.enumerated() {
             do {
-                try check()
+                try checkInput()
                 guard !needsObservation, !action.usesCoordinates || !progress.hasInput else {
                     throw UseError("observation_required", "The preceding step may have changed the view or focus. Observe before executing the remaining steps.", next: "observe")
                 }
+                // Between steps, bring the window back if something else came to the front.
+                // Before any input, the window must still match the observation; after it,
+                // each step re-validates the field or control it uses.
+                if index > 0, try await shareDesktop(current, returns: &returns, since: moment, deadline: deadline) { disturbed = true }
                 try checkWindow()
                 try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
                 var pointerTarget: AXUIElement?
-                if action.usesCoordinates || (policy == .desktop && index == 0) {
+                if action.usesCoordinates || (policy == .desktop && index == 0) || (disturbed && !progress.hasInput) {
                     let live = try await access.read(current.target, check: check)
                     guard try access.captureDigest(live) == observation.stateDigest else {
                         throw UseError("stale_observation", "The observed window content or focus changed.", next: "observe")
@@ -507,7 +549,7 @@ final class SessionRuntime {
                 session?.actionCount += 1
                 let path = try await input.execute(action, app: current.app, target: current.target, lease: observation,
                     access: access, records: current.records, focus: focus, pointerTarget: pointerTarget,
-                    check: check, checkWindow: checkWindow, feedback: { [weak self] feedback in
+                    check: checkInput, checkWindow: checkWindow, feedback: { [weak self] feedback in
                         guard let self, self.session?.id == id else { return }
                         self.controls.inputFeedback(feedback)
                     })
@@ -533,12 +575,18 @@ final class SessionRuntime {
                     try check()
                 }
             } catch let interrupted as InputFailure {
-                failure = interrupted.cause; uncertain = interrupted.mayHaveActed
+                failure = SharedDesktop.yielding(interrupted.cause); uncertain = interrupted.mayHaveActed
                 break
             } catch {
-                failure = (error as? UseError) ?? UseError("action_interrupted", "Input was interrupted. Inspect the receipt; do not repeat it.", next: "human_takeover")
+                failure = (SharedDesktop.yielding(error) as? UseError) ?? UseError("action_interrupted", "Input was interrupted. Inspect the receipt; do not repeat it.", next: "human_takeover")
                 break
             }
+        }
+        if failure?.code == SharedDesktop.interrupted.code {
+            // The person chose where to be: leave the front with them, and let the read
+            // that follows this step happen without taking it again.
+            handBack.forget()
+            session?.yielded = true
         }
         var settled: Bool?
         if progress.hasInput || uncertain {
@@ -585,9 +633,94 @@ final class SessionRuntime {
         session?.interactionDeadline = nil
         session?.needsRefresh = true
         session?.paused = true; session?.generation += 1; session?.observation = nil; session?.records = []; session?.focus = nil
+        // A takeover leaves the front wherever the person puts it.
+        handBack.forget(); handBackTimer?.invalidate(); handBackTimer = nil
         stopWatching()
         input.releaseAll()
         if announce { controls.update(reason, paused: true) }
+    }
+    private static let interruptions: [CGEventType] = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+    /// When the person last produced physical input of this type, in uptime. The
+    /// HID system state holds only device input, never the agent's process-targeted
+    /// events. Reads only timing, with no permission beyond computer use's own.
+    private func lastPersonInput(_ type: CGEventType) -> TimeInterval {
+        ProcessInfo.processInfo.systemUptime - CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type)
+    }
+    private func personInterrupted(since start: TimeInterval) -> Bool {
+        Self.interruptions.contains { SharedDesktop.personInterrupted(inputAt: lastPersonInput($0), since: start) }
+    }
+    /// A physical mouse button held down right now.
+    private func personHoldsButton() -> Bool {
+        [CGMouseButton.left, .right, .center].contains { CGEventSource.buttonState(.hidSystemState, button: $0) }
+    }
+    /// In control mode, takes the next gap in the person's typing or a held button.
+    private func takeGap(_ current: Session, deadline: TimeInterval? = nil) async throws {
+        guard current.mode == .control else { return }
+        try await SharedDesktop.takeGap(busy: {
+            SharedDesktop.personBusy(keyAt: self.lastPersonInput(.keyDown), buttonDown: self.personHoldsButton(),
+                now: ProcessInfo.processInfo.systemUptime)
+        }, now: { self.now }, check: {
+            try self.checkActive(current, deadline: deadline)
+        }, sleep: { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) })
+    }
+    /// Brings the selected window to the front, remembering which app had it. A click
+    /// or key of the person's while it comes forward stops whatever was to follow.
+    private func takeFront(_ current: Session) async throws {
+        handBack.record(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+            target: current.app.pid, own: ProcessInfo.processInfo.processIdentifier, at: ProcessInfo.processInfo.systemUptime)
+        do {
+            try await SharedDesktop.acquire(now: { ProcessInfo.processInfo.systemUptime }, buttonDown: { self.personHoldsButton() },
+                focus: { try await self.focusTarget(current) }, interrupted: { self.personInterrupted(since: $0) })
+        } catch let error as UseError where error.code == SharedDesktop.interrupted.code {
+            // Their input may have landed in the agent's window: the front stays there,
+            // and the read that follows does not take it again.
+            handBack.forget()
+            session?.yielded = true
+            throw error
+        }
+    }
+    /// Before input: takes a gap in the person's typing, then brings the selected
+    /// window back if something else came to the front. Returns whether it refocused.
+    /// A click or key since the step began (`since`) leaves the front with the person.
+    private func shareDesktop(_ current: Session, returns: inout Int, since step: TimeInterval, deadline: TimeInterval? = nil) async throws -> Bool {
+        guard current.mode == .control else { return false }
+        session?.yielded = false
+        try await takeGap(current, deadline: deadline)
+        do {
+            return try await SharedDesktop.returnFocus(used: &returns, inFront: {
+                (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) != nil
+            }, personActed: { self.personInterrupted(since: step) }, focus: { try await self.takeFront(current) })
+        } catch let error as UseError where error.code == SharedDesktop.interrupted.code {
+            // The read that follows leaves the front where the person has it.
+            session?.yielded = true
+            throw error
+        }
+    }
+    /// Gives the front back once the agent's moment is over: no call within
+    /// `handBackDelay`, so an action and the read after it count as one moment.
+    private func scheduleHandBack() {
+        handBackTimer?.invalidate(); handBackTimer = nil
+        guard handBack.pid != nil else { return }
+        let timer = Timer(timeInterval: SharedDesktop.handBackDelay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.giveBack() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        handBackTimer = timer
+    }
+    private func giveBack() {
+        handBackTimer?.invalidate(); handBackTimer = nil
+        guard !busy, let current = session, !current.paused else { return }
+        // Another agent bringing its window forward keeps the front, and hands it back itself.
+        guard let focus = FocusLease.attempt() else { handBack.forget(); return }
+        defer { focus.release() }
+        // Any click or key since the front was taken, even one that might be the
+        // agent's own, means the person may be working in the agent's window.
+        let latest = Self.interruptions.map { lastPersonInput($0) }.max() ?? -.infinity
+        guard let pid = handBack.take(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                  target: current.app.pid, lastPersonInput: latest),
+              let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
+        _ = AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        app.activate(options: [])
     }
     private func focusTarget(_ current: Session) async throws {
         guard desktopAvailable else { throw UseError("desktop_unavailable", "The desktop is temporarily unavailable. Observe again when available.", next: "observe") }
@@ -650,6 +783,7 @@ final class SessionRuntime {
         if now - current.started >= 900 { session?.started = now }
     }
     func close(stoppedByPerson: Bool = false) {
+        giveBack(); handBack.forget()
         stopWatching()
         resumingSessionID = nil; session = nil
         input.releaseAll(); lease = nil; controls.close(stoppedByPerson: stoppedByPerson)

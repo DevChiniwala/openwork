@@ -1,0 +1,382 @@
+"use client";
+
+import Link from "next/link";
+import { ChevronRight, Lock } from "lucide-react";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import {
+  AGENT_PREFERENCE_COPY,
+  AGENT_PREFERENCE_FIELDS,
+  AGENT_PREFERENCE_MAX,
+  type AgentChangeField,
+  type AgentPreferenceField,
+  type MemberAgentCheck,
+  type MemberAgentInput,
+  type MemberAgentView,
+} from "@openwork/types/den/workbot-proactive";
+import { DenBadge } from "../../_components/ui/badge";
+import { DenButton } from "../../_components/ui/button";
+import { DenSelect } from "../../_components/ui/select";
+import { DenSwitch } from "../../_components/ui/switch";
+import { DenTextarea } from "../../_components/ui/textarea";
+import { ItemPanel, ItemRow, ItemRowsSkeleton, ItemSection } from "./item-list";
+import { ItemHeader, ItemPage } from "./item-header";
+import { ConnectorLogo } from "./item-logo";
+import {
+  OUTCOME_PILL,
+  changeSourceLine,
+  clockLabel,
+  dayClockLabel,
+  hourLabel,
+  hoursLabel,
+  isSameDay,
+  latestChange,
+  myAgentStateLine,
+  sentTodayLabel,
+  whenPhrase,
+} from "./my-agent-view";
+
+/**
+ * My agent in the Library (`workbotAgentLibrary`): the member's own background agent, what it did and why it stayed
+ * quiet, and what they told it. Chat is the main way to change it; every change shows where it came from with an
+ * Undo, here and in chat alike. These components only render; my-agent-screen.tsx loads and saves.
+ */
+
+const ADMIN_LOCK = "Set by your admin in Manage › Workbot.";
+
+/** What the agent reads, each through the member's Google Workspace connector. */
+const GOOGLE_USES: readonly { name: string; testId: string }[] = [
+  { name: "Gmail", testId: "my-agent-uses-gmail" },
+  { name: "Google Calendar", testId: "my-agent-uses-calendar" },
+];
+
+export function AgentLogo({ size = "sm" }: { size?: "sm" | "lg" }) {
+  return <ConnectorLogo name="My agent" iconUrl="/openwork-mark.svg" size={size} />;
+}
+
+function LockNote({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[12px] leading-4 text-gray-500">
+      <Lock size={12} strokeWidth={1.5} aria-hidden className="shrink-0" />
+      <span>{children}</span>
+    </span>
+  );
+}
+
+// ---- The Library row ------------------------------------------------------------------------------------------------
+
+/** Pinned above the Library's filters: where the agent stands, today's count, its switch and the way in. */
+export function MyAgentRow({ view, href, now, saving, onToggle }: {
+  view: MemberAgentView;
+  href: string;
+  now: number;
+  saving: boolean;
+  onToggle: (on: boolean) => void;
+}) {
+  const locked = !view.available;
+  const count = !locked && view.on ? sentTodayLabel(view) : null;
+  return (
+    <ItemPanel>
+      <div data-testid="my-agent-row" data-state={locked ? "locked" : view.on ? "on" : "off"}>
+        <ItemRow
+          compact
+          wideAction
+          href={href}
+          logo={<AgentLogo />}
+          title="My agent"
+          description={locked ? <LockNote>Turned off by your admin in Manage › Workbot.</LockNote> : myAgentStateLine(view, now)}
+          status={count ?? ""}
+          action={(
+            <span className="flex items-center gap-2">
+              <DenSwitch size="sm" aria-label="My agent" checked={view.available && view.on} disabled={locked || saving} onChange={onToggle} />
+              <Link href={href} aria-label="Open My agent" className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900">
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </Link>
+            </span>
+          )}
+        />
+      </div>
+    </ItemPanel>
+  );
+}
+
+export function MyAgentRowSkeleton() {
+  return <ItemPanel><ItemRowsSkeleton label="Loading your agent" rows={1} /></ItemPanel>;
+}
+
+export function MyAgentRowError({ message, retrying, onRetry }: { message: string; retrying: boolean; onRetry: () => void }) {
+  return (
+    <ItemPanel>
+      <div data-testid="my-agent-row" data-state="error">
+        <ItemRow compact wideAction logo={<AgentLogo />} title="My agent" description={message}
+          action={<DenButton variant="secondary" size="xs" loading={retrying} onClick={onRetry}>Try again</DenButton>} />
+      </div>
+    </ItemPanel>
+  );
+}
+
+// ---- The page -------------------------------------------------------------------------------------------------------
+
+export type MyAgentLinks = {
+  library: string;
+  /** The Google Workspace connector in the member's Library, or where to add it. */
+  google: { href: string; status: string };
+  /** The Slack connector in the Library, when there is one. */
+  slack: { href: string | null };
+};
+
+type Change = (change: MemberAgentInput) => void;
+
+/** "Saved from chat at 11:20 AM. Undo" for the change behind a field. */
+function ChangeNote({ view, field, now, saving, onChange }: { view: MemberAgentView; field: AgentChangeField; now: number; saving: boolean; onChange: Change }) {
+  const change = latestChange(view, field);
+  if (!change) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5 text-[12px] leading-4 text-gray-500" data-testid={`my-agent-change-${field}`} data-source={change.source}>
+      <span>{changeSourceLine(change, view.timeZone, now)}</span>
+      <button type="button" disabled={saving} onClick={() => onChange({ undo: change.id })} aria-label={`Undo ${change.summary}`}
+        className="rounded font-medium text-gray-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 disabled:opacity-50">
+        Undo
+      </button>
+    </span>
+  );
+}
+
+/** A compact settings row: label left, its state or control right, one note under it. */
+function Row({ label, labelId, hint, note, children, testId }: { label: string; labelId?: string; hint?: string; note?: ReactNode; children?: ReactNode; testId?: string }) {
+  return (
+    <div className="flex flex-col gap-1 py-2.5" data-testid={testId}>
+      <div className="flex min-h-[28px] flex-wrap items-center justify-between gap-3">
+        <span id={labelId} className="text-[13px] font-medium text-gray-900" title={hint}>{label}</span>
+        <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">{children}</div>
+      </div>
+      {note ? <div>{note}</div> : null}
+    </div>
+  );
+}
+
+function CheckRow({ check, label }: { check: MemberAgentCheck; label: string }) {
+  const pill = OUTCOME_PILL[check.outcome];
+  return (
+    <div className="flex min-h-10 items-center gap-3 py-2" data-testid="my-agent-check" data-outcome={check.outcome}>
+      <span className="w-[88px] shrink-0 whitespace-nowrap text-[12px] tabular-nums text-gray-500">{label}</span>
+      <span className="min-w-0 flex-1 text-[13px] leading-[18px] text-gray-900">{check.summary}</span>
+      {check.slackUrl ? (
+        <a href={check.slackUrl} target="_blank" rel="noreferrer" className="shrink-0 text-[12px] font-medium text-gray-700 underline-offset-2 hover:text-gray-900 hover:underline">
+          Open in Slack
+        </a>
+      ) : null}
+      <DenBadge size="sm" tone={pill.tone} className="w-[58px] shrink-0 justify-center">{pill.label}</DenBadge>
+    </div>
+  );
+}
+
+function wordsChange(field: AgentPreferenceField, text: string): NonNullable<MemberAgentInput["preferences"]> {
+  const preferences: NonNullable<MemberAgentInput["preferences"]> = {};
+  preferences[field] = text;
+  return preferences;
+}
+
+function WordsField({ view, field, now, saving, onChange }: { view: MemberAgentView; field: AgentPreferenceField; now: number; saving: boolean; onChange: Change }) {
+  const id = useId();
+  const value = view.preferences?.[field] ?? "";
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const changed = draft.trim() !== value.trim();
+  const change = latestChange(view, field);
+  return (
+    <div className="grid gap-1.5 py-2.5 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-start sm:gap-x-4" data-testid={`my-agent-words-${field}`}>
+      <label htmlFor={id} className="text-[13px] font-medium text-gray-900 sm:pt-2.5">{AGENT_PREFERENCE_COPY[field].label}</label>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <DenTextarea id={id} rows={1} maxLength={AGENT_PREFERENCE_MAX} value={draft} disabled={saving} placeholder={AGENT_PREFERENCE_COPY[field].placeholder}
+          onChange={(event) => setDraft(event.target.value)} />
+        {change || changed ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <ChangeNote view={view} field={field} now={now} saving={saving} onChange={onChange} />
+            {changed ? (
+              <span className="ml-auto flex gap-2">
+                <DenButton variant="secondary" size="xs" onClick={() => setDraft(value)}>Discard</DenButton>
+                <DenButton size="xs" disabled={saving} onClick={() => onChange({ preferences: wordsChange(field, draft.trim()) })}>Save</DenButton>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function focalLine(view: MemberAgentView, now: number): { title: string; sentence: ReactNode } {
+  if (!view.available) return { title: "Turned off by your admin", sentence: <LockNote>Your admin turns it on in Manage › Workbot.</LockNote> };
+  if (!view.on) return { title: "Off", sentence: "It isn't checking your email or calendar." };
+  if (view.snoozedUntil) return { title: `Snoozed until ${clockLabel(view.snoozedUntil, view.timeZone)}`, sentence: view.lastCheck ? `Last check ${whenPhrase(view.lastCheck.at, view.timeZone, now)}: ${view.lastCheck.summary}` : "No checks yet." };
+  if (view.lastCheck) return { title: `Last check ${whenPhrase(view.lastCheck.at, view.timeZone, now)}`, sentence: view.lastCheck.summary };
+  return { title: "No checks yet", sentence: view.destination?.blocked === "member_not_linked" ? "Link your Slack account to Workbot to get its messages." : "It looks at your email and calendar in your working hours." };
+}
+
+export function MyAgentPanel({ view, now, links, saving, error, earlier, onChange }: {
+  view: MemberAgentView;
+  now: number;
+  links: MyAgentLinks;
+  saving: boolean;
+  error: string | null;
+  earlier: { open: boolean; onToggle: (open: boolean) => void; checks: MemberAgentCheck[] | null; loading: boolean; error: string | null };
+  onChange: Change;
+}) {
+  const ids = { hours: useId(), cap: useId() };
+  const focal = focalLine(view, now);
+  const active = view.available && view.on;
+  const limits = view.limits;
+  const today = view.todayChecks ?? [];
+  const earlierChecks = (earlier.checks ?? []).filter((check) => !isSameDay(check.at, now, view.timeZone));
+  const fix = view.lastCheck?.fix ?? null;
+  const google = links.google;
+
+  return (
+    <ItemPage testId="my-agent-screen">
+      <ItemHeader
+        compact
+        back={{ href: links.library, label: "My Library" }}
+        logo={<AgentLogo size="lg" />}
+        title="My agent"
+        actions={<DenSwitch aria-label="My agent" checked={active} disabled={!view.available || saving} onChange={(on) => onChange({ on })} />}
+      />
+
+      {error ? <p role="alert" className="-mt-3 text-[13px] text-red-700">{error}</p> : null}
+
+      <section className="flex flex-col gap-1.5" data-testid="my-agent-last-check" data-outcome={view.lastCheck?.outcome ?? "none"}>
+        <h2 className="text-[20px] font-semibold leading-7 tracking-[-0.3px] text-gray-950">{focal.title}</h2>
+        <p className="text-[14px] leading-5 text-gray-700">{focal.sentence}</p>
+        {active ? (
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-5 text-gray-500">
+            {view.nextCheckAt ? <span>{`Next check ${whenPhrase(view.nextCheckAt, view.timeZone, now)}`}</span> : null}
+            {limits && view.sentToday !== undefined ? <span>{`${view.sentToday} of ${limits.dailyCap} sent today`}</span> : null}
+            {view.snoozedUntil ? <DenButton variant="secondary" size="xs" disabled={saving} onClick={() => onChange({ snooze: null })}>Resume</DenButton> : null}
+            {fix === "reconnect_google" ? <Link href={google.href} className="font-medium text-gray-900 underline-offset-2 hover:underline">Reconnect Google</Link> : null}
+          </p>
+        ) : null}
+      </section>
+
+      <ItemSection title="Today" variant="rule" testId="my-agent-today">
+        <div className="flex flex-col divide-y divide-gray-100">
+          {today.length === 0 ? <p className="py-3 text-[13px] text-gray-500">No checks yet today.</p> : null}
+          {today.map((check) => <CheckRow key={check.id} check={check} label={clockLabel(check.at, view.timeZone)} />)}
+        </div>
+        <details className="group border-t border-gray-100" data-testid="my-agent-earlier" open={earlier.open} onToggle={(event) => earlier.onToggle(event.currentTarget.open)}>
+          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 text-[13px] font-medium text-gray-700 [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="h-4 w-4 text-gray-500 transition-transform duration-150 ease-out group-open:rotate-90 motion-reduce:transition-none" aria-hidden />
+            Earlier this week
+          </summary>
+          <div className="flex flex-col divide-y divide-gray-100 pb-1">
+            {earlier.loading ? <ItemRowsSkeleton label="Loading this week's checks" rows={2} /> : null}
+            {earlier.error ? <p className="py-3 text-[13px] text-gray-600">{earlier.error}</p> : null}
+            {earlier.checks && earlierChecks.length === 0 ? <p className="py-3 text-[13px] text-gray-500">No earlier checks this week.</p> : null}
+            {earlierChecks.map((check) => <CheckRow key={check.id} check={check} label={dayClockLabel(check.at, view.timeZone)} />)}
+          </div>
+        </details>
+      </ItemSection>
+
+      <ItemSection title="What it tells you about" variant="rule" testId="my-agent-responsibilities">
+        <div className="flex flex-col divide-y divide-gray-100">
+          {view.responsibilities.map((responsibility) => (
+            <Row key={responsibility.id} label={responsibility.label} hint={responsibility.tells} testId={`my-agent-${responsibility.id}`}
+              note={!responsibility.enabled
+                ? <LockNote>Turned off by your admin in Manage › Workbot.</LockNote>
+                : <ChangeNote view={view} field={responsibility.id} now={now} saving={saving} onChange={onChange} />}>
+              <DenSwitch size="sm" aria-label={responsibility.label} checked={responsibility.enabled && !responsibility.muted} disabled={!responsibility.enabled || saving}
+                onChange={(on) => onChange(on ? { unmute: [responsibility.id] } : { mute: [responsibility.id] })} />
+            </Row>
+          ))}
+        </div>
+      </ItemSection>
+
+      <ItemSection title="In your words" variant="rule" testId="my-agent-words">
+        <div className="flex flex-col divide-y divide-gray-100">
+          {AGENT_PREFERENCE_FIELDS.map((field) => <WordsField key={field} view={view} field={field} now={now} saving={saving} onChange={onChange} />)}
+        </div>
+      </ItemSection>
+
+      <ItemSection title="Uses" variant="rule" testId="my-agent-uses">
+        <div className="flex flex-col divide-y divide-gray-100">
+          {GOOGLE_USES.map(({ name, testId }) => (
+            <Link key={name} href={google.href} className="flex min-h-11 items-center gap-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-gray-300" data-testid={testId}>
+              <ConnectorLogo name={name} size="xs" />
+              <span className="min-w-0 flex-1 text-[13px] font-medium text-gray-900">{name}</span>
+              <span className="text-[12px] text-gray-500">{google.status}</span>
+              <ChevronRight className="h-4 w-4 text-gray-500" aria-hidden />
+            </Link>
+          ))}
+          <UsesSlack view={view} href={links.slack.href} />
+        </div>
+      </ItemSection>
+
+      {limits ? (
+        <ItemSection title="Limits" variant="rule" testId="my-agent-limits">
+          <div className="flex flex-col divide-y divide-gray-100">
+            <Row label="Hours" labelId={ids.hours} testId="my-agent-hours"
+              note={limits.narrowed.hours ? <ChangeNote view={view} field="hours" now={now} saving={saving} onChange={onChange} /> : null}>
+              <span className="text-[13px] text-gray-500">{limits.workingDays === "everyday" ? "Every day" : "Weekdays"}</span>
+              <div className="w-24">
+                <DenSelect aria-label="Start of your day" menuWidth="trigger" value={String(limits.startHour)} disabled={saving}
+                  onChange={(event) => onChange({ hours: { startHour: Number(event.target.value), endHour: limits.endHour } })}>
+                  {hourRange(limits.admin.startHour, limits.endHour - 1).map((hour) => <option key={hour} value={String(hour)}>{hourLabel(hour)}</option>)}
+                </DenSelect>
+              </div>
+              <span className="text-[13px] text-gray-500">to</span>
+              <div className="w-24">
+                <DenSelect aria-label="End of your day" menuWidth="trigger" value={String(limits.endHour)} disabled={saving}
+                  onChange={(event) => onChange({ hours: { startHour: limits.startHour, endHour: Number(event.target.value) } })}>
+                  {hourRange(limits.startHour + 1, limits.admin.endHour).map((hour) => <option key={hour} value={String(hour)}>{hourLabel(hour)}</option>)}
+                </DenSelect>
+              </div>
+            </Row>
+            {limits.quietWindow ? (
+              <Row label="Only urgent" testId="my-agent-quiet-window" note={<ChangeNote view={view} field="quietWindow" now={now} saving={saving} onChange={onChange} />}>
+                <span className="text-[13px] text-gray-900">{hoursLabel(limits.quietWindow)}</span>
+              </Row>
+            ) : null}
+            <Row label="Daily limit" labelId={ids.cap} testId="my-agent-cap"
+              note={limits.narrowed.dailyCap
+                ? <span className="flex flex-col gap-1"><ChangeNote view={view} field="dailyCap" now={now} saving={saving} onChange={onChange} /><LockNote>{`Your admin allows ${limits.admin.dailyCap} a day.`}</LockNote></span>
+                : <LockNote>{ADMIN_LOCK}</LockNote>}>
+              <span className="text-[13px] text-gray-900">{`${limits.dailyCap} a day`}</span>
+            </Row>
+          </div>
+        </ItemSection>
+      ) : null}
+    </ItemPage>
+  );
+}
+
+function hourRange(from: number, to: number): number[] {
+  return Array.from({ length: Math.max(0, to - from + 1) }, (_, index) => from + index);
+}
+
+function UsesSlack({ view, href }: { view: MemberAgentView; href: string | null }) {
+  const blocked = view.destination?.blocked ?? null;
+  const status = !view.destination ? "No destination yet" : blocked === "member_not_linked" ? "Link your account" : blocked === "slack_app_not_installed" ? "Not installed" : "Ready";
+  const body = (
+    <>
+      <ConnectorLogo name="Slack" size="xs" />
+      <span className="min-w-0 flex-1 text-[13px] font-medium text-gray-900">Slack</span>
+      <span className="text-[12px] text-gray-500">{status}</span>
+      {href ? <ChevronRight className="h-4 w-4 text-gray-500" aria-hidden /> : <span className="w-4" aria-hidden />}
+    </>
+  );
+  return href
+    ? <Link href={href} className="flex min-h-11 items-center gap-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-gray-300" data-testid="my-agent-uses-slack">{body}</Link>
+    : <div className="flex min-h-11 items-center gap-3 py-2" data-testid="my-agent-uses-slack">{body}</div>;
+}
+
+/** The page's layout while the agent loads: the focal line and sections where they will be. */
+export function MyAgentPanelSkeleton({ library }: { library: string }) {
+  return (
+    <ItemPage testId="my-agent-screen">
+      <ItemHeader compact back={{ href: library, label: "My Library" }} logo={<AgentLogo size="lg" />} title="My agent" />
+      <div className="flex flex-col gap-2 motion-safe:animate-pulse" role="status" aria-label="Loading your agent" data-testid="my-agent-skeleton">
+        <span className="h-6 w-48 rounded bg-gray-100" />
+        <span className="h-4 w-72 max-w-full rounded bg-gray-100" />
+      </div>
+      <ItemSection title="Today" variant="rule"><ItemRowsSkeleton label="Loading today's checks" rows={3} /></ItemSection>
+    </ItemPage>
+  );
+}

@@ -276,6 +276,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotAgentLibrary: {
+    label: "Workbot: My agent in the Library",
+    description: "Members see their agent in the Library: when it last checked and what happened, why it stayed quiet, today's checks with the messages it sent, and what it tells them about. They tell it what they care about in their own words, in chat or on the page (always, never, when, how), narrow its hours or limit within the admin's, and undo any change. The agent honors those words and the narrower limits. Needs Workbot: Your agent.",
+    category: "workbot",
+    added: "2026-10-27",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-agent-library/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",

@@ -815,6 +815,10 @@ export function getAiGatewayProvidersRoute(orgSlug?: string | null): string {
   return `${getAiGatewayRoute(orgSlug)}?tab=ai-providers`;
 }
 
+export function getAiGatewayAutoRouterRoute(orgSlug?: string | null): string {
+  return `${getAiGatewayRoute(orgSlug)}?tab=auto-router`;
+}
+
 export function getNewAiGatewayProviderRoute(orgSlug?: string | null, providerId?: string): string {
   const base = `${getAiGatewayRoute(orgSlug)}/providers/new`;
   return providerId ? `${base}?provider=${encodeURIComponent(providerId)}` : base;
@@ -971,6 +975,11 @@ export function getLibraryPluginShareRoute(orgSlug: string | null | undefined, p
 
 export function getLibraryNewPluginRoute(orgSlug?: string | null, start?: "skill"): string {
   return `${getLibraryRoute(orgSlug)}/plugins/new${start ? `?start=${start}` : ""}`;
+}
+
+/** The member's own agent in the Library (My agent). */
+export function getLibraryMyAgentRoute(orgSlug?: string | null): string {
+  return `${getLibraryRoute(orgSlug)}/my-agent`;
 }
 
 export function getLibraryModelsRoute(orgSlug?: string | null): string {

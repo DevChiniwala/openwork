@@ -58,6 +58,16 @@ final class LeaseTests: XCTestCase {
     }
 
     @MainActor
+    func testHandBackSkipsWhileAnotherAgentHoldsFocus() async throws {
+        let holder = try await FocusLease.acquire(directory: directory, check: {})
+        XCTAssertNil(FocusLease.attempt(directory: directory))
+        holder.release()
+        let free = FocusLease.attempt(directory: directory)
+        XCTAssertNotNil(free)
+        free?.release()
+    }
+
+    @MainActor
     func testFocusWaitStopsWhenTheSessionChanges() async throws {
         let holder = try await FocusLease.acquire(directory: directory, check: {})
         defer { holder.release() }
