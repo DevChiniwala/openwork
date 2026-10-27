@@ -128,6 +128,8 @@ jobs:
         run: pnpm --filter @openwork/app test:den-links
       - name: Test the shared Calendar logic
         run: pnpm --filter @openwork/calendar test
+      - name: Test that a streaming reply keeps its place in the chat
+        run: pnpm --filter @openwork/app exec bun --conditions=development test --isolate ./tests/reply-keeps-its-place.test.ts
       - name: Test fork authorization and free screening policy
         run: node --test .github/scripts/contributor-pr.test.mjs .github/scripts/contributor-screen.test.mjs .github/scripts/warden-check.test.mjs .github/scripts/warden-report.test.mjs .github/scripts/warden-fast.test.mjs .github/scripts/setup-browser.test.mjs
       - name: Test on-demand PR proof review builds and CI timing
