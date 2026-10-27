@@ -95,6 +95,17 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  libraryConnectorNavigation: {
+    label: "Library: connected items and skill previews",
+    description: "Open assigned connectors in My Library from Manage and expand skills in plugins and My Library.",
+    category: "connect",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/library-connector-navigation/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   mcpAppLibraries: {
     label: "Apps: built-in libraries",
     description: "Apps built in OpenWork can use icons, charts, animation, 3D and SVG drawing from pinned libraries bundled into each App, with no remote scripts or network access.",
@@ -158,6 +169,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  slackSendAsBot: {
+    label: "Connect: Slack messages from the OpenWork bot",
+    description: "Chats and Automations can send a Slack message from the OpenWork app instead of as the member: a DM that notifies them (\"ping me when this is done\") or a channel post that names whose agent sent it. Needs the OpenWork app in Slack; limited to 20 messages a day per member.",
+    category: "connect",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/slack-send-as-bot/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   liveProviderSync: {
     label: "Live provider sync",
     description: "Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.",
@@ -207,6 +229,17 @@ export const FEATURES = defineFeatures({
     added: "2026-10-16",
     since: "2026-10",
     author: "reachjalil",
+    deployments: everywhere,
+    default: false,
+  },
+  workbotProactive: {
+    label: "Workbot: Your agent",
+    description: "Every member gets a background agent that reads their Gmail and Google Calendar each morning and about every three hours in working hours, and sends them one short DM from the Workbot Slack app only when something needs them. Admins turn it on and choose what it tells people about in Manage › Workbot; members turn it off, snooze it or mute a kind of message. It only reads and never sends, accepts or edits anything for them.",
+    category: "workbot",
+    added: "2026-10-24",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-proactive/README.md",
     deployments: everywhere,
     default: false,
   },
@@ -355,6 +388,17 @@ export const FEATURES = defineFeatures({
     since: "2026-10",
     author: "benjaminshafii",
     deployments: ["cloud"],
+    default: false,
+  },
+  providerCredentialStatus: {
+    label: "Desktop: honest AI provider key status",
+    description: "AI Providers says \"Not checked yet\" for a key that has not answered a chat, and \"Key not accepted\" with Replace key (or ask your admin, for organization providers) after the provider rejects it, instead of always \"Ready to use\".",
+    category: "models",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/provider-credential-status/README.md",
+    deployments: everywhere,
     default: false,
   },
   sessionTokenHashing: {

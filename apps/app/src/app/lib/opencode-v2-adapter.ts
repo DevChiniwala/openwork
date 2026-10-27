@@ -947,7 +947,7 @@ function mapV2Message(
         created,
         ...(completed === undefined ? {} : { completed }),
       },
-      ...(role === "assistant" ? mapV2ReplyModel(value) : {}),
+      ...(role === "assistant" ? { ...mapV2ReplyModel(value), finish: readString(value, "finish") } : {}),
       ...(role === "assistant" ? mapV2ReplyUsage(value) : {}),
       ...(role === "assistant" && error
         ? { error: mapV2SessionError(error) }
@@ -1138,9 +1138,11 @@ export function mapV2SessionError(value: unknown): UnknownError | ApiError {
   const reportedStatus = readNumber(data, "statusCode") ?? readNumber(data, "status");
   const statuses = [readNumber(value, "statusCode"), readNumber(value, "status"), readNumber(data, "status"),
     readNumber(readRecord(value, "response"), "status"), readNumber(readRecord(data, "response"), "status")];
-  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus;
-  const responseBody = readString(data, "responseBody");
-  if (statusCode !== undefined && responseBody !== undefined) {
+  const statusCode = reportedStatus === 429 ? statuses.find((status) => status !== undefined && status !== 429) ?? reportedStatus : reportedStatus ?? statuses.find((status) => status !== undefined);
+  const responseBody = readString(data, "responseBody") ?? readString(value, "responseBody");
+  // A body is optional evidence. Dropping an otherwise explicit HTTP status
+  // makes authentication failures indistinguishable from arbitrary text.
+  if (statusCode !== undefined) {
     const rawHeaders = readRecord(data, "responseHeaders");
     const responseHeaders: Record<string, string> = {};
     for (const [key, header] of Object.entries(rawHeaders ?? {})) {
@@ -1570,6 +1572,7 @@ export function translateV2Event(
     }
     return [{ type, properties: {
       ...properties, sequence: readNumber(value.durable, "seq"),
+      ...(type === "session.execution.started" ? { timestamp: readNumber(properties, "timestamp") ?? readNumber(value, "created") } : {}),
       ...(type === "session.execution.failed" ? {
         error: mapV2SessionError(properties.error),
       } : {}),

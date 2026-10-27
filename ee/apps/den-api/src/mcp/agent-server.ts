@@ -74,6 +74,12 @@ export const LEGACY_AGENT_MCP_INSTRUCTIONS = agentMcpInstructions(false)
 /** Rolled out with `remote-session:status`; one rule, the details live in its description. */
 const REMOTE_SESSION_STATUS_INSTRUCTIONS = "To follow remote sessions, call remote-session:status with all of their commandIds or Cloud sessionIds and waitMs instead of calling remote-session:read repeatedly; read only for the transcript or the full answer."
 
+/** Rolled out with `slackSendAsBot` for callers who may write; who a Slack message comes from decides the tool. */
+function slackSendAsBotInstructions(toolView: ConnectToolView = "search"): string {
+  const tool = toolView === "full" ? "openwork-bot.slack_send_as_bot" : "slack_send_as_bot"
+  return `To notify the user in Slack ("ping me", "DM me when it's done") or post as OpenWork, use ${tool}; to post as the user, use the Slack connection's slack_send_message.`
+}
+
 /**
  * A full-view tools/list is the member's own, so clients may reuse it only for
  * the same authorization, and briefly: tools/list_changed reaches streams on
@@ -84,6 +90,8 @@ const FULL_TOOL_VIEW_CACHE_HINTS = { "tools/list": { ttlMs: 60_000, cacheScope: 
 export function createAgentMcpServer(options: {
   appServers?: boolean
   remoteSessionStatus?: boolean
+  /** slack_send_as_bot is available to this caller (feature on, a member, and the write scope). */
+  slackSendAsBot?: boolean
   /** Which tools/list this request gets; see connect-tool-view.ts. */
   toolView?: ConnectToolView
   /** Describe search matches as MCP tools (part of `connectStandardTools`). */
@@ -111,6 +119,7 @@ export function createAgentMcpServer(options: {
     },
     instructions: [agentMcpInstructions(options.appServers !== false, options.toolView, options.toolShapes),
       ...(options.remoteSessionStatus ? [REMOTE_SESSION_STATUS_INSTRUCTIONS] : []),
+      ...(options.slackSendAsBot ? [slackSendAsBotInstructions(options.toolView)] : []),
       ...(options.skillIndex ? [options.skillIndex] : [])].join("\n"),
     ...(options.toolView === "full" ? { cacheHints: FULL_TOOL_VIEW_CACHE_HINTS } : {}),
   })

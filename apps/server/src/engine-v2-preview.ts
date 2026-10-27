@@ -9,7 +9,7 @@ import { ApiError } from "./errors.js";
 import { hasV1Chat, hasV1ChatsSince, opencodeV1DatabasePath, readMigrationSessions, runOpencodeV1HistoryMigration, snapshotV1Database, type EngineV2MigrationStatus } from "./opencode-v2-migration.js";
 import { executionRules } from "./managed-policy-rules.js";
 import { agentPermissionEngineMcpDenial, agentPermissionRulesOf } from "./agent-permission-engine.js";
-import { registeredOrganizationMcpServers } from "./connect-mcp-server-catalog.js";
+import { CONNECT_MCP_APP_HOST_CAPABILITY_HEADER, registeredOrganizationMcpServers } from "./connect-mcp-server-catalog.js";
 import { waitForEngineSkillChanges } from "./opencode-v2-skill-settle.js";
 import { MCP_READINESS_RPC_ID } from "./opencode-v2-mcp-readiness.js";
 import { execFile } from "node:child_process";
@@ -537,6 +537,20 @@ export async function waitForEngineV2Catalog(
   };
 }
 
+/**
+ * The v2 engine lists organization skills as native skills
+ * (openwork-cloud-skills-v2), so Den need not repeat them in Connect's server
+ * instructions. Den only drops that list when it also serves native delivery.
+ */
+const CONNECT_NATIVE_SKILLS_CAPABILITY = "native-skills-v1";
+
+function withClientCapability(headers: Record<string, string>, capability: string): Record<string, string> {
+  const key = Object.keys(headers).find((name) => name.toLowerCase() === CONNECT_MCP_APP_HOST_CAPABILITY_HEADER)
+    ?? CONNECT_MCP_APP_HOST_CAPABILITY_HEADER;
+  const existing = (headers[key] ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  return existing.includes(capability) ? headers : { ...headers, [key]: [...existing, capability].join(",") };
+}
+
 /** Translate only fields supported by the pinned v2 MCP API. */
 export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
@@ -559,7 +573,9 @@ export function mapRuntimeMcpToV2(value: unknown, name?: string): Record<string,
     ...(typeof value.oauth.clientSecret === "string" ? { client_secret: value.oauth.clientSecret } : {}),
     ...(typeof value.oauth.scope === "string" ? { scope: value.oauth.scope } : {}),
   } : value.oauth === false ? false : undefined;
-  return { type: "remote", url: value.url, headers: strings(value.headers),
+  const headers = strings(value.headers);
+  return { type: "remote", url: value.url,
+    headers: name === "openwork-cloud" ? withClientCapability(headers, CONNECT_NATIVE_SKILLS_CAPABILITY) : headers,
     // Only the managed Connect endpoint needs modern discovery and per-request
     // clientInfo. Keep third-party servers on the engine's legacy default.
     ...(name === "openwork-cloud" ? { protocol: "auto" } : {}),

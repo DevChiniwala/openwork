@@ -61,6 +61,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "libraryConnectorNavigation": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Library: connected items and skill previews: Open assigned connectors in My Library from Manage and expand skills in plugins and My Library. Renders DEN_FEATURE_LIBRARY_CONNECTOR_NAVIGATION."
+            },
             "mcpAppLibraries": {
               "enum": [
                 "",
@@ -121,6 +131,16 @@
               ],
               "description": "Connect: an MCP server for each connection: Members can add one connected service, such as Gmail or Linear, to an agent like Claude Code as its own MCP server that lists only that service's tools. Renders DEN_FEATURE_CONNECTION_MCP_SERVERS."
             },
+            "slackSendAsBot": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Connect: Slack messages from the OpenWork bot: Chats and Automations can send a Slack message from the OpenWork app instead of as the member: a DM that notifies them (\"ping me when this is done\") or a channel post that names whose agent sent it. Needs the OpenWork app in Slack; limited to 20 messages a day per member. Renders DEN_FEATURE_SLACK_SEND_AS_BOT."
+            },
             "liveProviderSync": {
               "enum": [
                 "",
@@ -170,6 +190,16 @@
                 false
               ],
               "description": "Workbot: workspace assistant: Members ask Workbot about the document or calendar view they have open, chat without leaving their work, and navigate from a compact sidebar. Workbot offers to open the documents it mentions, and the conversation stays open beside the document. Renders DEN_FEATURE_WORKBOT_WORKSPACE_ASSISTANT."
+            },
+            "workbotProactive": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: Your agent: Every member gets a background agent that reads their Gmail and Google Calendar each morning and about every three hours in working hours, and sends them one short DM from the Workbot Slack app only when something needs them. Admins turn it on and choose what it tells people about in Manage › Workbot; members turn it off, snooze it or mute a kind of message. It only reads and never sends, accepts or edits anything for them. Renders DEN_FEATURE_WORKBOT_PROACTIVE."
             },
             "workbotIncludedModels": {
               "enum": [
@@ -310,6 +340,16 @@
                 false
               ],
               "description": "Self-serve Enterprise: Owners can buy Enterprise by card at the planned per-person price. Renders DEN_FEATURE_SELF_SERVE_ENTERPRISE."
+            },
+            "providerCredentialStatus": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Desktop: honest AI provider key status: AI Providers says \"Not checked yet\" for a key that has not answered a chat, and \"Key not accepted\" with Replace key (or ask your admin, for organization providers) after the provider rejects it, instead of always \"Ready to use\". Renders DEN_FEATURE_PROVIDER_CREDENTIAL_STATUS."
             },
             "sessionTokenHashing": {
               "enum": [
