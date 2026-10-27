@@ -153,6 +153,20 @@ a Windows chat starts on it.
   and that Windows is not locked or showing a secure prompt; otherwise it stops
   and releases held keys and buttons. A click must land on the selected window
   or its own popup, never on a window covering it.
+- The PC is shared with the person. The agent takes the front only for the
+  moment it acts: it joins the foreground app's input queue for one
+  `SetForegroundWindow` call, the usual way past Windows' foreground lock. 0.4 s
+  after its last focus or input, it gives the front back to the window that had
+  it and puts the pointer back where the person left it. It does neither if the
+  person has clicked, typed or (for the pointer) moved the mouse since.
+- Low-level mouse and keyboard hooks tell the person's own input from the
+  agent's injected events and keep only when it happened, never which key or
+  where. A click or key press of the person's during the agent's moment stops
+  that step (`person_interrupted`). Moving the mouse never stops or delays the
+  agent; if it moves the pointer between the agent placing it and clicking, the
+  pointer goes back to the exact point first. The agent defers at most half a
+  second to a gap in typing or a released button before taking the front, and
+  between steps puts its window back in front at most twice per request.
 - `command` is sent as Ctrl and `option` as Alt. Clipboard, close/quit and
   app-switch chords (Ctrl+C/X/V, Alt+F4, Ctrl+W, Alt+Tab and similar) are refused
   before anything is sent.
@@ -161,9 +175,8 @@ a Windows chat starts on it.
 Not yet on Windows: accessible controls through UI Automation (so no `assist`
 mode, `press` or `set_value`; the agent acts on screenshot coordinates), the
 on-desktop presence overlay, and app scripting (`computer_script` is not
-offered). Windows may refuse to bring a window to the front while the person
-is using another app; the call then fails with nothing sent and asks the
-person to bring it forward.
+offered). If Windows still refuses to bring the window to the front, the call
+fails with nothing sent and the agent observes again.
 
 Build it on Windows with
 `node apps/desktop/scripts/prepare-computer-use-helper.mjs --force`; desktop dev
