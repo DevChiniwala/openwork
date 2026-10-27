@@ -143,6 +143,11 @@ function ChatScreen({ host, composerState, navigation, onDraftsChange }: { host:
   const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
   useEffect(() => { if (tab === "documents") setDocumentsVisited(true); if (tab === "calendar") setCalendarVisited(true); }, [tab]);
   const currentContext = tab === "documents" ? documentContext : tab === "calendar" ? calendarContext : null;
+  // Excluding a view applies to that view only: whatever the person looks at next is shared again.
+  const viewKey = !currentContext ? null : currentContext.kind === "document" ? `document:${currentContext.fileId}`
+    : currentContext.kind === "documents" ? `documents:${currentContext.view}:${currentContext.folderId}`
+    : `calendar:${currentContext.view}:${currentContext.start}:${currentContext.selected?.id ?? ""}`;
+  useEffect(() => { if (viewKey) setIncludeContext(true); }, [viewKey]);
   // Den reports guidedNavigation only with the workspace assistant; each destination keeps its own switch.
   const guided = host.workspaceAssistant === true && host.guidedNavigation === true;
   const [revealChat, setRevealChat] = useState(0);

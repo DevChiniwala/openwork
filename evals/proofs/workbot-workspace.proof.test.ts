@@ -75,6 +75,8 @@ test("a member asks about an open document and calendar without losing a draft",
   await step("a document opens only after the member chooses its link", async () => {
     await user.click({ role: "link", label: "Budget notes", nth: 0 });
     await user.see({ role: "textbox", label: "Document text" }, { value: "Budget overview" });
+    // The earlier exclusion was for Project brief; the newly opened document is shared again.
+    await user.see({ testId: "workbot-view-context", text: /Budget notes\.txt · Read-only context/ });
     expect(world.opened()).toEqual(["file_brief", "file_budget"]);
     await user.click({ role: "button", label: "Show workspace chat" });
     await user.click({ role: "link", label: "Restricted document", nth: 0 });
