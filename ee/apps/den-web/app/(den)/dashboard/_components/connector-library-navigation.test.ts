@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assignedConnectorForLibrary, personalConnectorDisconnectLabel } from "./connector-library-navigation";
+import { assignedConnectorForLibrary, canOpenConnectorManagement, personalConnectorDisconnectLabel } from "./connector-library-navigation";
 import type { ExternalMcpConnection } from "./mcp-connections-data";
 
 function connection(overrides: Partial<ExternalMcpConnection> = {}): ExternalMcpConnection {
@@ -26,12 +26,20 @@ test("an assigned connector needing sign-in still opens in Library", () => {
   assert.equal(personalConnectorDisconnectLabel(assigned), null);
 });
 
-test("personal disconnect only touches a connected per-member account", () => {
-  assert.equal(personalConnectorDisconnectLabel(connection()), "Sign out");
-  assert.equal(personalConnectorDisconnectLabel(connection({ authType: "apikey" })), "Remove key");
+test("personal disconnect only touches a connected per-member account, and says so", () => {
+  assert.equal(personalConnectorDisconnectLabel(connection()), "Sign out of your account");
+  assert.equal(personalConnectorDisconnectLabel(connection({ authType: "apikey" })), "Remove your key");
   assert.equal(personalConnectorDisconnectLabel(connection({ credentialMode: "shared" })), null);
   assert.equal(personalConnectorDisconnectLabel(connection({ authType: "none" })), null);
   assert.equal(personalConnectorDisconnectLabel(undefined), null);
+});
+
+test("only people who can open Manage › Connectors get the link back from My Library", () => {
+  assert.equal(canOpenConnectorManagement(true, { canViewAllConnections: true }), true);
+  // A member who added the connector manages it from My Library (Share, Remove), not Manage.
+  assert.equal(canOpenConnectorManagement(true, { canViewAllConnections: false }), false);
+  assert.equal(canOpenConnectorManagement(true, null), false);
+  assert.equal(canOpenConnectorManagement(false, { canViewAllConnections: true }), false);
 });
 
 test("management or removal rights alone never expose personal actions", () => {

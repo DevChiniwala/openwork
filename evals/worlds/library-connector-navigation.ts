@@ -54,6 +54,17 @@ export async function libraryConnectorNavigation(seed: Seed) {
   const pluginId = stringField(isRecord(created.body) ? created.body.item : null, "id");
   if (!created.response.ok || !pluginId) throw new Error(`Creating the review plugin failed: ${created.text}`);
 
+  // A plugin that is one skill, with more steps than the preview shows.
+  const singlePluginName = "Meeting follow-up";
+  const singleSteps = Array.from({ length: 12 }, (_, index) => `${index + 1}. Follow-up step ${index + 1}.`);
+  const single = await seed.api(den.admin, "/v1/plugins", {
+    method: "POST", body: JSON.stringify({ name: singlePluginName, components: [
+      { type: "skill", input: { rawSourceText: `---\nname: write-a-follow-up\ndescription: Send a clear follow-up after a meeting.\n---\n\n${singleSteps.join("\n")}` } },
+    ] }),
+  });
+  const singlePluginId = stringField(isRecord(single.body) ? single.body.item : null, "id");
+  if (!single.response.ok || !singlePluginId) throw new Error(`Creating the one-skill plugin failed: ${single.text}`);
+
   const web = await seed.web({
     den, signedInAs: den.admin,
     startPath: `/dashboard/mcp-connections/${connection.id}`,
@@ -70,6 +81,7 @@ export async function libraryConnectorNavigation(seed: Seed) {
 
   return {
     den, web, connection, unassigned, pluginName, pluginId, skillDescription, skillBody,
+    singlePluginName, singlePluginId, singleFirstLine: singleSteps[0] ?? "", singleLastLine: singleSteps.at(-1) ?? "",
     url: (path: string) => `${den.ref.webUrl}${path}`,
     async setNavigation(enabled: boolean) {
       // Same authenticated platform-admin operation as /admin; this is a rollout action, not fixture mutation.

@@ -26,7 +26,7 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     expect(fingerprints).toHaveLength(2);
     await user.notSee({ role: "link", label: "Open in My Library" });
     await user.click({ role: "button", label: "More for Review notes" });
-    await user.notSee({ role: "menuitem", label: "Sign out" });
+    await user.notSee({ role: "menuitem", label: "Sign out of your account" });
     const enabled = await world.navigationEnabled();
     evidence.recordAssertionEvidence("Both people are signed in before the rollout, with no personal actions on the admin page", `rollout=${enabled}; owner=${accounts.owner}; teammate=${accounts.peer}; distinct OAuth accounts=${fingerprints.length}`, !enabled && accounts.owner && accounts.peer && fingerprints.length === 2);
     expect(enabled).toBe(false);
@@ -34,12 +34,13 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     await user.press("Escape");
   });
 
-  await step("after: enabling the rollout adds Open in My Library and personal Sign out", async () => {
+  await step("after: enabling the rollout adds Open in My Library and a sign-out scoped to the owner's account", async () => {
     await world.setNavigation(true);
     await user.reload();
     await user.see({ role: "link", label: "Open in My Library" }, { timeoutMs: 60_000 });
     await user.click({ role: "button", label: "More for Review notes" });
-    await user.see({ role: "menuitem", label: "Sign out" });
+    await user.see({ role: "menuitem", label: "Sign out of your account" });
+    await user.see({ role: "menuitem", label: "Sign everyone out" });
     const assigned = await world.assignedConnectionIds();
     const enabled = await world.navigationEnabled();
     evidence.recordAssertionEvidence("Personal actions are available for the owner's assigned connector", `rollout=${enabled}; connector in My Library=${assigned.includes(world.connection.id)}`, enabled && assigned.includes(world.connection.id));
@@ -56,6 +57,17 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     evidence.recordAssertionEvidence("The header opens the personal connector, not its management page", `destination=${route}`, route.endsWith(libraryConnector));
     expect(route).toBe(libraryConnector);
     await user.screenshot();
+  });
+
+  await step("an admin can go back from My Library to the connector's management page", async () => {
+    await user.click({ role: "button", label: "More for Review notes" });
+    await user.see({ role: "menuitem", label: "Manage" });
+    await user.screenshot();
+    await user.click({ role: "menuitem", label: "Manage" });
+    await user.see({ testId: "admin-connector-page" }, { timeoutMs: 30_000 });
+    const route = new URL(await probe.url()).pathname;
+    evidence.recordAssertionEvidence("My Library links back to Manage for someone who can open it", `destination=${route}`, route === manage);
+    expect(route).toBe(manage);
   });
 
   await step("the Manage Connectors menu also opens the personal connector", async () => {
@@ -76,7 +88,7 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     await user.see({ role: "heading", label: "Unassigned notes" }, { timeoutMs: 60_000 });
     await user.notSee({ role: "link", label: "Open in My Library" });
     await user.click({ role: "button", label: "More for Unassigned notes" });
-    await user.notSee({ role: "menuitem", label: "Sign out" });
+    await user.notSee({ role: "menuitem", label: "Sign out of your account" });
     const assigned = await world.assignedConnectionIds();
     evidence.recordAssertionEvidence("Managing a connector does not make it part of the owner's Library", `assigned connector present=${assigned.includes(world.connection.id)}; unassigned connector present=${assigned.includes(world.unassigned.id)}`, assigned.includes(world.connection.id) && !assigned.includes(world.unassigned.id));
     expect(assigned).not.toContain(world.unassigned.id);
@@ -88,15 +100,20 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     await user.navigate(world.url(manage));
     await user.see({ role: "link", label: "Open in My Library" }, { timeoutMs: 60_000 });
     await user.click({ role: "button", label: "More for Review notes" });
-    await user.click({ role: "menuitem", label: "Sign out" });
+    await user.click({ role: "menuitem", label: "Sign out of your account" });
     await user.see({ role: "button", label: "Sign in" }, { timeoutMs: 30_000 });
     const accounts = await probe.eventually(() => world.accounts(), {
       within: 20_000, label: "only the owner's account is signed out", until: value => !value.owner && value.peer,
     });
     evidence.recordAssertionEvidence("Personal sign-out leaves the teammate connected and the connector shared", `owner=${accounts.owner}; teammate=${accounts.peer}; connector exists=${accounts.exists}; shared with everyone=${accounts.orgWide}`, !accounts.owner && accounts.peer && accounts.exists && accounts.orgWide);
     expect(accounts).toEqual({ owner: false, peer: true, exists: true, orgWide: true });
+    // The tools the owner could use before signing out are not listed as still available.
+    await user.see({ text: "They show up after you sign in." });
+    const staleTools = (await probe.dom('[data-testid="connector-tool"]')).elements.length;
+    evidence.recordAssertionEvidence("After signing out, no tools are listed as still available", `tools listed=${staleTools}`, staleTools === 0);
+    expect(staleTools).toBe(0);
     await user.click({ role: "button", label: "More for Review notes" });
-    await user.notSee({ role: "menuitem", label: "Sign out" });
+    await user.notSee({ role: "menuitem", label: "Sign out of your account" });
     await user.screenshot();
     await user.press("Escape");
   });
@@ -134,16 +151,16 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     await user.screenshot();
   });
 
-  await step("My Library loads a plugin's two skills only when the owner expands Skills", async () => {
+  await step("My Library loads a plugin's two skills only when the owner expands its skill count", async () => {
     // A full page navigation gives this list a fresh query cache: preceding detail
     // visits cannot accidentally satisfy the lazy-load witness.
     await user.navigate(world.url("/dashboard/library"));
     await user.see({ text: world.pluginName }, { timeoutMs: 60_000 });
     const readsBefore = await world.pluginReads();
     expect(readsBefore).toBe(0);
-    const summaries = await probe.dom(`summary[aria-label="Skills in ${world.pluginName}"]`);
+    const summaries = await probe.dom(`summary[aria-label="2 skills in ${world.pluginName}"]`);
     expect(summaries.elements).toHaveLength(1);
-    expect(summaries.elements[0]?.text).toBe("Skills");
+    expect(summaries.elements[0]?.text).toBe("2 skills");
     await user.notSee({ text: "Plan a review" });
     expect((await probe.dom(skillSummary)).elements).toHaveLength(0);
     expect(await world.pluginReads()).toBe(readsBefore);
@@ -157,7 +174,7 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     await user.click({ text: "Plan a review" });
     await user.see({ text: world.skillBody });
     const bodies = (await probe.dom("details[data-skill-preview][open] pre")).elements.map(element => element.text);
-    evidence.recordAssertionEvidence("Expanding Skills loads the plugin once and reveals both skills without navigation", `plugin detail reads added=${readsAfter - readsBefore}; full body displayed=${bodies.includes(world.skillBody)}; destination=${new URL(await probe.url()).pathname}`, readsAfter - readsBefore === 1 && bodies.includes(world.skillBody) && new URL(await probe.url()).pathname === "/dashboard/library");
+    evidence.recordAssertionEvidence("Expanding the skill count loads the plugin once and reveals both skills without navigation", `plugin detail reads added=${readsAfter - readsBefore}; full body displayed=${bodies.includes(world.skillBody)}; destination=${new URL(await probe.url()).pathname}`, readsAfter - readsBefore === 1 && bodies.includes(world.skillBody) && new URL(await probe.url()).pathname === "/dashboard/library");
     expect(readsAfter - readsBefore).toBe(1);
     expect(bodies).toContain(world.skillBody);
     expect(new URL(await probe.url()).pathname).toBe("/dashboard/library");
@@ -190,11 +207,36 @@ test("an owner opens assigned connectors in My Library, signs out only their acc
     await user.screenshot();
   });
 
+  await step("a one-skill plugin opens straight to its steps, previewing long steps first", async () => {
+    await user.see({ text: world.singlePluginName });
+    const summary = await probe.dom(`[data-testid="library-plugin-skills-${world.singlePluginId}"]`);
+    expect(summary.elements[0]?.text).toBe("Steps");
+    await user.click({ testId: `library-plugin-skills-${world.singlePluginId}` });
+    await user.see({ text: world.singleFirstLine }, { timeoutMs: 30_000 });
+    await user.see({ role: "button", label: "Show all steps" });
+    // Read the steps block itself: page-text matching only scans the top of a long page.
+    const singleSteps = `details:has(> summary[data-testid="library-plugin-skills-${world.singlePluginId}"]) pre`;
+    const previewText = (await probe.dom(singleSteps)).elements.map(element => element.text).join("\n");
+    expect(previewText).toContain(world.singleFirstLine);
+    expect(previewText).not.toContain(world.singleLastLine);
+    // The skill is not listed again inside itself as a nested skill row.
+    const nested = (await probe.dom(`details:has(> summary[data-testid="library-plugin-skills-${world.singlePluginId}"]) details[data-skill-preview]`)).elements.length;
+    await user.screenshot();
+    await user.click({ role: "button", label: "Show all steps" });
+    await user.see({ role: "button", label: "Show less" });
+    const fullText = (await probe.dom(singleSteps)).elements.map(element => element.text).join("\n");
+    const lastShown = fullText.includes(world.singleLastLine);
+    evidence.recordAssertionEvidence("A one-skill plugin shows its steps directly, with long steps behind Show all steps", `label=${summary.elements[0]?.text}; nested skill rows=${nested}; last step in preview=${previewText.includes(world.singleLastLine)}; last step after Show all steps=${lastShown}`, summary.elements[0]?.text === "Steps" && nested === 0 && !previewText.includes(world.singleLastLine) && lastShown);
+    expect(nested).toBe(0);
+    expect(lastShown).toBe(true);
+    await user.screenshot();
+  });
+
   await step("turning the rollout off restores the Library list without changing accounts or access", async () => {
     await world.setNavigation(false);
     await user.reload();
     await user.see({ text: world.pluginName }, { timeoutMs: 60_000 });
-    expect((await probe.dom(`summary[aria-label="Skills in ${world.pluginName}"]`)).elements).toHaveLength(0);
+    expect((await probe.dom(`[data-testid="library-plugin-skills-${world.pluginId}"]`)).elements).toHaveLength(0);
     const accounts = await world.accounts();
     evidence.recordAssertionEvidence("The rollout can be reverted without signing out a teammate or removing access", `rollout=${await world.navigationEnabled()}; owner=${accounts.owner}; teammate=${accounts.peer}; connector exists=${accounts.exists}; shared=${accounts.orgWide}`, accounts.peer && accounts.exists && accounts.orgWide);
     expect(await world.navigationEnabled()).toBe(false);

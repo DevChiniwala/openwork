@@ -25,6 +25,7 @@ import { type LibraryItem, libraryQueryKeys, useLibrary } from "./library-data";
 import {
   groupLibrary,
   isOwnedByViewer,
+  isSingleSkill,
   LIBRARY_FILTERS,
   type LibraryFilter,
   libraryItemDescription,
@@ -115,7 +116,14 @@ function LibraryItemRow({ item, mine, signIn }: {
         status={needsSignIn ? undefined : libraryItemReady(item) ? "Ready" : item.type !== "plugin" && item.state === "needs_signin" ? "Sign in" : "Set up"}
         action={action}
       />
-      {item.type === "plugin" && item.componentKinds.some((kind) => kind.toLowerCase() === "skill") && orgFeatureEnabled(orgContext, "libraryConnectorNavigation") ? <LibraryPluginSkills pluginId={item.id} name={item.name} /> : null}
+      {item.type === "plugin" && item.componentKinds.some((kind) => kind.toLowerCase() === "skill") && orgFeatureEnabled(orgContext, "libraryConnectorNavigation") ? (
+        <LibraryPluginSkills
+          pluginId={item.id}
+          name={item.name}
+          single={isSingleSkill(item)}
+          knownCount={item.componentKinds.every((kind) => kind.toLowerCase() === "skill") ? item.componentCount : null}
+        />
+      ) : null}
     </div>
   );
 }

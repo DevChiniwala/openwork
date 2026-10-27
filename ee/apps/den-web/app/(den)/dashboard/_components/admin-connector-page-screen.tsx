@@ -246,9 +246,9 @@ export function AdminConnectorPageScreen({ connection, confirmRemove = false }: 
                   onSelect: async () => {
                     try {
                       await disconnectMyAccount.mutateAsync(assignedConnection);
-                      toast({ title: personalDisconnectLabel === "Remove key" ? `Your key for ${name} is removed` : `You are signed out of ${name}` });
+                      toast({ title: personalDisconnectLabel === "Remove your key" ? `Your key for ${name} is removed` : `You are signed out of ${name}`, description: "Everyone else stays signed in." });
                     } catch {
-                      toast({ title: personalDisconnectLabel === "Remove key" ? `Could not remove your key for ${name}` : `Could not sign out of ${name}`, description: "Try again." });
+                      toast({ title: personalDisconnectLabel === "Remove your key" ? `Could not remove your key for ${name}` : `Could not sign out of ${name}`, description: "Try again." });
                     }
                   },
                 }] : []),
