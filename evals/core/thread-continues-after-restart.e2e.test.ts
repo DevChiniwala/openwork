@@ -50,10 +50,10 @@ for (const { title, mode } of cases) {
       if (!Array.isArray(value)) throw new Error("Expected engine messages");
       return value.map((entry: unknown) => {
         const message = record(entry);
-        // OpenCode v2 keeps assistant output in `content` and a user turn's words in `text`.
+        // OpenCode v2 keeps assistant output in `content` and a user turn's words
+        // in `text`; other context entries (such as compaction) carry neither.
         const parts = Array.isArray(message.content) ? message.content
-          : typeof message.text === "string" ? [{ type: "text", text: message.text }] : null;
-        if (!parts) throw new Error("Expected message parts");
+          : typeof message.text === "string" ? [{ type: "text", text: message.text }] : [];
         return { id: String(message.id), role: String(message.type), parts: parts.map(record) };
       });
     };
