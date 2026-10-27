@@ -120,6 +120,8 @@ jobs:
           node --test apps/desktop/test/native-dictation.test.mjs
           # Load Lexical's synchronous development exports for the DOM editor tests.
           pnpm --filter @openwork/app exec bun --conditions=development test --isolate ./tests/native-dictation.test.tsx ./tests/browser-dictation.test.ts ./tests/composer-caret-refocus.test.tsx
+      - name: Test the chat Working line and run time across follow-ups
+        run: pnpm --filter @openwork/app exec bun --conditions=development test --isolate ./tests/message-list-working-line.test.tsx ./tests/run-working-time.test.ts
       - name: Check desktop links open real Den pages
         run: pnpm --filter @openwork/app test:den-links
       - name: Test the shared Calendar logic

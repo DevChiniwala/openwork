@@ -152,7 +152,7 @@ import { faviconUrlForHref } from "@/lib/favicon"
 import { useOpenArtifactPath } from "@/lib/artifacts"
 import { cn } from "@/lib/utils"
 import { DevProfiler } from "@/react-app/shell/dev-profiler"
-import { groupMessages, isMessageGroup, getLastTextPart, getAggregateOnlyParts, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, splitTurnAtAnswer, type UIMessageWithIndex, getMessagesText, getSafeFileDownloadUrl, getSafeFileRevealPath } from "./utils"
+import { groupMessages, isMessageGroup, getLastTextPart, getAggregateOnlyParts, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, getRunStartedAt, formatMessageTimestamp, splitTurnAtAnswer, type UIMessageWithIndex, getMessagesText, getSafeFileDownloadUrl, getSafeFileRevealPath } from "./utils"
 import type { AnyToolPart } from "@/lib/tool-aggregate"
 import { resolveConnectorToolIdentity } from "@/react-app/domains/connections/connector-tool-identity"
 
@@ -1841,8 +1841,9 @@ interface MessageListProps {
 /**
  * The turn's "Working 12s" line stays on screen for the whole run, including
  * while a tool row shows its own live step: the row says what is happening
- * now, the line says the turn is still going and how long since the person's
- * last message. Hiding it between steps made the chat look finished.
+ * now, the line says the turn is still going and how long it has been working,
+ * including follow-ups sent mid-run. Hiding it between steps made the chat
+ * look finished.
  */
 export function shouldShowMessageListLoading(status: ThreadStatus, messageCount: number) {
   return status === "streaming" || (status === "submitted" && messageCount > 0)
@@ -1892,16 +1893,9 @@ export function MessageList({ messages, messageIdReplacements, status, activityS
   const [runElapsedSeconds, setRunElapsedSeconds] = React.useState(0)
   // Anchor the counter to the user message that started the run (server
   // timestamp), so switching sessions and back doesn't reset it to 0 on
-  // remount. Optimistic messages without metadata fall back to first-mount
-  // wall clock.
-  const runStartedAt = React.useMemo(() => {
-    if (!runActive) return null
-    for (let index = messages.length - 1; index >= 0; index--) {
-      const message = messages[index]
-      if (message && message.role === "user") return getMessageCreated(message)
-    }
-    return null
-  }, [messages, runActive])
+  // remount, and a follow-up sent mid-run doesn't restart it. Optimistic
+  // messages without metadata fall back to first-mount wall clock.
+  const runStartedAt = React.useMemo(() => runActive ? getRunStartedAt(messages) : null, [messages, runActive])
   React.useEffect(() => {
     if (!activityActive) {
       runStartedAtRef.current = null
