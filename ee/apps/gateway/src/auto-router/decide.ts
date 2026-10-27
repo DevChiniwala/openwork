@@ -61,6 +61,16 @@ function remember(turnKey: string, chosen: AutoDecision, now: number) {
   }
 }
 
+/**
+ * The turn's choice shared by every gateway instance, so a continuation that
+ * lands on another instance keeps the turn's model (and its replayable
+ * reasoning) instead of asking Jev again.
+ */
+export type SharedTurnChoices = {
+  recall(turnKey: string): Promise<string | null>
+  remember(turnKey: string, routeId: string): Promise<void>
+}
+
 export async function decideAutoRoute(input: {
   candidates: AutoCandidate[]
   prompt: string
@@ -73,12 +83,17 @@ export async function decideAutoRoute(input: {
   signal?: AbortSignal
   now?: number
   onJevError?: (error: unknown) => void
+  shared?: SharedTurnChoices
 }): Promise<AutoDecision | null> {
   const now = input.now ?? Date.now()
   if (input.continuation && input.turnKey) {
     const cached = turnChoices.get(input.turnKey)
-    const candidate = cached && cached.expires > now ? input.candidates.find((entry) => entry.routeId === cached.routeId) : undefined
-    if (candidate) return decision(candidate, "turn")
+    const routeId = cached && cached.expires > now ? cached.routeId : await input.shared?.recall(input.turnKey).catch(() => null) ?? null
+    const candidate = routeId ? input.candidates.find((entry) => entry.routeId === routeId) : undefined
+    if (candidate) {
+      remember(input.turnKey, decision(candidate, "turn"), now)
+      return decision(candidate, "turn")
+    }
   }
   let chosen: AutoDecision | null = null
   const only = input.candidates.length === 1 ? input.candidates[0] : undefined
@@ -94,7 +109,10 @@ export async function decideAutoRoute(input: {
     }
   }
   chosen ??= fallbackDecision(input.candidates)
-  if (chosen && input.turnKey) remember(input.turnKey, chosen, now)
+  if (chosen && input.turnKey) {
+    remember(input.turnKey, chosen, now)
+    await input.shared?.remember(input.turnKey, chosen.candidate.routeId).catch(() => undefined)
+  }
   return chosen
 }
 
