@@ -57,10 +57,10 @@ test("commands run in the background are their own step, apart from work on the 
 
 test("the browser and background-then-screen nudges are only given when the computer is on", () => {
   const base = { name: "Workbot", organizationName: "Example", firstName: "Alex", timeZone: "UTC", canSchedule: false }
-  assert.equal(workbotInstructions(base).includes("look in your browser"), false)
-  assert.ok(workbotInstructions({ ...base, browser: true }).includes("look in your browser"))
-  // Background work and showing it on screen are taught only when there is a screen to show it on.
-  for (const rule of ["bring the result on screen", "keep the work open on screen", "keep it in this conversation instead"]) {
+  assert.equal(workbotInstructions(base).includes("check it in your browser"), false)
+  assert.ok(workbotInstructions({ ...base, browser: true }).includes("check it in your browser"))
+  // Getting it done in the background, and the screen only when it helps, are taught only when there is a screen.
+  for (const rule of ["get it done in the background", "only when it helps", "keep work they want to watch"]) {
     assert.equal(workbotInstructions(base).includes(rule), false)
     assert.ok(workbotInstructions({ ...base, browser: true }).includes(rule))
   }

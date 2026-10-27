@@ -29,12 +29,14 @@ Workbot uses its computer in two modes, and the conversation shows each its own 
 - **On screen**: the `desktop` tool, in the browser or a native app. The card
   shows a live view, and the reply offers **Open Computer**.
 
-Workbot is told to choose by how engaged the person is. For a handed-off job it
-works in the background, then brings the result on screen (a launched app or a
-browser tab) to review or finish together. When the person wants to watch, it
-keeps the work open on screen and changes it there while commands run alongside;
-the screen card keeps its live view while those commands run. Either way it
-says what it is about to change, mentions milestones and shows early previews.
+Workbot is told to work like a coworker and read what the person wants. Most of
+the time that is the result, so it works in the background and comes back with
+it. It uses the screen only when that helps: the work needs it (a live website,
+an app with no command line), the person asks to see it, or there is something
+to look at or decide together. Then it changes the open app where the person can
+see each change, and leaves the screen when that part is done. On longer work it
+mentions milestones and offers an early look when that helps the person steer.
+
 While it works, the live card offers the other mode in one tap: **Show me** on
 background work, **Carry on without me** on screen work. Either sends a
 follow-up, which Workbot takes up after its current step. Work the person wants
