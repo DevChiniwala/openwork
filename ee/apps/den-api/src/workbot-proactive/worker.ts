@@ -5,6 +5,7 @@ import { activeMemberUser, listAgentCandidates, proactiveAllowed, readProactiveS
 import { deliverAgentMessage, destinationBlock } from "./deliver.js"
 import {
   agentSentSince,
+  recordAgentChecks,
   claimDueAgents,
   ensureAgentInstances,
   finishAgentDelivery,
@@ -50,6 +51,7 @@ export function defaultAgentWakeDeps(): AgentWakeDeps {
     settle: (row, changes) => settleAgent(row, changes),
     destinationBlock: (input) => destinationBlock(input),
     deliver: (input) => deliverAgentMessage(input),
+    recordChecks: recordAgentChecks,
   }
 }
 

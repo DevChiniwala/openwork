@@ -103,6 +103,13 @@ The page previews each kind of message as plain text, as the DM from the Workbot
 locked, with the reason, when there is nowhere to send messages, when the Slack app is not installed, or when the
 headless runner is missing (DESIGN.md P4, C5).
 
+## Health (`workbotAgentHealthView`, off)
+
+Under the settings, a "Last 7 days" table shows per responsibility: checks (passes that asked the agent about it), the
+share that stayed quiet, messages sent, and how many members muted it. It reads `agent_check`, daily counters per
+organization and responsibility (migration 0162) that each completed pass adds to, and the members' mutes. Counts
+only: no member names, message text or email content. `GET /v1/org/workbot-settings/proactive/health`.
+
 ## Member controls
 
 `GET /v1/me/agent` answers "what will my agent tell me about?": each responsibility with whether the organization

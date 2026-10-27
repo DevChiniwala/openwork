@@ -5,7 +5,10 @@ import {
   readWorkbotProactiveSettings,
   withWorkbotProactiveSettings,
   workbotProactiveSettingsInputSchema,
+  workbotProactiveHealthSchema,
   workbotProactiveViewSchema,
+  AGENT_RESPONSIBILITIES,
+  type WorkbotProactiveHealth,
   type WorkbotProactiveSettings,
   type WorkbotProactiveView,
 } from "@openwork/types/den/workbot-proactive"
@@ -17,6 +20,7 @@ import { jsonValidator, orgMemberRoute, requireOrgPermission, userSessionRoute }
 import { proactiveRunnerReady, readProactiveSettings } from "../../workbot-proactive/access.js"
 import { workbotSlackAppReady } from "../../slack-assistant/direct-message.js"
 import { readAgentTemplate, saveAgentTemplate, type AgentTemplateVersion } from "../../workbot-proactive/template.js"
+import { readAgentChecks, readAgentMutes } from "../../workbot-proactive/repository.js"
 import { workbotOrigin } from "../../workbot/config.js"
 import { checkRateLimit } from "../../utils/rate-limit.js"
 import { testOrganizationWorkbotModel } from "../../workbot/model-test.js"
@@ -55,6 +59,7 @@ const requireWorkbotDeployed: ReturnType<typeof requireOrgPermission> = async (c
 }
 
 const workbotProactiveViewDocumentSchema = workbotProactiveViewSchema.meta({ ref: "WorkbotProactiveSettings" })
+const workbotProactiveHealthDocumentSchema = workbotProactiveHealthSchema.meta({ ref: "WorkbotProactiveHealth" })
 const workbotProactiveInputDocumentSchema = workbotProactiveSettingsInputSchema.meta({ ref: "WorkbotProactiveSettingsInput" })
 const invalidHoursSchema = z.object({ error: z.literal("invalid_working_hours"), message: z.string() }).meta({ ref: "WorkbotProactiveInvalidHoursError" })
 export const INVALID_WORKING_HOURS_MESSAGE = "The workday must end after it starts."
@@ -96,6 +101,43 @@ export function registerOrgWorkbotSettingsRoutes<T extends { Variables: OrgRoute
       c.header("Cache-Control", "no-store")
       const organizationId = c.get("organizationContext").organization.id
       return c.json(await proactiveView(organizationId, await readProactiveSettings(organizationId), await readAgentTemplate(organizationId)))
+    },
+  )
+
+  app.get(
+    "/v1/org/workbot-settings/proactive/health",
+    describeRoute({
+      tags: ["Organizations"],
+      summary: "Get how members' agents are doing",
+      description:
+        "For the last 7 days (UTC) and each responsibility: how many checks members' agents ran about it, how many of those stayed quiet, how many messages it produced, and how many members muted it, with the number of members who have an agent. Counts only: no member names, message text or email content. Requires the workbotProactive and workbotAgentHealthView features, Workbot on this deployment, and View OpenWork Models settings or Manage OpenWork Models.",
+      responses: {
+        200: jsonResponse("Agent health returned.", workbotProactiveHealthDocumentSchema),
+        401: jsonResponse("Authentication required.", unauthorizedSchema),
+        403: jsonResponse("The caller lacks both View OpenWork Models settings and Manage OpenWork Models.", forbiddenSchema),
+        404: notFound,
+      },
+    }),
+    orgMemberRoute(),
+    requireFeature("workbotProactive"),
+    requireFeature("workbotAgentHealthView"),
+    requireWorkbotDeployed,
+    requireWorkbotSettingsRead,
+    async (c) => {
+      c.header("Cache-Control", "no-store")
+      const organizationId = c.get("organizationContext").organization.id
+      const days = 7
+      const from = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10)
+      const [checks, mutes] = [await readAgentChecks(organizationId, from), await readAgentMutes(organizationId)]
+      const health: WorkbotProactiveHealth = {
+        days,
+        members: mutes.members,
+        responsibilities: AGENT_RESPONSIBILITIES.map((id) => {
+          const counted = checks.find((entry) => entry.responsibility === id)
+          return { id, checks: counted?.checks ?? 0, quiet: counted?.quiet ?? 0, sent: counted?.sent ?? 0, muted: mutes.muted.get(id) ?? 0 }
+        }),
+      }
+      return c.json(health)
     },
   )
 

@@ -121,6 +121,26 @@ export const workbotProactiveViewSchema = z.object({
 })
 export type WorkbotProactiveView = z.infer<typeof workbotProactiveViewSchema>
 
+/** `GET /v1/org/workbot-settings/proactive/health` (`workbotAgentHealthView`): counts only, no members or content. */
+export const workbotProactiveHealthSchema = z.object({
+  /** The window, in days, ending today (UTC). */
+  days: z.number().int().min(1),
+  /** Members with an agent. */
+  members: z.number().int().min(0),
+  responsibilities: z.array(z.object({
+    id: agentResponsibilitySchema,
+    /** Passes that asked the agent about it. */
+    checks: z.number().int().min(0),
+    /** Of those, passes that sent nothing for it. */
+    quiet: z.number().int().min(0),
+    /** Messages it produced. */
+    sent: z.number().int().min(0),
+    /** Members who muted it. */
+    muted: z.number().int().min(0),
+  })),
+})
+export type WorkbotProactiveHealth = z.infer<typeof workbotProactiveHealthSchema>
+
 /** `GET /v1/me/agent`: a member's own agent, in their words. */
 export const memberAgentViewSchema = z.object({
   /** Turned on for the organization (and the feature is on for this member). */

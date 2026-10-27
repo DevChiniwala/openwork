@@ -254,6 +254,17 @@ export const FEATURES = defineFeatures({
     deployments: everywhere,
     default: false,
   },
+  workbotAgentHealthView: {
+    label: "Workbot: Your agent health in Manage › Workbot",
+    description: "Admins see, for the last 7 days and per responsibility, how many checks members' agents ran, the share that stayed quiet, how many messages they sent and how many members muted it. Counts only, no member names or content. Needs Workbot: Your agent.",
+    category: "workbot",
+    added: "2026-10-26",
+    since: "2026-10",
+    author: "benjaminshafii",
+    docs: "docs/features/workbot-proactive/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   workbotIncludedModels: {
     label: "Workbot: included OpenWork models by default",
     description: "Signed-in members chat in Workbot on their included OpenWork models without an AI Gateway provider. When the free allowance runs out, Workbot says when it resets and links admins to OpenWork Models or the workspace's model settings.",

@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  workbotProactiveHealthSchema,
   workbotProactiveViewSchema,
+  type WorkbotProactiveHealth,
   type WorkbotProactiveSettingsInput,
   type WorkbotProactiveView,
 } from "@openwork/types/den/workbot-proactive";
@@ -83,5 +85,25 @@ export function useSaveWorkbotProactive(orgId: string) {
       if (saved) queryClient.setQueryData(key, saved);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+}
+
+/** Manage › Workbot: seven days of agent health per responsibility (counts only). */
+export function useWorkbotProactiveHealth(orgId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["org-workbot-proactive-health", orgId],
+    enabled,
+    retry: false,
+    queryFn: async ({ signal }): Promise<WorkbotProactiveHealth> => {
+      const { response, payload } = await requestJson(
+        `${proactivePath}/health`,
+        { method: "GET", headers: { [ORG_SCOPE_HEADER]: orgId }, cache: "no-store", signal },
+        15000,
+      );
+      if (!response.ok) throw new Error(getErrorMessage(payload, `Couldn't load agent health (${response.status}).`));
+      const parsed = workbotProactiveHealthSchema.safeParse(payload);
+      if (!parsed.success) throw new Error("Agent health returned an unexpected response.");
+      return parsed.data;
+    },
   });
 }

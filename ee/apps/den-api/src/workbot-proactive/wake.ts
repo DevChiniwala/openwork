@@ -26,7 +26,7 @@ import { appLogger } from "../observability/logger.js"
 import type { MemberCalendarRead } from "../routes/org/google-workspace.js"
 import type { DeliveryResult } from "./deliver.js"
 import { activeResponsibilities, enabledOf, memberAgentOn, mutedOf, proactivePolicy } from "./policy.js"
-import type { AgentInstanceRow, AgentSettle, DeliveryOutcome } from "./repository.js"
+import type { AgentCheckCount, AgentInstanceRow, AgentSettle, DeliveryOutcome } from "./repository.js"
 import type { AgentTemplateVersion } from "./template.js"
 import type { AgentTurnResult } from "./turn.js"
 
@@ -58,6 +58,8 @@ export type AgentWakeDeps = {
   /** Why a Workbot DM couldn't reach the member now (no Slack app, Slack not linked), or null. */
   destinationBlock: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user"> }) => Promise<AgentDestinationBlock | null>
   deliver: (input: { organizationId: DenTypeId<"organization">; userId: DenTypeId<"user">; text: string }) => Promise<DeliveryResult>
+  /** Adds a completed pass to the organization's daily counters (the admin's health view). */
+  recordChecks: (input: { organizationId: DenTypeId<"organization">; day: string; counts: readonly AgentCheckCount[] }) => Promise<void>
 }
 
 type SkipReason = "off" | "not_allowed" | "opted_out" | "snoozed" | "outside_hours" | "no_destination" | AgentDestinationBlock | "no_responsibilities" | "no_google" | "nothing_due"
@@ -163,6 +165,7 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
     woke: rememberWakes(state.woke, wakes.map((wake) => wake.ref)),
   }
   let delivered: Delivered = null
+  const deliveredFor = new Set<string>()
   if (result.kind === "invalid") appLogger.info("workbot_agent_reply_unparsed", { member_id: memberId })
   if (result.kind === "message") {
     const decision = decideAgentDelivery({
@@ -191,10 +194,19 @@ export async function wakeAgent(row: AgentInstanceRow, deps: AgentWakeDeps): Pro
           : { ok: false as const, code: "lease_or_feature_lost" }
         await deps.finish(id, sent.ok ? "sent" : "failed")
         delivered = sent.ok ? "sent" : "failed"
+        if (sent.ok) for (const item of decision.items) deliveredFor.add(item.responsibility)
         if (!sent.ok) appLogger.warn("workbot_agent_delivery_failed", { member_id: memberId, code: sent.code })
       }
     }
   }
+  // The admin's health view: every responsibility the pass asked about, and whether it produced a message.
+  const morning = reasons.some((reason) => reason.kind === "scheduled" && reason.morning)
+  const asked = responsibilities.filter((responsibility) => responsibility !== "morning_brief" || morning)
+  await deps.recordChecks({
+    organizationId,
+    day: new Date(now).toISOString().slice(0, 10),
+    counts: asked.map((responsibility) => ({ responsibility, checks: 1, quiet: deliveredFor.has(responsibility) ? 0 : 1, sent: deliveredFor.has(responsibility) ? 1 : 0 })),
+  }).catch(() => appLogger.warn("workbot_agent_checks_unrecorded", { member_id: memberId }))
   appLogger.info("workbot_agent_ran", { member_id: memberId, reasons: reasons.map((reason) => reason.kind).join(","), reply: result.kind, delivered: delivered ?? "none" })
   await deps.settle(row, {
     state: JSON.stringify(nextState),

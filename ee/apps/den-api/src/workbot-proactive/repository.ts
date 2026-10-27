@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
-import { and, asc, count, eq, gte, inArray, isNull, lt, lte, or } from "@openwork-ee/den-db/drizzle"
-import { AgentDeliveryTable as Delivery, AgentInstanceTable as Instance } from "@openwork-ee/den-db/schema"
+import { and, asc, count, eq, gte, inArray, isNull, lt, lte, or, sql } from "@openwork-ee/den-db/drizzle"
+import { AgentCheckTable as Check, AgentDeliveryTable as Delivery, AgentInstanceTable as Instance } from "@openwork-ee/den-db/schema"
 import type { DenTypeId } from "@openwork-ee/utils/typeid"
 import { agentLedgerKey, type AgentItem } from "@openwork/automations/proactive"
 import { db } from "../db.js"
@@ -131,4 +131,49 @@ export async function agentSentSince(memberId: DenTypeId<"member">, since: Date)
 /** Ledger rows only matter while their items can still come up; keep a month. */
 export async function pruneAgentDeliveries(before: Date) {
   await db.delete(Delivery).where(lt(Delivery.createdAt, before))
+}
+
+// ---- Health counters ----------------------------------------------------------------------------------------------
+
+export type AgentCheckCount = { responsibility: string; checks: number; quiet: number; sent: number }
+
+/** Adds one pass's counts to the organization's counters for the (UTC) day. */
+export async function recordAgentChecks(input: { organizationId: DenTypeId<"organization">; day: string; counts: readonly AgentCheckCount[]; now?: Date }) {
+  const now = input.now ?? new Date()
+  for (const entry of input.counts) {
+    await db
+      .insert(Check)
+      .values({ organizationId: input.organizationId, day: input.day, responsibility: entry.responsibility, checks: entry.checks, quiet: entry.quiet, sent: entry.sent, updatedAt: now })
+      .onDuplicateKeyUpdate({
+        set: {
+          checks: sql`${Check.checks} + ${entry.checks}`,
+          quiet: sql`${Check.quiet} + ${entry.quiet}`,
+          sent: sql`${Check.sent} + ${entry.sent}`,
+          updatedAt: now,
+        },
+      })
+  }
+}
+
+/** The organization's counters per responsibility since `fromDay` (inclusive, UTC). */
+export async function readAgentChecks(organizationId: DenTypeId<"organization">, fromDay: string): Promise<AgentCheckCount[]> {
+  const rows = await db
+    .select({
+      responsibility: Check.responsibility,
+      checks: sql<string>`sum(${Check.checks})`,
+      quiet: sql<string>`sum(${Check.quiet})`,
+      sent: sql<string>`sum(${Check.sent})`,
+    })
+    .from(Check)
+    .where(and(eq(Check.organizationId, organizationId), gte(Check.day, fromDay)))
+    .groupBy(Check.responsibility)
+  return rows.map((row) => ({ responsibility: row.responsibility, checks: Number(row.checks ?? 0), quiet: Number(row.quiet ?? 0), sent: Number(row.sent ?? 0) }))
+}
+
+/** Members with an agent, and how many muted each responsibility. */
+export async function readAgentMutes(organizationId: DenTypeId<"organization">): Promise<{ members: number; muted: Map<string, number> }> {
+  const rows = await db.select({ overrides: Instance.overrides }).from(Instance).where(eq(Instance.organizationId, organizationId))
+  const muted = new Map<string, number>()
+  for (const row of rows) for (const responsibility of new Set(row.overrides?.muted ?? [])) muted.set(responsibility, (muted.get(responsibility) ?? 0) + 1)
+  return { members: rows.length, muted }
 }

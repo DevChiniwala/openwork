@@ -85,6 +85,7 @@ function agentRow(overrides: Partial<AgentInstanceRow> = {}): AgentInstanceRow {
 const message = (text: string, items: { responsibility: string; ref: string }[]) => JSON.stringify({ message: text, items })
 
 type HarnessState = {
+  checks: { day: string; counts: { responsibility: string; checks: number; quiet: number; sent: number }[] }[]
   destinations: string[]
   clock: number
   events: RawEvent[]
@@ -98,7 +99,7 @@ type HarnessState = {
 
 /** An in-memory agent, ledger and destination; `events`, `clock` and the reply change between runs. */
 function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Partial<AgentInstanceRow>; replies?: (string | AgentTurnResult)[]; sentToday?: number; allowed?: boolean[]; blocked?: AgentDestinationBlock }) {
-  const state: HarnessState = { destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
+  const state: HarnessState = { checks: [], destinations: [], clock: NOW, events: [meeting()], row: agentRow(input.row), ledger: new Map(), delivered: [], turns: [], calendarReads: 0, settles: [] }
   const replies = [...(input.replies ?? ["NO_REPLY"])]
   let allowedCalls = 0
   const deps: AgentWakeDeps = {
@@ -110,6 +111,9 @@ function harness(input: { settings?: Partial<WorkbotProactiveSettings>; row?: Pa
     calendar: async () => {
       state.calendarReads += 1
       return { kind: "ok", json: { timeZone: TZ, items: state.events } }
+    },
+    recordChecks: async (call) => {
+      state.checks.push({ day: call.day, counts: [...call.counts] })
     },
     model: async () => "openai/gpt-6-luna",
     turn: async (call) => {
@@ -187,6 +191,23 @@ describe("waking a member's agent", () => {
     assert.doesNotMatch(h.state.turns[1]?.prompt ?? "", /Quarterly review|Northwind/, "invite text never reaches the prompt")
     h.state.clock = NOW + 10 * 60_000
     assert.deepEqual(await h.run(), { status: "skipped", reason: "nothing_due" }, "one event wakes it once")
+  })
+
+  test("each completed pass adds to the health counters: what it asked about, what stayed quiet, what it sent", async () => {
+    const h = harness({ replies: [message("A thread is waiting.", [{ responsibility: "waiting_on_you", ref: "t1" }])] })
+    await h.run()
+    assert.deepEqual(h.state.checks, [{
+      day: "2026-10-20",
+      counts: [
+        { responsibility: "morning_brief", checks: 1, quiet: 1, sent: 0 },
+        { responsibility: "meeting_prep", checks: 1, quiet: 1, sent: 0 },
+        { responsibility: "calendar_changes", checks: 1, quiet: 1, sent: 0 },
+        { responsibility: "waiting_on_you", checks: 1, quiet: 0, sent: 1 },
+      ],
+    }])
+    const outage = harness({ replies: [{ kind: "unavailable", code: "runner_unreachable" }] })
+    await outage.run()
+    assert.deepEqual(outage.state.checks, [], "a pass that didn't run counts nothing")
   })
 
   test("past the daily limit nothing is sent, and the items are not retried later", async () => {

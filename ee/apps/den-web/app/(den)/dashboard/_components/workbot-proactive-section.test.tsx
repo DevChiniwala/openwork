@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { DEFAULT_AGENT_TEMPLATE, DEFAULT_WORKBOT_PROACTIVE_SETTINGS, type AgentResponsibility, type WorkbotProactiveView } from "@openwork/types/den/workbot-proactive";
 import { WorkbotProactivePanel } from "./workbot-proactive-section";
 import { previewTime } from "./workbot-proactive-preview";
+import { WorkbotProactiveHealthTable } from "./workbot-proactive-health";
 
 const ready: WorkbotProactiveView = {
   settings: { ...DEFAULT_WORKBOT_PROACTIVE_SETTINGS, enabled: true },
@@ -75,4 +76,17 @@ test("a turned-off responsibility hides its own options, and viewers see every v
   const html = render(ready, { canManage: false });
   for (const label of ["Agents for everyone", "Calendar changes", "Morning brief"]) assert.match(switchFor(html, label) ?? "", /disabled=""/, label);
   assert.ok(text(html).includes("15 min before"));
+});
+
+test("the health table shows checks, the share that stayed quiet, messages and mutes per responsibility", () => {
+  const html = renderToStaticMarkup(
+    <WorkbotProactiveHealthTable health={{ days: 7, members: 12, responsibilities: [
+      { id: "calendar_changes", checks: 240, quiet: 228, sent: 12, muted: 1 },
+      { id: "waiting_on_you", checks: 0, quiet: 0, sent: 0, muted: 0 },
+    ] }} />,
+  );
+  const view = text(html);
+  assert.match(view, /Responsibility Checks Stayed quiet Messages Muted by/);
+  assert.match(view, /Calendar changes 240 95% 12 1 of 12/);
+  assert.match(view, /Waiting on you 0 — 0 0 of 12/);
 });

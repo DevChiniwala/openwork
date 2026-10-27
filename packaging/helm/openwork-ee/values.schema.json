@@ -211,6 +211,16 @@
               ],
               "description": "Workbot: Your agent: Every member gets a background agent that reads their Gmail and Google Calendar each morning and about every three hours in working hours, and sends them one short DM from the Workbot Slack app only when something needs them. Admins turn it on and choose what it tells people about in Manage › Workbot; members turn it off, snooze it or mute a kind of message. It only reads and never sends, accepts or edits anything for them. Renders DEN_FEATURE_WORKBOT_PROACTIVE."
             },
+            "workbotAgentHealthView": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Workbot: Your agent health in Manage › Workbot: Admins see, for the last 7 days and per responsibility, how many checks members' agents ran, the share that stayed quiet, how many messages they sent and how many members muted it. Counts only, no member names or content. Needs Workbot: Your agent. Renders DEN_FEATURE_WORKBOT_AGENT_HEALTH_VIEW."
+            },
             "workbotIncludedModels": {
               "enum": [
                 "",
