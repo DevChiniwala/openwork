@@ -276,42 +276,50 @@ enum ObservationPreparation {
     }
 }
 
-/// Shares the Mac with the person using it. The agent looks and acts only after
-/// they have left the mouse and keyboard alone for a moment, and it brings its own
-/// window back to the front instead of asking them to hand control back. Only
-/// Take over hands control to the person.
+/// Shares the Mac with the person using it. The agent takes the front only for
+/// the moment it needs to look or act, then gives it back to the app that had it.
+/// Moving the mouse never holds the agent up; a click or key press during its
+/// moment stops that step. Only Take over pauses the agent for Continue.
 enum SharedDesktop {
-    static let quiet: TimeInterval = 0.5
-    static let patience: TimeInterval = 10
     static let refocusLimit = 2
+    /// Keys this recent mean the person is mid-typing.
+    static let typingGap: TimeInterval = 0.2
+    /// The longest the agent defers to typing or a held button before it goes anyway.
+    static let deferLimit: TimeInterval = 0.5
+    /// Calls closer together than this are one moment, with no hand-back between them.
+    static let handBackDelay: TimeInterval = 0.4
     static let poll: TimeInterval = 0.05
 
-    /// How long the person has been idle, from the HID system's time since their
-    /// last input. The agent's events go to one process and do not reach the HID
-    /// state; if the latest input lands right after the agent's own post anyway,
-    /// it counts as the agent's.
-    static func personIdle(secondsSinceInput: TimeInterval, buttonDown: Bool, now: TimeInterval, agentPostedAt: TimeInterval?) -> TimeInterval {
-        if buttonDown { return 0 }
-        let input = now - secondsSinceInput
-        if let agentPostedAt, input >= agentPostedAt, input - agentPostedAt < 0.05 { return .infinity }
-        return secondsSinceInput
+    /// Whether HID input at `inputAt` was the person's. The agent's events go to one
+    /// process and do not reach the HID state; if one lands right after the agent's
+    /// own post anyway, it counts as the agent's.
+    static func persons(inputAt: TimeInterval, agentPostedAt: TimeInterval?) -> Bool {
+        guard let agentPostedAt else { return true }
+        return !(inputAt >= agentPostedAt && inputAt - agentPostedAt < 0.05)
     }
 
-    /// Waits until the person has been idle for `quiet`. Returns whether it waited.
-    @MainActor static func waitForPerson(idle: () -> TimeInterval, now: () -> TimeInterval, check: () throws -> Void,
-        waiting: () -> Void, sleep: (TimeInterval) async throws -> Void) async throws -> Bool {
+    /// Mid-keystroke or holding a button: raising another window now would send the
+    /// person's next key or drag into it.
+    static func personBusy(keyAt: TimeInterval, buttonDown: Bool, now: TimeInterval, agentPostedAt: TimeInterval?) -> Bool {
+        buttonDown || (now - keyAt < typingGap && persons(inputAt: keyAt, agentPostedAt: agentPostedAt))
+    }
+
+    /// A click or key press of the person's after the agent's moment began.
+    static func personInterrupted(inputAt: TimeInterval, since start: TimeInterval, agentPostedAt: TimeInterval?) -> Bool {
+        inputAt > start && persons(inputAt: inputAt, agentPostedAt: agentPostedAt)
+    }
+    static let interrupted = UseError("person_interrupted", "The person clicked or typed, so this step stopped and the computer is theirs for now. Observe again to continue.", next: "observe")
+
+    /// Takes the next gap in the person's typing or the release of a held button,
+    /// waiting `deferLimit` at most. Moving the mouse never delays the agent.
+    @MainActor static func takeGap(busy: () -> Bool, now: () -> TimeInterval, check: () throws -> Void,
+        sleep: (TimeInterval) async throws -> Void) async throws {
         let started = now()
-        var waited = false
-        while true {
+        while busy(), now() - started < deferLimit {
             try check()
-            let idleFor = idle()
-            if idleFor >= quiet { return waited }
-            guard now() - started < patience else {
-                throw UseError("person_active", "The person is using the mouse or keyboard, so nothing was sent. Observe again in a few seconds.", next: "observe")
-            }
-            if !waited { waited = true; waiting() }
-            try await sleep(min(max(quiet - idleFor, poll), 0.25))
+            try await sleep(poll)
         }
+        try check()
     }
 
     /// Brings the selected window back when something else is in front, at most
@@ -325,6 +333,23 @@ enum SharedDesktop {
         return true
     }
     static let contested = UseError("focus_contested", "Another window keeps coming to the front, so nothing more was sent. Observe again in a few seconds.", next: "observe")
+
+    /// The app the agent took the front from, given back once its moment ends.
+    struct HandBack {
+        private(set) var pid: pid_t?
+        /// The first app in front wins: one moment can raise the target more than once.
+        mutating func record(frontmost: pid_t?, target: pid_t, own: pid_t) {
+            guard pid == nil, let frontmost, frontmost != target, frontmost != own else { return }
+            pid = frontmost
+        }
+        /// Returns the app to give the front back to, only while the agent's window
+        /// still has it: a person who already moved on is left where they are.
+        mutating func take(frontmost: pid_t?, target: pid_t) -> pid_t? {
+            defer { pid = nil }
+            return frontmost == target ? pid : nil
+        }
+        mutating func forget() { pid = nil }
+    }
 
     /// A window in front of the selected one is the person or another app at work,
     /// not a takeover, so the model looks again instead of waiting for Continue.

@@ -2,71 +2,89 @@ import XCTest
 @testable import ComputerUse
 
 final class SharedDesktopTests: XCTestCase {
-    func testPersonIdleComesFromTheirOwnInput() {
-        XCTAssertEqual(SharedDesktop.personIdle(secondsSinceInput: 3, buttonDown: false, now: 100, agentPostedAt: nil), 3)
-        // A held button is a person mid-click or mid-drag.
-        XCTAssertEqual(SharedDesktop.personIdle(secondsSinceInput: 30, buttonDown: true, now: 100, agentPostedAt: nil), 0)
+    func testOnlyThePersonsOwnInputCounts() {
+        XCTAssertTrue(SharedDesktop.persons(inputAt: 99, agentPostedAt: nil))
         // Input landing right after the agent's own post is the agent's.
-        XCTAssertEqual(SharedDesktop.personIdle(secondsSinceInput: 0.2, buttonDown: false, now: 100, agentPostedAt: 99.79), .infinity)
+        XCTAssertFalse(SharedDesktop.persons(inputAt: 99.82, agentPostedAt: 99.8))
         // Input clearly after the agent's post, or before it, is the person's.
-        XCTAssertEqual(SharedDesktop.personIdle(secondsSinceInput: 0.2, buttonDown: false, now: 100, agentPostedAt: 99.5), 0.2)
-        XCTAssertEqual(SharedDesktop.personIdle(secondsSinceInput: 0.2, buttonDown: false, now: 100, agentPostedAt: 99.9), 0.2)
+        XCTAssertTrue(SharedDesktop.persons(inputAt: 99.9, agentPostedAt: 99.8))
+        XCTAssertTrue(SharedDesktop.persons(inputAt: 99.7, agentPostedAt: 99.8))
+    }
+
+    func testOnlyTypingOrAHeldButtonIsBusy() {
+        XCTAssertTrue(SharedDesktop.personBusy(keyAt: 99.9, buttonDown: false, now: 100, agentPostedAt: nil))
+        XCTAssertTrue(SharedDesktop.personBusy(keyAt: 0, buttonDown: true, now: 100, agentPostedAt: nil))
+        XCTAssertFalse(SharedDesktop.personBusy(keyAt: 99, buttonDown: false, now: 100, agentPostedAt: nil))
+        // The agent's own typing never holds it up.
+        XCTAssertFalse(SharedDesktop.personBusy(keyAt: 99.95, buttonDown: false, now: 100, agentPostedAt: 99.94))
+    }
+
+    func testAClickOrKeyAfterTheMomentBeganInterruptsIt() {
+        XCTAssertTrue(SharedDesktop.personInterrupted(inputAt: 10.3, since: 10, agentPostedAt: nil))
+        XCTAssertFalse(SharedDesktop.personInterrupted(inputAt: 9.9, since: 10, agentPostedAt: nil))
+        XCTAssertFalse(SharedDesktop.personInterrupted(inputAt: 10.31, since: 10, agentPostedAt: 10.3))
+        XCTAssertEqual(SharedDesktop.interrupted.next, "observe")
     }
 
     @MainActor
-    func testIdlePersonDoesNotDelayTheAgent() async throws {
+    func testTheAgentGoesRightAwayWhenThePersonIsNotTyping() async throws {
         var events: [String] = []
-        let waited = try await SharedDesktop.waitForPerson(idle: { 5 }, now: { 0 }, check: {
+        try await SharedDesktop.takeGap(busy: { false }, now: { 0 }, check: {
             events.append("check")
-        }, waiting: {
-            events.append("waiting")
         }, sleep: { _ in events.append("sleep") })
-        XCTAssertFalse(waited)
         XCTAssertEqual(events, ["check"])
     }
 
     @MainActor
-    func testAgentWaitsUntilThePersonPauses() async throws {
+    func testTheAgentTakesTheNextGapInTyping() async throws {
         var clock: TimeInterval = 0
-        var lastInput: TimeInterval = 0
-        var waitingShown = 0
-        let waited = try await SharedDesktop.waitForPerson(idle: { clock - lastInput }, now: { clock }, check: {
-            // The person keeps moving the mouse for the first second.
-            if clock < 1 { lastInput = clock }
-        }, waiting: {
-            waitingShown += 1
-        }, sleep: { clock += $0 })
-        XCTAssertTrue(waited)
-        XCTAssertEqual(waitingShown, 1)
-        XCTAssertGreaterThanOrEqual(clock - lastInput, SharedDesktop.quiet)
-        XCTAssertLessThan(clock, 2)
+        try await SharedDesktop.takeGap(busy: { clock < 0.15 }, now: { clock }, check: {}, sleep: { clock += $0 })
+        XCTAssertGreaterThanOrEqual(clock, 0.15)
+        XCTAssertLessThan(clock, 0.25)
     }
 
     @MainActor
-    func testBusyPersonGetsPriorityAndTheModelLooksAgainLater() async throws {
+    func testNonstopTypingDelaysTheAgentAtMostHalfASecond() async throws {
         var clock: TimeInterval = 0
-        do {
-            _ = try await SharedDesktop.waitForPerson(idle: { 0 }, now: { clock }, check: {}, waiting: {}, sleep: { clock += $0 })
-            XCTFail("The agent acted while the person kept working")
-        } catch let error as UseError {
-            XCTAssertEqual(error.code, "person_active")
-            XCTAssertEqual(error.next, "observe")
-            XCTAssertGreaterThanOrEqual(clock, SharedDesktop.patience)
-            XCTAssertLessThan(clock, SharedDesktop.patience + 0.5)
-        }
+        try await SharedDesktop.takeGap(busy: { true }, now: { clock }, check: {}, sleep: { clock += $0 })
+        XCTAssertGreaterThanOrEqual(clock, SharedDesktop.deferLimit)
+        XCTAssertLessThan(clock, SharedDesktop.deferLimit + SharedDesktop.poll * 2)
     }
 
     @MainActor
-    func testTakeOverWhileWaitingStopsTheWait() async throws {
+    func testTakeOverWhileDeferringStopsTheStep() async throws {
         var clock: TimeInterval = 0
         do {
-            _ = try await SharedDesktop.waitForPerson(idle: { 0 }, now: { clock }, check: {
-                if clock > 0.2 { throw UseError("session_paused", "The person took over", next: "human_takeover") }
-            }, waiting: {}, sleep: { clock += $0 })
-            XCTFail("The wait outlived Take over")
+            try await SharedDesktop.takeGap(busy: { true }, now: { clock }, check: {
+                if clock > 0.1 { throw UseError("session_paused", "The person took over", next: "human_takeover") }
+            }, sleep: { clock += $0 })
+            XCTFail("The step outlived Take over")
         } catch let error as UseError {
             XCTAssertEqual(error.code, "session_paused")
         }
+    }
+
+    func testTheFrontGoesBackToTheAppThatHadIt() {
+        var handBack = SharedDesktop.HandBack()
+        handBack.record(frontmost: 40, target: 7, own: 3)
+        // A second raise in the same moment does not replace who had the front.
+        handBack.record(frontmost: 50, target: 7, own: 3)
+        XCTAssertEqual(handBack.take(frontmost: 7, target: 7), 40)
+        XCTAssertNil(handBack.pid)
+        // The target itself and the helper are never handed the front.
+        handBack.record(frontmost: 7, target: 7, own: 3)
+        handBack.record(frontmost: 3, target: 7, own: 3)
+        XCTAssertNil(handBack.pid)
+    }
+
+    func testAPersonWhoAlreadyMovedOnIsLeftWhereTheyAre() {
+        var handBack = SharedDesktop.HandBack()
+        handBack.record(frontmost: 40, target: 7, own: 3)
+        XCTAssertNil(handBack.take(frontmost: 60, target: 7))
+        XCTAssertNil(handBack.pid)
+        handBack.record(frontmost: 40, target: 7, own: 3)
+        handBack.forget()
+        XCTAssertNil(handBack.take(frontmost: 7, target: 7))
     }
 
     @MainActor
