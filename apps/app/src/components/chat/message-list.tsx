@@ -109,7 +109,7 @@ import { CreatedSkillCard, CreatedSkillsContext, useCreatedSkills, type CreatedS
 import { readCreatedSkillAccess } from "@/components/chat/created-skill-access"
 import { collectCreatedSkills, type ConfirmedSkillAccess, type CreatedSkillsModel } from "@/lib/created-skill"
 import { openWorkNativeFailure } from "@/lib/openwork-native-activity"
-import { LaneChevron, RailMeta } from "@/components/chat/activity-rail"
+import { LaneChevron, LeadingLane, RailMeta } from "@/components/chat/activity-rail"
 import { ConnectionCard } from "@/components/chat/connection-card"
 import { CredentialPromptCard } from "@/components/chat/credential-prompt-card"
 import { credentialPromptCall } from "@/components/chat/credential-prompt"
@@ -1757,8 +1757,14 @@ function MessageGroup({
       {/* The scroll area keeps the same 8px rhythm the parts inside a single
           message use, so a step row is spaced identically whether or not a
           message boundary happens to fall between it and the previous row. */}
-      {!isLiveGroup && resolvedReplyModel && !collapseSteps && replySummaryLabel ? <div data-testid="completed-work-rail" className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-1 px-2 text-sm text-muted-foreground md:px-10">
-        <span>{replySummaryLabel}</span>
+      {/* A finished turn kept open (it needs the person, T2) still says how long it worked,
+          on the same line the fold would use: lane, duration, quiet count (C7). */}
+      {!isLiveGroup && resolvedReplyModel && !collapseSteps && replySummaryLabel ? <div data-testid="completed-work-rail" data-completed-work-rail="open" className="mx-auto flex w-full max-w-3xl px-2 md:px-10">
+        <div className="flex min-h-6 items-center gap-2 text-xs text-muted-foreground">
+          <LeadingLane />
+          <span>{replyWorkedLabel ?? replySummaryLabel}</span>
+          {replyWorkedLabel && stepCountLabel ? <RailMeta>{stepCountLabel}</RailMeta> : null}
+        </div>
       </div> : null}
       {stepItems.length > 0 ? (
         collapseSteps ? (

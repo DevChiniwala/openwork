@@ -36,9 +36,12 @@ test("a member reads everything their agent did with OpenWork and their files as
 
   await step("after: the finished turn folds to one quiet line", async () => {
     await user.see({ text: MIXED_REPLY }, { timeoutMs: 60_000 });
-    await user.see({ testId: "completed-work-rail" }, { timeoutMs: 60_000 });
+    await user.see("Run task", { timeoutMs: 60_000 });
+    await probe.eventually(() => probe.dom('button[data-testid="completed-work-rail"]'), {
+      within: 30_000, label: "the finished run folds", until: (value) => value.elements.length === 1,
+    });
     await user.notSee({ text: "Searched your chats for “client introduction”" }, { timeoutMs: 5_000 });
-    const rail = (await probe.dom('[data-testid="completed-work-rail"]')).elements.map((element) => element.text);
+    const rail = (await probe.dom('button[data-testid="completed-work-rail"]')).elements.map((element) => element.text);
     evidence.recordAssertionEvidence("The run folds to its duration and step count", `rail: ${JSON.stringify(rail)}`, rail.length === 1 && /^Worked for /.test(rail[0] ?? ""));
     expect(rail).toHaveLength(1);
     await user.screenshot();
@@ -48,7 +51,7 @@ test("a member reads everything their agent did with OpenWork and their files as
     await user.click({ testId: "completed-work-rail" });
     await user.see({ text: "Searched your chats for “client introduction”" });
     await user.see({ text: "Looked up people in your organization" });
-    await user.see({ text: /Ran 1 command, read 1 file|Ran List the notes|List the notes/ });
+    await user.see({ text: /Ran (?:1 )?command, read 1 file/ });
     await user.notSee({ text: /Checked what OpenWork can do|Searched your connections/ }, { timeoutMs: 1_000 });
     const called = (await world.toolCalls()).map((call) => call.name);
     const text = await railText();
@@ -69,7 +72,7 @@ test("a member reads everything their agent did with OpenWork and their files as
     await user.see({ text: "Couldn't remove the group" });
     await user.see({ text: /No group matched Archive/ });
     const cards = (await probe.dom("[data-created-skill]")).elements.map((element) => element.text);
-    const folds = (await probe.dom('[data-testid="completed-work-rail"]')).elements.length;
+    const folds = (await probe.dom('button[data-testid="completed-work-rail"]')).elements.length;
     const failedMeta = (await probe.dom("[data-code-mode-call] .text-destructive")).elements.map((element) => element.text);
     const ok = cards.length === 1 && cards[0]?.includes(SKILL_NAME) === true && cards[0]?.includes("Only you") === true && folds === 1 && failedMeta.length === 0;
     evidence.recordAssertionEvidence("Turn stays open; one private skill card; the blocked script is not marked failed", `cards: ${JSON.stringify(cards)}; folded turns: ${folds}; red marks on the script: ${JSON.stringify(failedMeta)}`, ok);
@@ -89,7 +92,7 @@ test("a member reads everything their agent did with OpenWork and their files as
     await user.reload();
     await user.see({ text: SCRIPT_REPLY }, { timeoutMs: 60_000 });
     await user.see({ text: "Couldn't remove the group" });
-    const folds = (await probe.dom('[data-testid="completed-work-rail"]')).elements.length;
+    const folds = (await probe.dom('button[data-testid="completed-work-rail"]')).elements.length;
     const cards = (await probe.dom("[data-created-skill]")).elements.map((element) => element.text);
     const ok = folds === 1 && cards.length === 1 && cards[0]?.includes("Only you") === true;
     evidence.recordAssertionEvidence("History keeps the fold, the failure and the one card", `folded turns: ${folds}; cards: ${JSON.stringify(cards)}`, ok);

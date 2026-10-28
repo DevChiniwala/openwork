@@ -31,9 +31,12 @@ test("a member sees the skill their agent created as one quiet result they can o
     await user.see({ text: CREATE_REPLY }, { timeoutMs: 60_000 });
     await user.see({ text: "Shared with Sam Taylor" }, { timeoutMs: 30_000 });
     // The reply streams before the run ends; the steps fold only once it has.
-    await user.see({ testId: "completed-work-rail" }, { timeoutMs: 60_000 });
+    await user.see("Run task", { timeoutMs: 60_000 });
+    await probe.eventually(() => probe.dom('button[data-testid="completed-work-rail"]'), {
+      within: 30_000, label: "the finished run folds", until: (value) => value.elements.length === 1,
+    });
     await user.notSee({ text: "Created the Update CRM skill" }, { timeoutMs: 5_000 });
-    const rail = (await probe.dom('[data-testid="completed-work-rail"]')).elements.map((element) => element.text);
+    const rail = (await probe.dom('button[data-testid="completed-work-rail"]')).elements.map((element) => element.text);
     const found = await cards();
     const ok = rail.some((text) => /^Worked for \d+s3 steps$/.test(text)) && found.length === 1;
     evidence.recordAssertionEvidence("The run folds to its duration and step count; one card remains", `rail: ${JSON.stringify(rail)}; cards: ${found.length}`, ok);
@@ -68,7 +71,7 @@ test("a member sees the skill their agent created as one quiet result they can o
     await user.see({ text: BLOCKED_REPLY }, { timeoutMs: 60_000 });
     await user.see("Run task", { timeoutMs: 30_000 });
     await user.see({ text: "Sharing is blocked by your organization" });
-    const folds = (await probe.dom('[data-testid="completed-work-rail"]')).elements.length;
+    const folds = (await probe.dom('button[data-testid="completed-work-rail"]')).elements.length;
     evidence.recordAssertionEvidence("Only the clean turn folded; the blocked turn stays open", `folded turns: ${folds}`, folds === 1);
     expect(folds).toBe(1);
     await user.screenshot();

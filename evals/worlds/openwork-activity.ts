@@ -52,7 +52,7 @@ export async function openworkActivityWorld(seed: Seed) {
       { tool: "openwork_context", arguments: {} },
       { tool: "openwork_query", arguments: { id: "session.search", args: { query: "client introduction" } } },
       { tool: "openwork_execute", arguments: { id: "session.group.create", args: { label: GROUP_LABEL } } },
-      { tool: "shell", arguments: { command: "ls notes", description: "List the notes" } },
+      { tool: "shell", arguments: { command: "ls -1", description: "List the workspace files" } },
       { tool: "read", arguments: { filePath: join(workspacePath, "notes", "brief.md"), path: join(workspacePath, "notes", "brief.md") } },
       script(`return await tools["openwork"].search_capabilities({ query: "organization people" });`),
       script(`return await tools["openwork"].execute_capability({ name: "getOrg" });`),
