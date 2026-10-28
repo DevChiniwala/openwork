@@ -31,6 +31,12 @@ access. Neither renewal nor cleanup clears a human takeover. The modes are
 (also targeted mouse and keyboard input). Control brings the selected window to
 the front for each step; with `computerUseBackground` on it works in the window
 where it is ([docs](../../docs/features/computer-use-background/README.md)).
+Apps that act only on real mouse and keyboard input (Blender, Unity, Unreal,
+games, and Qt, wxWidgets or Tk apps) drop input addressed to them, so with the
+window in front their clicks, drags, scrolls and keys go through the system
+input stream: the real pointer moves to the point, and goes back afterwards
+unless the person moved it. The agent's own input there never counts as the
+person's click or key.
 A kernel-held lock allows one session per window, so chats in different windows
 work at once. Grants, element references,
 screenshots and receipts live in process memory and are discarded on close.

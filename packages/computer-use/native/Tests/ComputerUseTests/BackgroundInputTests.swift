@@ -21,6 +21,31 @@ final class BackgroundInputTests: XCTestCase {
         XCTAssertEqual(decide("com.google.Chrome", frameworks: ["Google Chrome Framework.framework"]), .background)
     }
 
+    func testAppsThatTakeOnlyHardwareInputGetRealInputWhetherOrNotBackgroundIsOn() {
+        XCTAssertTrue(InputDelivery.needsRealInput(bundleID: "org.blenderfoundation.blender"))
+        XCTAssertTrue(InputDelivery.needsRealInput(bundleID: "com.epicgames.UnrealEditor"))
+        XCTAssertTrue(InputDelivery.needsRealInput(bundleID: "com.example.game", info: ["LSApplicationCategoryType": "public.app-category.games"]))
+        XCTAssertTrue(InputDelivery.needsRealInput(bundleID: "com.example.tk", frameworks: ["Tk.framework"]))
+        for id in ["com.apple.TextEdit", "com.apple.finder", "com.google.Chrome", "com.apple.Music"] {
+            XCTAssertFalse(InputDelivery.needsRealInput(bundleID: id, frameworks: ["Sparkle.framework"]), id)
+        }
+    }
+
+    func testTheAgentsOwnRealInputIsNeverTakenForThePersons() {
+        XCTAssertTrue(RealInput.isOwn(inputAt: 10.002, postedAt: 10))
+        XCTAssertTrue(RealInput.isOwn(inputAt: 9.995, postedAt: 10), "the system can stamp the event just before the post returns")
+        XCTAssertFalse(RealInput.isOwn(inputAt: 10 + RealInput.echo + 0.05, postedAt: 10), "a click after the agent's is the person's")
+        XCTAssertFalse(RealInput.isOwn(inputAt: 9.5, postedAt: 10))
+        XCTAssertFalse(RealInput.isOwn(inputAt: 10, postedAt: nil), "without real input every click is the person's")
+    }
+
+    func testThePointerGoesBackOnlyIfThePersonLeftItWhereTheAgentPutIt() {
+        let person = CGPoint(x: 100, y: 100), agent = CGPoint(x: 500, y: 400)
+        XCTAssertEqual(RealInput.restore(to: person, current: agent, agentLast: agent), person)
+        XCTAssertNil(RealInput.restore(to: person, current: CGPoint(x: 700, y: 20), agentLast: agent), "the person moved it")
+        XCTAssertNil(RealInput.restore(to: nil, current: agent, agentLast: agent), "the pointer never moved")
+    }
+
     func testBackgroundSessionsTakeTheFrontOnlyForStepsThatNeedIt() {
         let point = CGPoint(x: 10, y: 10)
         XCTAssertFalse(InputDelivery.stepNeedsFront(.click(point, 1, []), route: .appKit))

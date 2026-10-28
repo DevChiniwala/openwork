@@ -10,7 +10,8 @@ enum InputDelivery: String {
     case background, foreground
 
     /// Canvas apps, game engines and games read only HID-tap input that follows
-    /// a real pointer move, so routed events silently do nothing there.
+    /// a real pointer move, so routed events silently do nothing there. They get
+    /// real input in the foreground (`needsRealInput`).
     static let foregroundBundlePrefixes = ["org.blenderfoundation.", "com.unity3d.unityeditor", "com.epicgames."]
     /// Bundled toolkits whose surfaces take only hardware-origin input (Qt, wxWidgets, Tk).
     static let foregroundFrameworkPrefixes = ["qtcore", "qtgui", "libwx_", "tk.framework", "tcl.framework", "libtk", "_tkinter"]
@@ -22,11 +23,17 @@ enum InputDelivery: String {
     static func decide(enabled: Bool, available: Bool, mode: AccessMode, bundleID: String,
         info: [String: Any] = [:], frameworks: [String] = []) -> InputDelivery {
         guard enabled, available, mode == .control else { return .foreground }
+        return needsRealInput(bundleID: bundleID, info: info, frameworks: frameworks) ? .foreground : .background
+    }
+
+    /// Apps whose surfaces act only on hardware-origin input: events addressed to
+    /// the app are dropped, in front or not. Their clicks, keys and scrolls go
+    /// through the system input stream with the real pointer instead.
+    static func needsRealInput(bundleID: String, info: [String: Any] = [:], frameworks: [String] = []) -> Bool {
         let id = bundleID.lowercased()
-        if foregroundBundlePrefixes.contains(where: id.hasPrefix) { return .foreground }
-        if (info["LSApplicationCategoryType"] as? String)?.lowercased().hasSuffix("games") == true { return .foreground }
-        if frameworks.contains(where: { name in foregroundFrameworkPrefixes.contains { name.lowercased().hasPrefix($0) } }) { return .foreground }
-        return .background
+        if foregroundBundlePrefixes.contains(where: id.hasPrefix) { return true }
+        if (info["LSApplicationCategoryType"] as? String)?.lowercased().hasSuffix("games") == true { return true }
+        return frameworks.contains(where: { name in foregroundFrameworkPrefixes.contains { name.lowercased().hasPrefix($0) } })
     }
 
     /// Steps a background session still takes the front for: menu shortcuts
@@ -43,6 +50,25 @@ enum InputDelivery: String {
         case .move, .drag: return true
         case .press, .setValue, .scroll, .wait: return false
         }
+    }
+}
+
+/// Real input posted through the system input stream also lands in the hardware
+/// state the helper reads to notice the person's clicks and keys. An input of
+/// the same type at the moment of the agent's own post is the agent's.
+enum RealInput {
+    static let echo: TimeInterval = 0.1
+
+    static func isOwn(inputAt: TimeInterval, postedAt: TimeInterval?) -> Bool {
+        guard let postedAt else { return false }
+        return inputAt >= postedAt - 0.01 && inputAt <= postedAt + echo
+    }
+
+    /// Hands the pointer back only if it is still where the agent left it;
+    /// a pointer the person moved since stays with them.
+    static func restore(to person: CGPoint?, current: CGPoint?, agentLast: CGPoint?) -> CGPoint? {
+        guard let person, let current, let agentLast, hypot(current.x - agentLast.x, current.y - agentLast.y) < 2 else { return nil }
+        return person
     }
 }
 

@@ -41,6 +41,13 @@ final class MacInput {
     private var heldModifiers: (pid: pid_t, flags: CGEventFlags)?
     private var lastPointer: (pid: pid_t, windowID: CGWindowID, point: CGPoint)?
     private var routes: [pid_t: PointerRoute] = [:]
+    /// Set for one action in an app that takes only hardware input: events go
+    /// through the system input stream and move the real pointer.
+    private var realInput = false
+    /// When the agent last posted real input of each type, in uptime.
+    private var realPosts: [CGEventType: TimeInterval] = [:]
+    /// Where the person's pointer was before the agent moved it.
+    private var personPointer: CGPoint?
     // One gesture's events share a group so the app coalesces them as one.
     private var gesture: Int64 = 0
     private struct DispatchFeedback {
@@ -60,6 +67,14 @@ final class MacInput {
         heldPointer = nil
         releaseModifiers()
         if interrupted { report(.uncertain) }
+    }
+    func realPost(_ type: CGEventType) -> TimeInterval? { realPosts[type] }
+    /// Puts the person's pointer back after real input, unless they moved it meanwhile.
+    func restorePointer() {
+        defer { personPointer = nil }
+        guard let point = RealInput.restore(to: personPointer, current: CGEvent(source: nil)?.location, agentLast: lastPointer?.point) else { return }
+        CGWarpMouseCursorPosition(point)
+        CGAssociateMouseAndMouseCursorPosition(1)
     }
     private func report(_ phase: InputFeedback.Phase, point: CGPoint? = nil, force: Bool = false) {
         guard var context = feedback else { return }
@@ -87,14 +102,16 @@ final class MacInput {
     }
     func execute(_ action: Action, app: AppIdentity, target: WindowTarget, lease: ObservationLease,
                  access: MacAccessibility, records: [ElementRecord], focus: ElementRecord?, pointerTarget: AXUIElement?,
-                 check: () throws -> Void, checkWindow: () throws -> Void, background: Bool = false,
+                 check: () throws -> Void, checkWindow: () throws -> Void, background: Bool = false, realInput: Bool = false,
                  feedback send: @escaping (InputFeedback) -> Void = { _ in }) async throws -> String {
         feedback = DispatchFeedback(action: action.name, frame: lease.frame, send: send)
         gesture = Int64(UInt32.random(in: 1...UInt32.max))
         _ = route(for: app)
+        self.realInput = realInput && !background
         var finished = false
         defer {
             if !finished { releaseAll() }
+            self.realInput = false
             feedback = nil
         }
         do {
@@ -213,7 +230,7 @@ final class MacInput {
             }
             try check()
             finished = true
-            return path
+            return self.realInput && path == "targeted_input" ? "real_input" : path
         } catch {
             let cause = (error as? UseError) ?? UseError("action_interrupted", "Input was interrupted. Do not repeat it without inspecting the result.", next: "human_takeover")
             throw InputFailure(cause: cause, mayHaveActed: feedback?.didDispatch == true)
@@ -236,6 +253,14 @@ final class MacInput {
     private func post(_ event: CGEvent, _ pid: pid_t, pointer: Bool = false) {
         event.setIntegerValueField(.eventSourceUnixProcessID, value: Int64(ProcessInfo.processInfo.processIdentifier))
         event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
+        if realInput {
+            // The caller has checked that the app is in front and the point is on its
+            // window: the system stream delivers to whatever is there, as for a person.
+            if pointer, personPointer == nil { personPointer = CGEvent(source: nil)?.location }
+            event.post(tap: .cghidEventTap)
+            realPosts[event.type] = ProcessInfo.processInfo.systemUptime
+            return
+        }
         if pointer, routes[pid] == .skyLight, let skyLightPost = Self.skyLightPost {
             skyLightPost(pid, event)
         } else {

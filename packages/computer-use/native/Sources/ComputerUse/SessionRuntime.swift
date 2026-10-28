@@ -29,6 +29,8 @@ final class SessionRuntime {
         let mode: AccessMode
         /// Background until the app shows it needs the front for keys.
         var delivery: InputDelivery
+        /// The app acts only on hardware-origin input, so its own window gets real input.
+        var realInput = false
         /// The windows under the dialogs being worked in, the session's own first.
         var parents: [(app: AppIdentity, target: WindowTarget)] = []
         var dialogKind: DialogTarget.Kind?
@@ -128,7 +130,10 @@ final class SessionRuntime {
             _ = try access.validate(target, app: identity)
             let reservation = try ControlLease(pid: identity.pid, window: target.id)
             let id = UUID().uuidString.lowercased()
-            session = Session(id: id, app: identity, target: target, mode: mode, delivery: delivery, started: now, lastUsed: now, purpose: purpose)
+            let realInput = mode == .control && InputDelivery.needsRealInput(bundleID: appID,
+                info: installed.flatMap { Bundle(url: $0)?.infoDictionary } ?? [:], frameworks: frameworks)
+            session = Session(id: id, app: identity, target: target, mode: mode, delivery: delivery, realInput: realInput,
+                started: now, lastUsed: now, purpose: purpose)
             lease = reservation
             controls.show(app: identity, target: target, mode: mode, purpose: purpose, background: background)
             if mode == .control, !background, let current = session {
@@ -541,6 +546,8 @@ final class SessionRuntime {
         // Whether `target` itself must be the front window: never for a dialog.
         let frontCheck = front && current.parents.isEmpty
         let background = inBackground && !front
+        // Its own window in front, never a dialog of another process over it.
+        let realInput = front && current.realInput && current.parents.isEmpty
         // Held through the settle wait, so no other agent's window comes forward mid-batch.
         let focusLease = front ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focusLease?.release() }
@@ -688,7 +695,7 @@ final class SessionRuntime {
                 session?.actionCount += 1
                 let path = try await input.execute(action, app: current.app, target: current.target, lease: observation,
                     access: access, records: current.records, focus: focus, pointerTarget: pointerTarget,
-                    check: checkInput, checkWindow: checkWindow, background: background || !current.parents.isEmpty, feedback: { [weak self] feedback in
+                    check: checkInput, checkWindow: checkWindow, background: background || !current.parents.isEmpty, realInput: realInput, feedback: { [weak self] feedback in
                         guard let self, self.session?.id == id else { return }
                         self.controls.inputFeedback(feedback)
                     })
@@ -737,6 +744,8 @@ final class SessionRuntime {
                 if failure == nil { failure = (error as? UseError) ?? UseError("action_interrupted", "Control ended after dispatch.", next: "human_takeover") }
             }
         }
+        // After the app has taken the input in, the person's pointer goes back.
+        if realInput { input.restorePointer() }
         if failure == nil {
             do { try check() }
             catch { failure = (error as? UseError) ?? UseError("action_interrupted", "Control ended after dispatch.", next: "human_takeover") }
@@ -785,7 +794,9 @@ final class SessionRuntime {
     /// HID system state holds only device input, never the agent's process-targeted
     /// events. Reads only timing, with no permission beyond computer use's own.
     private func lastPersonInput(_ type: CGEventType) -> TimeInterval {
-        ProcessInfo.processInfo.systemUptime - CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type)
+        let at = ProcessInfo.processInfo.systemUptime - CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: type)
+        // The agent's own real input lands in the same state; it is never the person's.
+        return RealInput.isOwn(inputAt: at, postedAt: input.realPost(type)) ? -.infinity : at
     }
     private func personInterrupted(since start: TimeInterval) -> Bool {
         Self.interruptions.contains { SharedDesktop.personInterrupted(inputAt: lastPersonInput($0), since: start) }
