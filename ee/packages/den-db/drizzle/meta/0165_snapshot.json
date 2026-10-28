@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "e8bcab3e-a531-4526-b137-a33f2979c619",
+  "id": "76e02580-cd34-4ce2-9551-ff7d517de497",
   "prevId": "b81092e8-8bf4-4806-ba56-b759c9341f13",
   "tables": {
     "agent_permission_policy": {
@@ -10912,6 +10912,14 @@
           "autoincrement": false,
           "default": "(now())"
         },
+        "days_used": {
+          "name": "days_used",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
         "last_used_at": {
           "name": "last_used_at",
           "type": "timestamp(3)",
@@ -10926,14 +10934,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "days_used": {
-          "name": "days_used",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 1
         }
       },
       "indexes": {

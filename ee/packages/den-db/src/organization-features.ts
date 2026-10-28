@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm"
-import { normalizeDenTypeId } from "@openwork-ee/utils/typeid"
+import { normalizeDenTypeId, type DenTypeId } from "@openwork-ee/utils/typeid"
 import {
   isFeatureKey,
   mapFeatures,
@@ -404,7 +404,7 @@ export async function recordFeatureUsage(database: FeatureDatabase, input: {
       first_used_at: at, last_used_at: at, last_used_day: day, days_used: 1,
     })))
     .onDuplicateKeyUpdate({ set: {
-      // days_used reads the old last_used_day, so it is assigned first.
+      // days_used reads the old last_used_day: the column is declared first, and drizzle assigns in column order.
       days_used: sql`${FeatureUsageTable.days_used} + if(${FeatureUsageTable.last_used_day} < values(${FeatureUsageTable.last_used_day}), 1, 0)`,
       last_used_day: sql`greatest(${FeatureUsageTable.last_used_day}, values(${FeatureUsageTable.last_used_day}))`,
       last_used_at: sql`greatest(${FeatureUsageTable.last_used_at}, values(${FeatureUsageTable.last_used_at}))`,
@@ -412,7 +412,7 @@ export async function recordFeatureUsage(database: FeatureDatabase, input: {
 }
 
 export type FeatureUsageRow = {
-  memberId: string
+  memberId: DenTypeId<"member">
   featureKey: FeatureKey
   firstUsedAt: Date
   lastUsedAt: Date
@@ -442,7 +442,7 @@ export async function readOrganizationFeatureUsage(database: FeatureDatabase, or
 }
 
 /** Every active member's overrides in one organization, keyed by member id. */
-export async function readOrganizationMemberFeatureOverrides(database: FeatureDatabase, organizationId: string): Promise<Map<string, FeatureOverrides>> {
+export async function readOrganizationMemberFeatureOverrides(database: FeatureDatabase, organizationId: string): Promise<Map<DenTypeId<"member">, FeatureOverrides>> {
   const rows = await database.select({ member_id: MemberFeatureTable.member_id, feature_key: MemberFeatureTable.feature_key, enabled: MemberFeatureTable.enabled })
     .from(MemberFeatureTable)
     .innerJoin(MemberTable, eq(MemberTable.id, MemberFeatureTable.member_id))
@@ -451,7 +451,7 @@ export async function readOrganizationMemberFeatureOverrides(database: FeatureDa
       isNull(MemberTable.removedAt),
       eq(MemberTable.isSetupAgent, false),
     ))
-  const result = new Map<string, FeatureOverrides>()
+  const result = new Map<DenTypeId<"member">, FeatureOverrides>()
   for (const row of rows) {
     if (!isFeatureKey(row.feature_key)) continue
     const overrides = result.get(row.member_id) ?? {}

@@ -1,7 +1,7 @@
 import { and, eq, isNull, isNotNull } from "@openwork-ee/den-db/drizzle"
 import { AuthUserTable, MemberTable, OrganizationTable } from "@openwork-ee/den-db/schema"
 import { readFeatureRollouts, readOrganizationFeatureOverrides, readOrganizationFeatureUsage, readOrganizationMemberFeatureOverrides } from "@openwork-ee/den-db/organization-features"
-import { isDenTypeId } from "@openwork-ee/utils/typeid"
+import { isDenTypeId, type DenTypeId } from "@openwork-ee/utils/typeid"
 import { availableFeatureKeys, featureKeySchema, resolveFeature, type FeatureKey } from "@openwork/features"
 import type { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
@@ -75,7 +75,7 @@ export function registerAdminFeatureUsageRoutes<T extends { Variables: AuthConte
       ])
 
       const context = { ...env.features, rollouts, overrides }
-      const enabledFor = (key: FeatureKey, memberId: string) => resolveFeature(key, { ...context, memberOverrides: memberOverrides.get(memberId) ?? {} }).enabled
+      const enabledFor = (key: FeatureKey, memberId: DenTypeId<"member">) => resolveFeature(key, { ...context, memberOverrides: memberOverrides.get(memberId) ?? {} }).enabled
       const people = new Map(members.map((member) => [member.id, member]))
       const now = Date.now()
 

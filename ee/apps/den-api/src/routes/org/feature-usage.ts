@@ -31,7 +31,7 @@ export function registerOrgFeatureUsageRoutes<T extends { Variables: OrgRouteVar
     jsonValidator(featureUsageInputSchema),
     async (c) => {
       const payload = c.get("organizationContext")
-      const keys: FeatureKey[] = c.req.valid("json").features.filter((key) => isFeatureKey(key) && payload.features[key])
+      const keys = c.req.valid("json").features.filter((key): key is FeatureKey => isFeatureKey(key) && payload.features[key])
       markFeaturesUsed({ organizationId: payload.organization.id, memberId: payload.currentMember.id, keys })
       return c.json({ ok: true as const })
     },

@@ -80,10 +80,15 @@ export const FeatureUsageTable = mysqlTable("feature_usage", {
   feature_key: varchar("feature_key", { length: 64 }).notNull(),
   organization_id: denTypeIdColumn("organization", "organization_id").notNull(),
   first_used_at: timestamp("first_used_at", { fsp: 3 }).notNull().defaultNow(),
+  /**
+   * Declared before last_used_day on purpose: drizzle writes ON DUPLICATE KEY
+   * UPDATE assignments in column order and MySQL applies them left to right,
+   * so days_used must be assigned while last_used_day still holds the old day.
+   */
+  days_used: int("days_used").notNull().default(1),
   last_used_at: timestamp("last_used_at", { fsp: 3 }).notNull().defaultNow(),
   /** UTC day of last_used_at; a write on a later day adds one to days_used. */
   last_used_day: date("last_used_day", { mode: "string" }).notNull(),
-  days_used: int("days_used").notNull().default(1),
 }, (table) => [
   primaryKey({ name: "feature_usage_pk", columns: [table.member_id, table.feature_key] }),
   index("feature_usage_org_feature").on(table.organization_id, table.feature_key, table.last_used_at),
