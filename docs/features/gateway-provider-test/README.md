@@ -40,7 +40,10 @@ with the right key, a failing one with a wrong key, and a refused custom address
 2. Den checks the trusted catalog, the model, the settings and the key shape
    (the same checks as saving; Amazon Bedrock can reuse saved AWS keys), then
    calls the gateway's `POST /api/v1/provider-tests` with the admin's own
-   Gateway key.
+   Gateway key. Den signs that exact request for the organization and member
+   with a key derived from `DEN_DB_ENCRYPTION_KEY` (already shared by Den and
+   the gateway); the gateway refuses any test without a fresh, matching
+   signature, so a Gateway key alone cannot run one.
 3. The gateway builds the request in the provider's native API from its own
    catalog (a custom `upstreamBaseUrl` is only used when its origin is in the
    operator's `GATEWAY_EGRESS_ALLOWED_ORIGINS`), signs or authenticates it like a real
@@ -61,9 +64,8 @@ returned. The test can use a few tokens on the provider account.
 ## Turning it off
 
 The page goes back to adding without a test. Nothing is stored by the test,
-so there is nothing to clean up. Den's route answers 404 `feature_disabled`;
-the gateway route stays available to Gateway keys but does nothing unless
-called.
+so there is nothing to clean up. Den's route answers 404 `feature_disabled`,
+and the gateway route only serves requests Den signed.
 
 ## What to watch
 

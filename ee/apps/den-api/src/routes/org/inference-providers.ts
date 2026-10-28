@@ -580,8 +580,10 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
         ? normalizeCredential({ credential: input.credential, apiKeys: input.apiKeys }, draft)
         : await db.transaction((tx) => reusableAwsCredential(tx, draft, reuseFrom))
       if (!credential) throw new GatewayWriteError(400, "credential_required", "Paste a key to test.")
+      const signingSecret = env.dbEncryptionKey
+      if (!signingSecret) throw new GatewayWriteError(409, "provider_test_unavailable", "Provider tests need DEN_DB_ENCRYPTION_KEY, shared with AI Gateway.")
       const gatewayKey = await ensureMemberGatewayKey({ organizationId: actor.organization.id, memberId: actor.currentMember.id })
-      return c.json(await requestGatewayProviderTest({ providerId: draft.provider_id, model: input.model, settings, credential }, { baseUrl: env.gatewayProxyBaseUrl ?? env.gatewayPublicBaseUrl, key: gatewayKey }))
+      return c.json(await requestGatewayProviderTest({ providerId: draft.provider_id, model: input.model, settings, credential }, { baseUrl: env.gatewayProxyBaseUrl ?? env.gatewayPublicBaseUrl, key: gatewayKey, signingSecret, organizationId: actor.organization.id, memberId: actor.currentMember.id }))
     } catch (error) { return respond(c, error) }
   })
 

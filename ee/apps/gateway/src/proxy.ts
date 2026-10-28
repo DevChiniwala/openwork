@@ -903,6 +903,7 @@ export function registerProxyRoutes(app: Hono, dependencies: ProxyDependencies =
   api.use("/api/v1/*", orgContext({ loadOrganization: dependencies.loadOrganization ?? loadOrganizationFromDb }))
   registerProviderTestRoute(api, {
     fetch: dependencies.fetch,
+    signingSecret: env.dbEncryptionKey,
     catalog: dependencies.gateway?.catalog ?? loadProviderCatalogFromFile(),
     mintGcpAccessToken: dependencies.gateway?.mintGcpAccessToken ?? createGcpServiceAccountTokenMinter(),
     now: dependencies.gateway?.now ?? (() => new Date()),

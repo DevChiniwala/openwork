@@ -6,6 +6,7 @@
 import { BEDROCK_MANTLE_DEFAULT_API_PATH } from "@openwork-ee/utils/bedrock-mantle-catalog"
 import { bedrockMantleHost, bedrockRuntimeHost, inferenceEgressAllowedOrigins, isAwsRegion, validateInferenceUrl } from "@openwork-ee/utils/inference-egress"
 import { isInferenceCredentialKindSupported, pickInferenceApiKeyFromMap } from "@openwork-ee/utils/inference-credentials"
+import { PROVIDER_TEST_SIGNATURE_HEADER, verifyProviderTestSignature } from "@openwork-ee/utils/provider-test-signature"
 import { GATEWAY_PROVIDER_CREDENTIAL_KINDS, parseGatewayProviderSecret } from "@openwork/types/den/gateway"
 import type { GatewayAwsKeysSecret, GatewayGcpServiceAccountSecret, GatewayProviderTestResult } from "@openwork/types/den/gateway"
 import type { Context, Hono } from "hono"
@@ -51,6 +52,8 @@ type Credential =
 
 export type ProviderTestDependencies = {
   fetch: typeof fetch
+  /** The database encryption key Den also holds; Den signs each test with a key derived from it. */
+  signingSecret: string | undefined
   catalog: ProviderCatalog
   mintGcpAccessToken: MintGcpAccessToken
   now: () => Date
@@ -267,15 +270,21 @@ export async function runProviderTest(input: TestRequest, dependencies: Provider
   return failed(code, message, model, response.status)
 }
 
-type ProviderTestEnv = { Variables: InferenceAuthVariables & OrganizationVariables }
+export type ProviderTestEnv = { Variables: InferenceAuthVariables & OrganizationVariables }
 
 export function registerProviderTestRoute(api: Hono<ProviderTestEnv>, dependencies: ProviderTestDependencies) {
   api.post(gatewayProviderTestPath, async (c: Context<ProviderTestEnv>) => {
     c.header("cache-control", "no-store")
     const identity = c.get("inference")
     if (identity.kind !== "gateway") return c.json({ error: { code: "invalid_api_key", message: "An OpenWork Gateway key is required." } }, 401)
+    // Only Den, after checking that this member may manage providers, can ask for a test.
+    const body = await c.req.text()
+    const signature = c.req.header(PROVIDER_TEST_SIGNATURE_HEADER)
+    if (!dependencies.signingSecret || !signature || !verifyProviderTestSignature(dependencies.signingSecret, { organizationId: identity.organizationId, memberId: identity.orgMembershipId, body }, signature, dependencies.now().getTime())) {
+      return c.json({ error: { code: "provider_test_not_authorized", message: "Provider tests are started from AI Gateway in OpenWork." } }, 403)
+    }
     let json: unknown
-    try { json = await c.req.json() } catch { return c.json({ error: { code: "invalid_json", message: "The request body must be JSON." } }, 400) }
+    try { json = JSON.parse(body) } catch { return c.json({ error: { code: "invalid_json", message: "The request body must be JSON." } }, 400) }
     const parsed = requestSchema.safeParse(json)
     if (!parsed.success) return c.json({ error: { code: "invalid_request", message: "Send providerId, model, settings and an organization credential." } }, 400)
     return c.json(await runProviderTest(parsed.data, dependencies))

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { createProviderCatalog } from "../src/provider-catalog.js"
-import { runProviderTest } from "../src/provider-test.js"
-import type { ProviderTestDependencies } from "../src/provider-test.js"
+import { Hono } from "hono"
+import { signProviderTest } from "@openwork-ee/utils/provider-test-signature"
+import { registerProviderTestRoute, runProviderTest } from "../src/provider-test.js"
+import type { ProviderTestDependencies, ProviderTestEnv } from "../src/provider-test.js"
 
 const catalog = createProviderCatalog({
   anthropic: { npm: "@ai-sdk/anthropic", env: ["ANTHROPIC_API_KEY"] },
@@ -15,6 +17,7 @@ type Sent = { url: string; headers: Headers; body: unknown }
 function dependencies(respond: (sent: Sent) => Response, sent: Sent[] = []): ProviderTestDependencies {
   return {
     catalog,
+    signingSecret: "fixture-shared-secret-0000000000000000",
     now: () => new Date("2026-10-27T12:00:00Z"),
     mintGcpAccessToken: async () => ({ kind: "error", message: "unused" }),
     fetch: async (input, init) => {
@@ -102,4 +105,33 @@ test("a custom provider address is only tested when the operator allowlisted it"
     if (previous === undefined) delete process.env.GATEWAY_EGRESS_ALLOWED_ORIGINS
     else process.env.GATEWAY_EGRESS_ALLOWED_ORIGINS = previous
   }
+})
+
+function routeApp(deps: ProviderTestDependencies) {
+  const app = new Hono<ProviderTestEnv>()
+  app.use("*", async (c, next) => {
+    const identity: ProviderTestEnv["Variables"]["inference"] = { kind: "gateway", organizationId: "org_fixture", orgMembershipId: "om_fixture", gatewayKeyId: "gky_fixture" }
+    c.set("inference", identity)
+    await next()
+  })
+  registerProviderTestRoute(app, deps)
+  return app
+}
+
+test("the gateway serves a test only when Den signed this exact request for this member", async () => {
+  const sent: Sent[] = []
+  const deps = dependencies(() => Response.json({}), sent)
+  const app = routeApp(deps)
+  const body = JSON.stringify({ providerId: "anthropic", model: "claude-sonnet-5", settings: {}, credential: { kind: "api_key", secret: "sk-ant-fixture-key-000000" } })
+  const now = deps.now().getTime()
+  const post = (signature: string | null, payload = body) => app.request("/api/v1/provider-tests", { method: "POST", body: payload, headers: signature ? { "x-openwork-provider-test-signature": signature } : {} })
+  assert.equal((await post(null)).status, 403)
+  assert.equal((await post(signProviderTest("fixture-shared-secret-0000000000000000", { organizationId: "org_fixture", memberId: "someone_else", body }, now))).status, 403)
+  const swapped = body.replace("claude-sonnet-5", "claude-opus-5")
+  assert.equal((await post(signProviderTest("fixture-shared-secret-0000000000000000", { organizationId: "org_fixture", memberId: "om_fixture", body }, now), swapped)).status, 403)
+  assert.equal((await post(signProviderTest("fixture-shared-secret-0000000000000000", { organizationId: "org_fixture", memberId: "om_fixture", body }, now - 120_000))).status, 403)
+  assert.equal(sent.length, 0)
+  const signed = await post(signProviderTest("fixture-shared-secret-0000000000000000", { organizationId: "org_fixture", memberId: "om_fixture", body }, now))
+  assert.equal(signed.status, 200)
+  assert.equal(sent.length, 1)
 })

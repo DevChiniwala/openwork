@@ -2,6 +2,7 @@
 // has not been saved yet (feature `gatewayProviderTest`). Den checks the
 // catalog, settings and key shape first; the gateway owns the upstream call.
 import type { GatewayProviderTestResult } from "@openwork/types/den/gateway"
+import { PROVIDER_TEST_SIGNATURE_HEADER, signProviderTest } from "@openwork-ee/utils/provider-test-signature"
 
 export type GatewayProviderTestInput = {
   providerId: string
@@ -25,15 +26,21 @@ function readResult(value: unknown, model: string): GatewayProviderTestResult | 
   return { ok: false, model: reported, status, code: value.code, message: value.message }
 }
 
-/** `baseUrl` is Den's route to the gateway; `key` is the caller's own gateway key. */
-export async function requestGatewayProviderTest(input: GatewayProviderTestInput, gateway: { baseUrl: string; key: string; fetch?: typeof fetch }): Promise<GatewayProviderTestResult> {
+/**
+ * `baseUrl` is Den's route to the gateway and `key` the caller's own gateway key.
+ * Called only after Den checked the caller may manage providers: the request is
+ * signed for this organization and member with the secret Den shares with the gateway.
+ */
+export async function requestGatewayProviderTest(input: GatewayProviderTestInput, gateway: { baseUrl: string; key: string; signingSecret: string; organizationId: string; memberId: string; fetch?: typeof fetch; now?: () => number }): Promise<GatewayProviderTestResult> {
   const unreachable: GatewayProviderTestResult = { ok: false, model: input.model, status: null, code: "gateway_unreachable", message: "AI Gateway couldn't run the test. Try again in a moment." }
   const fetcher = gateway.fetch ?? fetch
+  const body = JSON.stringify(input)
+  const signature = signProviderTest(gateway.signingSecret, { organizationId: gateway.organizationId, memberId: gateway.memberId, body }, gateway.now?.() ?? Date.now())
   try {
     const response = await fetcher(`${gateway.baseUrl.replace(/\/+$/, "")}/api/v1/provider-tests`, {
       method: "POST",
-      headers: { authorization: `Bearer ${gateway.key}`, "content-type": "application/json" },
-      body: JSON.stringify(input),
+      headers: { authorization: `Bearer ${gateway.key}`, "content-type": "application/json", [PROVIDER_TEST_SIGNATURE_HEADER]: signature },
+      body,
       redirect: "error",
       signal: AbortSignal.timeout(GATEWAY_TEST_TIMEOUT_MS),
     })
