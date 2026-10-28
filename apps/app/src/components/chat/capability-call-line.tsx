@@ -192,6 +192,12 @@ export function DetailsToggle({ open, onToggle, label, alwaysVisible = false }: 
   )
 }
 
+/**
+ * Rows sit in containers that space every part 8px apart; pulling each row
+ * 4px in keeps consecutive steps on the rail's 26px rhythm.
+ */
+const RAIL_ROW = "group/step -my-1 min-w-0"
+
 /** Duration in its own trailing lane, aligned down the rail. */
 function Duration({ value }: { value: string | null }) {
   return value ? <span className="ms-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/80">{value}</span> : null
@@ -245,7 +251,7 @@ export function CapabilityCallLine({
   // A share whose answer never arrived: sharing is unverified, not done.
   if (shareRequest && isToolPartInFlight(part) && (statusUnknown || syncDegraded)) {
     return (
-      <div data-capability-call={part.toolName} data-skill-share="unverified" className={cn("group/step min-w-0", className)}>
+      <div data-capability-call={part.toolName} data-skill-share="unverified" className={cn(RAIL_ROW, className)}>
         <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <LeadingLane><WifiOff className="size-3.5" strokeWidth={1.5} /></LeadingLane>
           <span className="min-w-0 flex-1 truncate">Connection lost. Sharing status couldn't be verified.</span>
@@ -260,7 +266,7 @@ export function CapabilityCallLine({
   if (shareRequest && skillShareFailureReason(part) === "blocked") {
     const label = "Sharing is blocked by your organization"
     return (
-      <div data-capability-call={part.toolName} data-skill-share="blocked" className={cn("group/step min-w-0", className)}>
+      <div data-capability-call={part.toolName} data-skill-share="blocked" className={cn(RAIL_ROW, className)}>
         <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm text-muted-foreground">
           <LeadingLane>{mark ? <ConnectorMark connector={mark} /> : null}</LeadingLane>
           <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -279,7 +285,7 @@ export function CapabilityCallLine({
     const sentence = sentenceFor(false)
     const label = sentence.failure ?? `${sentence.past} failed`
     return (
-      <div data-capability-call={part.toolName} className={cn("group/step min-w-0", className)}>
+      <div data-capability-call={part.toolName} className={cn(RAIL_ROW, className)}>
         <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm text-muted-foreground">
           <LeadingLane>{mark ? <ConnectorMark connector={mark} /> : null}</LeadingLane>
           <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -302,7 +308,7 @@ export function CapabilityCallLine({
       ? "Connection restored. Check whether the action finished before retrying."
       : reconnectAction ? failureInstruction(part, reconnectAction.connectionName) : shortError(part.errorText)
     return (
-      <div data-capability-call={part.toolName} className={cn("group/step min-w-0", className)}>
+      <div data-capability-call={part.toolName} className={cn(RAIL_ROW, className)}>
         <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm">
           <LeadingLane>{mark ? <ConnectorMark connector={mark} /> : null}</LeadingLane>
           <span className="min-w-0 flex-1 truncate text-destructive">{failureLabel}</span>
@@ -350,7 +356,7 @@ export function CapabilityCallLine({
     : text
   const line = withoutService(statusUnknown ? `${sentence.present}, status unavailable` : inFlight ? sentence.present : sentence.past)
   return (
-    <div data-capability-call={part.toolName} className={cn("group/step min-w-0", className)}>
+    <div data-capability-call={part.toolName} className={cn(RAIL_ROW, className)}>
       <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm text-muted-foreground">
         <LeadingLane>
           {mark ? (

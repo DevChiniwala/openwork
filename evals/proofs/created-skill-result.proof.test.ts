@@ -62,8 +62,11 @@ test("a member sees the skill their agent created as one quiet result they can o
     const ok = blocked === 0 && found.length === 1 && found[0]?.text.includes("Shared with Sam Taylor") === true && !found[0]?.text.includes("everyone");
     evidence.recordAssertionEvidence("Blocked is not red; saving the same skill again updates its one card instead of adding another", `red text in the blocked row: ${blocked}; cards: ${found.map((card) => `"${card.text}"`).join(", ")}`, ok);
     expect(ok).toBe(true);
-    await user.screenshot();
+    // The short turn folds as soon as it ends; open it again to show the blocked step beside its card.
     await user.see({ text: BLOCKED_REPLY }, { timeoutMs: 60_000 });
+    await user.click({ testId: "completed-work-rail", nth: 1 });
+    await user.see({ text: "Sharing is blocked by your organization" });
+    await user.screenshot();
   });
 
   await step("after: Open takes the member to that skill in Library, only when they click it", async () => {

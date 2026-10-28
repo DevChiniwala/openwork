@@ -170,7 +170,7 @@ export function CodeModeTool({ part, calls: allCalls, lifecycle, connectors }: {
       </div>
       {detailsOpen ? <TechnicalDetailsPanel part={part} /> : null}
       <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-180 ease-out data-starting-style:h-0 data-ending-style:h-0 motion-reduce:transition-none [&[hidden]:not([hidden='until-found'])]:hidden">
-        <div className="mt-2 flex flex-col gap-1 border-s border-border ps-3">
+        <div className="mt-2 flex flex-col gap-2 border-s border-border ps-3">
           {rows.map(({ call, repeat }) => (
             <CapabilityCallLine
               key={call.toolCallId}
