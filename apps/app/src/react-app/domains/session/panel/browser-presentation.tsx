@@ -67,12 +67,12 @@ function BrowserFullscreenDialog({ sessionId, controller }: BrowserFullscreenDia
                 <Tooltip>
                   <TooltipTrigger
                     render={(
-                      <Button variant="ghost" size="icon-sm" aria-label="Float browser" data-testid="browser-mode-float" onClick={() => present("floating")}>
+                      <Button variant="ghost" size="icon-sm" aria-label="Pop out browser" data-testid="browser-mode-float" onClick={() => present("floating")}>
                         <PictureInPicture2 />
                       </Button>
                     )}
                   />
-                  <TooltipContent>Float over chat</TooltipContent>
+                  <TooltipContent>Pop out into its own window</TooltipContent>
                 </Tooltip>
                 <DialogPrimitive.Close
                   ref={exitRef}
@@ -130,10 +130,12 @@ export function BrowserPresentationSurfaces({ sessionId, controller }: BrowserFu
   );
 }
 
-/** The session header's browser toggle: hidden ↔ the last floating or side choice. */
-/** The side rail's Browser button while the floating browser is on: it shows and hides the page wherever it was. */
+/**
+ * The side rail's Browser button while the floating browser is on: it opens
+ * and closes the browser beside the chat, like the rail's other panels.
+ */
 export function BrowserRailButton({ controller }: { controller: BrowserPresentationController }) {
-  const shown = controller.mode !== "hidden";
+  const shown = controller.mode === "side";
   const label = `Browser · ${controller.status}`;
   return (
     <Tooltip>

@@ -38,6 +38,9 @@ Some apps and steps still need the front, and get it the way they did before
   activating them. Per step, `InputDelivery.stepNeedsFront` picks the steps
   that take the front anyway. The open result carries the session's
   `delivery`; every action receipt carries the step's.
+- The agent's frame and cursor are drawn just above the session's window, not
+  above every window, so a window the person brings forward covers them. The
+  Take over / Stop pill stays on top.
 - Background input never raises the window or activates the app, and never
   sends the person's front app anything. Before a click it sends the app one
   WindowServer focus record for the window (`SLPSPostEventRecordTo`); before

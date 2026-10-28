@@ -252,6 +252,8 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
   const desktopFailure = (c: Context<AppEnv>, operation: string, code: string, rebuilt = false) => {
     console.error("[workbot] desktop unavailable", { operation, code, rebuilt })
     if (code === "desktop_outdated") return c.json({ error: code, message: rebuilt ? "Your computer still needs an update after rebuilding. Ask your workspace admin for help." : "Your computer needs an update before it can connect. Rebuild it, or ask your workspace admin if that doesn't help." }, 409)
+    // The runner moves the computer to the new version itself once the work running on it finishes.
+    if (code === "desktop_updating") return c.json({ error: code, message: "Your computer is updating. It will be ready when its current work finishes." }, 409)
     return c.json({ error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." }, 409)
   }
   /** One automatic rebuild per computer at a time: the Browser view and the chat's live glimpse can both find it outdated. */
@@ -309,6 +311,11 @@ export function registerWorkbotRoutes(app: Hono<AppEnv>, input: { config: Config
         if (view.control) await workbot.stop(actorOf(member))
         const open = () => client.desktopViewer(sessionId, { ...view, origin: new URL(config.publicUrl).origin })
         let result = await open()
+        // The runner can drop a request while its process is recycled; asking for a viewer again is harmless.
+        if (!result.ok && result.error === "desktop_unavailable") {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          result = await open()
+        }
         // Opening the full view of a paused computer resumes it: Freestyle restores its memory in about a second, so
         // asking the person to press Resume only adds a round trip. The chat's live glimpse never wakes it.
         if (wake && result.ok && result.value.state === "paused") {

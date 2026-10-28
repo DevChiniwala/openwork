@@ -190,7 +190,7 @@ final class SessionControls: NSObject {
     var onWatch: ((Bool) -> Void)?
     var isPaused = false
 
-    func show(app: AppIdentity, target: WindowTarget, mode: AccessMode, purpose: String) {
+    func show(app: AppIdentity, target: WindowTarget, mode: AccessMode, purpose: String, background: Bool = false) {
         Self.active = self; hostID = UUID().uuidString; hostState = [:]
         frameSequence = 0; inputSequence = 0; lastFrameAt = -.infinity
         isPaused = false; canContinue = true
@@ -205,7 +205,7 @@ final class SessionControls: NSObject {
             self.onResume?()
         }
         presence.onStop = { [weak self] in self?.onStop?() }
-        presence.begin(windowFrame: target.frame, windowID: target.id, appName: app.name)
+        presence.begin(windowFrame: target.frame, windowID: target.id, appName: app.name, layered: background)
         if Self.embedded {
             showMenu()
             publish(["phase": "working", "appName": app.name, "appID": app.bundleID, "pid": Int(app.pid),

@@ -19,7 +19,7 @@ on:
       - "ee/packages/headless-protocol/**"
       - "ee/packages/headless-computer/**"
       # What the computer's desktop guest bundles from outside headless-computer (desktop-identity.mjs): a change
-      # here changes the desktop, so it needs a new runner and snapshot too.
+      # here changes the guest, so it needs a new runner, which installs that guest into the computers it starts.
       - "packages/computer-use/*.mjs"
       - "packages/computer-use/*.py"
       - "packages/computer-use/src/**"
@@ -114,12 +114,12 @@ jobs:
           pnpm install --filter "@openwork-ee/headless-runner..." --frozen-lockfile
           pnpm --filter "@openwork-ee/headless-runner^..." --if-present run build
 
-      # The runner only accepts a computer whose desktop guest has its identity (dist/desktop-guest.version), and
-      # rebuilding a computer starts it again from the configured snapshot. A runner whose guest changed (its code, or a
-      # package it bundles, such as a lockfile bump) would turn every computer "out of date" until a new snapshot exists,
-      # so build that snapshot here, with the runner's own Freestyle key, and bundle the runner with it. The snapshot is
-      # named after the desktop, so a later run with the same desktop finds it already built. If the build fails, stop
-      # before the fleet changes.
+      # New computers start from the configured snapshot, named after its desktop image (dist/desktop-image.version).
+      # The runner installs its own guest into a computer built from the same image, keeps driving one from an older
+      # image while their protocols match, and replaces that one once it is idle. A runner whose image changed needs a
+      # snapshot of it, so build that snapshot here, with the runner's own Freestyle key, and bundle the runner with it.
+      # A later run with the same image finds it already built; a guest-only change builds nothing. If the build fails,
+      # stop before the fleet changes.
       - name: Use a computer snapshot built for this runner
         id: snapshot
         timeout-minutes: 20
@@ -133,7 +133,7 @@ jobs:
             echo "No Freestyle desktop computers configured; nothing to check."
             exit 0
           fi
-          identity="$(head -c 16 ee/packages/headless-computer/dist/desktop-guest.version)"
+          identity="$(head -c 16 ee/packages/headless-computer/dist/desktop-image.version)"
           if ! [[ "$snapshot" =~ ^workbot-desktop-freestyle-([0-9a-f]{16})$ ]]; then
             echo "::warning title=Computer snapshot not checked::$snapshot isn't named by snapshot:build:freestyle-desktop, so its desktop can't be compared with this runner's ($identity)."
             exit 0
