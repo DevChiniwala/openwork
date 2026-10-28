@@ -40,7 +40,28 @@ the conversation ID; it is not a model argument. The authenticated loopback
 bridge is an internal desktop capability, not an external browser connection.
 
 The supported tools do not expose arbitrary evaluation, raw CDP, cookies,
-storage, network response bodies, uploads or the system clipboard. This is a
+storage, network response bodies or the system clipboard. With the
+`browserFileAttachment` rollout enabled for the organization, `browser_act`
+supports `attach_files` with an observed native file-input `ref` and `paths`.
+The server reads only regular files inside authorized workspace roots, refuses
+symlinks and traversal outside those roots, and passes bounded bytes (not local
+paths) to the host. Relative paths use the engine's requesting directory; when
+it is unavailable and several roots exist, an absolute path is required rather
+than silently selecting another workspace's file.
+Up to ten files and 32 MiB total are supported, including hidden native inputs;
+directory uploads, frames, drag-and-drop-only uploaders and larger files remain
+unsupported. The browser and server must run on the same machine.
+
+Attaching exposes bytes to the website immediately and may start an upload;
+it is not a promise to keep them local until a later Submit or Publish click.
+The user must have authorized that file disclosure. The host checks upload
+policy before assignment, consumes the observation, assigns native `File`
+objects in its isolated world and emits `input`/`change`. The receipt verifies
+selected names and sizes, not the site's completed upload. Observe the site
+before reporting success. Never replay an uncertain attachment. Turning the
+rollout off blocks new attachment calls without deleting existing selections
+or interrupting uploads already started. Missing rollout verification fails
+closed. This is a
 browser-tool boundary; it does not sandbox unrelated shell tools or user-added
 plugins with independent machine permissions.
 
@@ -203,5 +224,9 @@ connect to a different machine's external browser.
 The deterministic provider verifies tool availability, execution context and
 result delivery and a verified completion answer in the conversation. It does not prove open-ended planning
 quality for every provider. Direct control of external browser profiles,
-declarative WebMCP, closed-shadow-root DOM references, file transfer and restart
-restoration of live tab handles remain outside the browser-task subset.
+declarative WebMCP, closed-shadow-root DOM references, directory or large-file
+transfer and restart restoration of live tab handles remain outside the
+browser-task subset. File attachment's unit coverage is in
+`apps/server/test/browser-attachments.test.ts` and
+`apps/desktop/electron/browser-task-attachments.test.mjs`; the latter uses a
+deterministic DOM fixture, not a live Electron or website upload.

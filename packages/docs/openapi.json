@@ -2435,6 +2435,7 @@
           "key": {
             "type": "string",
             "enum": [
+              "browserFileAttachment",
               "modelRemovalRecovery",
               "lastTurnModelFooter",
               "liveProviderSync",
@@ -2653,6 +2654,9 @@
                 "capabilities": {
                   "type": "object",
                   "properties": {
+                    "browserFileAttachment": {
+                      "type": "boolean"
+                    },
                     "modelRemovalRecovery": {
                       "type": "boolean"
                     },
@@ -2793,6 +2797,7 @@
                     }
                   },
                   "required": [
+                    "browserFileAttachment",
                     "modelRemovalRecovery",
                     "lastTurnModelFooter",
                     "liveProviderSync",
@@ -2843,6 +2848,62 @@
                 "featureStates": {
                   "type": "object",
                   "properties": {
+                    "browserFileAttachment": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "modelRemovalRecovery": {
                       "type": "object",
                       "properties": {
@@ -5309,6 +5370,7 @@
                     }
                   },
                   "required": [
+                    "browserFileAttachment",
                     "modelRemovalRecovery",
                     "lastTurnModelFooter",
                     "liveProviderSync",
@@ -5722,6 +5784,9 @@
                 "capabilities": {
                   "type": "object",
                   "properties": {
+                    "browserFileAttachment": {
+                      "type": "boolean"
+                    },
                     "modelRemovalRecovery": {
                       "type": "boolean"
                     },
@@ -5862,6 +5927,7 @@
                     }
                   },
                   "required": [
+                    "browserFileAttachment",
                     "modelRemovalRecovery",
                     "lastTurnModelFooter",
                     "liveProviderSync",
@@ -5912,6 +5978,62 @@
                 "featureStates": {
                   "type": "object",
                   "properties": {
+                    "browserFileAttachment": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "killed",
+                            "lock",
+                            "override",
+                            "everyone"
+                          ]
+                        },
+                        "everyone": {
+                          "type": "boolean"
+                        },
+                        "killed": {
+                          "type": "boolean"
+                        },
+                        "lock": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "override": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "overrideApplies": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "source",
+                        "everyone",
+                        "killed",
+                        "lock",
+                        "override",
+                        "overrideApplies"
+                      ]
+                    },
                     "modelRemovalRecovery": {
                       "type": "object",
                       "properties": {
@@ -8378,6 +8500,7 @@
                     }
                   },
                   "required": [
+                    "browserFileAttachment",
                     "modelRemovalRecovery",
                     "lastTurnModelFooter",
                     "liveProviderSync",
@@ -32604,6 +32727,9 @@
                     "capabilities": {
                       "type": "object",
                       "properties": {
+                        "browserFileAttachment": {
+                          "type": "boolean"
+                        },
                         "modelRemovalRecovery": {
                           "type": "boolean"
                         },
@@ -32744,6 +32870,7 @@
                         }
                       },
                       "required": [
+                        "browserFileAttachment",
                         "modelRemovalRecovery",
                         "lastTurnModelFooter",
                         "liveProviderSync",
@@ -32794,6 +32921,62 @@
                     "featureStates": {
                       "type": "object",
                       "properties": {
+                        "browserFileAttachment": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "modelRemovalRecovery": {
                           "type": "object",
                           "properties": {
@@ -35260,6 +35443,7 @@
                         }
                       },
                       "required": [
+                        "browserFileAttachment",
                         "modelRemovalRecovery",
                         "lastTurnModelFooter",
                         "liveProviderSync",
@@ -35422,6 +35606,9 @@
                     "capabilities": {
                       "type": "object",
                       "properties": {
+                        "browserFileAttachment": {
+                          "type": "boolean"
+                        },
                         "modelRemovalRecovery": {
                           "type": "boolean"
                         },
@@ -35562,6 +35749,7 @@
                         }
                       },
                       "required": [
+                        "browserFileAttachment",
                         "modelRemovalRecovery",
                         "lastTurnModelFooter",
                         "liveProviderSync",
@@ -35612,6 +35800,62 @@
                     "featureStates": {
                       "type": "object",
                       "properties": {
+                        "browserFileAttachment": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "unavailable",
+                                "killed",
+                                "lock",
+                                "override",
+                                "everyone"
+                              ]
+                            },
+                            "everyone": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            },
+                            "lock": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "override": {
+                              "anyOf": [
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overrideApplies": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "source",
+                            "everyone",
+                            "killed",
+                            "lock",
+                            "override",
+                            "overrideApplies"
+                          ]
+                        },
                         "modelRemovalRecovery": {
                           "type": "object",
                           "properties": {
@@ -38078,6 +38322,7 @@
                         }
                       },
                       "required": [
+                        "browserFileAttachment",
                         "modelRemovalRecovery",
                         "lastTurnModelFooter",
                         "liveProviderSync",

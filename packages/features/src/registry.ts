@@ -53,6 +53,13 @@ function defineFeatures<const T extends Record<string, FeatureDefinition>>(featu
 const everywhere = ["cloud", "self_hosted"] as const
 
 export const FEATURES = defineFeatures({
+  browserFileAttachment: {
+    label: "Browser file attachment",
+    description: "Attach workspace files to a website's file input without opening the system file picker.",
+    since: "2026-10",
+    deployments: everywhere,
+    default: false,
+  },
   modelRemovalRecovery: {
     label: "Model removal recovery",
     description: "Keep a chat on its chosen model until removal is verified, then offer a nearby model with a quiet, reversible note.",

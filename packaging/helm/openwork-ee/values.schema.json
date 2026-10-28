@@ -18,6 +18,16 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "browserFileAttachment": {
+              "enum": [
+                "",
+                "true",
+                "false",
+                true,
+                false
+              ],
+              "description": "Browser file attachment: Attach workspace files to a website's file input without opening the system file picker. Renders DEN_FEATURE_BROWSER_FILE_ATTACHMENT."
+            },
             "modelRemovalRecovery": {
               "enum": [
                 "",

@@ -78,7 +78,7 @@ export async function createV2ContextBridge(hostRequest: (path: string, init?: R
       return Response.json({ error: error instanceof Error ? error.message : "OpenWork read failed" }, { status: 400 });
     }
   } });
-  const browser = await createV2BrowserBridge().catch(async error => { await server.stop(); await plugin.dispose(); throw error; });
+  const browser = await createV2BrowserBridge(hostRequest).catch(async error => { await server.stop(); await plugin.dispose(); throw error; });
   return { url: `http://127.0.0.1:${server.port}/read`, token, browser: { url: browser.url, token: browser.token },
     close: async () => { await browser.close(); await server.stop(); await plugin.dispose(); } };
 }

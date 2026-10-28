@@ -26,6 +26,7 @@ config:
   #   "false" off for everyone; /admin shows "Set by deployment config"
   # The /admin kill switch still turns a feature off, even when locked on.
   features:
+    browserFileAttachment: ""      # default off · Attach workspace files to a website's file input without opening the system file picker.
     modelRemovalRecovery: ""       # default off · Keep a chat on its chosen model until removal is verified, then offer a nearby model with a quiet, reversible note.
     lastTurnModelFooter: ""        # default off · Show the model that replied quietly below the latest answer instead of above the turn.
     liveProviderSync: ""           # default off · Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time.

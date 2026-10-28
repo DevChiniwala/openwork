@@ -12,9 +12,9 @@ const requestSchema = z.object({
 /** Only the existing conversation-scoped browser tools, with their usual
  * approval and policy checks. This credential does not authorize app commands
  * or the read bridge; the desktop's browser credential stays in the host. */
-export async function createV2BrowserBridge() {
+export async function createV2BrowserBridge(hostRequest?: (path: string, init?: RequestInit) => Promise<unknown>) {
   const token = randomBytes(32).toString("base64url");
-  const tools = await browserTools();
+  const tools = await browserTools(undefined, hostRequest);
   const server = await serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
     if (request.headers.get("authorization") !== `Bearer ${token}`) return new Response(null, { status: 401 });
     if (request.method !== "POST" || new URL(request.url).pathname !== "/browser") return new Response(null, { status: 404 });

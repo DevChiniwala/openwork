@@ -390,10 +390,10 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     return /^https?:\/\//i.test(target) ? target : `https://${target}`;
   }
 
-  async function browserTaskAllowed(url) {
+  async function browserTaskAllowed(url, request = {}) {
     if (!browserControlEnabled || typeof checkPolicy !== "function") return false;
     try {
-      await checkBrowserPolicy({ url });
+      await checkBrowserPolicy({ ...request, url });
       return browserControlEnabled;
     } catch {
       return false;

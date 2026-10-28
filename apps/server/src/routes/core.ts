@@ -14,6 +14,8 @@ import { syncManagedProviderAuth, type ManagedProviderAuthResult } from "../mana
 import { ApiError } from "../errors.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "../extensions/index.js";
 import { callDriveFileAction } from "../extensions/drive-files.js";
+import { browserAttachmentRequest, readBrowserAttachments } from "../browser-attachments.js";
+import { managedDesktopPolicy } from "../managed-desktop-policy.js";
 import type { TokenService } from "../tokens.js";
 import type { Capabilities, ServerConfig, WorkspaceInfo } from "../types.js";
 import { addRoute, type Route } from "./registry.js";
@@ -371,6 +373,17 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     const result = await callDriveFileAction(config, action, args, context, { signal: ctx.request.signal });
     if (!result) throw new ApiError(404, "extension_action_not_found", "Drive file action not found");
     return jsonResponse(result);
+  });
+
+  addRoute(routes, "POST", "/experimental/browser/attachments", "client", async (ctx) => {
+    if (ctx.actor?.scope === "viewer") throw new ApiError(403, "forbidden", "Viewer tokens cannot attach browser files");
+    if (!await managedDesktopPolicy(config).browserFileAttachmentEnabled()) {
+      throw new ApiError(403, "feature_disabled", "Browser file attachment is not enabled for this organization.");
+    }
+    const { paths, directory } = browserAttachmentRequest.parse(await readJsonBody(ctx.request));
+    const response = jsonResponse(await readBrowserAttachments(config, paths, ctx.request.signal, directory));
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   });
 
   addRoute(routes, "GET", "/workspaces", "client", async () => {

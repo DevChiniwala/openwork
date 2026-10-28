@@ -35,7 +35,9 @@ export function createUiControlServer({
       request.setEncoding("utf8");
       request.on("data", (chunk) => {
         raw += chunk;
-        if (raw.length > 128_000) {
+        // Only the authenticated browser task transport carries bounded attachment bytes.
+        const maxLength = request.url === "/browser/task" ? 46 * 1024 * 1024 : 128_000;
+        if (raw.length > maxLength) {
           reject(new Error("Request body too large"));
           request.destroy();
         }

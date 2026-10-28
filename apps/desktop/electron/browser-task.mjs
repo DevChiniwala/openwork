@@ -34,12 +34,16 @@ function observePage(id) {
     if (elements.length >= 200) break;
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
-    if (!rect.width || !rect.height || style.visibility === "hidden" || style.display === "none") continue;
+    // Sites commonly hide the native file control behind an upload button. Expose
+    // that exact node for attachment only; never resolve labels/selectors later.
+    const fileInput = element instanceof HTMLInputElement && element.type === "file";
+    const hidden = !rect.width || !rect.height || style.visibility === "hidden" || style.display === "none";
+    if (hidden && !fileInput) continue;
     const ref = `e${elements.length + 1}`;
     const password = element.matches('input[type="password"],input[autocomplete="one-time-code"]');
     const label = element.getAttribute("aria-label") || (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement ? element.labels?.[0]?.innerText : "") || element.innerText || element.getAttribute("placeholder") || element.getAttribute("name") || "";
     nodes.set(ref, element);
-    elements.push({ ref, tag: element.tagName.toLowerCase(), role: element.getAttribute("role"), name: label.trim().slice(0, 200), disabled: element.hasAttribute("disabled"), sensitive: password, bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+    elements.push({ ref, tag: element.tagName.toLowerCase(), role: element.getAttribute("role"), name: label.trim().slice(0, 200), disabled: element.hasAttribute("disabled"), sensitive: password, ...(fileInput ? { inputType: "file", accept: element.accept, multiple: element.multiple, hidden } : {}), bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
   }
   const observation = { id, nodes, bounds: new Map(elements.map(({ ref, bounds }) => [ref, bounds])), activeElement: document.activeElement,
     changed: false, observer: null, width: innerWidth, height: innerHeight, x: scrollX, y: scrollY };
@@ -63,15 +67,23 @@ function prepareAction(id, action) {
   // These native controls cannot host a shadow root. A frame, custom editor or
   // generic container can conceal a different focused descendant during review.
   if (action.type === "key" && !["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(document.activeElement?.tagName)) throw new Error("unverifiable_focus");
+  const attachment = action.type === "attach_files";
+  if (attachment) {
+    if (!(element instanceof HTMLInputElement) || element.type !== "file" || element.webkitdirectory) throw new Error("not_file_input");
+    if (element.matches(":disabled")) throw new Error("element_disabled");
+    if (!element.multiple && action.files.length > 1) throw new Error("multiple_files_not_allowed");
+  }
   let x = action.x, y = action.y;
   if (element) {
     const rect = element.getBoundingClientRect();
     const bounds = state.bounds.get(action.ref);
     if (!bounds || !["x", "y", "width", "height"].every((key) => rect[key] === bounds[key])) throw new Error("stale_observation");
     x = rect.x + rect.width / 2; y = rect.y + rect.height / 2;
-    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) throw new Error("element_outside_viewport");
-    const hit = document.elementFromPoint(x, y);
-    if (!hit || (hit !== element && !element.contains(hit))) throw new Error("element_obscured");
+    if (!attachment) {
+      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) throw new Error("element_outside_viewport");
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || (hit !== element && !element.contains(hit))) throw new Error("element_obscured");
+    }
   }
   if (action.type === "fill") {
     const editable = element instanceof HTMLTextAreaElement || element?.isContentEditable || (element instanceof HTMLInputElement && ["text", "search", "email", "url", "tel", "number"].includes(element.type));
@@ -85,6 +97,25 @@ function prepareAction(id, action) {
   // Consume before input; a result read failure must never replay this action.
   state.changed = true;
   state.observer.disconnect();
+  if (attachment) {
+    const transfer = new DataTransfer();
+    const expected = action.files.map(({ name, bytesBase64, mimeType = "application/octet-stream" }) => {
+      const binary = atob(bytesBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+      const file = new File([bytes], name, { type: mimeType });
+      transfer.items.add(file);
+      return { name: file.name, size: file.size };
+    });
+    // No chooser, paths, page-provided JavaScript or CDP file-system access.
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "files").set;
+    setter.call(element, transfer.files);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    const files = Array.from(element.files, (file) => ({ name: file.name, size: file.size }));
+    const verified = element.isConnected && element.type === "file" && files.length === expected.length && files.every((file, index) => file.name === expected[index].name && file.size === expected[index].size);
+    return { outcome: verified ? "verified" : "value_mismatch", files };
+  }
   if (action.type === "fill") {
     element.focus();
     if (document.activeElement !== element) throw new Error("stale_element");
@@ -257,7 +288,7 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
     return { ok: true, tabId: tab.tabId, observationId: id, url: safeUrl(url), trust: TRUST, ...page, ...(image ? { image } : {}) };
   }
   /**
-   * @param {{ sessionId?: string, operation?: string, args?: { tabId?: string, url?: string, provider?: string, includeImage?: boolean, observationId?: string, toolId?: string, input?: unknown, action?: { type?: string, ref?: string, text?: string, key?: string, x?: number, y?: number, deltaY?: number } } }} request
+   * @param {{ sessionId?: string, operation?: string, args?: { tabId?: string, url?: string, provider?: string, includeImage?: boolean, observationId?: string, toolId?: string, input?: unknown, action?: { type?: string, ref?: string, text?: string, key?: string, x?: number, y?: number, deltaY?: number, files?: { name: string, bytesBase64: string, mimeType?: string }[] } } }} request
    * @param {{ signal?: AbortSignal }} options
    */
   async function request({ sessionId, operation, args = {} } = {}, { signal } = {}) {
@@ -357,25 +388,56 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
         const observed = state.observation;
         if (!observed || observed.id !== args.observationId || observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("stale_observation", "Observe the current page before acting.");
         const action = structuredClone(args.action);
-        if (!action || !["click", "fill", "key", "scroll"].includes(action.type)) fail("invalid_action", "Use click, fill, key or scroll.");
+        if (!action || !["click", "fill", "key", "scroll", "attach_files"].includes(action.type)) fail("invalid_action", "Use click, fill, key, scroll or attach_files.");
+        if (action.type === "attach_files") {
+          if (typeof action.ref !== "string" || !action.ref || !Array.isArray(action.files) || action.files.length === 0 || action.files.length > 10) fail("invalid_attachment", "Attach one to ten files to an observed native file input.");
+          if (!observed.elements.some(element => element.ref === action.ref && element.inputType === "file")) fail("not_file_input", "Choose an observed native file input reference.");
+          let total = 0;
+          for (const file of action.files) {
+            if (!file || typeof file.name !== "string" || !file.name || file.name.length > 255 || file.name.includes("/") || file.name.includes("\\") || file.name.includes("\0") || [".", ".."].includes(file.name) || typeof file.bytesBase64 !== "string" || file.bytesBase64.length > Math.ceil(32 * 1024 * 1024 / 3) * 4) fail("invalid_attachment", "Attachments need a filename (not a path) and base64 file bytes.");
+            if (file.mimeType !== undefined && (typeof file.mimeType !== "string" || file.mimeType.length > 200 || !/^[\x20-\x7e]*$/.test(file.mimeType))) fail("invalid_attachment", "Attachments need a valid MIME type.");
+            const bytes = Buffer.from(file.bytesBase64, "base64");
+            if (bytes.toString("base64") !== file.bytesBase64) fail("invalid_attachment", "Attachments need canonical base64 file bytes.");
+            total += bytes.length;
+            if (total > 32 * 1024 * 1024) fail("attachment_too_large", "Attachments must total at most 32 MiB.");
+          }
+        }
         if (action.type === "click" && !action.ref && !observed.digest) fail("image_required", "Observe with includeImage before clicking image coordinates.");
         if (action.type === "fill" && (typeof action.text !== "string" || action.text.length > 8000 || !action.ref)) fail("invalid_action", "Fill needs an observed editable reference and text of at most 8000 characters.");
         const keys = { Enter: "Enter", Tab: "Tab", Escape: "Escape", ArrowDown: "Down", ArrowUp: "Up", ArrowLeft: "Left", ArrowRight: "Right", Backspace: "Backspace", Space: "Space" };
         if (action.type === "key" && !Object.hasOwn(keys, action.key)) fail("invalid_key", "Use Enter, Tab, Escape, arrows, Backspace or Space. System shortcuts are unavailable.");
         if (action.type === "scroll" && (!Number.isFinite(action.deltaY) || Math.abs(action.deltaY) > 1200)) fail("invalid_scroll", "Scroll distance must be between -1200 and 1200.");
         if (!await allowed(observed.url) || state.observation !== observed || observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("page_changed", "The page changed or access was blocked while preparing the action. Observe again.");
+        if (action.type === "attach_files" && !await allowed(observed.url, { method: "POST", hasUpload: true })) fail("upload_blocked", "Your organization does not allow file uploads to this website.");
         requestSignal.throwIfAborted();
+        if (state.observation !== observed || observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("stale_observation", "The page changed while checking upload policy. Observe again.");
         if (action.type === "click" && !action.ref && imageDigest(await captureObservation(tab.view.webContents, observed.viewport)) !== observed.digest) fail("stale_observation", "The image changed. Observe again before choosing coordinates.");
         checkNavigation(navigationScope);
         let point;
+        if (action.type === "attach_files") {
+          // Assignment and DOM validation happen in one isolated-world call. Mark
+          // dispatch conservatively before it: a lost result must not replay bytes.
+          state.observation = null;
+          dispatched = true;
+          publish(tab.tabId, "running", action.type);
+        }
         try { point = await isolated(tab.view.webContents, prepareAction, observed.id, action); }
         catch (error) {
-          const code = ["stale_observation", "stale_element", "sign_in_required", "unverifiable_focus", "element_disabled", "element_outside_viewport", "element_obscured", "not_editable", "outside_viewport"].find((item) => String(error?.message).includes(item));
+          const code = ["stale_observation", "stale_element", "sign_in_required", "unverifiable_focus", "element_disabled", "element_outside_viewport", "element_obscured", "not_editable", "outside_viewport", "not_file_input", "multiple_files_not_allowed"].find((item) => String(error?.message).includes(item));
+          // These errors are raised by validation before assignment. Unknown errors
+          // and cancellation retain the conservative, already-dispatched receipt.
+          if (action.type === "attach_files" && code) dispatched = false;
           if (code === "unverifiable_focus") fail(code, "Keyboard input requires a directly focused native page control. Take over for embedded or custom editors.");
           if (code) fail(code, code === "sign_in_required" ? "Take over and sign in directly in the browser, then resume." : "The observed control is no longer ready. Observe again before choosing an action.");
           throw error;
         }
+        if (action.type === "attach_files") dispatched = true;
         checkNavigation(navigationScope);
+        if (action.type === "attach_files") {
+          requestSignal.throwIfAborted();
+          if (observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("page_changed", "The page changed after file attachment. Observe to verify the outcome.");
+          return { ok: true, dispatched: true, ...point, retrySafe: false, tabId: tab.tabId, next: "observe", message: "File input checked by name and size. Observe to verify the site's upload outcome; do not repeat an uncertain attachment." };
+        }
         if (state.observation !== observed || observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("stale_observation", "The page or observation changed while preparing the action. Observe again.");
         state.observation = null; requestSignal.throwIfAborted();
         publish(tab.tabId, "running", action.type);

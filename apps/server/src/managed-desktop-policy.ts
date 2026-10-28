@@ -110,6 +110,21 @@ class ManagedDesktopPolicy {
     const cleared = await clearManagedDesktopPolicy(this.config);
     if (cleared.changed) this.onChange?.();
   }
+  async browserFileAttachmentEnabled(): Promise<boolean> {
+    const session = this.session;
+    if (!session) return false;
+    const generation = this.generation;
+    try {
+      const org = await this.readDenJson(session, "/v1/org", generation);
+      this.identityChanged(generation);
+      return typeof org === "object" && org !== null && "features" in org
+        && typeof org.features === "object" && org.features !== null
+        && "browserFileAttachment" in org.features && org.features.browserFileAttachment === true;
+    } catch {
+      // Rollouts fail closed: a cached grant must not undo a kill switch.
+      return false;
+    }
+  }
   current(): Promise<DesktopConfig | null> {
     if (this.fetching?.generation === this.generation) return this.fetching.promise;
     const generation = this.generation;

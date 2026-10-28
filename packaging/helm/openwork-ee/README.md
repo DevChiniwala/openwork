@@ -362,6 +362,7 @@ OpenWork Cloud. Don't change it on a customer install.
 <!-- BEGIN GENERATED features (pnpm features:sync) -->
 | `config.features.*` | Environment variable | Default | What it does |
 | --- | --- | --- | --- |
+| `browserFileAttachment` | `DEN_FEATURE_BROWSER_FILE_ATTACHMENT` | default off | Attach workspace files to a website's file input without opening the system file picker. |
 | `modelRemovalRecovery` | `DEN_FEATURE_MODEL_REMOVAL_RECOVERY` | default off | Keep a chat on its chosen model until removal is verified, then offer a nearby model with a quiet, reversible note. |
 | `lastTurnModelFooter` | `DEN_FEATURE_LAST_TURN_MODEL_FOOTER` | default off | Show the model that replied quietly below the latest answer instead of above the turn. |
 | `liveProviderSync` | `DEN_FEATURE_LIVE_PROVIDER_SYNC` | default off | Keep desktop OpenCode v2 models up to date with the organization's AI Gateway in real time. |
