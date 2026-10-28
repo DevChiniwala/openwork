@@ -34,7 +34,7 @@ export function LibraryCompactSection({ title, count, children, testId, tone = "
       <h2 className="flex items-center gap-2 px-2 text-[12px] font-medium leading-5 text-[var(--dls-text-secondary)]">
         {tone === "attention" ? <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" /> : null}
         {title}
-        <span className="tabular-nums text-gray-400">{count}</span>
+        <span className="tabular-nums text-[var(--dls-text-secondary)]">{count}</span>
       </h2>
       <div className="flex flex-col">{children}</div>
     </section>

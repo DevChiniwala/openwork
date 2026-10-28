@@ -133,11 +133,11 @@ export function SkillInstructions({ markdown, title }: { markdown: string; title
             return <p key={index}>{inline(block.text)}</p>;
           case "list":
             return block.ordered ? (
-              <ol key={index} className="flex list-decimal flex-col gap-1.5 pl-5 marker:text-gray-400">
+              <ol key={index} className="flex list-decimal flex-col gap-1.5 pl-5 marker:text-[var(--dls-text-secondary)]">
                 {block.items.map((item, itemIndex) => <li key={itemIndex} className="pl-1">{inline(item)}</li>)}
               </ol>
             ) : (
-              <ul key={index} className="flex list-disc flex-col gap-1.5 pl-5 marker:text-gray-300">
+              <ul key={index} className="flex list-disc flex-col gap-1.5 pl-5 marker:text-[var(--dls-text-secondary)]">
                 {block.items.map((item, itemIndex) => <li key={itemIndex} className="pl-1">{inline(item)}</li>)}
               </ul>
             );
