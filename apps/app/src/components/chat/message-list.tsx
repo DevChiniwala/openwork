@@ -105,6 +105,9 @@ import {
 import { Tool } from "@/components/ui/tool"
 import { CapabilityCallLine } from "@/components/chat/capability-call-line"
 import { CodeModeTool, isSilentCodeModePart } from "@/components/chat/code-mode-tool"
+import { CreatedSkillCard, CreatedSkillsContext, useCreatedSkills, type CreatedSkillsContextValue } from "@/components/chat/created-skill-card"
+import { readCreatedSkillAccess } from "@/components/chat/created-skill-access"
+import { collectCreatedSkills, type ConfirmedSkillAccess, type CreatedSkillsModel } from "@/lib/created-skill"
 import { ConnectionCard } from "@/components/chat/connection-card"
 import { CredentialPromptCard } from "@/components/chat/credential-prompt-card"
 import { credentialPromptCall } from "@/components/chat/credential-prompt"
@@ -159,8 +162,8 @@ import { resolveConnectorToolIdentity } from "@/react-app/domains/connections/co
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
-/** Above this many step rows a finished turn folds into one summary line. */
-const COLLAPSED_STEP_RUN_MIN_ROWS = 4
+/** A finished turn with at least this many step rows folds into one summary line (T1). */
+const COLLAPSED_STEP_RUN_MIN_ROWS = 1
 
 const AppCreationPartsContext = React.createContext<ReadonlySet<string>>(new Set())
 /**
@@ -410,6 +413,7 @@ const ToolMessageInner = ({ part }: ToolMessageProps) => {
       <CapabilityCallLine
         part={part}
         connector={resolveConnectorToolIdentity(part, connectorIdentities)}
+        shimmer={isToolPartInFlight(part)}
         onReconnect={hasPreservedMcpAppResult(part) ? undefined : onMcpReconnect}
         onReopenAuthorization={onMcpReopenAuthorization}
       />
@@ -1406,29 +1410,32 @@ function LiveSteps({ children, active }: { children: React.ReactNode; active: bo
  * unprompted; once the answer is in, the reasoning is available but out
  * of the way.
  */
-function CompletedStepRun({ label, modelLabel, children }: { label: string; modelLabel?: string | null; children: React.ReactNode }) {
+function CompletedStepRun({ label, count, modelLabel, children }: { label: string; count?: string | null; modelLabel?: string | null; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false)
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex w-full flex-col gap-2">
       <div className="mx-auto flex w-full max-w-3xl px-2 md:px-10">
         <CollapsibleTrigger
-          className="group flex cursor-pointer items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          aria-label={`${label}${modelLabel ? ` · ${modelLabel}` : ""}. ${open ? "Hide steps" : "Show steps"}`}
+          className="group flex min-h-6 cursor-pointer items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          aria-label={`${label}${count ? `, ${count}` : ""}${modelLabel ? ` · ${modelLabel}` : ""}. ${open ? "Hide steps" : "Show steps"}`}
           data-testid="completed-work-rail"
         >
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              "size-3.5 text-muted-foreground/70 transition-transform duration-150",
-              open && "rotate-90"
-            )}
-          />
+          {/* The chevron sits in the rail's 20px leading lane, so step labels line up below it. */}
+          <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
+            <ChevronRight
+              className={cn(
+                "size-3 text-muted-foreground/70 transition-transform duration-150 ease-out motion-reduce:transition-none",
+                open && "rotate-90"
+              )}
+            />
+          </span>
           <span>{label}</span>
+          {count ? <span className="text-[11px] text-muted-foreground/80">{count}</span> : null}
           {modelLabel ? <span data-testid="reply-model"> · {modelLabel}</span> : null}
         </CollapsibleTrigger>
       </div>
-      <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-150 ease-out data-starting-style:h-0 data-ending-style:h-0 [&[hidden]:not([hidden='until-found'])]:hidden">
+      <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-150 ease-out data-starting-style:h-0 data-ending-style:h-0 motion-reduce:transition-none [&[hidden]:not([hidden='until-found'])]:hidden">
         {children}
       </CollapsibleContent>
     </Collapsible>
@@ -1532,6 +1539,13 @@ function MessageGroup({
   )
   const remoteThreads = useRemoteThreadsEnabled()
   const remoteThreadStarts = React.useMemo(() => remoteThreads ? collectRemoteThreadStarts(items) : [], [items, remoteThreads])
+  // The skill this turn produced stays in view as its result, even when the
+  // steps fold; later updates and shares change this card, not add another.
+  const { cards: createdSkillCards } = useCreatedSkills()
+  const groupSkillCards = React.useMemo(() => {
+    const ids = new Set(items.flatMap((item) => item.message.parts.flatMap((part) => part.type === "dynamic-tool" ? [part.toolCallId] : [])))
+    return createdSkillCards.filter((card) => ids.has(card.anchorToolCallId))
+  }, [items, createdSkillCards])
 
   if (!lastItem || isMessageEmptyGroup(items)) {
     return null;
@@ -1627,14 +1641,18 @@ function MessageGroup({
         : `${stepRowCount} steps`
   // A short finished run reads fine as a list, so only long ones fold away.
   const collapseSteps =
-    !isLiveGroup && stepItems.length > 0 && stepRowCount > COLLAPSED_STEP_RUN_MIN_ROWS
+    !isLiveGroup && stepItems.length > 0 && stepRowCount >= COLLAPSED_STEP_RUN_MIN_ROWS
   // A task on another computer outlives the turn that started it and may still
   // need the person, so its row stays in view below a folded run.
   const pinnedRemoteThreads = collapseSteps ? remoteThreadStarts : []
   const pinnedRemoteIds = pinnedRemoteThreads.length > 0 ? new Set(pinnedRemoteThreads.map(({ part }) => part.toolCallId)) : NO_PINNED_REMOTE_THREADS
   const replyStartedAt = stepsStartedAt ?? (lastRealItem ? getMessageCreated(lastRealItem.message) : null)
-  const replySummaryLabel = replyStartedAt !== null && stepsEndedAt !== null && stepsEndedAt > replyStartedAt
-    ? `Worked for ${formatToolCallDuration(stepsEndedAt - replyStartedAt)}${stepRowCount ? ` · ${stepRowCount} ${stepRowCount === 1 ? "step" : "steps"}` : ""}`
+  const stepCountLabel = stepRowCount ? `${stepRowCount} ${stepRowCount === 1 ? "step" : "steps"}` : null
+  const replyWorkedLabel = replyStartedAt !== null && stepsEndedAt !== null && stepsEndedAt > replyStartedAt
+    ? `Worked for ${formatToolCallDuration(stepsEndedAt - replyStartedAt)}`
+    : null
+  const replySummaryLabel = replyWorkedLabel
+    ? `${replyWorkedLabel}${stepCountLabel ? ` · ${stepCountLabel}` : ""}`
     : stepRowCount ? stepRunLabel : ""
   const foldedReasoning = collapseSteps
     ? proseReasoning.map((reasoning) => (
@@ -1725,7 +1743,12 @@ function MessageGroup({
       </div> : null}
       {stepItems.length > 0 ? (
         collapseSteps ? (
-          <CompletedStepRun label={resolvedReplyModel ? replySummaryLabel : stepRunLabel} modelLabel={null}>
+          <CompletedStepRun
+            label={(resolvedReplyModel ? replyWorkedLabel : null) ?? stepRunLabel}
+            // "2 steps" is quiet metadata beside the duration, not a middle-dot string (C7).
+            count={((resolvedReplyModel ? replyWorkedLabel : null) ?? stepRunLabel).startsWith("Worked for") ? stepCountLabel : null}
+            modelLabel={null}
+          >
             <div className="flex flex-col gap-2">
               {renderItems(stepItems, 0)}
               {foldedReasoning}
@@ -1747,6 +1770,11 @@ function MessageGroup({
         </Message>
       ))}
       {renderItems(proseItems, stepItems.length, collapseSteps || panelLive)}
+      {groupSkillCards.length > 0 ? (
+        <div data-created-skills="" className="mx-auto mt-1 flex w-full max-w-3xl flex-col gap-2 px-2 md:px-10">
+          {groupSkillCards.map((card) => <CreatedSkillCard key={card.kind === "ready" ? card.skillId : card.key} card={card} />)}
+        </div>
+      ) : null}
       {lastTextMessage && !isStreaming && (
         <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 px-2 md:px-8">
           <div className={cn("flex items-center gap-2 transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover/message-group:opacity-100 group-focus-within/message-group:opacity-100 pointer-coarse:opacity-100", forkingMessageId && forkingMessageId === lastRealItem?.message.id ? "opacity-100" : "opacity-0")}>
@@ -1968,8 +1996,10 @@ export function MessageList({ messages, messageIdReplacements, status, activityS
     () => new Set(latestAssistantToolParts.map((part) => part.toolCallId)),
     [latestAssistantToolParts],
   )
+  const createdSkills = useCreatedSkillsModel(messages, appRunActive && !syncDegraded)
 
   return (
+    <CreatedSkillsContext.Provider value={createdSkills}>
     <ParentRunActiveContext.Provider value={appRunActive}>
     <AppPanelLiveContext.Provider value={appPanelLive}>
     <BuiltAppPreviewSync key={sessionId} messages={messages} active={runActive}>
@@ -2048,5 +2078,47 @@ export function MessageList({ messages, messageIdReplacements, status, activityS
     </BuiltAppPreviewSync>
     </AppPanelLiveContext.Provider>
     </ParentRunActiveContext.Provider>
+    </CreatedSkillsContext.Provider>
   )
+}
+
+/** Same model, same object: text streaming must not re-render every group's cards. */
+function sameCreatedSkills(left: CreatedSkillsModel, right: CreatedSkillsModel): boolean {
+  return JSON.stringify([left.cards, [...left.shareLabels], [...left.savedNames]])
+    === JSON.stringify([right.cards, [...right.shareLabels], [...right.savedNames]])
+}
+
+/**
+ * Created skills for the whole conversation, plus what the person learned by
+ * checking (read-only) after a share went unconfirmed.
+ */
+function useCreatedSkillsModel(messages: UIMessage[], live: boolean): CreatedSkillsContextValue {
+  const { onOpenLibraryDetail } = useMessageList()
+  const [checked, setChecked] = React.useState<ReadonlyMap<string, ConfirmedSkillAccess>>(() => new Map())
+  const next = React.useMemo(() => {
+    const collected = collectCreatedSkills(messages, { live })
+    return checked.size === 0 ? collected : {
+      ...collected,
+      cards: collected.cards.map((card) => {
+        const access = card.kind === "ready" ? checked.get(card.pluginId) : undefined
+        if (!access || card.kind !== "ready") return card
+        // A check answers an unconfirmed share; anything still running stays as it is.
+        return { ...card, access, pending: card.pending?.state === "unverified" ? null : card.pending }
+      }),
+    }
+  }, [messages, live, checked])
+  // Keep the previous object while nothing changed (derived state, not a ref).
+  const [stable, setStable] = React.useState<CreatedSkillsModel>(next)
+  const unchanged = stable === next || sameCreatedSkills(stable, next)
+  if (!unchanged) setStable(next)
+  const model = unchanged ? stable : next
+  const onCheckSharing = React.useCallback(async (pluginId: string) => {
+    try {
+      const access = await readCreatedSkillAccess(pluginId)
+      setChecked((current) => new Map(current).set(pluginId, access))
+    } catch (cause) {
+      console.warn("[created-skill] checking sharing failed", cause)
+    }
+  }, [])
+  return React.useMemo(() => ({ ...model, onOpenSkill: onOpenLibraryDetail, onCheckSharing }), [model, onOpenLibraryDetail, onCheckSharing])
 }
