@@ -892,6 +892,8 @@ final class SessionRuntime {
         while let parent = session?.parents.last, let scope = session, !access.dialogOpen(scope.target, app: scope.app) {
             session?.parents.removeLast()
             session?.app = parent.app; session?.target = parent.target
+            // A closed panel's approval ends with it; a later panel asks again.
+            session?.filePanelAllowed = nil
             let outer = session?.parents.isEmpty == true
             session?.dialogKind = outer ? nil : .dialog
             session?.returnedFromDialog = true

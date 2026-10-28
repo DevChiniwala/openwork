@@ -17,6 +17,17 @@ extension AppIdentity {
     /// macOS draws Open and Save panels for sandboxed apps in this process.
     static let filePanelService = "com.apple.appkit.xpc.openAndSavePanelService"
 
+    private typealias ResponsiblePID = @convention(c) (pid_t) -> pid_t
+    private static let responsiblePID: ResponsiblePID? = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid")
+        .map { unsafeBitCast($0, to: ResponsiblePID.self) }
+    /// The app macOS holds responsible for `pid`: for the panel process, the app it serves.
+    /// Nil when macOS offers no answer, so a panel is never matched by position alone.
+    static func responsible(for pid: pid_t) -> pid_t? {
+        guard let responsiblePID else { return nil }
+        let owner = responsiblePID(pid)
+        return owner > 0 ? owner : nil
+    }
+
     /// The panel process is not a regular app, so `resolve` never returns it.
     /// It is reachable only as a dialog over a window a session already controls.
     static func filePanel(pid: pid_t) -> AppIdentity? {
@@ -69,7 +80,9 @@ extension MacAccessibility {
         }
         // The system Open/Save panel of a sandboxed app, drawn over the window.
         for service in NSRunningApplication.runningApplications(withBundleIdentifier: AppIdentity.filePanelService) {
-            guard let identity = AppIdentity.filePanel(pid: service.processIdentifier) else { continue }
+            // Only the panel macOS runs for this app; another app's panel over the window is not it.
+            guard AppIdentity.responsible(for: service.processIdentifier) == app.pid,
+                  let identity = AppIdentity.filePanel(pid: service.processIdentifier) else { continue }
             let windows = attribute(AXUIElementCreateApplication(service.processIdentifier), kAXWindowsAttribute) as? [AXUIElement] ?? []
             for window in windows {
                 guard let bounds = frame(window), bounds.intersects(target.frame),
