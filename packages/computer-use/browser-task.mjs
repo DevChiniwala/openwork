@@ -41,6 +41,8 @@ const BLOCKED_CHORDS = [
 // Chromium on macOS runs these through the app menu, not page key events.
 const EDIT_COMMANDS = { a: "selectAll", z: "undo", "shift+z": "redo" };
 const ACTION_TYPES = ["click", "fill", "select", "set_checked", "key", "scroll", "reveal", "attach"];
+/** As many files as the approval card lists; the broker refuses more. */
+const MAX_FILES = 20;
 const PREPARE_CODES = ["stale_observation", "stale_element", "sign_in_required", "unverifiable_focus", "element_disabled", "element_outside_viewport",
   "element_obscured", "not_editable", "not_selectable", "option_unavailable", "not_checkable", "outside_viewport"];
 
@@ -919,6 +921,8 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
         }
         // Files leave this computer only with the person's yes to exactly these paths.
         const attaching = actions.filter((action) => action.type === "attach").flatMap((action) => action.files);
+        // The person sees every file before any is sent, so a batch never carries more than the card lists.
+        if (attaching.length > MAX_FILES) fail("invalid_action", `Attach at most ${MAX_FILES} files in one call. Nothing was dispatched.`);
         if (attaching.length) {
           try { await checkFiles(attaching); }
           catch { fail("file_unavailable", "Attach only existing, readable files by their absolute paths. Nothing was dispatched."); }

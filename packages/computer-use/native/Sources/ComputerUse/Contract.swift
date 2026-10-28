@@ -82,7 +82,7 @@ struct ObservationOptions {
     let elements: String
     init(_ values: [String: Any], policy: RuntimePolicy) throws {
         let a = Arguments(values: values)
-        try a.only(policy == .embedded ? ["session_id", "include_image", "elements"] : ["session_id", "include_image"])
+        try a.only(policy == .embedded ? ["session_id", "include_image", "elements", "file_panel_access"] : ["session_id", "include_image"])
         elements = values["elements"] == nil ? policy.defaultElements : try a.string("elements", max: 16)
         image = values["include_image"] == nil ? (elements == "none" ? true : nil) : try a.bool("include_image", default: true)
         guard ["interactive", "all", "none"].contains(elements), image != false || elements != "none" else {

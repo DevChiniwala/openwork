@@ -28,6 +28,8 @@ extension AppIdentity {
 
 enum DialogRules {
     static let dialogSubroles: Set<String> = ["AXDialog", "AXSystemDialog"]
+    /// The most files one approval can name; the person sees every one.
+    static let maxApprovedFiles = 20
     /// Default buttons that hand the chosen files to the app.
     static let fileConfirmTitles: Set<String> = ["open", "choose", "upload", "select", "attach", "insert", "add", "import", "send"]
 
@@ -100,7 +102,7 @@ extension MacAccessibility {
             let role = attribute(element, kAXRoleAttribute) as? String
             if ["AXOutline", "AXTable", "AXList", "AXBrowser"].contains(role ?? ""),
                let rows = attribute(element, kAXSelectedRowsAttribute) as? [AXUIElement] {
-                names += rows.prefix(20).compactMap(rowName)
+                names += rows.prefix(DialogRules.maxApprovedFiles + 1).compactMap(rowName)
             }
             if role == "AXTextField", (attribute(element, kAXIdentifierAttribute) as? String)?.lowercased().contains("save") == true,
                let value = attribute(element, kAXValueAttribute) as? String, !value.isEmpty {
@@ -109,7 +111,7 @@ extension MacAccessibility {
             guard depth < 12, let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] else { continue }
             pending += children.map { ($0, depth + 1) }
         }
-        return Array(NSOrderedSet(array: names).compactMap { $0 as? String }.prefix(20))
+        return Array(NSOrderedSet(array: names).compactMap { $0 as? String }.prefix(DialogRules.maxApprovedFiles + 1))
     }
 
     private func rowName(_ row: AXUIElement) -> String? {

@@ -48,7 +48,12 @@ function page({ chooser = { backendNodeId: 7, mode: "selectMultiple" }, approve 
     return host.request({ sessionId: "chat", operation: "act", args: { tabId: "tab", observationId: seen.observationId,
       action: { type: "attach", ref: seen.elements[0].ref, files } } });
   }
-  return { attach, sent, asked, intercepting: () => intercepting };
+  async function attachBatch(groups) {
+    const seen = await host.request({ sessionId: "chat", operation: "observe", args: { tabId: "tab" } });
+    return host.request({ sessionId: "chat", operation: "act", args: { tabId: "tab", observationId: seen.observationId,
+      actions: groups.map((files) => ({ type: "attach", ref: seen.elements[0].ref, files })) } });
+  }
+  return { attach, attachBatch, sent, asked, intercepting: () => intercepting };
 }
 
 test("attach gives the page's file chooser the approved files without the system picker", async () => {
@@ -83,4 +88,12 @@ test("relative paths and controls that open no chooser are reported", async () =
   assert.equal((await none.attach(["/Users/me/a.mp4"])).code, "no_file_chooser");
   const single = page({ chooser: { backendNodeId: 7, mode: "selectSingle" } });
   assert.equal((await single.attach(["/Users/me/a.mp4", "/Users/me/b.mp4"])).code, "single_file");
+});
+
+test("a batch never attaches more files than the approval card lists", async () => {
+  const p = page();
+  const files = (from, count) => Array.from({ length: count }, (_, index) => `/Users/me/clip-${from + index}.mp4`);
+  const result = await p.attachBatch([files(0, 10), files(10, 10), files(20, 1)]);
+  assert.equal(result.code, "invalid_action");
+  assert.deepEqual(p.asked, []);
 });

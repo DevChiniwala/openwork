@@ -239,13 +239,15 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
    * Shows which files an app or page is about to receive and waits for Send, Always
    * allow in this chat, or Don't send. Files leave this computer only on that answer.
    * @param {{ app: string, names: string[] }} files
-   * @returns {Promise<"allow" | "always" | "dismiss" | "aborted" | "timeout" | "busy">}
+   * @returns {Promise<"allow" | "always" | "dismiss" | "aborted" | "timeout" | "busy" | "too_many">}
    */
   async function approveFiles(grant, files, signal) {
+    // The card lists every file exactly; anything it could not show is never approved.
+    if (files.names.length > 20 || files.names.some((name) => typeof name !== "string" || !name || name.length > 1024)) return "too_many";
     if (grant.filesAlways) return "always";
     if (scriptRequests.has(grant.sessionId)) return "busy";
     const target = targetFor(grant);
-    const names = files.names.filter((name) => typeof name === "string" && name).slice(0, 20).map((name) => name.slice(0, 1024));
+    const names = [...files.names];
     const answer = await approve(grant, { id: randomUUID(), reason: /** @type {const} */ ("files"), computer: target.label, placement: target.placement,
       files: { app: String(files.app).slice(0, 200), names } }, signal);
     if (answer === "always") grant.filesAlways = true;
@@ -1300,18 +1302,26 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
         limit = deadline(operationMs);
         const started = now();
         let result = await run(call, signal, limit);
-        const confirm = stateOf(result);
-        if (name === "computer_act" && confirm?.code === "files_approval_required" && confirm.dispatched === false) {
-          // The helper stopped before a file panel's Open: the person sees the files first.
-          const answer = await approveFiles(grant, { app: typeof confirm.app === "string" ? confirm.app : "the app",
-            names: Array.isArray(confirm.files) && confirm.files.length ? confirm.files : ["The selected file"] }, signal);
+        const asked = stateOf(result);
+        // The helper stopped before a file panel: before showing its contents, and before
+        // handing over a selection. The person answers in the chat; the approval sent back
+        // is bound to exactly what they saw, and the helper checks it again.
+        const panel = name === "computer_observe" && asked?.code === "file_panel_approval_required";
+        const handover = name === "computer_act" && asked?.code === "files_approval_required";
+        if ((panel || handover) && asked.dispatched === false) {
+          const names = handover && Array.isArray(asked.files) ? asked.files : [];
+          const answer = handover && !names.length ? "unreadable"
+            : await approveFiles(grant, { app: typeof asked.app === "string" ? asked.app : "the app", names }, signal);
           if (!["allow", "always"].includes(answer)) {
-            result = failure("files_declined", answer === "dismiss" ? "The person chose not to hand these files to the app. Nothing was sent; cancel the panel or ask what to choose."
+            result = failure(panel ? "file_panel_declined" : "files_declined", answer === "dismiss"
+              ? panel ? "The person chose not to let the agent look through their files. Cancel the panel or ask what to choose." : "The person chose not to hand these files to the app. Nothing was sent; cancel the panel or ask what to choose."
+              : answer === "too_many" ? "More files are selected than one approval can show. Select at most 20. Nothing was sent."
+              : answer === "unreadable" ? "The panel's selection could not be read, so it cannot be approved. Type the file's path in the panel, or ask the person to choose it. Nothing was sent."
               : "The files were not approved in time, or computer use stopped. Nothing was sent.");
           } else {
             // Same call and revision: a Stop during the question still cancels it.
             limit.dispose(); limit = deadline(operationMs);
-            call.args = { ...call.args, file_approval: true };
+            call.args = { ...call.args, ...(panel ? { file_panel_access: true } : { file_approval: names }) };
             result = await run(call, signal, limit);
           }
         }
