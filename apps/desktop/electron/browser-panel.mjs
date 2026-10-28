@@ -10,10 +10,10 @@ import {
   BACKGROUND_TAB_VIEWPORT,
   DEFAULT_AGENT_VIEWPORT,
   agentViewportEmulationCommands,
-  agentViewportFor,
   backgroundTabEmulationCommands,
   createBrowserTabRegistry,
   fitAgentViewport,
+  lockedAgentViewport,
   foregroundTabEmulationCommands,
 } from "@openwork/browser-tabs";
 import { runDetachedTask } from "./process-resilience.mjs";
@@ -487,7 +487,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       await lockAgentViewport(tab);
       signal?.throwIfAborted();
       // Sites pick their phone pages from the first request's user agent.
-      if (agentViewportFor(tab.agentViewport).mobile) { await tab.view.webContents.loadURL(tab.view.webContents.getURL()); signal?.throwIfAborted(); }
+      if (tab.agentViewportSize?.mobile) { await tab.view.webContents.loadURL(tab.view.webContents.getURL()); signal?.throwIfAborted(); }
       return tab;
     }
     catch (error) {
@@ -551,7 +551,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       loadError: tab.loadError,
       browserTask: tab.browserTask,
       agentViewport: tab.agentViewport
-        ? { key: tab.agentViewport, width: agentViewportFor(tab.agentViewport).width, height: agentViewportFor(tab.agentViewport).height, scale: tab.viewportScale }
+        ? { key: tab.agentViewport, width: tab.agentViewportSize.width, height: tab.agentViewportSize.height, scale: tab.viewportScale }
         : null,
       siteToolCount: Number.isInteger(tab.webMcpToolCount) ? tab.webMcpToolCount : 0,
       siteTools: Array.isArray(tab.webMcpTools) ? tab.webMcpTools : [],
@@ -983,10 +983,14 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       deferBackground,
       operation: false, suspending: false, mediaPlaying: false, downloads: new Set(),
       domReady: false, emulation: Promise.resolve(),
-      // AGENT_VIEWPORTS key while the agent controls the tab, and the scale its
-      // emulation currently draws at inside the panel (1 when not scaled).
+      // AGENT_VIEWPORTS key while the agent controls the tab, the size it was
+      // locked at, and the scale its emulation currently draws at inside the
+      // panel (1 when not scaled).
       /** @type {string | null} */
       agentViewport: null,
+      /** @type {Readonly<import("@openwork/browser-tabs").AgentViewport> | null} */
+      agentViewportSize: null,
+      agentViewportAwaitsPanel: false,
       viewportScale: 1,
       agentViewportQueued: false,
       /** @type {((error: Error | null) => void) | null} */
@@ -1263,7 +1267,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     if (webContents.isDestroyed()) return;
     tab.background = true;
     detachBrowserView(tab.view);
-    const viewport = tab.agentViewport ? agentViewportFor(tab.agentViewport) : BACKGROUND_TAB_VIEWPORT;
+    const viewport = tab.agentViewport ? tab.agentViewportSize : BACKGROUND_TAB_VIEWPORT;
     tab.view.setBounds({ x: 0, y: 0, width: viewport.width, height: viewport.height });
     backgroundBrowserWindow().contentView.addChildView(tab.view);
     if (tab.domReady) emulateBackgroundTab(tab);
@@ -1284,7 +1288,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       if (!cdp.isAttached()) cdp.attach("1.3");
       // Off screen the view is already the agent's size, so it draws unscaled.
       const commands = tab.agentViewport
-        ? [...agentViewportEmulationCommands(agentViewportFor(tab.agentViewport), 1, process.versions.chrome), { method: "Emulation.setFocusEmulationEnabled", params: { enabled: true } }]
+        ? [...agentViewportEmulationCommands(tab.agentViewportSize, 1, process.versions.chrome), { method: "Emulation.setFocusEmulationEnabled", params: { enabled: true } }]
         : backgroundTabEmulationCommands();
       for (const { method, params } of commands) {
         if (!isCurrent() || !tab.background) return;
@@ -1321,7 +1325,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
   // browsing, and a takeover, fit the panel as before.
   function agentViewportPlacement(tab) {
     if (!tab.agentViewport || !lastBrowserBounds) return null;
-    return fitAgentViewport(agentViewportFor(tab.agentViewport), lastBrowserBounds);
+    return fitAgentViewport(tab.agentViewportSize, lastBrowserBounds);
   }
 
   function emulateAgentViewport(tab) {
@@ -1334,7 +1338,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
       if (tab.background || !tab.agentViewport || !tab.domReady) return;
       if (!cdp.isAttached()) cdp.attach("1.3");
       const scale = agentViewportPlacement(tab)?.scale ?? 1;
-      for (const { method, params } of agentViewportEmulationCommands(agentViewportFor(tab.agentViewport), scale, process.versions.chrome)) {
+      for (const { method, params } of agentViewportEmulationCommands(tab.agentViewportSize, scale, process.versions.chrome)) {
         if (!isCurrent() || tab.background || !tab.agentViewport) return;
         await cdp.sendCommand(method, params);
         // Agent input converts with the scale Chromium now draws at.
@@ -1352,6 +1356,11 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
   function lockAgentViewport(tab) {
     if (tab.agentViewport !== agentViewportKey) {
       tab.agentViewport = agentViewportKey;
+      // `panel` keeps the page's current size, so taking the tab rescales
+      // nothing. A page off screen takes the panel's size when it is shown.
+      const bounds = tab.background ? null : lastBrowserBounds;
+      tab.agentViewportSize = lockedAgentViewport(agentViewportKey, bounds);
+      tab.agentViewportAwaitsPanel = Boolean(tab.agentViewportSize.fitsPanel && !bounds);
       if (tab.background) enterBackgroundSize(tab);
       else {
         placeOnScreenView(tab);
@@ -1365,6 +1374,8 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
   function releaseAgentViewport(tab) {
     if (!tab.agentViewport) return;
     tab.agentViewport = null;
+    tab.agentViewportSize = null;
+    tab.agentViewportAwaitsPanel = false;
     tab.viewportScale = 1;
     if (tab.background) enterBackgroundSize(tab);
     else if (!tab.view.webContents.isDestroyed()) {
@@ -1391,7 +1402,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
 
   /** A background tab's view and emulation follow its current viewport. */
   function enterBackgroundSize(tab) {
-    const viewport = tab.agentViewport ? agentViewportFor(tab.agentViewport) : BACKGROUND_TAB_VIEWPORT;
+    const viewport = tab.agentViewport ? tab.agentViewportSize : BACKGROUND_TAB_VIEWPORT;
     tab.view.setBounds({ x: 0, y: 0, width: viewport.width, height: viewport.height });
     if (tab.domReady) {
       if (!tab.agentViewport) {
@@ -1638,12 +1649,19 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     exitBackgroundMode(tab);
     tab.view.setVisible(!showsErrorPage(tab));
     detachIdleBrowserViews(tab.view);
+    // A `panel` page the agent took while it was off screen lays out at the
+    // panel's size once, rather than being drawn scaled for the whole turn.
+    const adopted = tab.agentViewportAwaitsPanel;
+    if (adopted) {
+      tab.agentViewportSize = lockedAgentViewport(tab.agentViewport, lastBrowserBounds);
+      tab.agentViewportAwaitsPanel = false;
+    }
     // Size before attaching so a restored view never flashes at stale bounds.
     tab.view.setBounds(agentViewportPlacement(tab)?.bounds ?? lastBrowserBounds);
     if (!mainWindow.contentView.children.includes(tab.view)) {
       mainWindow.contentView.addChildView(tab.view);
     }
-    if (tab.agentViewport && agentViewportPlacement(tab)?.scale !== tab.viewportScale) emulateAgentViewport(tab);
+    if (tab.agentViewport && (adopted || agentViewportPlacement(tab)?.scale !== tab.viewportScale)) emulateAgentViewport(tab);
   }
 
   function selectBrowserTab(tabId) {
