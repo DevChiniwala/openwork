@@ -74,11 +74,15 @@ test("nothing is clicked when the person declines the files", async () => {
   assert.ok(!p.sent.some((command) => command.method === "Input.dispatchMouseEvent" || command.method === "DOM.setFileInputFiles"));
 });
 
-test("a missing or unreadable file is refused before the person is asked", async () => {
-  const p = page({ checkFiles: async () => { throw new Error("missing"); } });
-  const result = await p.attach(["/Users/me/missing.mp4"]);
+test("files are checked only after the person answers, and a link or missing file is never attached", async () => {
+  const checked = [];
+  const declined = page({ approve: async () => false, checkFiles: async (paths) => { checked.push(paths); } });
+  assert.equal((await declined.attach(["/Users/me/secret.mp4"])).code, "files_declined");
+  assert.deepEqual(checked, [], "a declined request reveals nothing about the paths");
+  const link = page({ checkFiles: async () => { throw new Error("not_the_real_path"); } });
+  const result = await link.attach(["/Users/me/innocent.mp4"]);
   assert.equal(result.code, "file_unavailable");
-  assert.deepEqual(p.asked, []);
+  assert.ok(!link.sent.some((command) => command.method === "Input.dispatchMouseEvent" || command.method === "DOM.setFileInputFiles"));
 });
 
 test("relative paths and controls that open no chooser are reported", async () => {

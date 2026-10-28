@@ -2,7 +2,7 @@
 // proxy configuration, and browser IPC registrations. Extracted from
 // main.mjs as a factory so the main process only owns window creation.
 import { constants as fsConstants } from "node:fs";
-import { access, stat } from "node:fs/promises";
+import { access, lstat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -906,11 +906,13 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     allowed: browserTaskAllowed,
     openTab: openBrowserTab,
     navigate: (tab, url) => tab.view.webContents.loadURL(url),
-    // Pages get files through the intercepted chooser, never the system picker:
-    // existing readable regular files only, after the person's yes in the chat.
+    // Pages get files through the intercepted chooser, never the system picker. Run only
+    // after the person approved these exact paths: each must be its own real path (no link
+    // anywhere in it) to a readable regular file, so what is attached is what they saw.
     checkFiles: async (paths) => {
       for (const file of paths) {
-        if (!(await stat(file)).isFile()) throw new Error("not_a_file");
+        if (await realpath(file) !== file) throw new Error("not_the_real_path");
+        if (!(await lstat(file)).isFile()) throw new Error("not_a_file");
         await access(file, fsConstants.R_OK);
       }
     },
