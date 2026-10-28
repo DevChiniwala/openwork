@@ -116,7 +116,7 @@ final class SessionRuntime {
             let id = UUID().uuidString.lowercased()
             session = Session(id: id, app: identity, target: target, mode: mode, delivery: delivery, started: now, lastUsed: now, purpose: purpose)
             lease = reservation
-            controls.show(app: identity, target: target, mode: mode, purpose: purpose)
+            controls.show(app: identity, target: target, mode: mode, purpose: purpose, background: background)
             if mode == .control, !background, let current = session {
                 // Initial focus is technical startup, never a human pause/Continue flow.
                 let focus = try await FocusLease.acquire(check: { try self.checkActive(current) })

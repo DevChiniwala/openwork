@@ -28,8 +28,11 @@ A session covers one app, one window and one mode. Technical leases and action
 accounting renew silently; idle cleanup and follow-up requests preserve enabled
 access. Neither renewal nor cleanup clears a human takeover. The modes are
 `observe` (read only), `assist` (accessibility press/set value) and `control`
-(also targeted mouse and keyboard input; the selected window must be in front).
-A kernel-held lock allows one session at a time. Grants, element references,
+(also targeted mouse and keyboard input). Control brings the selected window to
+the front for each step; with `computerUseBackground` on it works in the window
+where it is ([docs](../../docs/features/computer-use-background/README.md)).
+A kernel-held lock allows one session per window, so chats in different windows
+work at once. Grants, element references,
 screenshots and receipts live in process memory and are discarded on close.
 
 | Tool | Purpose |
@@ -83,7 +86,10 @@ buttons offers Take over, Continue and Stop, shows "Your turn" while the person
 has control, and moves to the top of the screen when the window is hidden.
 When the session ends the cursor says it is "all yours" and fades out. Every
 overlay is excluded from screen capture, the frame and cursor ignore the mouse,
-and the pill never activates the helper.
+and the pill never activates the helper. In a background session the frame and
+cursor sit just above the selected window instead of above every window, so a
+window the person brings in front covers them too; the pill stays on top so
+Take over and Stop are always reachable.
 
 The host may pass `OPENWORK_COMPUTER_USE_PRESENCE` as JSON
 `{"name": "…", "color": "#rrggbb"}`. The name falls back to "OpenWork" and the
