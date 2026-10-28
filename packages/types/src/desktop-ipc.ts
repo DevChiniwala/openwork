@@ -299,8 +299,8 @@ export type NukeReceipt = {
   pendingRetry: string[];
   errors: NukeReceiptError[];
   preservedBootstrap: boolean;
-  relaunchMode: "cleanup_worker" | "direct";
-  workerScheduled: boolean;
+  /** finish_on_relaunch: the next instance deletes pendingRetry before opening its profile. */
+  relaunchMode: "finish_on_relaunch" | "direct";
 };
 
 export type DesktopFetchInit = {

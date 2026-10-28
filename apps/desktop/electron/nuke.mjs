@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -13,8 +11,6 @@ import {
   opencodeCacheDirs as resolveOpencodeCacheDirs,
   opencodeDataDirs as resolveOpencodeDataDirs,
 } from "@openwork/paths";
-
-import { detachedTaskArgs } from "./detached-task.mjs";
 
 const BROWSER_SESSION_PARTITION = "persist:openwork-browser";
 const NUKE_PARTITIONS = ["default", BROWSER_SESSION_PARTITION];
@@ -40,8 +36,14 @@ const USERDATA_WORKSPACE_FILENAMES = [
 ];
 const LEGACY_ORCHESTRATOR_DIR_NAME = ["openwork", "orchestrator"].join("-");
 const SHIP_IT_CACHE_DOMAIN = "com.differentai.openwork.ShipIt";
-const NUKE_WORKER_DEADLINE_MS = 60_000;
-const NUKE_WORKER_PARENT_WAIT_MS = 30_000;
+// A fresh start that cannot delete everything (Windows keeps files the app
+// still holds) relaunches with this flag. The next instance finishes the
+// cleanup before it opens its own profile; see main.mjs.
+export const FINISH_FRESH_START_FLAG = "--openwork-finish-fresh-start";
+const FINISH_FRESH_START_DEADLINE_MS = 60_000;
+const FINISH_FRESH_START_RETRY_MS = 500;
+const WORKSPACE_STATE_DIR = ".opencode";
+const WORKSPACE_STATE_NAMES = ["openwork", "openwork.json"];
 // Env overrides that move a profile's storage off the default locations.
 // Stripping them yields the paths the default (production) profile owns.
 const PROFILE_SCOPED_ENV_KEYS = [
@@ -56,24 +58,6 @@ const PROFILE_SCOPED_ENV_KEYS = [
   "OPENWORK_RUNTIME_DB",
   "OPENWORK_SERVER_CONFIG",
   "OPENWORK_TOKEN_STORE",
-  "XDG_CACHE_HOME",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-  "XDG_STATE_HOME",
-];
-const NUKE_WORKER_ENV_KEYS = [
-  "APPDATA",
-  "LOCALAPPDATA",
-  "OPENWORK_DATA_DIR",
-  "OPENWORK_DESKTOP_BOOTSTRAP_PATH",
-  "OPENWORK_DEV_MODE",
-  "OPENWORK_ELECTRON_USERDATA",
-  "OPENWORK_ENV_STORE",
-  "OPENWORK_RUNTIME_DB",
-  "OPENWORK_SERVER_CONFIG",
-  "OPENWORK_TOKEN_STORE",
-  "OPENCODE_CONFIG_DIR",
-  "OPENCODE_DB",
   "XDG_CACHE_HOME",
   "XDG_CONFIG_HOME",
   "XDG_DATA_HOME",
@@ -221,8 +205,8 @@ function workspaceOpenworkStatePaths(workspacePaths, paths) {
   for (const workspacePath of workspacePaths) {
     const value = String(workspacePath ?? "").trim();
     if (!value) continue;
-    const opencodeDir = paths.join(paths.resolve(value), ".opencode");
-    output.push(paths.join(opencodeDir, "openwork"), paths.join(opencodeDir, "openwork.json"));
+    const opencodeDir = paths.join(paths.resolve(value), WORKSPACE_STATE_DIR);
+    output.push(...WORKSPACE_STATE_NAMES.map((name) => paths.join(opencodeDir, name)));
   }
   return output;
 }
@@ -380,90 +364,6 @@ function resolveNukePlan(input) {
 
 export function buildNukeManifest(input) {
   return resolveNukePlan(input).manifest;
-}
-
-export function buildNukeWorkerNukeInput(input) {
-  const env = {};
-  for (const key of NUKE_WORKER_ENV_KEYS) {
-    const value = envValue(input.env, key);
-    if (value) env[key] = value;
-  }
-  return {
-    env,
-    homedir: String(input.homedir ?? ""),
-    platform: normalizePlatform(input.platform),
-    preserveBootstrap: input.preserveBootstrap !== false,
-    userDataPath: String(input.userDataPath ?? ""),
-    workspacePaths: (Array.isArray(input.workspacePaths) ? input.workspacePaths : [])
-      .map((entry) => String(entry ?? "").trim())
-      .filter(Boolean),
-  };
-}
-
-function safeNukeWorkerAppArgv(argv) {
-  const input = Array.isArray(argv) ? argv : [];
-  const entrypoint = typeof input[0] === "string" ? input[0].trim() : "";
-  return entrypoint.endsWith("main.mjs") ? [entrypoint] : [];
-}
-
-export function buildNukeWorkerPayload({ parentPid, nukeInput, appArgv, pendingPath, nowMs = Date.now() }) {
-  return {
-    version: 1,
-    parentPid: Number(parentPid) || 0,
-    nukeInput: buildNukeWorkerNukeInput(nukeInput),
-    appArgv: safeNukeWorkerAppArgv(appArgv),
-    pendingPath: String(pendingPath ?? ""),
-    parentWaitDeadlineAt: nowMs + NUKE_WORKER_PARENT_WAIT_MS,
-    deadlineAt: nowMs + NUKE_WORKER_DEADLINE_MS,
-  };
-}
-
-function nukeWorkerPayloadPath() {
-  return path.join(os.tmpdir(), `openwork-nuke-worker-${Date.now()}-${randomBytes(6).toString("hex")}.json`);
-}
-
-async function writeNukeWorkerPayload(payloadPath, payload) {
-  await writeFile(payloadPath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-}
-
-function nukeWorkerSpawnEnv(env = process.env) {
-  const workerEnv = { ...env };
-  delete workerEnv["OPENWORK_ELECTRON_REMOTE_DEBUG_PORT"];
-  return workerEnv;
-}
-
-function nukeRelaunchArgv(app, argv) {
-  const input = Array.isArray(argv) ? argv.slice(1) : [];
-  const output = [];
-  if (app?.isPackaged !== true && input[0]?.endsWith("main.mjs")) output.push(input.shift());
-  output.push(...safeNukeWorkerAppArgv(input));
-  return output;
-}
-
-export async function scheduleNukeCleanupWorker({ app, input, plan, spawnFn, execPath = process.execPath, argv = process.argv, env = process.env }) {
-  const payloadPath = nukeWorkerPayloadPath();
-  const payload = buildNukeWorkerPayload({
-    parentPid: process.pid,
-    nukeInput: input,
-    appArgv: nukeRelaunchArgv(app, argv),
-    pendingPath: plan.pendingPath,
-  });
-  await writeNukeWorkerPayload(payloadPath, payload);
-  try {
-    const launchWorker = typeof spawnFn === "function" ? spawnFn : spawn;
-    // The worker is this binary in detached-task mode; it relaunches the app.
-    const child = launchWorker(execPath, detachedTaskArgs("nuke-cleanup", [payloadPath], { isPackaged: app?.isPackaged === true }), {
-      detached: true,
-      env: nukeWorkerSpawnEnv(env),
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    child.unref();
-    return { pid: child.pid ?? null, payloadPath };
-  } catch (error) {
-    await rm(payloadPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
 }
 
 export function sanitizeDesktopBootstrapConfig(input, writtenAt = new Date().toISOString()) {
@@ -740,16 +640,25 @@ async function quiesceForNuke({ runtimeManager, uiControlServer, removeWindowsBr
   await bestEffort(errors, "windows-brand-shortcut", removeWindowsBrandShortcut, 5000);
 }
 
-/** @returns {"cleanup_worker" | "direct"} */
-function nukeReceiptRelaunchMode(workerScheduled) {
-  return workerScheduled ? "cleanup_worker" : "direct";
-}
-
 function preservePathsWithoutBootstrap(plan) {
   const bootstrapPath = plan.manifest.preserveBootstrapPath;
   if (!bootstrapPath) return plan.preservePaths;
   const resolvedBootstrapPath = path.resolve(bootstrapPath);
   return plan.preservePaths.filter((preservePath) => path.resolve(preservePath) !== resolvedBootstrapPath);
+}
+
+// A pending file can name any path, so replay only what a fresh start of this
+// profile deletes: its own storage (the plan's manifest) and OpenWork's state
+// inside a workspace.
+function isReplayablePendingPath(targetPath, plan) {
+  const paths = pathApi(plan.platform);
+  if (plan.manifest.deletePaths.some((owned) =>
+    sameOrInside(targetPath, owned, paths, plan.platform) && sameOrInside(owned, targetPath, paths, plan.platform))) {
+    return true;
+  }
+  const resolved = paths.resolve(targetPath);
+  return paths.basename(paths.dirname(resolved)) === WORKSPACE_STATE_DIR
+    && WORKSPACE_STATE_NAMES.includes(paths.basename(resolved));
 }
 
 export async function runPendingNukeCleanup(input, options = {}) {
@@ -768,7 +677,7 @@ export async function runPendingNukeCleanup(input, options = {}) {
     Array.isArray(pending?.paths)
       ? pending.paths.filter((entry) => typeof entry === "string" && entry.trim()).map((entry) => entry.trim())
       : [],
-  );
+  ).filter((entry) => isReplayablePendingPath(entry, plan));
   if (paths.length === 0) {
     await rm(plan.pendingPath, { force: true });
     return pendingCleanupResult({ ran: false });
@@ -784,6 +693,18 @@ export async function runPendingNukeCleanup(input, options = {}) {
 
   await rm(plan.pendingPath, { force: true });
   return pendingCleanupResult({ ran: true, ...verified });
+}
+
+/** Finishes a fresh start the previous instance left pending, retrying while its files are still held. */
+export async function finishPendingNukeCleanup(input, options = {}) {
+  const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const deadline = Date.now() + (options.deadlineMs ?? FINISH_FRESH_START_DEADLINE_MS);
+  let result = await runPendingNukeCleanup(input, options);
+  while (result.pendingRetry.length > 0 && Date.now() < deadline) {
+    await sleep(FINISH_FRESH_START_RETRY_MS);
+    result = await runPendingNukeCleanup(input, options);
+  }
+  return result;
 }
 
 /** @returns {Promise<import("@openwork/types/desktop-ipc").NukeReceipt>} */
@@ -820,32 +741,27 @@ export async function executeNukeFreshStart({ app, session, runtimeManager, uiCo
       verified.errors.push(receiptError(plan.pendingPath, error));
     });
   }
-  const scheduleCleanupWorker = typeof options.scheduleCleanupWorker === "function"
-    ? options.scheduleCleanupWorker
-    : scheduleNukeCleanupWorker;
-  let workerScheduled = false;
-  if (verified.pendingRetry.length > 0) {
-    try {
-      await scheduleCleanupWorker({ app, input, plan });
-      workerScheduled = true;
-    } catch (error) {
-      verified.errors.push(receiptError("nuke-cleanup-worker", error));
-    }
-  }
+  const finishOnRelaunch = verified.pendingRetry.length > 0;
+  /** @type {import("@openwork/types/desktop-ipc").NukeReceipt} */
   const receipt = {
     deleted: verified.deleted,
     pendingRetry: verified.pendingRetry,
     errors: verified.errors,
     preservedBootstrap,
-    relaunchMode: nukeReceiptRelaunchMode(workerScheduled),
-    workerScheduled,
+    relaunchMode: finishOnRelaunch ? "finish_on_relaunch" : "direct",
   };
   await writeReceipt(receipt).catch((error) => {
     receipt.errors.push(receiptError("nuke-receipt", error));
   });
 
   setTimeout(() => {
-    if (!workerScheduled) app.relaunch();
+    // app.relaunch starts the next instance only after this one exits, so it
+    // can delete what this one still held.
+    if (finishOnRelaunch) {
+      app.relaunch({ args: [...process.argv.slice(1).filter((arg) => arg !== FINISH_FRESH_START_FLAG), FINISH_FRESH_START_FLAG] });
+    } else {
+      app.relaunch();
+    }
     app.quit();
   }, 100);
 

@@ -12,11 +12,7 @@ if (!task) {
   app.dock?.hide();
   let exitCode = 2;
   try {
-    if (task.name === "nuke-cleanup") {
-      const { runNukeCleanupWorker } = await import("./nuke-worker.mjs");
-      await runNukeCleanupWorker(task.args[0] ?? "");
-      exitCode = 0;
-    } else if (task.name === "blank-slate-cleanup") {
+    if (task.name === "blank-slate-cleanup") {
       const { removeBlankSlateProfileAfterExit } = await import("./blank-slate-cleanup.mjs");
       exitCode = await removeBlankSlateProfileAfterExit(task.args[0], task.args[1]);
     }

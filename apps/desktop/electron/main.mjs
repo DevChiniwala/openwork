@@ -41,6 +41,8 @@ import { detachedTaskArgs } from "./detached-task.mjs";
 import {
   buildNukeManifest,
   executeNukeFreshStart,
+  FINISH_FRESH_START_FLAG,
+  finishPendingNukeCleanup,
   runPendingNukeCleanup,
 } from "./nuke.mjs";
 import {
@@ -372,6 +374,19 @@ const userDataPath = BLANK_SLATE_LAUNCH.userDataPath ?? resolveUserDataPath({
   userDataOverride: process.env.OPENWORK_ELECTRON_USERDATA,
 });
 app.setPath("userData", userDataPath);
+if (process.argv.includes(FINISH_FRESH_START_FLAG)) {
+  // A fresh start relaunched this instance after the previous one exited.
+  // Delete what it could not before this instance opens its profile or takes
+  // the single-instance lock.
+  await finishPendingNukeCleanup({
+    env: process.env,
+    homedir: os.homedir(),
+    platform: process.platform,
+    userDataPath,
+  }).catch((error) => {
+    console.warn("[nuke] could not finish the fresh start", error);
+  });
+}
 const desktopStartupLog = createStartupLog({ directory: path.join(userDataPath, "logs") });
 const endAppReady = startupPhase("app.ready");
 app.once("quit", () => desktopStartupLog.close());
