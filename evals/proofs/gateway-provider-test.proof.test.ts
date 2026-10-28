@@ -32,7 +32,8 @@ test("an admin tests a shared-key provider through AI Gateway before adding it",
     expect(tested.response.status).toBe(200);
     expect(isRecord(tested.body) && tested.body.ok).toBe(true);
     expect(world.upstream.requests.slice(before)).toEqual([{ model: ACME_MODEL, authenticated: true }]);
-    evidence.recordAssertionEvidence("the test prompt reached the provider with the pasted key", JSON.stringify(tested.body), true);
+    const reached = world.upstream.requests.slice(before).every((request) => request.authenticated && request.model === ACME_MODEL);
+    evidence.recordAssertionEvidence("the test prompt reached the provider with the pasted key", JSON.stringify(tested.body), reached);
   });
 
   await step("a wrong key fails with a plain message that never contains the key", async () => {
@@ -42,7 +43,7 @@ test("an admin tests a shared-key provider through AI Gateway before adding it",
     expect(isRecord(tested.body) && tested.body.ok).toBe(false);
     expect(isRecord(tested.body) && tested.body.code).toBe("provider_authentication_failed");
     expect(tested.text).not.toContain(wrongKey);
-    evidence.recordAssertionEvidence("a rejected key is reported without echoing it", JSON.stringify(tested.body), true);
+    evidence.recordAssertionEvidence("a rejected key is reported without echoing it", JSON.stringify(tested.body), !tested.text.includes(wrongKey));
   });
 
   await step("a custom address the operator did not allow is never contacted", async () => {
