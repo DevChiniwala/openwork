@@ -71,3 +71,12 @@ test("Tavily is the only API-key preset among the expanded set", () => {
   const apikey = EXTERNAL_MCP_PRESETS_EXPANDED.filter((preset) => preset.authType === "apikey").map((preset) => preset.presetId)
   assert.deepEqual(apikey, ["tavily"])
 })
+
+test("the connectors catalog states each new server's setup: Tavily needs an API key, the rest sign in with OAuth", () => {
+  const catalog = connectorCatalogForQuery("", true, { expandedMcpPresets: true })
+  const setup = new Map((catalog?.entries ?? []).map((entry) => [entry.id, entry.setup]))
+  assert.equal(setup.get("tavily"), "api_key")
+  for (const id of EXPANDED_IDS.filter((presetId) => presetId !== "tavily")) {
+    assert.equal(setup.get(id), "oauth", id)
+  }
+})

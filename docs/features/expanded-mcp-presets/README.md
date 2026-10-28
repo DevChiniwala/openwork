@@ -29,6 +29,27 @@ Context7). The new presets:
 Each OAuth preset uses the same CIMD/DCR auth pipeline as the existing presets
 (`packages/enterprise-mcp-client`); no new auth path was added.
 
+Manage › Connectors › Add a connector with the flag on (the new rows follow
+Context7, each with its own brand mark):
+
+![Add a connector, expandedMcpPresets on](./catalog-flag-on.png)
+
+With the flag off (as shipped), the list ends at Context7:
+
+![Add a connector, expandedMcpPresets off](./catalog-flag-off.png)
+
+Brand marks: Airtable, Figma, Hugging Face, Lucid, Mural, PostHog and Vercel
+use their Simple Icons mark (`ee/apps/den-web/app/(den)/_lib/brand-icon.ts`);
+the others use the provider's own favicon.
+
+## How to try it
+
+Turn `expandedMcpPresets` on for one organization in `/admin` (organization
+row › features), then open Manage › Connectors › Add a connector. Adding a
+server and signing in happens with the member's own account; nothing is
+connected automatically. Proof: `evals/proofs/expanded-mcp-presets.proof.test.ts`
+(off → on → filter → off again).
+
 ## How it works
 
 - `EXTERNAL_MCP_PRESETS` (the 11 existing presets) is the always-on core list.
