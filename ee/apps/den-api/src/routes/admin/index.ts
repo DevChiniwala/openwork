@@ -1,3 +1,4 @@
+import { registerAdminMcpRegistrationRoutes } from "./mcp-registration.js"
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, sql } from "@openwork-ee/den-db/drizzle"
 import { expireUsageRequestsForMembers } from "@openwork-ee/den-db/gateway-usage-limits"
 import { revokeUpstreamCredentials, revokeInferenceCredentialsForMembers } from "../../llm/inference-provider-lifecycle.js"
@@ -1437,6 +1438,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
   registerAdminSecurityRoutes(app)
   registerAdminMemberFeatureRoutes(app)
   registerAdminFeatureUsageRoutes(app)
+  registerAdminMcpRegistrationRoutes(app)
   registerAdminOrganizationDetailRoutes(app)
   registerAdminDashboardRoute(app)
   registerAdminOpportunitiesRoute(app)

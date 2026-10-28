@@ -5,6 +5,7 @@
  * so an org admin can add them once, org-wide, in Den, instead of every
  * device connecting to them separately.
  */
+import { mcpRegistrationStatusSchema, type McpRegistrationStatus } from "@openwork/types/den/mcp-registration"
 import { z } from "zod"
 
 export type ExternalMcpPreset = {
@@ -19,6 +20,8 @@ export type ExternalMcpPreset = {
   defaultOAuthClientId?: string
   authorizationServerIssuer?: string
   defaultOAuthScopes?: readonly string[]
+  /** What OpenWork last learned about signing in to this provider; absent until it has been checked. */
+  registrationStatus?: McpRegistrationStatus
 }
 
 export const externalMcpPresetResponseSchema = z.object({
@@ -32,6 +35,7 @@ export const externalMcpPresetResponseSchema = z.object({
   defaultOAuthClientId: z.string().min(1).optional(),
   authorizationServerIssuer: z.string().url().optional(),
   defaultOAuthScopes: z.array(z.string()).optional(),
+  registrationStatus: mcpRegistrationStatusSchema.optional(),
 }).meta({ ref: "ExternalMcpPresetResponse" })
 
 export const externalMcpPresetListResponseSchema = z.object({
