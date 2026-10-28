@@ -2,7 +2,7 @@ import {
   BarChart3,
   Box,
   CalendarClock,
-  BellRing,
+  Radar,
   Globe,
   Laptop,
   LibraryBig,
@@ -120,7 +120,7 @@ export function buildDashboardNavSections({
       ? [{ href: WORKBOT_ENTRY_HREF, label: "Workbot", icon: MessageCircle, testId: "dashboard-nav-workbot", ...workbotNavMarker(workbotEntry) }]
       : []),
     ...(myBot && orgSlug
-      ? [{ href: getLibraryMyAgentRoute(orgSlug), label: "My bot", icon: BellRing, testId: "dashboard-nav-my-bot" }]
+      ? [{ href: getLibraryMyAgentRoute(orgSlug), label: "My bot", icon: Radar, testId: "dashboard-nav-my-bot" }]
       : []),
     {
       href: orgSlug ? getLibraryRoute(orgSlug) : "#",
