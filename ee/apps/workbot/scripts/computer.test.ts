@@ -267,6 +267,35 @@ test("Computer asks to reconnect for other desktop failures", async t => {
   assert.deepEqual(await response.json(), { error: "desktop_unavailable", message: "Your computer is unavailable. Try reconnecting." })
 })
 
+test("Computer waits out an update instead of rebuilding, and asks again once when the runner drops a request", async t => {
+  const signed = member("updating")
+  const viewers: string[] = []
+  let replies: Array<() => Response> = []
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    const parsed = new URL(url instanceof Request ? url.url : url)
+    if (parsed.pathname.endsWith("/desktop/viewer")) { viewers.push("viewer"); return replies.shift()!() }
+    if (parsed.pathname.endsWith("/desktop/action")) throw new Error("no rebuild while the runner updates the computer")
+    if (init?.method === "PUT") return Response.json({ id: parsed.pathname.split("/").at(-1) })
+    return Response.json({ turns: [], messages: [], finalAssistantText: "" })
+  })
+  t.mock.method(console, "error", () => {})
+  const app = new Hono<AppEnv>()
+  registerWorkbotRoutes(app, {
+    config, den: { ...createDen({ apiUrl: config.denApiUrl, publicUrl: config.publicUrl }), session: async () => signed.den },
+    member: async (c, next) => { c.set("member", signed); await next() }, sameOrigin: async (_c, next) => next(),
+  })
+  const open = async () => (await app.request("/v1/workbot/computer/viewer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ view: "browser" }) })).json()
+
+  replies = [() => Response.json({ error: "desktop_updating" }, { status: 409 })]
+  assert.deepEqual(await open(), { error: "desktop_updating", message: "Your computer is updating. It will be ready when its current work finishes." })
+  assert.equal(viewers.length, 1)
+
+  viewers.length = 0
+  replies = [() => Response.json({ error: "desktop_unavailable" }, { status: 409 }), () => Response.json({ state: "connected", url: "wss://computer.example.test/vnc/" + "t".repeat(43), expiresAt: Date.now() + 60_000, paused: false })]
+  assert.equal((await open()).state, "connected")
+  assert.equal(viewers.length, 2)
+})
+
 test("the browser and the native desktop are separate rollouts", async t => {
   let signed = member("alice", false, true)
   let fresh: Member | null = null
