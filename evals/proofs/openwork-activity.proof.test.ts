@@ -34,8 +34,22 @@ test("a member reads everything their agent did with OpenWork and their files as
     await user.screenshot();
   });
 
-  await step("after: the finished turn folds to one quiet line", async () => {
+  await step("the local command and file read both succeeded", async () => {
     await user.see({ text: MIXED_REPLY }, { timeoutMs: 60_000 });
+    await user.see("Run task", { timeoutMs: 60_000 });
+    const local = (await probe.dom("[data-tool-aggregate]")).elements;
+    const failed = (await probe.dom('[data-tool-aggregate] .text-destructive')).elements.length > 0;
+    let reason = "";
+    if (failed) {
+      // Say why, from the rail itself, before failing.
+      await user.click({ text: /Ran (?:1 )?command, read 1 file/ });
+      reason = (await probe.dom('[data-tool-aggregate-detail="error"], [data-tool-aggregate] .text-destructive')).elements.map((element) => element.text).join(" | ");
+    }
+    evidence.recordAssertionEvidence("Local work ran without errors", `local rows: ${local.map((element) => element.text).join(" | ")}${reason ? `; errors: ${reason.slice(0, 300)}` : ""}`, !failed);
+    expect(reason).toBe("");
+  });
+
+  await step("after: the finished turn folds to one quiet line", async () => {
     await user.see("Run task", { timeoutMs: 60_000 });
     await probe.eventually(() => probe.dom('button[data-testid="completed-work-rail"]'), {
       within: 30_000, label: "the finished run folds", until: (value) => value.elements.length === 1,
