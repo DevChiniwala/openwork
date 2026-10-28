@@ -65,7 +65,7 @@ export async function openworkActivityWorld(seed: Seed) {
         `await tools["openwork"].execute_capability(${JSON.stringify({ name: "postPluginsAccess", path: { pluginId }, body: { orgWide: true, role: "viewer" } })});`,
         "return skill;",
       ].join("\n")),
-      { tool: "openwork_execute", arguments: { id: "session.group.remove", args: { groupId: "Archive" } } },
+      { tool: "openwork_execute", arguments: { id: "session.group.remove", args: { groupId: "Archive", confirmed: true } } },
     ] },
   ] });
 
