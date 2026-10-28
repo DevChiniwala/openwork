@@ -127,10 +127,21 @@ environment variable to decide whether a feature is on.
 Gated UI follows DESIGN.md P4: show a locked entry point with a plain reason
 rather than silently removing it, when the person could act on it.
 
+## See who uses it
+
+`/admin` › organization › Features shows, per feature, how many members have
+it on, who used it in the last 7 and 30 days, and when each person last used it.
+
+- Gated routes count automatically: a request that passes `requireFeature(key)` is a use.
+- Client-only features: call `markFeatureUsed(key)` (den-web `app/(den)/_lib/feature-usage.ts`,
+  desktop `apps/app/src/app/lib/den.ts`) at the action that actually exercises
+  the feature, never on render of shared chrome.
+- Den records only keys that are on for the member, one row per member and feature (ids and days, no content).
+
 ## 4. Roll it out
 
 1. Turn it on for our own organization (override in `/admin`).
-2. Turn it on for more organizations, one override at a time, checking errors as you go.
+2. Turn it on for more organizations, one override at a time, checking errors and who uses it as you go.
 3. Turn it on for everyone in `/admin` › Features. Organizations can still be turned off one by one.
 4. Anything wrong: **Turn off everywhere** (kill switch). Fix, restore, continue.
 5. Once it is on everywhere: set `default: true`, then delete the entry and every check. `pnpm features:check` asks for a decision six months after `since` unless the entry is `permanent`.
