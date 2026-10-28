@@ -751,3 +751,56 @@ test("background stays off on a computer that is not parallel", async (t) => {
   assert.equal(payload(await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Edit" } })).ok, true);
   assert.deepEqual(connected, [{ background: false }]);
 });
+
+/** A native act that stops before confirming a file panel until the host passes file_approval. */
+function filePanelFixture() {
+  const seen = [];
+  const f = fixture({ seen, toolResult: (name) => {
+    if (name !== "computer_act") return undefined;
+    const args = seen.at(-1).args;
+    return args.file_approval ? text({ ok: true, status: "dispatched" })
+      : text({ ok: false, code: "files_approval_required", files: ["launch.mp4"], app: "Safari", dispatched: false, next: "observe" });
+  } });
+  const acts = () => seen.filter((call) => call.name === "computer_act").map((call) => call.args.file_approval === true);
+  return { ...f, acts };
+}
+const confirmPanel = (control) => control.execute({ sessionId: "chat", name: "computer_act", args: { observation_id: "observation", action: { type: "press", ref: "e1" } } });
+async function answerFiles(f, answer) {
+  for (let waited = 0; !f.requests.some((request) => request?.reason === "files") && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  const request = f.requests.find((request) => request?.reason === "files");
+  assert.deepEqual(request.files, { app: "Safari", names: ["launch.mp4"] });
+  await f.control.answerRequest({ sessionId: "chat", answer, id: request.id });
+}
+
+test("confirming a file panel asks the person, then sends the press with their approval", async (t) => {
+  const f = filePanelFixture(); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Upload" } });
+  const pending = confirmPanel(f.control);
+  await answerFiles(f, "allow");
+  assert.equal(payload(await pending).status, "dispatched");
+  assert.deepEqual(f.acts(), [false, true], "the second native act carries the approval");
+});
+
+test("declined files are never handed over", async (t) => {
+  const f = filePanelFixture(); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Upload" } });
+  const pending = confirmPanel(f.control);
+  await answerFiles(f, "dismiss");
+  assert.equal(payload(await pending).code, "files_declined");
+  assert.deepEqual(f.acts(), [false]);
+});
+
+test("always allowing files in a chat stops asking there", async (t) => {
+  const f = filePanelFixture(); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Upload" } });
+  const first = confirmPanel(f.control);
+  await answerFiles(f, "always");
+  await first;
+  const asked = f.requests.filter((request) => request?.reason === "files").length;
+  assert.equal(payload(await confirmPanel(f.control)).status, "dispatched");
+  assert.equal(f.requests.filter((request) => request?.reason === "files").length, asked);
+  assert.equal(await f.control.approveFiles({ sessionId: "chat", app: "example.com", files: ["/tmp/a.txt"] }), true, "the browser shares the chat's answer");
+});

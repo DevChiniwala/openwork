@@ -88,12 +88,61 @@ function ScriptRequest({ sessionId, request, script }: { sessionId: string; requ
 }
 
 /**
+ * An app's file panel or a web page is about to receive these files. Nothing is
+ * handed over until the person approves this list; the broker checks the answer.
+ */
+function FilesRequest({ sessionId, request, files }: { sessionId: string; request: ComputerRequest; files: NonNullable<ComputerRequest["files"]> }) {
+  const [busy, setBusy] = useState<"allow" | "always" | "dismiss" | null>(null)
+  const [error, setError] = useState("")
+
+  async function answer(next: "allow" | "always" | "dismiss") {
+    if (busy) return
+    setBusy(next)
+    setError("")
+    try {
+      await desktopBridge.computerAnswerRequest({ sessionId, answer: next, id: request.id })
+    } catch (cause) {
+      setError(`That wasn't saved. ${cause instanceof Error ? cause.message : String(cause)}`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const count = files.names.length
+  return (
+    <div className="overflow-hidden border-b border-dls-border bg-transparent" data-testid="session-computer-request" data-reason="files">
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-dls-hover text-dls-secondary">
+            <Monitor size={16} strokeWidth={1.9} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium leading-5 text-dls-text">Give {count === 1 ? "this file" : `these ${count} files`} to {files.app}?</div>
+            <div className="mt-0.5 text-[12px] leading-5 text-dls-secondary">The agent chose {count === 1 ? "it" : "them"} on {request.computer}. {files.app} can upload what it receives.</div>
+            <ul className="mt-2 max-h-32 overflow-auto rounded-lg border border-dls-border bg-dls-hover p-2 font-mono text-[12px] leading-5 text-dls-text" data-testid="session-computer-files">
+              {files.names.map((name, index) => <li key={`${index}-${name}`} className="break-all">{name}</li>)}
+            </ul>
+            {error ? <div role="alert" className="mt-1 text-[12px] leading-5 text-red-11">{error}</div> : null}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="ghost" size="sm" disabled={busy !== null} aria-busy={busy === "dismiss"} data-testid="session-computer-files-dismiss" onClick={() => void answer("dismiss")}>Don't give</Button>
+          <Button type="button" variant="outline" size="sm" disabled={busy !== null} aria-busy={busy === "always"} data-testid="session-computer-files-always" onClick={() => void answer("always")}>Always allow in this chat</Button>
+          <Button type="button" size="sm" disabled={busy !== null} aria-busy={busy === "allow"} data-testid="session-computer-files-allow" onClick={() => void answer("allow")}>Give {count === 1 ? "file" : "files"}</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Shown above the composer while the agent waits for computer use. The tool
  * call carries on by itself once the person answers, so the agent never has
  * to ask them to go set it up and try again.
  */
 export function ComputerRequestPanel({ sessionId, request }: { sessionId: string; request: ComputerRequest }) {
   if (request.reason === "script" && request.script) return <ScriptRequest sessionId={sessionId} request={request} script={request.script} />
+  if (request.reason === "files" && request.files) return <FilesRequest sessionId={sessionId} request={request} files={request.files} />
   return <SetupRequest sessionId={sessionId} request={request} />
 }
 

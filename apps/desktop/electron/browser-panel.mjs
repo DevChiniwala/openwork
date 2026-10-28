@@ -1,6 +1,8 @@
 // Embedded browser panel: tab state, BrowserView lifecycle, native context menus,
 // proxy configuration, and browser IPC registrations. Extracted from
 // main.mjs as a factory so the main process only owns window creation.
+import { constants as fsConstants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,7 +50,8 @@ const BROWSER_SECURITY_PREFERENCES = Object.freeze({
   webviewTag: false,
 });
 
-export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, checkPolicy, readWebsiteRules, websiteRulesWereInForce = false, onWebsiteRulesInForce, showNativeContextMenu, closeNativeContextMenu }) {
+export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, checkPolicy, readWebsiteRules, websiteRulesWereInForce = false, onWebsiteRulesInForce, showNativeContextMenu, closeNativeContextMenu,
+  approveFiles = async () => false }) {
   // The member's agent permission rules for websites, from their desktop
   // config. They apply to every page, frame and request the built-in browser
   // makes, whoever opens it, as the engines apply them to the agent's web fetches.
@@ -903,6 +906,15 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink, che
     allowed: browserTaskAllowed,
     openTab: openBrowserTab,
     navigate: (tab, url) => tab.view.webContents.loadURL(url),
+    // Pages get files through the intercepted chooser, never the system picker:
+    // existing readable regular files only, after the person's yes in the chat.
+    checkFiles: async (paths) => {
+      for (const file of paths) {
+        if (!(await stat(file)).isFile()) throw new Error("not_a_file");
+        await access(file, fsConstants.R_OK);
+      }
+    },
+    approveFiles,
     changed: (tabId, activity) => {
       const tab = getBrowserTab(tabId);
       if (!tab) return;

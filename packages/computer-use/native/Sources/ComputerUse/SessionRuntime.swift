@@ -23,13 +23,25 @@ final class SessionRuntime {
 
     private struct Session {
         let id: String
-        let app: AppIdentity
-        let target: WindowTarget
+        /// What observations and input work in: the session's window, or a dialog over it.
+        var app: AppIdentity
+        var target: WindowTarget
         let mode: AccessMode
         /// Background until the app shows it needs the front for keys.
         var delivery: InputDelivery
-        /// Control input that brings the window to the front first.
-        var takesFront: Bool { mode == .control && delivery == .foreground }
+        /// The windows under the dialogs being worked in, the session's own first.
+        var parents: [(app: AppIdentity, target: WindowTarget)] = []
+        var dialogKind: DialogTarget.Kind?
+        /// A dialog closed since the last observation and the session is back in its window.
+        var returnedFromDialog = false
+        /// Control input that brings the window to the front first. Dialogs always take it.
+        var takesFront: Bool { mode == .control && (delivery == .foreground || !parents.isEmpty) }
+        /// The window that comes forward, and whose app must be in front: a dialog's parent.
+        var frontApp: AppIdentity { parents.first?.app ?? app }
+        var frontTarget: WindowTarget { parents.first?.target ?? target }
+        /// Whether input requires `target` itself to be the front window; a dialog is
+        /// not a window of the front app (the file panel is another process).
+        var checksFront: Bool { takesFront && parents.isEmpty }
         var started: TimeInterval
         var lastUsed: TimeInterval
         var generation = 0
@@ -140,7 +152,7 @@ final class SessionRuntime {
             let options = try ObservationOptions(values, policy: policy)
             return try await observe(try a.string("session_id"), image: options.image, elements: options.elements)
         case "computer_act":
-            try a.only(policy == .embedded ? ["session_id", "observation_id", "request_id", "action", "actions", "intent"] : ["session_id", "observation_id", "request_id", "action"])
+            try a.only(policy == .embedded ? ["session_id", "observation_id", "request_id", "action", "actions", "intent", "file_approval"] : ["session_id", "observation_id", "request_id", "action"])
             let id = try a.string("session_id")
             let observationID = try a.string("observation_id")
             let requestID = try a.string("request_id", max: 100)
@@ -148,7 +160,9 @@ final class SessionRuntime {
             let raw = values["actions"] ?? values["action"] ?? NSNull()
             // Display only: shown on the person's desktop cursor, never part of the receipt identity.
             let intent = values["intent"] == nil ? nil : try a.string("intent", max: 120)
-            return try await act(id: id, observationID: observationID, requestID: requestID, actions: actions, raw: raw, intent: intent)
+            // Set only by the trusted host, after the person approved handing these files over.
+            let fileApproval = policy == .embedded && values["file_approval"] != nil ? try a.bool("file_approval", default: false) : false
+            return try await act(id: id, observationID: observationID, requestID: requestID, actions: actions, raw: raw, intent: intent, fileApproval: fileApproval)
         case "computer_zoom" where policy == .embedded:
             try a.only(["session_id", "observation_id", "x", "y", "width", "height"])
             return try await zoom(try a.string("session_id"), observationID: try a.string("observation_id"),
@@ -302,6 +316,7 @@ final class SessionRuntime {
     private func observe(_ id: String, image: Bool?, elements: String) async throws -> [[String: Any]] {
         // A paused session never resumes from an observation: only the person's Continue does.
         // Retry only read-only capture races. Never repeat an action or cross takeover.
+        try await followDialog(id)
         let current = try current(id)
         session?.needsRefresh = true
         controls.update("Refreshing the selected window before continuing…", paused: false)
@@ -311,11 +326,11 @@ final class SessionRuntime {
         defer { focus?.release() }
         // Bringing the window forward makes it the app's key window: not while another
         // agent in this app is between selecting its own window and typing.
-        let keys = current.takesFront ? try await FocusLease.acquire(app: current.app.pid, check: { try self.checkActive(current) }) : nil
+        let keys = current.takesFront ? try await FocusLease.acquire(app: current.frontApp.pid, check: { try self.checkActive(current) }) : nil
         defer { keys?.release() }
         // In the background, another focused window of the app is the same signal as
         // another window in front: usually a dialog the last action opened.
-        var otherWindowFocused = current.mode == .control && current.delivery == .background
+        var otherWindowFocused = current.mode == .control && current.delivery == .background && current.parents.isEmpty
             && access.focusesAnotherWindow(than: current.target, app: current.app)
         var returns = 0
         // Something else in front is the person or another app, not a takeover:
@@ -330,7 +345,7 @@ final class SessionRuntime {
                 return
             }
             try await self.takeGap(current)
-            guard (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) == nil else { return }
+            guard !self.inFront(current) else { return }
             // Another window of this app in front is usually a dialog the last action
             // opened. Raising the target would hide it, or fail behind a modal one;
             // input raises the target only when the model acts on it again.
@@ -347,7 +362,7 @@ final class SessionRuntime {
                 try self.checkActive(current)
                 do { return try await self.observeAttempt(id, image: image, elements: elements, otherWindowFocused: otherWindowFocused) }
                 catch let error as UseError {
-                    if error.code == "window_not_frontmost", current.takesFront, attempt < 2 {
+                    if error.code == "window_not_frontmost", current.checksFront, attempt < 2 {
                         try await bringBack()
                         continue
                     }
@@ -361,7 +376,7 @@ final class SessionRuntime {
     private func observeAttempt(_ id: String, image requested: Bool?, elements filter: String, otherWindowFocused: Bool = false) async throws -> [[String: Any]] {
         let current = try current(id)
         session?.observation = nil; session?.records = []; session?.focus = nil
-        let frontmost = current.takesFront && !otherWindowFocused
+        let frontmost = current.checksFront && !otherWindowFocused
         let bounds = try access.validate(current.target, app: current.app, requireFrontmost: frontmost)
         @MainActor func check() throws { try self.checkActive(current) }
         var state = try await access.read(current.target, check: check)
@@ -421,6 +436,11 @@ final class SessionRuntime {
             "content_trust": "untrusted_app_content", "next": "act_once_then_observe"]
         if let afterAction { payload["after_action"] = afterAction }
         if otherWindowFocused { payload["other_window_focused"] = true }
+        if let kind = current.dialogKind {
+            // Elements and coordinates are the dialog's; it is worked in until it closes.
+            payload["dialog"] = ["kind": kind.rawValue, "title": current.target.title, "depth": current.parents.count]
+        }
+        if current.returnedFromDialog { payload["dialog_closed"] = true; session?.returnedFromDialog = false }
         if policy == .embedded {
             payload["elements_filter"] = effectiveFilter; payload["elements_total"] = visible.count
             payload["observation_seconds"] = Int(policy.observationSeconds)
@@ -469,12 +489,16 @@ final class SessionRuntime {
         return [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]] + text(payload)
     }
 
-    private func act(id: String, observationID: String, requestID: String, actions: [Action], raw: Any, intent: String? = nil) async throws -> [[String: Any]] {
+    private func act(id: String, observationID: String, requestID: String, actions: [Action], raw: Any, intent: String? = nil, fileApproval: Bool = false) async throws -> [[String: Any]] {
         let cached = try current(id, allowPaused: true)
         let fingerprint = try JSONSerialization.data(withJSONObject: ["observation_id": observationID, "action": raw], options: [.sortedKeys])
         if let receipt = cached.receipts[requestID] {
             guard cached.receiptInputs[requestID] == fingerprint else { throw UseError("request_id_reused", "A request_id cannot name a different action.") }
             return text(receipt)
+        }
+        // A dialog opened or closed since the last look: its controls are not the observed ones.
+        if try await followDialog(id) {
+            throw UseError("observation_required", "A dialog opened or closed since the last observation. Observe again; nothing was sent.", next: "observe")
         }
         let current = try current(id)
         guard current.mode != .observe, !actions.contains(where: \.requiresControl) || current.mode == .control else {
@@ -489,15 +513,17 @@ final class SessionRuntime {
         // In the background the person keeps the front, unless a step in this batch
         // only works while the app is active or follows the real pointer.
         let route = input.route(for: current.app)
-        let inBackground = current.mode == .control && current.delivery == .background
+        let inBackground = current.mode == .control && current.delivery == .background && current.parents.isEmpty
         let front = current.takesFront || inBackground && actions.contains { InputDelivery.stepNeedsFront($0, route: route) }
+        // Whether `target` itself must be the front window: never for a dialog.
+        let frontCheck = front && current.parents.isEmpty
         let background = inBackground && !front
         // Held through the settle wait, so no other agent's window comes forward mid-batch.
         let focusLease = front ? try await FocusLease.acquire(check: { try self.checkActive(current) }) : nil
         defer { focusLease?.release() }
         // Every control step may change the app's key window, and keys go to that window:
         // agents in other windows of this app wait until this batch's input is sent.
-        let keyLease = front || background ? try await FocusLease.acquire(app: current.app.pid, check: { try self.checkActive(current) }) : nil
+        let keyLease = front || background ? try await FocusLease.acquire(app: current.frontApp.pid, check: { try self.checkActive(current) }) : nil
         defer { keyLease?.release() }
         // The person may be using another app meanwhile; bring the selected window back
         // for this step instead of pausing when they switched away. A click or key of
@@ -511,11 +537,18 @@ final class SessionRuntime {
             throw UseError("observation_required", "This step needs the app in front, so its window was brought forward. Observe again, then repeat the step; nothing was sent.", next: "observe")
         }
         let bounds: CGRect
-        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: front) }
+        do { bounds = try access.validate(current.target, app: current.app, requireFrontmost: frontCheck) }
         catch { throw SharedDesktop.yielding(error) }
         try observation.validate(id: observationID, generation: current.generation, frame: bounds, now: now)
         if actions.contains(where: \.usesCoordinates), observation.imageDigest == nil {
             throw UseError("image_required", "Coordinates require an observation with an image. Use accessible refs, or observe with include_image true.", next: "observe")
+        }
+        // Confirming a file panel hands the chosen files to the app, which can upload them:
+        // the person approves first. Nothing is sent and the observation stays valid.
+        if current.dialogKind == .filePanel, !fileApproval, confirmsFilePanel(current, observation: observation, actions: actions) {
+            return text(["ok": false, "code": "files_approval_required", "files": access.selectedFileNames(current.target),
+                "app": current.frontApp.name, "dispatched": false, "next": "observe",
+                "message": "Choosing files hands them to the app. The person is asked first; nothing was sent."])
         }
         session?.observation = nil; session?.focus = nil; session?.lastUsed = now
         if let intent { controls.narrate(intent) }
@@ -526,7 +559,7 @@ final class SessionRuntime {
         @MainActor func checkWindow() throws {
             try check()
             let live: CGRect
-            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: front) }
+            do { live = try self.access.validate(current.target, app: current.app, requireFrontmost: frontCheck) }
             catch { throw SharedDesktop.yielding(error) }
             guard live == bounds else {
                 throw UseError("stale_observation", "The window moved during input.", next: "observe")
@@ -537,7 +570,7 @@ final class SessionRuntime {
             guard current.mode == .control, self.personInterrupted(since: moment) else { return }
             // In the background the person's input goes to their own front app; it
             // stops the step only once they are working in the agent's app.
-            if front || NSWorkspace.shared.frontmostApplication?.processIdentifier == current.app.pid {
+            if front || NSWorkspace.shared.frontmostApplication?.processIdentifier == current.frontApp.pid {
                 throw SharedDesktop.interrupted
             }
         }
@@ -573,7 +606,7 @@ final class SessionRuntime {
                     }
                     if action.usesCoordinates {
                         let captured = try await observationImage(current, bounds: bounds, state: live,
-                            requireFrontmost: front, check: check)
+                            requireFrontmost: frontCheck, check: check)
                         guard access.imageDigest(captured.0) == observation.imageDigest else {
                             throw UseError("stale_observation", "The window image changed. Observe before coordinate input.", next: "observe")
                         }
@@ -583,7 +616,7 @@ final class SessionRuntime {
                         case .drag(let points): point = points[0]
                         default: throw UseError("invalid_arguments", "This action has no coordinates.")
                         }
-                        pointerTarget = try access.checkHit(observation.screenPoint(point), target: current.target, app: current.app, background: background)
+                        pointerTarget = try access.checkHit(observation.screenPoint(point), target: current.target, app: current.app, background: background || !current.parents.isEmpty)
                     }
                 }
                 if !progress.hasInput, let focus {
@@ -617,7 +650,7 @@ final class SessionRuntime {
                 session?.actionCount += 1
                 let path = try await input.execute(action, app: current.app, target: current.target, lease: observation,
                     access: access, records: current.records, focus: focus, pointerTarget: pointerTarget,
-                    check: checkInput, checkWindow: checkWindow, background: background, feedback: { [weak self] feedback in
+                    check: checkInput, checkWindow: checkWindow, background: background || !current.parents.isEmpty, feedback: { [weak self] feedback in
                         guard let self, self.session?.id == id else { return }
                         self.controls.inputFeedback(feedback)
                     })
@@ -737,7 +770,7 @@ final class SessionRuntime {
     /// or key of the person's while it comes forward stops whatever was to follow.
     private func takeFront(_ current: Session) async throws {
         handBack.record(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
-            target: current.app.pid, own: ProcessInfo.processInfo.processIdentifier, at: ProcessInfo.processInfo.systemUptime)
+            target: current.frontApp.pid, own: ProcessInfo.processInfo.processIdentifier, at: ProcessInfo.processInfo.systemUptime)
         do {
             try await SharedDesktop.acquire(now: { ProcessInfo.processInfo.systemUptime }, buttonDown: { self.personHoldsButton() },
                 focus: { try await self.focusTarget(current) }, interrupted: { self.personInterrupted(since: $0) })
@@ -757,9 +790,7 @@ final class SessionRuntime {
         session?.yielded = false
         try await takeGap(current, deadline: deadline, front: true)
         do {
-            return try await SharedDesktop.returnFocus(used: &returns, inFront: {
-                (try? self.access.validate(current.target, app: current.app, requireFrontmost: true)) != nil
-            }, personActed: { self.personInterrupted(since: step) }, focus: { try await self.takeFront(current) })
+            return try await SharedDesktop.returnFocus(used: &returns, inFront: { self.inFront(current) }, personActed: { self.personInterrupted(since: step) }, focus: { try await self.takeFront(current) })
         } catch let error as UseError where error.code == SharedDesktop.interrupted.code {
             // The read that follows leaves the front where the person has it.
             session?.yielded = true
@@ -787,29 +818,88 @@ final class SessionRuntime {
         // agent's own, means the person may be working in the agent's window.
         let latest = Self.interruptions.map { lastPersonInput($0) }.max() ?? -.infinity
         guard let pid = handBack.take(frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier,
-                  target: current.app.pid, lastPersonInput: latest),
+                  target: current.frontApp.pid, lastPersonInput: latest),
               let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
         _ = AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         app.activate(options: [])
     }
+    private func confirmsFilePanel(_ current: Session, observation: ObservationLease, actions: [Action]) -> Bool {
+        let button = access.defaultButton(current.target)
+        return actions.contains { action in
+            switch action {
+            case .press(let ref):
+                return DialogRules.confirmsFilePanel(action, pressed: current.records.first { $0.ref == ref }?.element, defaultButton: button)
+            case .click(let point, _, _):
+                // A click on the button's title lands on a child of the button.
+                guard let screen = try? observation.screenPoint(point),
+                      let hit = try? access.checkHit(screen, target: current.target, app: current.app, background: true) else { return button != nil }
+                return DialogRules.confirmsFilePanel(action, pressed: hit, defaultButton: button)
+                    || DialogRules.confirmsFilePanel(action, pressed: access.elementAttribute(hit, kAXParentAttribute), defaultButton: button)
+            default:
+                return DialogRules.confirmsFilePanel(action, pressed: nil, defaultButton: button)
+            }
+        }
+    }
+    /// The session's window is in front; for a dialog, its parent's app is.
+    private func inFront(_ current: Session) -> Bool {
+        guard current.parents.isEmpty else { return NSWorkspace.shared.frontmostApplication?.processIdentifier == current.frontApp.pid }
+        return (try? access.validate(current.target, app: current.app, requireFrontmost: true)) != nil
+    }
+    /// Works in a dialog an action opened over the session's window, and returns to
+    /// the window once it closes. Each switch needs a fresh observation. Returns
+    /// whether the scope changed.
+    @discardableResult
+    private func followDialog(_ id: String) async throws -> Bool {
+        guard let current = session, current.id == id, !current.paused else { return false }
+        var changed = false
+        // Closed dialogs, innermost first.
+        while let parent = session?.parents.last, let scope = session, !access.dialogOpen(scope.target, app: scope.app) {
+            session?.parents.removeLast()
+            session?.app = parent.app; session?.target = parent.target
+            let outer = session?.parents.isEmpty == true
+            session?.dialogKind = outer ? nil : .dialog
+            session?.returnedFromDialog = true
+            changed = true
+        }
+        // A new dialog over the current scope; at most three deep (a panel's own sheet).
+        if let scope = session, scope.parents.count < 3, let dialog = await access.dialog(over: scope.target, app: scope.app) {
+            guard session?.id == id else { return false }
+            session?.parents.append((scope.app, scope.target))
+            session?.app = dialog.app; session?.target = dialog.target; session?.dialogKind = dialog.kind
+            session?.returnedFromDialog = false
+            changed = true
+        }
+        if changed {
+            session?.generation += 1; session?.observation = nil; session?.records = []; session?.focus = nil; session?.needsRefresh = true
+        }
+        return changed
+    }
     private func focusTarget(_ current: Session) async throws {
         guard desktopAvailable else { throw UseError("desktop_unavailable", "The desktop is temporarily unavailable. Observe again when available.", next: "observe") }
+        // A dialog comes forward with its parent window and app.
+        let window = current.frontTarget, owner = current.frontApp
         if current.mode == .control {
-            _ = try access.validate(current.target, app: current.app)
-            guard AXUIElementPerformAction(current.target.element, kAXRaiseAction as CFString) == .success,
-                  current.app.app.activate(options: []) else {
+            _ = try access.validate(window, app: owner)
+            guard AXUIElementPerformAction(window.element, kAXRaiseAction as CFString) == .success,
+                  owner.app.activate(options: []) else {
                 throw UseError("window_unavailable", "The selected window could not be focused. Refresh the app state.", next: "observe")
             }
             // Request focus once; never keep stealing it if a person intervenes.
             for attempt in 0..<10 {
                 guard session?.id == current.id, session?.generation == current.generation else { throw UseError("session_changed", "Control changed during focus. No input was dispatched.", next: "observe") }
-                if (try? access.validate(current.target, app: current.app, requireFrontmost: true)) != nil { break }
+                if inFront(current) { break }
                 if attempt < 9 { try await Task.sleep(nanoseconds: 50_000_000) }
             }
         }
         guard desktopAvailable else { throw UseError("desktop_unavailable", "The desktop is temporarily unavailable. Observe again when available.", next: "observe") }
         guard session?.id == current.id, session?.generation == current.generation else { throw UseError("session_changed", "Control changed during focus.", next: "observe") }
-        _ = try access.validate(current.target, app: current.app, requireFrontmost: current.mode == .control)
+        if current.parents.isEmpty { _ = try access.validate(window, app: owner, requireFrontmost: current.mode == .control) }
+        else {
+            _ = try access.validate(current.target, app: current.app)
+            guard current.mode != .control || inFront(current) else {
+                throw UseError("window_not_frontmost", "The dialog's window could not be brought forward.", next: "observe")
+            }
+        }
     }
     private func resume() async {
         guard let current = session, current.paused, resumingSessionID == nil,
