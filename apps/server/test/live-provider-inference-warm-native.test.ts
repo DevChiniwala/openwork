@@ -18,8 +18,8 @@ async function until<T>(read: () => Promise<T>, accept: (value: T) => boolean): 
 }
 
 test("native warm offline catalog infers through a new bridge port/key without exposing reusable credentials", { timeout: 90_000 }, async t => {
-  try { await access(binary); } catch { t.skip(`needs: pinned OpenCode 2.0.26 binary (${binary})`); return; }
-  assert.match(spawnSync(binary, ["--version"], { encoding: "utf8" }).stdout, /\bv2\.0\.26\b/);
+  try { await access(binary); } catch { t.skip(`needs: pinned OpenCode v2 binary (${binary})`); return; }
+  assert.match(spawnSync(binary, ["--version"], { encoding: "utf8" }).stdout, /\bv2\.0\.30\b/);
   const root = await mkdtemp(join(tmpdir(), "openwork-warm-scoped-inference-"));
   const home = join(root, "home"); const directory = join(root, "project");
   await mkdir(home); await mkdir(directory);

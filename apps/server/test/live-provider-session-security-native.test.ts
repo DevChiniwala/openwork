@@ -28,11 +28,11 @@ async function until<T>(read: () => Promise<T>, accept: (value: T) => boolean, l
 // model -> approved shell -> Bun subprocess path, before live ownership starts.
 test("native model-approved shells cannot redeem the desktop capability before or after late live activation", { timeout: 90_000 }, async t => {
   try { await access(binary); } catch {
-    t.skip(`needs: pinned OpenCode 2.0.26 binary (${binary}); set OPENWORK_TEST_OPENCODE2`);
+    t.skip(`needs: pinned OpenCode v2 binary (${binary}); set OPENWORK_TEST_OPENCODE2`);
     return;
   }
   const version = spawnSync(binary, ["--version"], { encoding: "utf8" });
-  assert.match(version.stdout, /\bv2\.0\.26\b/);
+  assert.match(version.stdout, /\bv2\.0\.30\b/);
   const root = await mkdtemp(join(tmpdir(), "openwork-private-provider-"));
   const home = join(root, "home");
   await mkdir(home);

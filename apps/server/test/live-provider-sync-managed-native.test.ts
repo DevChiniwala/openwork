@@ -12,12 +12,12 @@ const binary = process.env.OPENWORK_TEST_OPENCODE2 ?? "/Applications/OpenWork.ap
 
 test("real managed V2 owner transitions and fail-closed fresh rollout boot", { timeout: 180_000 }, async t => {
   try { await access(binary); } catch {
-    t.skip(`needs: pinned OpenCode 2.0.26 binary (${binary}); set OPENWORK_TEST_OPENCODE2`);
+    t.skip(`needs: pinned OpenCode v2 binary (${binary}); set OPENWORK_TEST_OPENCODE2`);
     return;
   }
   const version = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 15_000 });
   assert.equal(version.status, 0, version.stderr);
-  assert.match(version.stdout, /\bv2\.0\.26\b/);
+  assert.match(version.stdout, /\bv2\.0\.30\b/);
   const temp = process.env.OPENCODE_TEST_TMPDIR ?? join(tmpdir(), "opencode");
   await mkdir(temp, { recursive: true });
   const root = await mkdtemp(join(temp, "openwork-managed-native-"));

@@ -15,9 +15,9 @@ export const OPENWORK_V2_INSTRUCTION_KEY = "openwork.context";
 export const OPENWORK_V2_CONFIGURED_INSTRUCTION_KEY = "openwork.configured-instructions";
 
 /**
- * The pinned OpenCode 2.0.26 accepts the config `instructions` array but never
- * loads it; 2.0.30 does (anomalyco/opencode#55539). After that pin bump the
- * server only deletes this entry, clearing it from sessions that carried it.
+ * OpenCode 2.0.26 accepts the config `instructions` array but never loads it;
+ * 2.0.30 does (anomalyco/opencode#55539). Newer pins use native instructions
+ * and clear this fallback entry from sessions that carried it.
  */
 export const ENGINE_IGNORES_CONFIGURED_INSTRUCTIONS = constants.opencodeV2Version === "2.0.26";
 

@@ -164,7 +164,7 @@ semantics.
 
 ## Upstream contract reviewed
 
-Implementation was checked against the native engine at the repository pin,
+The original implementation was checked against the native engine at
 `2.0.26`, and its upstream source commit
 `9b4ec5714d481559990db0a816d5dec19541a814`:
 
@@ -172,6 +172,12 @@ Implementation was checked against the native engine at the repository pin,
 - [Migration status API](https://github.com/anomalyco/opencode/blob/9b4ec5714d481559990db0a816d5dec19541a814/packages/protocol/src/groups/migration.ts)
 - [Native session transfer](https://github.com/anomalyco/opencode/blob/9b4ec5714d481559990db0a816d5dec19541a814/packages/core/src/session/transfer.ts)
 - [V1 compatibility guide](https://github.com/anomalyco/opencode/blob/9b4ec5714d481559990db0a816d5dec19541a814/services/www/src/docs/content/migrate-v1.mdx)
+
+The current pin is `2.0.30`, whose project schema also includes the
+`time_archived` column written by v1.18.33. The native history integration
+checks that archived-project metadata survives the copy and that the source
+database remains unchanged. The MCP readiness bridge is also verified against
+this pin with native tool discovery, publication, and removal.
 
 ## Verification
 

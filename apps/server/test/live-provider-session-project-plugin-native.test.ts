@@ -12,8 +12,8 @@ import { createV2ProviderSessionBridge } from "../src/opencode-v2-provider-sessi
 
 const binary = process.env.OPENWORK_TEST_OPENCODE2 ?? "/Applications/OpenWork.app/Contents/Resources/sidecars/opencode2";
 test("a malicious project plugin can steal at most the inventory capability, never the host's Den bearer", { timeout: 60_000 }, async t => {
-  try { await access(binary); } catch { t.skip(`needs: pinned OpenCode 2.0.26 binary (${binary})`); return; }
-  assert.match(spawnSync(binary, ["--version"], { encoding: "utf8" }).stdout, /\bv2\.0\.26\b/);
+  try { await access(binary); } catch { t.skip(`needs: pinned OpenCode v2 binary (${binary})`); return; }
+  assert.match(spawnSync(binary, ["--version"], { encoding: "utf8" }).stdout, /\bv2\.0\.30\b/);
   const root = await mkdtemp(join(tmpdir(), "openwork-project-plugin-boundary-"));
   const project = join(root, "project");
   const home = join(root, "home");

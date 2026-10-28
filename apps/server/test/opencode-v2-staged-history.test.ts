@@ -63,6 +63,39 @@ async function digest(path: string) {
   return hash.digest("hex");
 }
 
+test("v1 history copies project archival metadata with the pinned native engine", { skip: !bin, timeout: 60_000 }, async () => {
+  if (!bin) return;
+  const directory = await mkdtemp(join(tmpdir(), "openwork-project-schema-"));
+  const rootDir = join(directory, "v2");
+  let engine: Awaited<ReturnType<typeof createManagedOpencodeV2Server>> | undefined;
+  try {
+    const source = await fixture(directory, 0);
+    const original = await openHistoryDatabase(source);
+    try {
+      original.exec("ALTER TABLE project ADD COLUMN time_archived integer");
+      // A v1.18.33 database includes both the column and its migration receipt.
+      original.prepare("INSERT INTO migration (id, time_completed) VALUES ('20261010180456_project_time_archived', 1767225600000)").run();
+      original.prepare("INSERT INTO project (id, worktree, time_created, time_updated, sandboxes, time_archived) VALUES (?, ?, 1, 1, '[]', 123)")
+        .run("archived-project", join(directory, "archived"));
+    } finally { original.close(); }
+    const before = await digest(source);
+    engine = await createManagedOpencodeV2Server({ bin, rootDir, env: { OPENCODE_DISABLE_MODELS_FETCH: "1" } });
+    await engine.close(); engine = undefined;
+    let status: EngineV2MigrationStatus | undefined;
+    await migrateOpencodeV1History({ bin, source, storageDir: join(directory, "copy"), targetDatabase: join(rootDir, "opencode.db"),
+      progress: next => { status = next; } });
+    assert.equal(status?.state, "completed", status?.error);
+    const target = await openHistoryDatabase(join(rootDir, "opencode.db"));
+    try {
+      assert.equal(numberField(target.prepare("SELECT time_archived AS n FROM project WHERE id = 'archived-project'").get(), "n"), 123);
+      assert.equal(numberField(target.prepare("SELECT count(*) AS n FROM session_v2 WHERE id = ?").get(sessionId), "n"), 1);
+    } finally { target.close(); }
+    assert.equal(await digest(source), before);
+    engine = await createManagedOpencodeV2Server({ bin, rootDir, env: { OPENCODE_DISABLE_MODELS_FETCH: "1" } });
+    assert.equal((await engine.fetchJson("/api/session/active")).status, 200);
+  } finally { await engine?.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test("a complete large-thread copy resumes committed batches and repeated runs preserve v2 messages", { skip: !bin, timeout: 300_000 }, async () => {
   if (!bin) return;
   const directory = await mkdtemp(join(tmpdir(), "openwork-staged-history-"));

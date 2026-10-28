@@ -65,12 +65,12 @@ function gateway(id: string, models: { id: string; name: string }[], name = "Nat
 
 test("pinned V2 replays desktop inventory and real model filters through native provider/model events", { timeout: 180_000 }, async t => {
   try { await access(binary); } catch {
-    t.skip(`needs: pinned OpenCode 2.0.26 binary (${binary}); set OPENWORK_TEST_OPENCODE2`);
+    t.skip(`needs: pinned OpenCode v2 binary (${binary}); set OPENWORK_TEST_OPENCODE2`);
     return;
   }
   const version = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 15_000 });
   assert.equal(version.status, 0, version.stderr);
-  assert.match(version.stdout, /\bv2\.0\.26\b/, "native API premise is pinned to the shipping engine");
+  assert.match(version.stdout, /\bv2\.0\.30\b/, "native API premise is pinned to the shipping engine");
 
   const temp = process.env.OPENCODE_TEST_TMPDIR ?? join(tmpdir(), "opencode");
   await mkdir(temp, { recursive: true });
