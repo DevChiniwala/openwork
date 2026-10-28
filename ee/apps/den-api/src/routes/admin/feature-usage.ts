@@ -20,8 +20,8 @@ const featureUsageMemberSchema = z.object({
   email: z.string().nullable(),
   /** Whether the feature is on for this member now; a member can have used it before it was turned off. */
   enabled: z.boolean(),
-  firstUsedAt: z.string(),
-  lastUsedAt: z.string(),
+  firstUsedAt: z.iso.datetime(),
+  lastUsedAt: z.iso.datetime(),
   daysUsed: z.number().int(),
 })
 
@@ -39,7 +39,7 @@ const featureUsageSchema = z.object({
 const responseSchema = z.object({
   activeMembers: z.number().int(),
   features: z.array(featureUsageSchema),
-  generatedAt: z.string(),
+  generatedAt: z.iso.datetime(),
 }).meta({ ref: "AdminOrganizationFeatureUsage" })
 
 export function registerAdminFeatureUsageRoutes<T extends { Variables: AuthContextVariables }>(app: Hono<T>) {
