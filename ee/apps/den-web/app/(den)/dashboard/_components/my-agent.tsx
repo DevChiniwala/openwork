@@ -50,7 +50,7 @@ const GOOGLE_USES: readonly { name: string; testId: string }[] = [
 ];
 
 export function AgentLogo({ size = "sm" }: { size?: "sm" | "lg" }) {
-  return <ConnectorLogo name="My agent" iconUrl="/openwork-mark.svg" size={size} />;
+  return <ConnectorLogo name="My bot" iconUrl="/openwork-mark.svg" size={size} />;
 }
 
 function LockNote({ children }: { children: ReactNode }) {
@@ -82,13 +82,13 @@ export function MyAgentRow({ view, href, now, saving, onToggle }: {
           wideAction
           href={href}
           logo={<AgentLogo />}
-          title="My agent"
+          title="My bot"
           description={locked ? <LockNote>Turned off by your admin in Manage › Workbot.</LockNote> : myAgentStateLine(view, now)}
           status={count ?? ""}
           action={(
             <span className="flex items-center gap-2">
-              <DenSwitch size="sm" aria-label="My agent" checked={view.available && view.on} disabled={locked || saving} onChange={onToggle} />
-              <Link href={href} aria-label="Open My agent" className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900">
+              <DenSwitch size="sm" aria-label="My bot" checked={view.available && view.on} disabled={locked || saving} onChange={onToggle} />
+              <Link href={href} aria-label="Open My bot" className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900">
                 <ChevronRight className="h-4 w-4" aria-hidden />
               </Link>
             </span>
@@ -107,7 +107,7 @@ export function MyAgentRowError({ message, retrying, onRetry }: { message: strin
   return (
     <ItemPanel>
       <div data-testid="my-agent-row" data-state="error">
-        <ItemRow compact wideAction logo={<AgentLogo />} title="My agent" description={message}
+        <ItemRow compact wideAction logo={<AgentLogo />} title="My bot" description={message}
           action={<DenButton variant="secondary" size="xs" loading={retrying} onClick={onRetry}>Try again</DenButton>} />
       </div>
     </ItemPanel>
@@ -235,10 +235,9 @@ export function MyAgentPanel({ view, now, links, saving, error, earlier, onChang
     <ItemPage testId="my-agent-screen">
       <ItemHeader
         compact
-        back={{ href: links.library, label: "My Library" }}
         logo={<AgentLogo size="lg" />}
-        title="My agent"
-        actions={<DenSwitch aria-label="My agent" checked={active} disabled={!view.available || saving} onChange={(on) => onChange({ on })} />}
+        title="My bot"
+        actions={<DenSwitch aria-label="My bot" checked={active} disabled={!view.available || saving} onChange={(on) => onChange({ on })} />}
       />
 
       {error ? <p role="alert" className="-mt-3 text-[13px] text-red-700">{error}</p> : null}
@@ -371,7 +370,7 @@ function UsesSlack({ view, href }: { view: MemberAgentView; href: string | null 
 export function MyAgentPanelSkeleton({ library }: { library: string }) {
   return (
     <ItemPage testId="my-agent-screen">
-      <ItemHeader compact back={{ href: library, label: "My Library" }} logo={<AgentLogo size="lg" />} title="My agent" />
+      <ItemHeader compact logo={<AgentLogo size="lg" />} title="My bot" />
       <div className="flex flex-col gap-2 motion-safe:animate-pulse" role="status" aria-label="Loading your agent" data-testid="my-agent-skeleton">
         <span className="h-6 w-48 rounded bg-gray-100" />
         <span className="h-4 w-72 max-w-full rounded bg-gray-100" />

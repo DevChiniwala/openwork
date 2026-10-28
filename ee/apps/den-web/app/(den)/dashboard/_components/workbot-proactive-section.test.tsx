@@ -66,7 +66,7 @@ test("with nowhere to send messages the switch says to choose a destination firs
 
 test("without the headless runner the switch says who can fix it", () => {
   const html = render({ ...ready, settings: { ...ready.settings, enabled: false }, runnerReady: false });
-  assert.match(text(html), /Needs OpenWork's headless runner\. Ask your OpenWork operator to set it up\./);
+  assert.match(text(html), /Needs the headless runner\. Ask your deployment administrator\./);
   assert.match(switchFor(html, "Agents for everyone") ?? "", /disabled=""/);
 });
 

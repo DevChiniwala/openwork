@@ -99,7 +99,7 @@ export function WorkbotProactivePanel({
   const { settings, template, slackReady, runnerReady } = view;
   const locked = !canManage || saving;
   const switchNote = !runnerReady
-    ? "Needs OpenWork's headless runner. Ask your OpenWork operator to set it up."
+    ? "Needs the headless runner. Ask your deployment administrator."
     : !settings.destination
       ? "Choose where messages go first."
       : !slackReady

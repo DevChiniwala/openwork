@@ -299,10 +299,10 @@ export function memberAgentChanges(stored: StoredAgentPreferences, settings: Wor
 
 /** What chat says back after a save: exactly what was saved, how to revert it, and where to see it. */
 export function savedReply(result: { lines: readonly string[]; undid: boolean; undoable: boolean }, link: string): string {
-  if (!result.lines.length) return `Nothing changed. My agent: ${link}`
+  if (!result.lines.length) return `Nothing changed. My bot: ${link}`
   const list = result.lines.map((line) => `- ${line}`).join("\n")
-  if (result.undid) return `Undone. Now:\n${list}\nMy agent: ${link}`
-  return `Saved:\n${list}\n${result.undoable ? 'Reply "undo" to revert. ' : ""}My agent: ${link}`
+  if (result.undid) return `Undone. Now:\n${list}\nMy bot: ${link}`
+  return `Saved:\n${list}\n${result.undoable ? 'Reply "undo" to revert. ' : ""}My bot: ${link}`
 }
 
 /** On/off and snooze, in the same words; they are not in the change log (the switch itself undoes them). */

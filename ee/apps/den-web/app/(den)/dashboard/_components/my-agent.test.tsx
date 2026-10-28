@@ -65,9 +65,9 @@ function switchFor(html: string, label: string) {
 
 test("the Library row reports a real state: the last check and what came of it, today's count, the switch and the way in", () => {
   const html = row(base);
-  assert.match(text(html), /My agent Last check at 11:20 AM\. Stayed quiet\. 1 of 3 today/);
-  assert.match(switchFor(html, "My agent") ?? "", /aria-checked="true"/);
-  assert.match(html, /aria-label="Open My agent"/);
+  assert.match(text(html), /My bot Last check at 11:20 AM\. Stayed quiet\. 1 of 3 today/);
+  assert.match(switchFor(html, "My bot") ?? "", /aria-checked="true"/);
+  assert.match(html, /aria-label="Open My bot"/);
   assert.match(html, /href="\/dashboard\/library\/my-agent"/);
   assert.equal(sentTodayLabel(base), "1 of 3 today");
 });
@@ -80,13 +80,13 @@ test("the Library row before the first check, off, snoozed, failing, and locked 
   assert.equal(myAgentStateLine({ ...base, lastCheck: failed }, NOW), "Last check yesterday at 5:05 PM. Couldn't read Gmail.");
   const off = row({ ...base, on: false });
   assert.doesNotMatch(text(off), /of 3 today/, "no count while it's off");
-  assert.match(switchFor(off, "My agent") ?? "", /aria-checked="false"/);
+  assert.match(switchFor(off, "My bot") ?? "", /aria-checked="false"/);
   const locked = row({ ...base, available: false });
   assert.match(text(locked), /Turned off by your admin in Manage › Workbot\./);
-  assert.match(switchFor(locked, "My agent") ?? "", /disabled=""/);
+  assert.match(switchFor(locked, "My bot") ?? "", /disabled=""/);
   assert.match(locked, /data-state="locked"/);
   const error = renderToStaticMarkup(<MyAgentRowError message="Couldn't load your agent." retrying={false} onRetry={() => undefined} />);
-  assert.match(text(error), /My agent Couldn't load your agent\. Try again/);
+  assert.match(text(error), /My bot Couldn't load your agent\. Try again/);
 });
 
 test("the page's focal line is the last check with its outcome, the next check and today's count", () => {

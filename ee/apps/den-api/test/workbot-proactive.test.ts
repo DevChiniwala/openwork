@@ -607,8 +607,8 @@ describe("My agent: the member's words, narrower limits and undo", () => {
     assert.ok(saved.ok)
     assert.deepEqual(saved.lines, ["When: “Between 12 and 2, only urgent things”", "Stopped: Calendar changes", "Only urgent messages 12 PM–2 PM"])
     assert.equal(saved.wake, true, "a new quiet window makes the agent look again")
-    assert.equal(preferences.savedReply({ lines: saved.lines, undid: false, undoable: true }, "https://den.example/dashboard/library/my-agent"),
-      "Saved:\n- When: “Between 12 and 2, only urgent things”\n- Stopped: Calendar changes\n- Only urgent messages 12 PM–2 PM\nReply \"undo\" to revert. My agent: https://den.example/dashboard/library/my-agent")
+    assert.equal(preferences.savedReply({ lines: saved.lines, undid: false, undoable: true }, "https://den.example/dashboard/my-bot"),
+      "Saved:\n- When: “Between 12 and 2, only urgent things”\n- Stopped: Calendar changes\n- Only urgent messages 12 PM–2 PM\nReply \"undo\" to revert. My bot: https://den.example/dashboard/my-bot")
     assert.deepEqual(saved.overrides, { muted: ["calendar_changes"], quietWindow: { startHour: 12, endHour: 14 } })
     assert.deepEqual(new Set(saved.stored.log.map((entry) => entry.save)).size, 1)
     assert.ok(saved.stored.log.every((entry) => entry.source === "chat"))
@@ -653,7 +653,7 @@ describe("My agent: the member's words, narrower limits and undo", () => {
     const twice = change({ preferences: { always: "Payroll" } }, { stored: set.stored })
     assert.ok(twice.ok)
     assert.deepEqual(twice.lines, [])
-    assert.equal(preferences.savedReply({ lines: [], undid: false, undoable: false }, "L"), "Nothing changed. My agent: L")
+    assert.equal(preferences.savedReply({ lines: [], undid: false, undoable: false }, "L"), "Nothing changed. My bot: L")
     assert.deepEqual(preferences.choiceLines({ on: false, snooze: "tomorrow" }), ["Turned off", "Snoozed until your next working morning"])
   })
 })

@@ -72,7 +72,7 @@ test("chat and the Library page change the same agent: each change says where it
   // "between 12 and 2 only urgent stuff, stop telling me about calendar changes"
   const said = await sayInChat(den, token, "putMeAgent", { preferences: { when: "Between 12 and 2, only urgent things" }, quietWindow: { startHour: 12, endHour: 14 }, mute: ["calendar_changes"] })
   const reply = text(field(said, "saved", "reply"), "the chat reply")
-  assert.match(reply, /^Saved:\n- When: “Between 12 and 2, only urgent things”\n- Stopped: Calendar changes\n- Only urgent messages 12 PM–2 PM\nReply "undo" to revert\. My agent: http.+\/dashboard\/library\/my-agent$/)
+  assert.match(reply, /^Saved:\n- When: “Between 12 and 2, only urgent things”\n- Stopped: Calendar changes\n- Only urgent messages 12 PM–2 PM\nReply "undo" to revert\. My bot: http.+\/dashboard\/my-bot$/)
   assert.doesNotMatch(reply, /<|\[|button/i, "text only, no Slack buttons or markup")
 
   const page = await space.call("GET", "/v1/me/agent")
@@ -99,7 +99,7 @@ test("chat and the Library page change the same agent: each change says where it
   // "undo" in chat: the last save (the page's How), then the rest of the chat save.
   const firstUndo = await sayInChat(den, token, "putMeAgent", { undo: "last" })
   assert.equal(field(firstUndo, "preferences", "how"), "")
-  assert.match(text(field(firstUndo, "saved", "reply"), "undo reply"), /^Undone\. Now:\n- How: cleared\nMy agent: /)
+  assert.match(text(field(firstUndo, "saved", "reply"), "undo reply"), /^Undone\. Now:\n- How: cleared\nMy bot: /)
   const secondUndo = await sayInChat(den, token, "putMeAgent", { undo: "last" })
   assert.equal(field(secondUndo, "preferences", "when"), "")
   assert.equal(list(field(secondUndo, "responsibilities")).find((entry) => entry.id === "calendar_changes")?.muted, false)
