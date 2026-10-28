@@ -72,6 +72,8 @@ test("a member reads everything their agent did with OpenWork and their files as
     evidence.recordAssertionEvidence("The catalog lookup ran but is not a step a person reads", `Cloud calls served: ${JSON.stringify(called)}; rail: ${text.slice(0, 220)}`, called.includes("search_capabilities") && !INTERNALS.test(text));
     expect(called).toContain("search_capabilities");
     expect(text).not.toMatch(INTERNALS);
+    // Raw details sit behind a code icon that appears when the row is hovered (P3).
+    await user.hover({ text: "Looked up people in your organization" });
     await user.click({ label: "Show technical details for Looked up people in your organization" });
     await user.see({ text: /getOrg/ });
     await user.screenshot();
