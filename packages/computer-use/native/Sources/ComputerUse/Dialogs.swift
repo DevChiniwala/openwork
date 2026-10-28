@@ -129,7 +129,8 @@ extension MacAccessibility {
         guard !opened.isEmpty, let focused = elementAttribute(AXUIElementCreateApplication(app.pid), kAXFocusedWindowAttribute),
               let found = await windowTarget(for: focused, pid: app.pid),
               HandoverRules.followsNewWindow(focused: found.id, target: target.id, opened: opened) else { return nil }
-        return DialogTarget(target: found, app: app, kind: .window)
+        // An app's file picker can be an ordinary window: it keeps the file-panel rules.
+        return DialogTarget(target: found, app: app, kind: isFilePanel(found, app: app) ? .filePanel : .window)
     }
 
     /// A menu the app has open: a pop-up, a context menu or one from its menu bar.
