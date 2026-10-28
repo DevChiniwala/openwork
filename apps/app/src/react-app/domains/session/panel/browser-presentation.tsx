@@ -106,7 +106,8 @@ export function BrowserPresentationSurfaces({ sessionId, controller }: BrowserFu
   const inChat = useSessionFloatingSlot();
   const { mode, tab, presentation, present, setSnap } = controller;
   const floating = controller.enabled && mode === "floating" && tab !== null;
-  const detached = useFloatingWindow("browser", floating, { title: "Browser", width: 280, height: 260, onClosed: () => present("hidden") });
+  // Closing the window, by its X or the system's close, puts the page back beside the chat.
+  const detached = useFloatingWindow("browser", floating, { title: "Browser", width: 280, height: 260, onClosed: () => present("side") });
   useFitFloatingWindow(detached);
   const slot = detached ?? inChat;
   if (!controller.enabled) return null;

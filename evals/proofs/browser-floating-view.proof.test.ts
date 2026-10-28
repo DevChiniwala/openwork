@@ -139,6 +139,24 @@ test("a person moves the page the agent opened between the side, its own floatin
     await floating.user.screenshot();
   });
 
+  await step("after: the floating window's close button puts the browser back beside the chat", async () => {
+    const floating = await floatingCard();
+    await floating.user.click({ testId: "browser-floating-close" });
+    await browserMode("side");
+    await floatingClosed();
+    const view = await pageView(true);
+    expect(view).toMatchObject({ tabId });
+    evidence.recordAssertionEvidence(
+      "Closing the window docks the browser",
+      `The close button closed the floating window and the same page is back beside the chat (${view?.bounds.width ?? 0}px wide).`,
+      view?.tabId === tabId,
+    );
+    await user.screenshot();
+    // Pop it out again for the Browser button step.
+    await user.click({ testId: "browser-mode-float" });
+    await browserMode("floating");
+  });
+
   await step("after: the Browser button only opens and closes the side panel; it never pops the page out", async () => {
     // From the floating window, the button docks the page back beside the chat.
     await user.click(toggle);
