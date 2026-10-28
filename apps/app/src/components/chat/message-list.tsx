@@ -433,9 +433,17 @@ const ToolMessageInner = ({ part }: ToolMessageProps) => {
 
 const isEmptyMessage = (message: UIMessage): boolean => message.parts.length === 0
 
-/** A finished read of what OpenWork offers did no work the person asked for (T2). */
+/**
+ * A finished catalog lookup (what OpenWork offers, which Cloud capabilities
+ * exist) did no work the person asked for (T2), the same rule Code Mode
+ * scripts follow. A lookup that reports a connection to set up stays: that
+ * is something the person can act on.
+ */
 function isSilentAppLookup(part: DynamicToolUIPart): boolean {
-  return part.toolName === "openwork_context" && part.state === "output-available"
+  if (part.state !== "output-available") return false
+  if (part.toolName === "openwork_context") return true
+  const catalogSearch = part.toolName === "search" || part.toolName.endsWith("search_capabilities")
+  return catalogSearch && connectionFromChatToolPart(part, { allowDiscovery: true }) === null
 }
 
 /**

@@ -85,18 +85,19 @@ async function render(parts: UIMessage["parts"]) {
 
 const context = native("openwork_context", {}, { affordances: [{ id: "session.search" }] })
 const search = native("openwork_query", { id: "session.search", args: { query: "plan" } }, { results: [] })
+const discovery = native("openwork-cloud_search_capabilities", { query: "people" }, { matches: [{ name: "getOrg" }] })
 const create = native("openwork_execute", { id: "session.group.create", args: { label: "Done" } }, { ok: true, groupId: "grp_8f2kq0aa", label: "Done", created: true })
 
 describe("the turn's rail", () => {
-  test("a clean turn folds; reading what OpenWork offers is not a step; OpenWork rows carry its mark", async () => {
-    const container = await render([context, search, create])
+  test("a clean turn folds; catalog lookups (app context, Cloud search) are not steps; OpenWork rows carry its mark", async () => {
+    const container = await render([context, discovery, search, create])
     const rail = container.querySelector<HTMLElement>('[data-testid="completed-work-rail"]')
     expect(rail?.getAttribute("aria-label")).toBe("Worked for 3s, 2 steps. Show steps")
     await act(async () => rail?.click())
     const rows = [...container.querySelectorAll("[data-capability-call]")].map((row) => row.textContent)
     expect(rows).toEqual(["Searched your chats for “plan”", "Created the “Done” group"])
     expect(container.querySelectorAll('[data-capability-call] [data-connector-icon="openwork"]')).toHaveLength(2)
-    expect(container.textContent).not.toMatch(/openwork_|session\.group|grp_|Used context/)
+    expect(container.textContent).not.toMatch(/openwork_|session\.group|grp_|Used context|Searched your connections/)
   })
 
   test("a turn with a refused command stays open with the failure inline", async () => {
