@@ -4,6 +4,7 @@ import { AUTO_ROUTER_DEFAULT_PROMPT, autoRouterOptionKey, autoRouterThinkingLeve
 import { anthropicJsonToChat, anthropicStreamToChat, claudeTakesEffort, toAnthropicBody } from "../src/auto-router/anthropic.js"
 import { createMemoryReasoningStore } from "../src/auto-router/reasoning-store.js"
 import { injectRouteIntoChatStream, readAutoPrompt, toOpenAiChatBody, type AutoRouteInfo } from "../src/auto-router/chat.js"
+import { annotateChatError, annotateChatStreamErrors, autoRouteNote } from "../src/auto-router/handler.js"
 import { clearAutoTurnChoices, decideAutoRoute, fallbackDecision, type AutoCandidate } from "../src/auto-router/decide.js"
 import { jevRequestBody, type AskJev } from "../src/auto-router/jev.js"
 
@@ -188,18 +189,42 @@ test("a chat request becomes a Messages request with tools, results and effort",
   ] }])
 })
 
-test("a tool-use turn without its signed thinking continues with thinking off", () => {
-  const body = toAnthropicBody({ messages: [
+test("a tool-use turn without its signed thinking thinks off only where the model allows it", () => {
+  const messages = [
     { role: "user", content: "read a.ts" },
     { role: "assistant", content: "", tool_calls: [{ id: "toolu_1", type: "function", function: { name: "read", arguments: "{\"path\":\"a.ts\"}" } }] },
     { role: "tool", tool_call_id: "toolu_1", content: "export {}" },
-  ] }, { model: "gwm_x", upstreamModel: "claude-opus-5", thinkingLevel: "high", maxOutputTokens: null })
+  ]
+  const body = toAnthropicBody({ messages }, { model: "gwm_x", upstreamModel: "claude-opus-5", thinkingLevel: "high", maxOutputTokens: null, thinkingLevels: ["default", "none", "high"] })
   assert.deepEqual(body.thinking, { type: "disabled" })
   assert.deepEqual(body.messages, [
     { role: "user", content: [{ type: "text", text: "read a.ts" }] },
     { role: "assistant", content: [{ type: "tool_use", id: "toolu_1", name: "read", input: { path: "a.ts" } }] },
     { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "export {}" }] },
   ])
+})
+
+test("a model that only takes adaptive thinking never gets thinking disabled; the unsigned turn becomes text", () => {
+  const messages = [
+    { role: "user", content: "read a.ts" },
+    { role: "assistant", content: "", tool_calls: [{ id: "toolu_1", type: "function", function: { name: "read", arguments: "{\"path\":\"a.ts\"}" } }] },
+    { role: "tool", tool_call_id: "toolu_1", content: "export {}" },
+  ]
+  for (const thinkingLevel of ["medium", "default"] as const) {
+    const body = toAnthropicBody({ messages }, { model: "gwm_x", upstreamModel: "claude-opus-5-5", thinkingLevel, maxOutputTokens: null, thinkingLevels: ["default", "low", "medium", "high"] })
+    assert.notDeepEqual(body.thinking, { type: "disabled" })
+    assert.deepEqual(body.messages, [
+      { role: "user", content: [{ type: "text", text: "read a.ts" }] },
+      { role: "assistant", content: [{ type: "text", text: "[Called the read tool with {\"path\":\"a.ts\"}]" }] },
+      { role: "user", content: [{ type: "text", text: "[Result of the read tool]\nexport {}" }] },
+    ])
+  }
+  const medium = toAnthropicBody({ messages }, { model: "gwm_x", upstreamModel: "claude-opus-5-5", thinkingLevel: "medium", maxOutputTokens: null, thinkingLevels: ["default", "medium"] })
+  assert.deepEqual(medium.thinking, { type: "adaptive", display: "summarized" })
+  assert.deepEqual(medium.output_config, { effort: "medium" })
+  // Earlier turns keep their structured tool calls.
+  const later = toAnthropicBody({ messages: [...messages, { role: "assistant", content: "Done." }, { role: "user", content: "next" }] }, { model: "gwm_x", upstreamModel: "claude-opus-5-5", thinkingLevel: "medium", maxOutputTokens: null, thinkingLevels: ["default", "medium"] })
+  assert.match(JSON.stringify(later.messages), /tool_use/)
 })
 
 test("a Messages stream becomes a chat stream, and its thinking is replayed on the next request", async () => {
@@ -279,4 +304,30 @@ test("a model allows default plus its catalog effort levels, in order", () => {
   assert.deepEqual(autoRouterThinkingLevels("claude-opus-5", { reasoning: true, reasoning_options: [{ type: "effort", values: ["max", "low", "high", "bogus"] }] }), ["default", "low", "high", "max"])
   assert.deepEqual(autoRouterThinkingLevels("claude-sonnet-4-5", { reasoning: true, reasoning_options: [{ type: "effort", values: ["low"] }] }), ["default"])
   assert.deepEqual(autoRouterThinkingLevels("gpt-5", { reasoning: false, reasoning_options: [{ type: "effort", values: ["low"] }] }), ["default"])
+})
+
+test("a continuation on another gateway instance keeps the turn's route from the shared store", async () => {
+  const shared = new Map<string, string>()
+  const store = { recall: async (key: string) => shared.get(key) ?? null, remember: async (key: string, routeId: string) => { shared.set(key, routeId) } }
+  let calls = 0
+  const askJev: AskJev = async () => { calls++; return { key: autoRouterOptionKey(1), confidence: 1, model: null } }
+  await decideAutoRoute({ candidates, prompt: "design a system", context: null, continuation: false, turnKey: "turn-shared", askJev, shared: store })
+  clearAutoTurnChoices() // as if the next request landed on another instance
+  const next = await decideAutoRoute({ candidates, prompt: "design a system", context: null, continuation: true, turnKey: "turn-shared", askJev, shared: store })
+  assert.equal(calls, 1)
+  assert.equal(next?.reason, "turn")
+  assert.equal(next?.candidate.routeId, "arr_fast")
+})
+
+test("every error says which model Auto chose", async () => {
+  const chosen = { ...route, name: "Claude Opus 5.5", thinking: "medium" as const }
+  assert.equal(autoRouteNote(chosen), "Auto chose Claude Opus 5.5 · Medium thinking.")
+  assert.equal(autoRouteNote({ ...chosen, thinking: "default" }), "Auto chose Claude Opus 5.5.")
+  const json = annotateChatError({ error: { message: "Overloaded", type: "overloaded_error" } }, chosen)
+  assert.deepEqual(json.error, { message: "Overloaded (Auto chose Claude Opus 5.5 · Medium thinking.)", type: "overloaded_error" })
+  assert.deepEqual(json.openwork_route, chosen)
+  const text = await new Response(annotateChatStreamErrors(stream(`data: ${JSON.stringify({ choices: [{ delta: { content: "a" } }] })}\n\ndata: ${JSON.stringify({ error: { message: "Boom", type: "api_error" } })}\n\n`), chosen)).text()
+  const events = dataEvents(text).map((event) => JSON.parse(event))
+  assert.equal(events[0].choices[0].delta.content, "a")
+  assert.equal(events[1].error.message, "Boom (Auto chose Claude Opus 5.5 · Medium thinking.)")
 })

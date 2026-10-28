@@ -63,7 +63,9 @@ the reply (for example "Claude Haiku 5.5 · High").
    the admin's "Use when" text. Jev picks only the route; the route runs at
    its own thinking level. Jev never sees provider or model ids. Requests that
    continue the turn (tool results) reuse the turn's choice for an hour, so the
-   model, its thinking and its prompt cache stay consistent.
+   model, its thinking and its prompt cache stay consistent. The choice is
+   kept in memory and in `auto_router_reasoning` (keyed by a hash of the turn),
+   so a continuation that lands on another gateway instance keeps it too.
 4. If Jev fails, times out (4s) or answers nothing usable (without the
    TypeSafe key Auto is off altogether, see below),
    the default model (the first route, or the first one the member can use
@@ -93,8 +95,13 @@ the reply (for example "Claude Haiku 5.5 · High").
    encrypted reasoning items) cannot travel
    through Chat Completions. The gateway stores it for an hour, encrypted, in
    `auto_router_reasoning` keyed by organization and tool call id, so any
-   gateway instance can continue the turn. If it is missing anyway, that
-   request runs with thinking off rather than failing.
+   gateway instance can continue the turn. If it is missing anyway (for
+   example the turn's earlier steps ran on another model), a model whose
+   catalog allows `none` runs that request with thinking off; a model that only
+   takes adaptive thinking (newer Claude, which rejects `thinking.type:
+   "disabled"`) keeps thinking on and gets that turn's unsigned tool calls and
+   results as plain text instead. `disabled` is never sent to a model whose
+   catalog does not offer `none`.
 
 ## The key
 
@@ -116,6 +123,9 @@ Every Auto response carries it:
   `openwork_route: { provider, model, thinking, reason, name }`, and Anthropic
   responses use the real model id as the chunk `model`.
 - The gateway request log records the real provider, model and usage.
+- Errors from the chosen model, as JSON or mid-stream, end with "(Auto chose
+  <model name> · <thinking> thinking.)" and carry `openwork_route`, so the
+  member always knows which model failed.
 
 The desktop shows it under each Auto reply, beside the provider's logo, as
 "<model name> · <thinking>" (no thinking part for `default`). Opaque

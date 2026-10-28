@@ -924,14 +924,16 @@ export function createBrowserTaskHost({ getTab, tabsFor, ownerOf, activeFor, isV
         // The person sees every file before any is sent, so a batch never carries more than the card lists.
         if (attaching.length > MAX_FILES) fail("invalid_action", `Attach at most ${MAX_FILES} files in one call. Nothing was dispatched.`);
         if (attaching.length) {
-          try { await checkFiles(attaching); }
-          catch { fail("file_unavailable", "Attach only existing, readable files by their absolute paths. Nothing was dispatched."); }
           let host = "this page";
           try { host = new URL(observed.url).host || host; } catch { /* Keep the generic name. */ }
+          // Nothing about the files is read before the person answers, so a page cannot probe
+          // paths; afterwards each must be exactly the regular file approved, not a link to another.
           if (!await approveFiles(sessionId, { app: host, files: attaching }, requestSignal)) {
             fail("files_declined", "The person did not approve giving these files to the page. Nothing was dispatched.");
           }
           requestSignal.throwIfAborted();
+          try { await checkFiles(attaching); }
+          catch { fail("file_unavailable", "Attach readable regular files by their real absolute paths, not links. Nothing was dispatched."); }
         }
         if (!await allowed(observed.url) || state.observations.get(observed.id) !== observed || observed.revision !== tab.webMcpRevision || observed.url !== tab.view.webContents.getURL()) fail("page_changed", "The page changed or access was blocked while preparing the action. Observe again.");
         requestSignal.throwIfAborted();

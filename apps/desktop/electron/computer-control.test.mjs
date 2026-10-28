@@ -761,7 +761,7 @@ function filePanelFixture({ files = ["launch.mp4"], browsing = false } = {}) {
     // The first look is the one opening the session makes; the panel opens after it.
     const looks = seen.filter((call) => call.name === "computer_observe").length;
     if (name === "computer_observe" && !allowed && looks > 1) {
-      if (!args.file_panel_access) return text({ ok: false, code: "file_panel_approval_required", app: "Safari", dispatched: false, next: "observe" });
+      if (args.file_panel_access !== 31) return text({ ok: false, code: "file_panel_approval_required", app: "Safari", panel_id: 31, dispatched: false, next: "observe" });
       allowed = true;
     }
     if (name !== "computer_act") return undefined;
@@ -855,4 +855,25 @@ test("a selection longer than one card can show is never approved", async (t) =>
   assert.equal(payload(await confirmPanel(f.control)).code, "files_declined");
   assert.ok(!f.requests.some((request) => request?.reason === "files"), "the person is not shown a partial list");
   assert.equal(await f.control.approveFiles({ sessionId: "chat", app: "example.com", files: many }), false);
+});
+
+test("a recipient too long to show is refused, never shortened into another's approval", async (t) => {
+  const f = filePanelFixture(); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Upload" } });
+  assert.equal(await f.control.approveFiles({ sessionId: "chat", app: `${"a".repeat(200)}.example.com`, files: ["/tmp/a.txt"] }), false);
+  assert.ok(!f.requests.some((request) => request?.reason === "files"));
+});
+
+test("same-named selected files are each shown and each approved", async (t) => {
+  const f = filePanelFixture({ files: ["clip.mp4", "clip.mp4"] }); t.after(() => f.control.reset(true));
+  await f.control.setFeatureEnabled(true);
+  await f.control.execute({ sessionId: "chat", name: "computer_open", args: { app_id: "editor", mode: "control", purpose: "Upload" } });
+  const press = confirmPanel(f.control);
+  for (let waited = 0; !f.requests.some((request) => request?.reason === "files") && waited < 2_000; waited += 5) await new Promise((resolve) => setTimeout(resolve, 5));
+  const card = f.requests.find((request) => request?.reason === "files");
+  assert.deepEqual(card.files.names, ["clip.mp4", "clip.mp4"]);
+  await f.control.answerRequest({ sessionId: "chat", answer: "allow", id: card.id });
+  assert.equal(payload(await press).status, "dispatched");
+  assert.deepEqual(f.acts().at(-1), ["clip.mp4", "clip.mp4"]);
 });

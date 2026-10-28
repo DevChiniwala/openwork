@@ -244,7 +244,9 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   async function approveFiles(grant, files, signal) {
     // The card lists every file exactly; anything it could not show is never approved.
     if (files.names.length > 20 || files.names.some((name) => typeof name !== "string" || !name || name.length > 1024)) return "too_many";
-    const app = String(files.app).slice(0, 200);
+    // The recipient is the approval's key: refused when too long to show, never shortened.
+    const app = String(files.app);
+    if (!app || app.length > 200) return "too_many";
     // "Always" covers only the recipient it was given for, and only handing over files.
     if (files.names.length && grant.filesAlwaysFor?.has(app)) return "always";
     if (scriptRequests.has(grant.sessionId)) return "busy";
@@ -1325,8 +1327,12 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
           } else {
             // Same call and revision: a Stop during the question still cancels it.
             limit.dispose(); limit = deadline(operationMs);
-            call.args = { ...call.args, ...(panel ? { file_panel_access: true } : { file_approval: names }) };
-            result = await run(call, signal, limit);
+            // Bound to what the person answered for: this panel's window, or exactly these names.
+            if (panel && !Number.isSafeInteger(asked.panel_id)) result = failure("file_panel_declined", "The panel could not be identified, so it was not opened to the agent.");
+            else {
+              call.args = { ...call.args, ...(panel ? { file_panel_access: asked.panel_id } : { file_approval: names }) };
+              result = await run(call, signal, limit);
+            }
           }
         }
         recordStep(grant, name, started);

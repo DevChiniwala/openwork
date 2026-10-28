@@ -30,9 +30,7 @@ final class SessionRuntime {
         /// Background until the app shows it needs the front for keys.
         var delivery: InputDelivery
         /// The windows under the dialogs being worked in, the session's own first.
-        var parents: [(app: AppIdentity, target: WindowTarget, kind: DialogTarget.Kind?)] = []
-        /// Windows the last action opened: the only new windows a session follows.
-        var openedByLastAction: Set<CGWindowID> = []
+        var parents: [(app: AppIdentity, target: WindowTarget)] = []
         var dialogKind: DialogTarget.Kind?
         /// A dialog closed since the last observation and the session is back in its window.
         var returnedFromDialog = false
@@ -155,7 +153,7 @@ final class SessionRuntime {
         case "computer_observe":
             let options = try ObservationOptions(values, policy: policy)
             return try await observe(try a.string("session_id"), image: options.image, elements: options.elements,
-                filePanelAccess: policy == .embedded && (values["file_panel_access"] as? Bool) == true)
+                filePanelAccess: policy == .embedded ? (values["file_panel_access"] as? NSNumber)?.uint32Value : nil)
         case "computer_act":
             try a.only(policy == .embedded ? ["session_id", "observation_id", "request_id", "action", "actions", "intent", "file_approval", "file_panel_access"] : ["session_id", "observation_id", "request_id", "action"])
             let id = try a.string("session_id")
@@ -168,7 +166,8 @@ final class SessionRuntime {
             // Set only by the trusted host: the exact names the person approved handing over,
             // and whether they let the agent look through a file panel at all.
             let fileApproval = policy == .embedded ? values["file_approval"] as? [String] : nil
-            let panelAccess = policy == .embedded && (values["file_panel_access"] as? Bool) == true
+            // The panel the person allowed, by its window: never whichever panel is open now.
+            let panelAccess = policy == .embedded ? (values["file_panel_access"] as? NSNumber)?.uint32Value : nil
             return try await act(id: id, observationID: observationID, requestID: requestID, actions: actions, raw: raw, intent: intent,
                 fileApproval: fileApproval, filePanelAccess: panelAccess)
         case "computer_zoom" where policy == .embedded:
@@ -321,24 +320,18 @@ final class SessionRuntime {
         }
         if let deadline, now >= deadline { throw UseError("action_timeout", "The bounded action time expired. Inspect the receipt before doing anything else.", next: "observe") }
     }
-    /// A macOS prompt only the person may answer is open; the agent waits for them.
-    private func personNeeded(_ prompt: (reason: String, app: String)) -> [[String: Any]] {
-        text(["ok": false, "code": "person_needed", "reason": prompt.reason, "prompt_app": prompt.app, "dispatched": false,
-              "next": "human_takeover", "message": HandoverRules.message(prompt.reason)])
-    }
     /// A file panel lists the person's files: nothing of it reaches the agent until they allow it.
     private func filePanelAccessRequired(_ current: Session) -> [[String: Any]] {
-        text(["ok": false, "code": "file_panel_approval_required", "app": current.frontApp.name, "dispatched": false, "next": "observe",
+        text(["ok": false, "code": "file_panel_approval_required", "app": current.frontApp.name, "panel_id": Int(current.target.id), "dispatched": false, "next": "observe",
               "message": "A file panel opened. The person is asked before the agent sees their files; nothing was read."])
     }
-    private func observe(_ id: String, image: Bool?, elements: String, filePanelAccess: Bool = false) async throws -> [[String: Any]] {
+    private func observe(_ id: String, image: Bool?, elements: String, filePanelAccess: CGWindowID? = nil) async throws -> [[String: Any]] {
         // A paused session never resumes from an observation: only the person's Continue does.
         // Retry only read-only capture races. Never repeat an action or cross takeover.
         try await followDialog(id)
-        if let prompt = access.personPrompt() { return personNeeded(prompt) }
         let current = try current(id)
         if current.dialogKind == .filePanel, current.filePanelAllowed != current.target.id {
-            guard filePanelAccess else { return filePanelAccessRequired(current) }
+            guard filePanelAccess == current.target.id else { return filePanelAccessRequired(current) }
             // Allowed for this panel until it closes; another panel asks again.
             session?.filePanelAllowed = current.target.id
         }
@@ -514,7 +507,7 @@ final class SessionRuntime {
     }
 
     private func act(id: String, observationID: String, requestID: String, actions: [Action], raw: Any, intent: String? = nil,
-                     fileApproval: [String]? = nil, filePanelAccess: Bool = false) async throws -> [[String: Any]] {
+                     fileApproval: [String]? = nil, filePanelAccess: CGWindowID? = nil) async throws -> [[String: Any]] {
         let cached = try current(id, allowPaused: true)
         let fingerprint = try JSONSerialization.data(withJSONObject: ["observation_id": observationID, "action": raw], options: [.sortedKeys])
         if let receipt = cached.receipts[requestID] {
@@ -525,10 +518,9 @@ final class SessionRuntime {
         if try await followDialog(id) {
             throw UseError("observation_required", "A dialog opened or closed since the last observation. Observe again; nothing was sent.", next: "observe")
         }
-        if let prompt = access.personPrompt() { return personNeeded(prompt) }
         let current = try current(id)
         if current.dialogKind == .filePanel, current.filePanelAllowed != current.target.id {
-            guard filePanelAccess else { return filePanelAccessRequired(current) }
+            guard filePanelAccess == current.target.id else { return filePanelAccessRequired(current) }
             // Allowed for this panel until it closes; another panel asks again.
             session?.filePanelAllowed = current.target.id
         }
@@ -589,7 +581,8 @@ final class SessionRuntime {
                 throw UseError("too_many_files", "Choose at most \(DialogRules.maxApprovedFiles) files at a time. Nothing was sent.", next: "observe")
             }
             // Exactly the files the person approved, read again right before the press.
-            guard let fileApproval, Set(fileApproval) == Set(names) else {
+            // Every selected name, duplicates and order included: same-named files are each counted.
+            guard let fileApproval, fileApproval == names else {
                 return text(["ok": false, "code": "files_approval_required", "files": names,
                     "app": current.frontApp.name, "dispatched": false, "next": "observe",
                     "message": "Choosing files hands them to the app. The person is asked first; nothing was sent."])
@@ -750,11 +743,9 @@ final class SessionRuntime {
         }
         var receipt = progress.receipt(requestID: requestID, failure: failure, uncertain: uncertain, detailed: policy == .embedded)
         if let settled { receipt["settled"] = settled }
-        let windowsAfter = access.windowChanges(current.app)
-        if settled != nil, let changes = windowsBefore.diff(windowsAfter, target: current.target.id) {
+        if settled != nil, let changes = windowsBefore.diff(access.windowChanges(current.app), target: current.target.id) {
             receipt["window_changes"] = changes
         }
-        if progress.hasInput { session?.openedByLastAction = windowsAfter.windows.subtracting(windowsBefore.windows) }
         receipt["delivery"] = (background ? InputDelivery.background : .foreground).rawValue
         receipt["desktop"] = desktopBefore.changes(to: DesktopState.now())
         if session?.id == id { session?.receipts[requestID] = receipt }
@@ -903,27 +894,20 @@ final class SessionRuntime {
         while let parent = session?.parents.last, let scope = session, !access.dialogOpen(scope.target, app: scope.app) {
             session?.parents.removeLast()
             session?.app = parent.app; session?.target = parent.target
-            session?.dialogKind = parent.kind
-            // A closed panel's approval ends with it; a later panel asks again. Closing
-            // the panel's own sheet returns to the same, still-approved panel.
-            if session?.filePanelAllowed == scope.target.id { session?.filePanelAllowed = nil }
+            // A closed panel's approval ends with it; a later panel asks again.
+            session?.filePanelAllowed = nil
+            let outer = session?.parents.isEmpty == true
+            session?.dialogKind = outer ? nil : .dialog
             session?.returnedFromDialog = true
             changed = true
         }
-        // Something new over the current scope, at most three deep (a panel's own sheet): an
-        // open menu, a dialog, or a window the last action opened and the app focused.
-        let opened = session?.openedByLastAction ?? []
-        session?.openedByLastAction = []
-        if let scope = session, scope.parents.count < 3 {
-            var next = await access.openMenu(of: scope.app)
-            if next == nil { next = await access.dialog(over: scope.target, app: scope.app) }
-            if next == nil, scope.dialogKind != .menu { next = await access.openedWindow(by: opened, over: scope.target, app: scope.app) }
-            if let dialog = next, session?.id == id, !scope.parents.contains(where: { $0.target.id == dialog.target.id }) {
-            session?.parents.append((scope.app, scope.target, scope.dialogKind))
+        // A new dialog over the current scope; at most three deep (a panel's own sheet).
+        if let scope = session, scope.parents.count < 3, let dialog = await access.dialog(over: scope.target, app: scope.app) {
+            guard session?.id == id else { return false }
+            session?.parents.append((scope.app, scope.target))
             session?.app = dialog.app; session?.target = dialog.target; session?.dialogKind = dialog.kind
             session?.returnedFromDialog = false
             changed = true
-            }
         }
         if changed {
             session?.generation += 1; session?.observation = nil; session?.records = []; session?.focus = nil; session?.needsRefresh = true
