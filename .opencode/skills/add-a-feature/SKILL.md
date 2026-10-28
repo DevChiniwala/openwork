@@ -1,13 +1,17 @@
 ---
 name: add-a-feature
-description: Add a new feature, put work behind a feature flag, roll something out (per organization, for everyone, cloud or self-hosted), revert or kill a feature, or make a big change to existing behavior such as a new engine. Use BEFORE writing the feature code, and when finishing or removing a rollout.
+description: Decide whether work needs a feature flag (usually it does not), and if it does, declare it, roll it out (per organization, for everyone, cloud or self-hosted), revert or kill it. Use for big changes such as a new engine or product area, and when finishing or removing a rollout.
 ---
 
 # Skill: Add a feature
 
-Every new user-visible feature, and every change existing users would notice,
-is a **feature** in the registry, declared **before any feature code**, off.
-Nothing big ships ungated.
+**Default: no flag.** Most work, including most new UI, ships directly and is
+reverted with a normal revert if needed. A flag is the exception, for the few
+changes where turning it off without a deploy is worth the extra code, the
+cleanup later, and the `/admin` noise.
+
+When a flag is warranted, it is a **feature** in the registry, declared
+**before any feature code**, off.
 
 Registry: `packages/features/src/registry.ts` (package `@openwork/features`).
 That file is the only one you edit to declare a feature. The rules live in
@@ -40,27 +44,32 @@ Member overrides are scoped to a membership, never a user globally. Pass `{ user
 
 ## Does this need a feature?
 
-Yes, if any of these is true:
+Almost always **no**. Only add one when **both** are true:
 
-- People get a new screen, tab, button, tool, route family, worker, or engine.
-- Existing users would notice the change (a flow works differently, something moves or disappears).
-- It should roll out gradually, be revertable, or might not belong on self-hosted installs.
+1. It is big: a new product area, a new engine or worker, or a rewrite of a
+   core customer flow (sign-in, chat runs, sync, billing, access control).
+2. Turning it off without a deploy would actually matter: it can break
+   customers in ways a revert is too slow for, it needs a gradual per-org
+   rollout, or it must stay off on self-hosted installs.
 
-No for bug fixes, copy changes, refactors and internal tooling.
+Everything else ships without a flag, including:
 
-Not a feature: anything that only platform admins see in `/admin` (the
-pages we use to manage the deployment itself: Features, organizations, grants,
-plans, sandboxes, recovery). Feature flags control what people in
-organizations get, not the tools of the people running the deployment. Ship
-those `/admin` controls without a flag; platform admin access already gates
-them. This is about `/admin` only: organization admin screens in Den (the
-dashboard, Manage, team settings) are things customers get, so they still need
-a feature when they are new.
+- **Platform `/admin`**: the pages we use to run the deployment (Features,
+  organizations, grants, plans, sandboxes, recovery) and the admin MCP tools.
+  Platform admin access already gates them. Organization admin screens in Den
+  follow the same rules as any other customer screen below.
+- New screens, tabs, buttons, settings or tools that add to the product
+  without changing what already works.
+- UI changes of any size that do not break a flow: layout, spacing, density,
+  toolbars, rows, icons, wording, things moving.
+- Bug fixes, copy changes, refactors, internal tooling, dev/eval/CI scripts.
 
 Not a feature either: something that only keeps older clients working
 (compat shim with a removal condition), something worked out from what is
 configured (derive it in code), or a setting that changes *how* something
 works rather than *whether* people get it (put it in `env.ts` / Helm `config.<area>`).
+
+If you are unsure, do not add a flag. Say in the PR why it is safe without one.
 
 ## 1. Declare it, off
 
