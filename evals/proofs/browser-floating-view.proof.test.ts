@@ -10,7 +10,7 @@ import { browserFloatingViewWorld } from "../worlds/desktop-chat-features.ts";
 const test = spec.world(browserFloatingViewWorld, {
   resources: {
     surfaces: ["desktop"],
-    services: ["den"],
+    services: ["den", "mock"],
     nativeReason: "Floating, side and full-screen presentation move Electron's native page view, which a browser tab cannot host.",
   },
 });
