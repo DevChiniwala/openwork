@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GatewayAccessGrantWrite, GatewayCredentialSetWrite, GatewayModelGroupWrite } from "@openwork/types/den/gateway";
+import type { GatewayAccessGrantWrite, GatewayCredentialSetWrite, GatewayModelGroupWrite, GatewayProviderTestResult } from "@openwork/types/den/gateway";
 import { auditOperationHeaders, type AuditOperationContext } from "@openwork/types/den/audit";
 import { getErrorMessage, getRequestError, requestJson } from "../../_lib/den-flow";
 import { ORG_SCOPE_HEADER } from "../../_lib/org-scope";
@@ -126,6 +126,32 @@ export async function saveInferenceProvider(input: {
     throw new Error("The provider was saved, but no provider was returned.");
   }
   return provider;
+}
+
+export type InferenceProviderTestBody = Pick<InferenceProviderRequestBody, "providerId" | "settings" | "credential" | "apiKeys" | "reuseCredentialFrom"> & { model: string };
+
+function readProviderTestResult(value: unknown): GatewayProviderTestResult | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const ok: unknown = Reflect.get(value, "ok");
+  const model: unknown = Reflect.get(value, "model");
+  const status: unknown = Reflect.get(value, "status");
+  const code: unknown = Reflect.get(value, "code");
+  const message: unknown = Reflect.get(value, "message");
+  if (typeof model !== "string") return null;
+  if (ok === true && typeof status === "number") return { ok: true, model, status, code: null, message: null };
+  if (ok === false && typeof code === "string" && typeof message === "string") return { ok: false, model, status: typeof status === "number" ? status : null, code, message };
+  return null;
+}
+
+/** Asks AI Gateway to send one short prompt with these unsaved settings. Nothing is stored. */
+export async function testInferenceProvider(body: InferenceProviderTestBody): Promise<GatewayProviderTestResult> {
+  const { response, payload } = await requestJson(`/v1/inference-providers/test-connection`, { method: "POST", body: JSON.stringify(body) }, 45000);
+  if (!response.ok) {
+    throw getRequestError(payload, response, `Could not test the provider (${response.status}).`);
+  }
+  const result = readProviderTestResult(payload);
+  if (!result) throw new Error("The test finished without a result. Try again.");
+  return result;
 }
 
 type GatewayResourceWrite =

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Globe, LockKeyhole, Plus, Search, User, Users } from "lucide-react";
-import type { GatewayAccessGrantWrite, GatewayCredentialSetWrite } from "@openwork/types/den/gateway";
+import type { GatewayAccessGrantWrite, GatewayCredentialSetWrite, GatewayProviderTestResult } from "@openwork/types/den/gateway";
 import { createAuditOperationContext, type AuditOperationContext } from "@openwork/types/den/audit";
 import { DenBrandMark } from "../../_components/ui/brand-mark";
 import { DenButton, buttonVariants } from "../../_components/ui/button";
@@ -17,11 +17,11 @@ import { DenSegmented } from "../../_components/ui/segmented";
 import { DenSkeleton } from "../../_components/ui/skeleton";
 import { DenStickyActionBar } from "../../_components/ui/sticky-action-bar";
 import { DenSwitch } from "../../_components/ui/switch";
-import { getAiGatewayProvidersRoute, getNewAiGatewayProviderRoute } from "../../_lib/den-org";
+import { getAiGatewayProvidersRoute, getNewAiGatewayProviderRoute, orgFeatureEnabled } from "../../_lib/den-org";
 import { gatewayMemberSignInMethod } from "@openwork/types/den/inference";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { ConfirmDialog } from "./item-list";
-import { deleteGatewayResource, deleteInferenceProvider, saveGatewayResource, saveInferenceProvider, useInferenceProvider, useOrgInferenceProviders } from "./inference-provider-data";
+import { deleteGatewayResource, deleteInferenceProvider, saveGatewayResource, saveInferenceProvider, testInferenceProvider, useInferenceProvider, useOrgInferenceProviders } from "./inference-provider-data";
 import {
   accessFromGrants, buildInferenceProviderRequestBody, EMPTY_AWS_SSO, getAwsKeysError, getAwsSsoError, getMemberSignInBrand, getMemberSignInMethod, getReusableAwsKeyProviders, getNewInferenceProviderSettings, getRequiredSettingKeys, getSettingLabel,
   isAmazonBedrockNpm, isAwsRegion, isGoogleVertexNpm, isMicrosoftTenantId, isSupportedGatewayNpm, MEMBER_SIGN_IN_DOC_URLS, trimAwsSso, type AwsKeysInput, type AwsSsoInput,
@@ -89,6 +89,8 @@ export function InferenceProviderEditorScreen({ inferenceProviderId, catalogProv
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [providerTest, setProviderTest] = useState<{ state: "running" } | { state: "done"; result: GatewayProviderTestResult } | null>(null);
+  const testedConfig = useRef<string | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
   const initializedProviderId = useRef<string | null>(null);
   const initializedNewProviderId = useRef<string | null>(null);
@@ -167,6 +169,19 @@ export function InferenceProviderEditorScreen({ inferenceProviderId, catalogProv
     ...(bedrock ? { awsKeys, reuseCredentialFrom: reuseSource?.id ?? null } : {}),
   };
   const models = detail?.models ?? [];
+  // A new provider with a shared key is tested before it can be added (feature gatewayProviderTest).
+  const testRequired = !provider && credentialMode === "org" && orgFeatureEnabled(orgContext, "gatewayProviderTest");
+  // "All models" tests the first model in the list below; "Only the ones I pick" tests the first one picked.
+  const testModelId = allowAllModels ? models[0]?.id ?? null : modelIds[0] ?? null;
+  const configFingerprint = JSON.stringify(formInput);
+  const testPassed = providerTest?.state === "done" && providerTest.result.ok;
+
+  // Any change to the configuration dismisses the last test result.
+  useEffect(() => {
+    if (testedConfig.current === configFingerprint) return;
+    testedConfig.current = null;
+    setProviderTest(null);
+  }, [configFingerprint]);
   const filteredModels = useMemo(() => {
     const normalized = modelQuery.trim().toLowerCase();
     return normalized ? models.filter((model) => model.name.toLowerCase().includes(normalized) || model.id.toLowerCase().includes(normalized)) : models;
@@ -221,23 +236,55 @@ export function InferenceProviderEditorScreen({ inferenceProviderId, catalogProv
     }
   }
 
+  /** The checks a new shared-key configuration must pass before it is tested or added. */
+  function configurationError(): string | null {
+    if (catalogError) return "Retry the provider catalog first.";
+    if (!detail || detail.id !== providerId) return "Wait for the provider catalog to load.";
+    if (!detail.models.length) return "No models are available in this provider's catalog. Retry the catalog first.";
+    if (!isSupportedGatewayNpm(npm)) return "This provider is not supported by AI Gateway.";
+    if (!allowAllModels && !modelIds.length) return "Pick at least one model, or choose all models.";
+    for (const key of getRequiredSettingKeys(npm, providerId)) if (!settings[key]?.trim()) return `${getSettingLabel(key, providerId)} is required.`;
+    if (bedrock && !isAwsRegion(settings.region?.trim() ?? "")) return "Enter an AWS region code such as us-east-1.";
+    return bedrock && !reuseSource ? getAwsKeysError(awsKeys) : null;
+  }
+
+  function hasSharedKey() {
+    return vertex ? Boolean(serviceAccountJson.trim()) : bedrock ? Boolean(reuseSource || (awsKeys.accessKeyId.trim() && awsKeys.secretAccessKey.trim())) : envNames.length > 1 ? Object.values(apiKeyValues).some((value) => value.trim()) : Boolean(apiKey.trim());
+  }
+
+  async function testProvider() {
+    setSaveError(null);
+    const fail = (message: string) => setProviderTest({ state: "done", result: { ok: false, model: testModelId ?? "", status: null, code: "invalid_configuration", message } });
+    const invalid = configurationError();
+    if (invalid) return fail(invalid);
+    if (!testModelId) return fail("Pick at least one model to test.");
+    if (!hasSharedKey()) return fail("Paste a key to test.");
+    const fingerprint = configFingerprint;
+    const model = testModelId;
+    testedConfig.current = fingerprint;
+    setProviderTest({ state: "running" });
+    const body = buildInferenceProviderRequestBody({ ...formInput, name: name.trim() || displayName });
+    let result: GatewayProviderTestResult | null = null;
+    try {
+      await runReauthableAction("test-inference-provider", async () => {
+        result = await testInferenceProvider({ providerId: body.providerId, model, settings: body.settings, credential: body.credential, apiKeys: body.apiKeys, reuseCredentialFrom: body.reuseCredentialFrom });
+      });
+    } catch (cause) {
+      result = { ok: false, model, status: null, code: "test_failed", message: cause instanceof Error ? cause.message : "Could not test the provider." };
+    }
+    // A result for settings that have since changed is dropped.
+    if (testedConfig.current !== fingerprint) return;
+    setProviderTest(result ? { state: "done", result } : null);
+  }
+
   async function save() {
     setSaveError(null);
+    if (testRequired && !testPassed) return setSaveError(`Test ${displayName} before adding it.`);
     if (invalidatesCredentials && !rotationAcknowledged) return setSaveError("Confirm that members will need to reconnect before saving this change.");
-    if (catalogError) return setSaveError("Retry the provider catalog before saving.");
-    if (!detail || detail.id !== providerId) return setSaveError("Wait for the provider catalog to load.");
-    if (!detail.models.length) return setSaveError("No models are available in this provider's catalog. Retry the catalog before saving.");
-    if (!isSupportedGatewayNpm(npm)) return setSaveError("This provider is not supported by AI Gateway.");
-    if (!allowAllModels && !modelIds.length) return setSaveError("Pick at least one model, or choose all models.");
-    for (const key of getRequiredSettingKeys(npm, providerId)) if (!settings[key]?.trim()) return setSaveError(`${getSettingLabel(key, providerId)} is required.`);
-    if (bedrock && !isAwsRegion(settings.region?.trim() ?? "")) return setSaveError("Enter an AWS region code such as us-east-1.");
-    const awsKeysError = bedrock && !reuseSource ? getAwsKeysError(awsKeys) : null;
-    if (awsKeysError) return setSaveError(awsKeysError);
+    const invalid = configurationError();
+    if (invalid) return setSaveError(invalid);
     const granting = access.allMembers || access.teamIds.length > 0 || access.memberIds.length > 0;
-    if (!provider && granting && credentialMode === "org") {
-      const hasKey = vertex ? Boolean(serviceAccountJson.trim()) : bedrock ? Boolean(reuseSource || (awsKeys.accessKeyId.trim() && awsKeys.secretAccessKey.trim())) : envNames.length > 1 ? Object.values(apiKeyValues).some((value) => value.trim()) : Boolean(apiKey.trim());
-      if (!hasKey) return setSaveError("Paste a key before sharing these models.");
-    }
+    if (!provider && granting && credentialMode === "org" && !hasSharedKey()) return setSaveError("Paste a key before sharing these models.");
     if (credentialMode === "member") {
       if (!signInMethod) return setSaveError("People can't sign in to this provider with their own account.");
       if (signInMethod === "aws_sso") {
@@ -512,6 +559,13 @@ export function InferenceProviderEditorScreen({ inferenceProviderId, catalogProv
         ) : null}
       </section>
 
+      {testRequired && providerTest?.state === "done" ? (
+        <div data-testid="gateway-provider-test-result">
+          <DenNotice className="mt-3" tone={providerTest.result.ok ? "success" : "error"}
+            message={providerTest.result.ok ? `${displayName} answered a test prompt from ${models.find((model) => model.id === providerTest.result.model)?.name ?? providerTest.result.model}. You can add it now.` : providerTest.result.message} />
+        </div>
+      ) : null}
+
       <DenStickyActionBar summary={<span>{allowAllModels ? `All ${displayName} models` : `${modelIds.length} models`} · {access.allMembers ? "everyone" : `${access.teamIds.length + access.memberIds.length} teams or people`}{provider?.updatedAt ? ` · saved ${formatProviderTimestamp(provider.updatedAt)}` : ""}</span>}>
         {provider ? (
           <AlertDialog.Root open={confirmDelete && !reauthDialogOpen} onOpenChange={(open) => { if (saving) return; setConfirmDelete(open); if (open) setSaveError(null); }}>
@@ -532,7 +586,11 @@ export function InferenceProviderEditorScreen({ inferenceProviderId, catalogProv
         ) : (
           <Link href={getAiGatewayProvidersRoute(orgSlug)} className={buttonVariants({ variant: "secondary" })}>Cancel</Link>
         )}
-        <DenButton data-testid="gateway-provider-save" loading={saving} onClick={() => void save()}>{provider ? "Save changes" : `Add ${displayName}`}</DenButton>
+        {testRequired && !testPassed ? (
+          <DenButton data-testid="gateway-provider-test" loading={providerTest?.state === "running"} disabled={catalogBusy || saving} onClick={() => void testProvider()}>{`Test ${displayName}`}</DenButton>
+        ) : (
+          <DenButton data-testid="gateway-provider-save" loading={saving} onClick={() => void save()}>{provider ? "Save changes" : `Add ${displayName}`}</DenButton>
+        )}
       </DenStickyActionBar>
     </div>
   );

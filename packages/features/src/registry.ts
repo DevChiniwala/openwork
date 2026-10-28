@@ -139,6 +139,17 @@ export const FEATURES = defineFeatures({
     deployments: ["cloud"],
     default: false,
   },
+  gatewayProviderTest: {
+    label: "AI Gateway: test a provider before adding it",
+    description: "When adding an AI Gateway provider with a shared API key, admins test it first: AI Gateway sends one short prompt with their settings, and the provider can only be added once it answers.",
+    category: "models",
+    added: "2026-10-27",
+    since: "2026-10",
+    author: "OmarMcAdam",
+    docs: "docs/features/gateway-provider-test/README.md",
+    deployments: everywhere,
+    default: false,
+  },
   mermaidZoom: {
     label: "Desktop: zoom into diagrams",
     description: "Mermaid diagrams in chat and file previews can be zoomed, panned and opened full screen so large diagrams are readable.",

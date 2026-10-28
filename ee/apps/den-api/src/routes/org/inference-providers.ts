@@ -19,7 +19,10 @@ import { env } from "../../env.js"
 import { gatewayManagementUnavailable, gatewayManagementUnavailableSchema } from "../../gateway-deployment.js"
 import { ensureMemberGatewayKey } from "../../gateway-keys.js"
 import { gatewayMemberConnections } from "../../llm/gateway-member-connections.js"
-import { GatewayWriteError, reusableAwsCredential, enableGatewayGroupModels, gatewayCatalog, gatewayGrantSummary, gatewaySummary, refreshGatewayCatalog, resolveGatewayCatalog, trustedProviderCatalog, validateGatewaySettings, writeGatewayGrant, writeGatewayGroup, writeGatewayModels, writeGatewaySet, type GatewayMemberId, type GatewayProvider, type GatewaySet, type GatewayTx } from "../../llm/gateway-matrix.js"
+import { requestGatewayProviderTest } from "../../llm/gateway-provider-test.js"
+import { requireFeature } from "../../features.js"
+import { checkRateLimit } from "../../utils/rate-limit.js"
+import { GatewayWriteError, normalizeCredential, reusableAwsCredential, enableGatewayGroupModels, gatewayCatalog, gatewayGrantSummary, gatewaySummary, refreshGatewayCatalog, resolveGatewayCatalog, trustedProviderCatalog, validateGatewaySettings, writeGatewayGrant, writeGatewayGroup, writeGatewayModels, writeGatewaySet, type GatewayMemberId, type GatewayProvider, type GatewaySet, type GatewayTx } from "../../llm/gateway-matrix.js"
 import { buildProviderConfigSnapshot, gatewayConfigurationError, gatewayModelConfigurationError, isSupportedGatewayNpm, nonSecretProviderConfig, publicProviderSettings, readProviderConfigNpm, upstreamBaseUrlSettingError } from "../../llm/inference-provider-config.js"
 import { buildGoogleAuthorizeUrl, exchangeGoogleAuthorizationCode, googleOAuthClientBinding, googleOAuthNonce, readGoogleOAuthAttempt, revokeGoogleToken, verifyGoogleIdentity } from "../../llm/inference-provider-google-oauth.js"
 import { buildMicrosoftAuthorizeUrl, exchangeMicrosoftAuthorizationCode, microsoftOAuthNonce, verifyMicrosoftIdentity } from "../../llm/inference-provider-microsoft-oauth.js"
@@ -83,6 +86,10 @@ const patchSchema = z.object({ name: nameSchema.optional(), providerId: nameSche
     ctx.addIssue({ code: "custom", path: ["pinnedModelIds"], message: "Update pinned models separately from provider configuration." })
   }
 })
+// The gateway tests settings.upstreamBaseUrl only for an origin its operator allowlisted.
+const testConnectionSchema = z.object({ providerId: nameSchema, model: nameSchema, settings: settingsSchema.optional(), credential: credentialSchema.optional(), apiKeys: apiKeysSchema.optional(), reuseCredentialFrom: reuseCredentialFromSchema.optional() }).strict().superRefine(singleCredential)
+const testConnectionResultSchema = z.object({ ok: z.boolean(), model: z.string(), status: z.number().int().nullable(), code: z.string().nullable(), message: z.string().nullable() }).meta({ ref: "GatewayProviderTestResult" })
+const TEST_CONNECTION_WINDOW_MS = 10 * 60_000
 const oauthQuery = z.object({ credentialSetId: denTypeIdSchema("gatewayCredentialSet").optional(), redirectTo: z.string().trim().min(1).max(2048).optional() }).strict()
 function singleCredential(input: { credential?: unknown; apiKeys?: unknown; reuseCredentialFrom?: unknown; credentialMode?: unknown }, ctx: z.RefinementCtx) {
   if (input.credential !== undefined && input.apiKeys !== undefined) ctx.addIssue({ code: "custom", message: "Provide credential or apiKeys, not both." })
@@ -177,6 +184,17 @@ const managementWrite: MiddlewareHandler<{ Variables: OrgRouteVariables }> = asy
     providerAuditRequests.delete(c.req.raw)
     await recordProviderAttempt(db, capture, status)
   }
+}
+/** Testing an unsaved key: Manage Gateway providers, Gateway on, and a person (never the agent or an API key). */
+const testConnectionAccess: MiddlewareHandler<{ Variables: OrgRouteVariables }> = async (c, next) => {
+  const permission = await requirePermission(c, MANAGE)
+  if (!permission.ok) return c.json(permission.response, orgAccessFailureStatus(permission.response), permissionFailureHeaders(permission.response))
+  const unavailable = gatewayManagementUnavailable()
+  if (unavailable) return c.json(unavailable, 403)
+  if (c.get("session")?.id === "mcp_internal" || c.get("apiKey")) {
+    return c.json({ error: "secure_entry_required", message: "Do not send keys through the agent or an API key. A person tests the key in a private field in OpenWork." }, 400)
+  }
+  await next()
 }
 /** The one organization set still waiting for its key, when a person can add it in chat. */
 async function pendingKeyPrompt(provider: GatewayProvider, setId: string | null) {
@@ -535,6 +553,35 @@ export function registerOrgInferenceProviderRoutes<T extends { Variables: OrgRou
       const apiKeys = Object.fromEntries(readProviderEnvNames(summary.providerConfig).map((name) => [name, apiKey]))
       const response: GatewayProviderConnectResponse = { inferenceProvider: { ...summary, apiKey, apiKeys } }
       return c.json(response)
+    } catch (error) { return respond(c, error) }
+  })
+
+  app.post("/v1/inference-providers/test-connection", route("Test an inference gateway provider before adding it", "Sends one short test prompt through AI Gateway to the trusted catalog provider with an unsaved organization credential (credential, apiKeys, or reuseCredentialFrom for Amazon Bedrock), the destination settings and one catalog model. Nothing is stored and no usage is recorded. ok=false carries a message for the admin that never contains the key. May consume a few tokens on the provider account. Requires the gatewayProviderTest feature, the Manage Gateway providers permission and enabled Gateway management; a person must send it, never the agent or an API key. Limited to 20 tests per member and 60 per organization every ten minutes.", testConnectionResultSchema, 200, true, { responses: { 429: jsonResponse("Too many tests. Try again later.", z.object({ error: z.literal("rate_limited"), retryAfterSeconds: z.number() })) } }), orgMemberRoute(), requireFeature("gatewayProviderTest"), testConnectionAccess, jsonValidator(testConnectionSchema), async (c) => {
+    try {
+      c.header("Cache-Control", "no-store")
+      const actor = c.get("organizationContext")
+      const input = c.req.valid("json")
+      for (const [key, limit] of [[`gateway-provider-test:member:${actor.currentMember.id}`, 20], [`gateway-provider-test:org:${actor.organization.id}`, 60]] as const) {
+        const retryAfterSeconds = await checkRateLimit(key, limit, TEST_CONNECTION_WINDOW_MS, Date.now())
+        if (retryAfterSeconds !== null) {
+          c.header("Retry-After", String(retryAfterSeconds))
+          return c.json({ error: "rate_limited" as const, retryAfterSeconds }, 429)
+        }
+      }
+      const catalog = await gatewayCatalog(input.providerId, [input.model])
+      const settings = Object.fromEntries(Object.entries(input.settings ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0))
+      validateGatewaySettings(catalog.config, settings)
+      await liveMember(db, actor, false)
+      const now = new Date()
+      // Never inserted: the shape credential checks and Bedrock key reuse read.
+      const draft: GatewayProvider = { id: createDenTypeId("inferenceProvider"), organization_id: actor.organization.id, created_by_org_membership_id: actor.currentMember.id, provider_id: catalog.catalog.id, name: catalog.catalog.name, model_ids: [input.model], pinned_model_ids: [], provider_config: catalog.config, settings, credential_mode: "org", oauth_client_id: null, oauth_client_secret: null, status: "active", created_at: now, updated_at: now }
+      const reuseFrom = input.reuseCredentialFrom
+      const credential = reuseFrom === undefined
+        ? normalizeCredential({ credential: input.credential, apiKeys: input.apiKeys }, draft)
+        : await db.transaction((tx) => reusableAwsCredential(tx, draft, reuseFrom))
+      if (!credential) throw new GatewayWriteError(400, "credential_required", "Paste a key to test.")
+      const gatewayKey = await ensureMemberGatewayKey({ organizationId: actor.organization.id, memberId: actor.currentMember.id })
+      return c.json(await requestGatewayProviderTest({ providerId: draft.provider_id, model: input.model, settings, credential }, { baseUrl: env.gatewayProxyBaseUrl ?? env.gatewayPublicBaseUrl, key: gatewayKey }))
     } catch (error) { return respond(c, error) }
   })
 
