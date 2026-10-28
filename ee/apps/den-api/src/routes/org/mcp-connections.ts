@@ -36,6 +36,7 @@ import { env } from "../../env.js"
 import { recordWorkbotConnection } from "../../workbot/telemetry.js"
 import { connectionRemovalLink, memberSignInLink } from "../../agent-links.js"
 import { appLogger } from "../../observability/logger.js"
+import { organizationFeatureEnabled } from "../../features.js"
 import {
   jsonValidator,
   orgMemberRoute,
@@ -107,9 +108,9 @@ import {
 } from "../../capability-sources/external-mcp-oauth-contract.js"
 import type { MemberTeamSummary } from "../../orgs.js"
 import {
-  EXTERNAL_MCP_PRESETS,
   externalMcpPresetListResponseSchema,
   externalMcpPresetResponseSchema,
+  externalMcpPresetsForCatalog,
 } from "../../capability-sources/external-mcp-presets.js"
 import {
   MAX_RESOLVE_QUERY_LENGTH,
@@ -2606,7 +2607,9 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
     }),
     orgMemberRoute(),
     async (c) => {
-      return c.json({ presets: EXTERNAL_MCP_PRESETS })
+      const org = c.get("organizationContext")
+      const expanded = org ? await organizationFeatureEnabled(org.organization.id, "expandedMcpPresets", { userId: org.currentMember.userId }) : false
+      return c.json({ presets: externalMcpPresetsForCatalog({ expanded }) })
     },
   )
 
@@ -2628,12 +2631,16 @@ export function registerMcpConnectionRoutes<T extends { Variables: OrgRouteVaria
     async (c) => {
       const { query } = c.req.valid("json")
 
+      const org = c.get("organizationContext")
+      const expanded = org ? await organizationFeatureEnabled(org.organization.id, "expandedMcpPresets", { userId: org.currentMember.userId }) : false
+      const presets = externalMcpPresetsForCatalog({ expanded })
+
       const classification = classifyResolveQuery(query)
       if (classification.kind === "invalid") {
         return c.json({ resolution: "not_found" as const, attempted: [], reason: classification.reason })
       }
 
-      const preset = matchPresetForQuery(query, EXTERNAL_MCP_PRESETS)
+      const preset = matchPresetForQuery(query, presets)
       const candidates = preset ? [preset.url] : resolveCandidateUrls(classification)
       const guessed = !preset && classification.kind === "name"
       const probes = await Promise.all(candidates.map(async (candidateUrl) => {
