@@ -65,6 +65,7 @@ import {
 } from "@openwork-ee/den-db/organization-features"
 import { adminFeatureChangeSchema, serializeFeatureChange } from "./feature-changes.js"
 import { registerAdminMemberFeatureRoutes } from "./member-features.js"
+import { registerAdminFeatureUsageRoutes } from "./feature-usage.js"
 import { updateFeatureRollout, updateOrganizationFeatureOverrides } from "../../features.js"
 import {
   FEATURE_CATEGORIES,
@@ -1435,6 +1436,7 @@ export function registerAdminRoutes<T extends { Variables: AuthContextVariables 
   registerAdminFreeAutoConversionsRoutes(app)
   registerAdminSecurityRoutes(app)
   registerAdminMemberFeatureRoutes(app)
+  registerAdminFeatureUsageRoutes(app)
   registerAdminOrganizationDetailRoutes(app)
   registerAdminDashboardRoute(app)
   registerAdminOpportunitiesRoute(app)
