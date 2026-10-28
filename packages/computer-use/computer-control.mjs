@@ -244,13 +244,17 @@ export function createComputerControl({ adapters, runProgram, runScript, onTimin
   async function approveFiles(grant, files, signal) {
     // The card lists every file exactly; anything it could not show is never approved.
     if (files.names.length > 20 || files.names.some((name) => typeof name !== "string" || !name || name.length > 1024)) return "too_many";
-    if (grant.filesAlways) return "always";
+    const app = String(files.app).slice(0, 200);
+    // "Always" covers only the recipient it was given for, and only handing over files.
+    if (files.names.length && grant.filesAlwaysFor?.has(app)) return "always";
     if (scriptRequests.has(grant.sessionId)) return "busy";
     const target = targetFor(grant);
     const names = [...files.names];
     const answer = await approve(grant, { id: randomUUID(), reason: /** @type {const} */ ("files"), computer: target.label, placement: target.placement,
-      files: { app: String(files.app).slice(0, 200), names } }, signal);
-    if (answer === "always") grant.filesAlways = true;
+      files: { app, names } }, signal);
+    // Allowing a panel to be browsed lists no files, so it never becomes a standing approval.
+    if (answer === "always" && !names.length) return "allow";
+    if (answer === "always") (grant.filesAlwaysFor ??= new Set()).add(app);
     return answer;
   }
   /** One in-chat approval at a time per chat; answered through answerRequest. */

@@ -138,7 +138,7 @@ function FilesRequest({ sessionId, request, files }: { sessionId: string; reques
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="ghost" size="sm" disabled={busy !== null} aria-busy={busy === "dismiss"} data-testid="session-computer-files-dismiss" onClick={() => void answer("dismiss")}>{count ? "Don't give" : "Don't allow"}</Button>
-          <Button type="button" variant="outline" size="sm" disabled={busy !== null} aria-busy={busy === "always"} data-testid="session-computer-files-always" onClick={() => void answer("always")}>Always allow in this chat</Button>
+          {count ? <Button type="button" variant="outline" size="sm" disabled={busy !== null} aria-busy={busy === "always"} data-testid="session-computer-files-always" onClick={() => void answer("always")}>Always give files to {files.app} in this chat</Button> : null}
           <Button type="button" size="sm" disabled={busy !== null} aria-busy={busy === "allow"} data-testid="session-computer-files-allow" onClick={() => void answer("allow")}>{count ? `Give ${count === 1 ? "file" : "files"}` : "Allow"}</Button>
         </div>
       </div>

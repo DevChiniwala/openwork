@@ -904,6 +904,9 @@ final class SessionRuntime {
             session?.parents.removeLast()
             session?.app = parent.app; session?.target = parent.target
             session?.dialogKind = parent.kind
+            // A closed panel's approval ends with it; a later panel asks again. Closing
+            // the panel's own sheet returns to the same, still-approved panel.
+            if session?.filePanelAllowed == scope.target.id { session?.filePanelAllowed = nil }
             session?.returnedFromDialog = true
             changed = true
         }
