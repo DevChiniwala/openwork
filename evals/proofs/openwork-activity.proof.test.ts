@@ -119,7 +119,7 @@ test("a member reads everything their agent did with OpenWork and their files as
 
   await step("the earlier chat the agent searched is untouched and the new group is in the sidebar", async () => {
     await user.see({ text: EARLIER_CHAT });
-    const groups = (await probe.dom("aside, nav")).elements.map((element) => element.text).join(" | ");
+    const groups = (await probe.dom(`[data-sidebar-workspace-id="${world.workspace.workspaceId}"]`)).elements.map((element) => element.text).join(" | ");
     const ok = groups.includes(GROUP_LABEL) && groups.includes(EARLIER_CHAT);
     evidence.recordAssertionEvidence("The real sidebar shows the group the agent created and the chat it searched", `sidebar: ${groups.slice(0, 200)}`, ok);
     expect(ok).toBe(true);
