@@ -108,6 +108,8 @@ import { CodeModeTool, isSilentCodeModePart } from "@/components/chat/code-mode-
 import { CreatedSkillCard, CreatedSkillsContext, useCreatedSkills, type CreatedSkillsContextValue } from "@/components/chat/created-skill-card"
 import { readCreatedSkillAccess } from "@/components/chat/created-skill-access"
 import { collectCreatedSkills, type ConfirmedSkillAccess, type CreatedSkillsModel } from "@/lib/created-skill"
+import { openWorkNativeFailure } from "@/lib/openwork-native-activity"
+import { LaneChevron, RailMeta } from "@/components/chat/activity-rail"
 import { ConnectionCard } from "@/components/chat/connection-card"
 import { CredentialPromptCard } from "@/components/chat/credential-prompt-card"
 import { credentialPromptCall } from "@/components/chat/credential-prompt"
@@ -431,13 +433,36 @@ const ToolMessageInner = ({ part }: ToolMessageProps) => {
 
 const isEmptyMessage = (message: UIMessage): boolean => message.parts.length === 0
 
+/** A finished read of what OpenWork offers did no work the person asked for (T2). */
+function isSilentAppLookup(part: DynamicToolUIPart): boolean {
+  return part.toolName === "openwork_context" && part.state === "output-available"
+}
+
+/**
+ * A finished turn folds only when nothing in it needs the person: a failed
+ * step stays inline with its fix (T2), and a key, connection or question the
+ * agent is waiting on is never hidden behind "Worked for…".
+ */
+function stepsNeedAttention(items: UIMessageWithIndex[], connectionCards: ReadonlySet<string>): boolean {
+  return items.some(({ message }) => message.role === "assistant" && !isSessionErrorMessage(message) && message.parts.some((part) => {
+    if (!isToolUIPart(part)) return false
+    if (part.state === "output-error") return true
+    if (part.type === "dynamic-tool") {
+      if (connectionCards.has(part.toolCallId) || credentialPromptCall(part)) return true
+      if (openWorkNativeFailure(part)) return true
+      if ((codeModeToolCalls(part) ?? []).some((call) => call.state === "output-error" || openWorkNativeFailure(call))) return true
+    }
+    return isQuestionToolPart(part) && isToolPartInFlight(part)
+  }))
+}
+
 function withoutSilentSteps(messages: UIMessage[], remoteThreads: boolean): UIMessage[] {
   let changed = false
   const next = messages.flatMap((message) => {
     if (message.role !== "assistant") return [message]
     // With tasks on other computers shown live, the agent's own checks on them are plumbing.
     const parts = message.parts.filter((part) => !(part.type === "dynamic-tool"
-      && (isSilentCodeModePart(part) || remoteThreads && isRemoteThreadStatusCheck(part))))
+      && (isSilentCodeModePart(part) || isSilentAppLookup(part) || remoteThreads && isRemoteThreadStatusCheck(part))))
     if (parts.length === message.parts.length) return [message]
     changed = true
     return parts.length > 0 ? [{ ...message, parts }] : []
@@ -1422,16 +1447,9 @@ function CompletedStepRun({ label, count, modelLabel, children }: { label: strin
           data-testid="completed-work-rail"
         >
           {/* The chevron sits in the rail's 20px leading lane, so step labels line up below it. */}
-          <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
-            <ChevronRight
-              className={cn(
-                "size-3 text-muted-foreground/70 transition-transform duration-150 ease-out motion-reduce:transition-none",
-                open && "rotate-90"
-              )}
-            />
-          </span>
+          <LaneChevron open={open} />
           <span>{label}</span>
-          {count ? <span className="text-[11px] text-muted-foreground/80">{count}</span> : null}
+          {count ? <RailMeta>{count}</RailMeta> : null}
           {modelLabel ? <span data-testid="reply-model"> · {modelLabel}</span> : null}
         </CollapsibleTrigger>
       </div>
@@ -1642,6 +1660,7 @@ function MessageGroup({
   // A short finished run reads fine as a list, so only long ones fold away.
   const collapseSteps =
     !isLiveGroup && stepItems.length > 0 && stepRowCount >= COLLAPSED_STEP_RUN_MIN_ROWS
+    && !stepsNeedAttention(stepItems, connectionCardParts)
   // A task on another computer outlives the turn that started it and may still
   // need the person, so its row stays in view below a folded run.
   const pinnedRemoteThreads = collapseSteps ? remoteThreadStarts : []

@@ -30,6 +30,8 @@ test("a member sees the skill their agent created as one quiet result they can o
   await step("after: the finished turn folds to one quiet line and the same skill stays as its result", async () => {
     await user.see({ text: CREATE_REPLY }, { timeoutMs: 60_000 });
     await user.see({ text: "Shared with Sam Taylor" }, { timeoutMs: 30_000 });
+    // The reply streams before the run ends; the steps fold only once it has.
+    await user.see({ testId: "completed-work-rail" }, { timeoutMs: 60_000 });
     await user.notSee({ text: "Created the Update CRM skill" }, { timeoutMs: 5_000 });
     const rail = (await probe.dom('[data-testid="completed-work-rail"]')).elements.map((element) => element.text);
     const found = await cards();
@@ -62,10 +64,13 @@ test("a member sees the skill their agent created as one quiet result they can o
     const ok = blocked === 0 && found.length === 1 && found[0]?.text.includes("Shared with Sam Taylor") === true && !found[0]?.text.includes("everyone");
     evidence.recordAssertionEvidence("Blocked is not red; saving the same skill again updates its one card instead of adding another", `red text in the blocked row: ${blocked}; cards: ${found.map((card) => `"${card.text}"`).join(", ")}`, ok);
     expect(ok).toBe(true);
-    // The short turn folds as soon as it ends; open it again to show the blocked step beside its card.
+    // A turn with a step that did not happen stays open, so the block stays beside its reason (T2).
     await user.see({ text: BLOCKED_REPLY }, { timeoutMs: 60_000 });
-    await user.click({ testId: "completed-work-rail", nth: 1 });
+    await user.see("Run task", { timeoutMs: 30_000 });
     await user.see({ text: "Sharing is blocked by your organization" });
+    const folds = (await probe.dom('[data-testid="completed-work-rail"]')).elements.length;
+    evidence.recordAssertionEvidence("Only the clean turn folded; the blocked turn stays open", `folded turns: ${folds}`, folds === 1);
+    expect(folds).toBe(1);
     await user.screenshot();
   });
 

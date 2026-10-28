@@ -20,7 +20,9 @@ import {
   skillShareRequest,
   skillShareSentence,
 } from "@/lib/created-skill"
+import { OPENWORK_NATIVE_TOOL, openWorkNativeFailure, openWorkNativeSentence } from "@/lib/openwork-native-activity"
 import { resolveExtensionIconSrc } from "@/react-app/design-system/extension-icon-src"
+import { LeadingLane, RAIL_LINE, RAIL_ROW, RailDuration } from "./activity-rail"
 import { trackToolCallDuration } from "@/lib/tool-call-duration"
 import { isToolPartInFlight } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
@@ -50,11 +52,6 @@ const OPENWORK_IDENTITY: ConnectorToolIdentity = {
   serviceUrl: null,
   toolNamespace: null,
   connectionId: null,
-}
-
-/** The fixed 20px leading lane every step shares, so labels align down the rail. */
-function LeadingLane({ children }: { children?: React.ReactNode }) {
-  return <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">{children}</span>
 }
 
 function ConnectorMark({ connector }: { connector: ConnectorToolIdentity }) {
@@ -193,17 +190,6 @@ export function DetailsToggle({ open, onToggle, label, alwaysVisible = false }: 
 }
 
 /**
- * Rows sit in containers that space every part 8px apart; pulling each row
- * 4px in keeps consecutive steps on the rail's 26px rhythm.
- */
-const RAIL_ROW = "group/step -my-1 min-w-0"
-
-/** Duration in its own trailing lane, aligned down the rail. */
-function Duration({ value }: { value: string | null }) {
-  return value ? <span className="ms-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/80">{value}</span> : null
-}
-
-/**
  * Capability calls stay sentence-first on one flat rail: a fixed leading lane
  * for the connector's brand mark (or the running spinner), the sentence, the
  * duration in a trailing lane, and the raw call behind the details icon.
@@ -211,6 +197,19 @@ function Duration({ value }: { value: string | null }) {
  * policy block is neutral with a lock (C5). IDs, schema digests and payloads
  * never show in the row.
  */
+/**
+ * OpenWork's own tools (app context, chats and groups, Cloud discovery and
+ * API capabilities) carry the OpenWork mark. A capability that reaches
+ * another service ("mcp:", "native:", "plugin:") is that service's, never ours.
+ */
+function isOpenWorkActivity(part: DynamicToolUIPart): boolean {
+  if (OPENWORK_NATIVE_TOOL.test(part.toolName)) return true
+  if (!/^(?:openwork|openwork-cloud)_/.test(part.toolName)) return false
+  const input = part.input
+  const name = typeof input === "object" && input !== null && "name" in input && typeof input.name === "string" ? input.name : ""
+  return !/^(?:mcp|native|plugin):/.test(name)
+}
+
 export function CapabilityCallLine({
   part,
   className,
@@ -243,10 +242,13 @@ export function CapabilityCallLine({
   const shareRequest = skillShareRequest(part)
   const skillSentence = savedSkillSentence(part)
     ?? (shareRequest ? skillShareSentence(shareLabels.get(part.toolCallId) ?? null) : null)
-  const mark = connector ?? (isOpenWorkSkillCall(part) ? OPENWORK_IDENTITY : null)
+  const mark = connector ?? (isOpenWorkSkillCall(part) || isOpenWorkActivity(part) ? OPENWORK_IDENTITY : null)
+  const nativeSentence = openWorkNativeSentence(part)
   const sentenceFor = (includeQuery: boolean): CapabilityCallSentence => skillSentence
     ? { service: null, ...skillSentence }
-    : getCapabilityCallSentence(part, { includeQuery, connectionName: connector?.name })
+    : nativeSentence ?? getCapabilityCallSentence(part, { includeQuery, connectionName: connector?.name })
+  // OpenWork's own commands report a refusal in their result; that is a failure, not a success.
+  const reportedFailure = openWorkNativeFailure(part)
 
   // A share whose answer never arrived: sharing is unverified, not done.
   if (shareRequest && isToolPartInFlight(part) && (statusUnknown || syncDegraded)) {
@@ -267,7 +269,7 @@ export function CapabilityCallLine({
     const label = "Sharing is blocked by your organization"
     return (
       <div data-capability-call={part.toolName} data-skill-share="blocked" className={cn(RAIL_ROW, className)}>
-        <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm text-muted-foreground">
+        <div className={RAIL_LINE}>
           <LeadingLane>{mark ? <ConnectorMark connector={mark} /> : null}</LeadingLane>
           <span className="min-w-0 flex-1 truncate">{label}</span>
           <Lock aria-label="Blocked by your organization" className="size-3.5 shrink-0" strokeWidth={1.5} />
@@ -286,10 +288,10 @@ export function CapabilityCallLine({
     const label = sentence.failure ?? `${sentence.past} failed`
     return (
       <div data-capability-call={part.toolName} className={cn(RAIL_ROW, className)}>
-        <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm text-muted-foreground">
+        <div className={RAIL_LINE}>
           <LeadingLane>{mark ? <ConnectorMark connector={mark} /> : null}</LeadingLane>
           <span className="min-w-0 flex-1 truncate">{label}</span>
-          <Duration value={duration} />
+          <RailDuration value={duration} />
           <DetailsToggle open={open} onToggle={() => setOpen(!open)} label={label} alwaysVisible />
         </div>
         {open ? <TechnicalDetailsPanel part={part} /> : null}
@@ -301,18 +303,19 @@ export function CapabilityCallLine({
   // fix on its own line with Reconnect when that is the fix, and the raw
   // call behind the details icon (always visible on a failure). Reconnecting
   // never repeats the call; the person or agent decides that afterwards.
-  if (isFailed) {
+  if (isFailed || reportedFailure) {
     const sentence = sentenceFor(false)
     const failureLabel = sentence.failure ?? `${sentence.past} failed`
     const reason = reconnectState === "connected"
       ? "Connection restored. Check whether the action finished before retrying."
-      : reconnectAction ? failureInstruction(part, reconnectAction.connectionName) : shortError(part.errorText)
+      : reconnectAction ? failureInstruction(part, reconnectAction.connectionName)
+        : shortError(part.state === "output-error" ? part.errorText : reportedFailure ?? undefined)
     return (
       <div data-capability-call={part.toolName} className={cn(RAIL_ROW, className)}>
         <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm">
           <LeadingLane>{mark ? <ConnectorMark connector={mark} /> : null}</LeadingLane>
           <span className="min-w-0 flex-1 truncate text-destructive">{failureLabel}</span>
-          <Duration value={duration} />
+          <RailDuration value={duration} />
           <DetailsToggle open={open} onToggle={() => setOpen(!open)} label={failureLabel} alwaysVisible />
         </div>
         {reason || (reconnectAction && onReconnect) ? (
@@ -357,7 +360,7 @@ export function CapabilityCallLine({
   const line = withoutService(statusUnknown ? `${sentence.present}, status unavailable` : inFlight ? sentence.present : sentence.past)
   return (
     <div data-capability-call={part.toolName} className={cn(RAIL_ROW, className)}>
-      <div className="flex min-h-6.5 min-w-0 items-center gap-2 text-sm text-muted-foreground">
+      <div className={RAIL_LINE}>
         <LeadingLane>
           {mark ? (
             <ConnectorMark connector={mark} />
@@ -368,7 +371,7 @@ export function CapabilityCallLine({
         </LeadingLane>
         <span className={cn("min-w-0 flex-1 truncate", shimmer && inFlight && "ow-text-shimmer motion-reduce:animate-none")}>{line}</span>
         {repeat > 1 ? <span className="shrink-0 text-xs text-muted-foreground">{repeat} times</span> : null}
-        <Duration value={duration} />
+        <RailDuration value={duration} />
         <DetailsToggle open={open} onToggle={() => setOpen(!open)} label={line} />
       </div>
       {open ? <TechnicalDetailsPanel part={part} /> : null}

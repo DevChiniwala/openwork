@@ -19,18 +19,11 @@ function script(call: string) {
 }
 
 /**
- * A signed-in member whose agent saves a skill in OpenWork Cloud and shares
- * it with a teammate. The skill, the teammate and the grant are real Den
- * records; the agent's OpenWork tools answer with exactly what Den returned
- * for them, so the chat, the card and Library describe the same object.
- * Engine v2 with Code Mode, as the product ships.
+ * A real skill, teammate and grant in Den, and the exact responses Den gave,
+ * so a mock OpenWork tool can answer with them and the chat, the card and
+ * Library describe the same object.
  */
-export async function createdSkillResultWorld(seed: Seed) {
-  const engine = "v2";
-  const { den, webPort } = await denForAppWeb(seed, {
-    org: { name: "Sales studio", admin: { name: "Alex Lee" }, members: { sam: { name: "Sam Taylor" } } },
-  });
-
+export async function seedSharedSkill(seed: Seed, den: Awaited<ReturnType<typeof denForAppWeb>>["den"]) {
   const directory = await seed.api(den.admin, "/v1/org");
   if (!directory.response.ok) throw new Error(`Reading the organization failed: ${directory.text}`);
   const sam = (isRecord(directory.body) ? records(directory.body.members) : [])
@@ -54,6 +47,26 @@ export async function createdSkillResultWorld(seed: Seed) {
   if (!grant.response.ok) throw new Error(`Sharing the skill failed: ${grant.text}`);
 
   const saved = { schemaVersion: "1", name: SKILL_NAME, pluginId, skillId, description: "Add a new client and their deal to the CRM.", libraryUrl: null };
+  return { directory: directory.body, grant: grant.body, samId, pluginId, skillId, saved, skillMarkdown: SKILL_MARKDOWN };
+}
+
+/** The org every skill world uses: fictional people only. */
+export const SKILL_ORG = { name: "Sales studio", admin: { name: "Alex Lee" }, members: { sam: { name: "Sam Taylor" } } };
+
+/**
+ * A signed-in member whose agent saves a skill in OpenWork Cloud and shares
+ * it with a teammate. The skill, the teammate and the grant are real Den
+ * records; the agent's OpenWork tools answer with exactly what Den returned
+ * for them, so the chat, the card and Library describe the same object.
+ * Engine v2 with Code Mode, as the product ships.
+ */
+export async function createdSkillResultWorld(seed: Seed) {
+  const engine = "v2";
+  const { den, webPort } = await denForAppWeb(seed, {
+    org: SKILL_ORG,
+  });
+
+  const { directory, grant, samId, pluginId, skillId, saved } = await seedSharedSkill(seed, den);
   const text = (value: unknown) => [{ type: "text" as const, text: JSON.stringify(value) }];
   const providerId = "created-skill-proof";
   const modelId = "skill-agent";
@@ -65,13 +78,13 @@ export async function createdSkillResultWorld(seed: Seed) {
     // Native API capabilities answer with the route's JSON as text, as Den's execute_capability does.
     { name: "execute_capability", description: "Run an OpenWork capability.", whenArguments: { name: "getOrg" },
       inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
-      result: { content: text(directory.body) } },
+      result: { content: text(directory) } },
     { name: "execute_capability", description: "Run an OpenWork capability.", whenArguments: { name: "postPluginsAccess", body: { orgWide: true } },
       inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
       result: { isError: true, content: text({ error: "forbidden", message: "Only organization admins can share with everyone." }) } },
     { name: "execute_capability", description: "Run an OpenWork capability.", whenArguments: { name: "postPluginsAccess" }, delayMs: SHARE_DELAY_MS,
       inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
-      result: { content: text(grant.body) } },
+      result: { content: text(grant) } },
   ], agentWorkloads: [
     { promptMarker: CREATE_PROMPT, latestUserTurn: true, finalReply: CREATE_REPLY, steps: [
       createStep,
