@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Seed } from "@openwork/env";
 import { configureProvider } from "./chat.ts";
@@ -32,8 +32,10 @@ export async function openworkActivityWorld(seed: Seed) {
   const { den, webPort } = await denForAppWeb(seed, { org: SKILL_ORG });
   const { directory, saved, skillMarkdown, pluginId, skillId } = await seedSharedSkill(seed, den);
 
-  const workspacePath = seed.tmpPath("openwork-activity");
-  await mkdir(join(workspacePath, "notes"), { recursive: true });
+  const tmp = seed.tmpPath("openwork-activity");
+  await mkdir(join(tmp, "notes"), { recursive: true });
+  // The engine reads the workspace at its real path; a symlinked temp path is "not found".
+  const workspacePath = await realpath(tmp);
   await writeFile(join(workspacePath, "notes", "brief.md"), "# Client brief\n\nIntroduce the new pricing.\n");
 
   const text = (value: unknown) => [{ type: "text" as const, text: JSON.stringify(value) }];
