@@ -124,7 +124,8 @@ extension MacAccessibility {
             guard depth < 12, let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] else { continue }
             pending += children.map { ($0, depth + 1) }
         }
-        return Array(NSOrderedSet(array: names).compactMap { $0 as? String }.prefix(DialogRules.maxApprovedFiles + 1))
+        // Never merged: two selected files with one name are two files the person must see.
+        return Array(names.prefix(DialogRules.maxApprovedFiles + 1))
     }
 
     private func rowName(_ row: AXUIElement) -> String? {

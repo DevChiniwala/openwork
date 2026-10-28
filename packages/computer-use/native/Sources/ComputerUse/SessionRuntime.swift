@@ -153,7 +153,7 @@ final class SessionRuntime {
         case "computer_observe":
             let options = try ObservationOptions(values, policy: policy)
             return try await observe(try a.string("session_id"), image: options.image, elements: options.elements,
-                filePanelAccess: policy == .embedded && (values["file_panel_access"] as? Bool) == true)
+                filePanelAccess: policy == .embedded ? (values["file_panel_access"] as? NSNumber)?.uint32Value : nil)
         case "computer_act":
             try a.only(policy == .embedded ? ["session_id", "observation_id", "request_id", "action", "actions", "intent", "file_approval", "file_panel_access"] : ["session_id", "observation_id", "request_id", "action"])
             let id = try a.string("session_id")
@@ -166,7 +166,8 @@ final class SessionRuntime {
             // Set only by the trusted host: the exact names the person approved handing over,
             // and whether they let the agent look through a file panel at all.
             let fileApproval = policy == .embedded ? values["file_approval"] as? [String] : nil
-            let panelAccess = policy == .embedded && (values["file_panel_access"] as? Bool) == true
+            // The panel the person allowed, by its window: never whichever panel is open now.
+            let panelAccess = policy == .embedded ? (values["file_panel_access"] as? NSNumber)?.uint32Value : nil
             return try await act(id: id, observationID: observationID, requestID: requestID, actions: actions, raw: raw, intent: intent,
                 fileApproval: fileApproval, filePanelAccess: panelAccess)
         case "computer_zoom" where policy == .embedded:
@@ -321,16 +322,16 @@ final class SessionRuntime {
     }
     /// A file panel lists the person's files: nothing of it reaches the agent until they allow it.
     private func filePanelAccessRequired(_ current: Session) -> [[String: Any]] {
-        text(["ok": false, "code": "file_panel_approval_required", "app": current.frontApp.name, "dispatched": false, "next": "observe",
+        text(["ok": false, "code": "file_panel_approval_required", "app": current.frontApp.name, "panel_id": Int(current.target.id), "dispatched": false, "next": "observe",
               "message": "A file panel opened. The person is asked before the agent sees their files; nothing was read."])
     }
-    private func observe(_ id: String, image: Bool?, elements: String, filePanelAccess: Bool = false) async throws -> [[String: Any]] {
+    private func observe(_ id: String, image: Bool?, elements: String, filePanelAccess: CGWindowID? = nil) async throws -> [[String: Any]] {
         // A paused session never resumes from an observation: only the person's Continue does.
         // Retry only read-only capture races. Never repeat an action or cross takeover.
         try await followDialog(id)
         let current = try current(id)
         if current.dialogKind == .filePanel, current.filePanelAllowed != current.target.id {
-            guard filePanelAccess else { return filePanelAccessRequired(current) }
+            guard filePanelAccess == current.target.id else { return filePanelAccessRequired(current) }
             // Allowed for this panel until it closes; another panel asks again.
             session?.filePanelAllowed = current.target.id
         }
@@ -506,7 +507,7 @@ final class SessionRuntime {
     }
 
     private func act(id: String, observationID: String, requestID: String, actions: [Action], raw: Any, intent: String? = nil,
-                     fileApproval: [String]? = nil, filePanelAccess: Bool = false) async throws -> [[String: Any]] {
+                     fileApproval: [String]? = nil, filePanelAccess: CGWindowID? = nil) async throws -> [[String: Any]] {
         let cached = try current(id, allowPaused: true)
         let fingerprint = try JSONSerialization.data(withJSONObject: ["observation_id": observationID, "action": raw], options: [.sortedKeys])
         if let receipt = cached.receipts[requestID] {
@@ -519,7 +520,7 @@ final class SessionRuntime {
         }
         let current = try current(id)
         if current.dialogKind == .filePanel, current.filePanelAllowed != current.target.id {
-            guard filePanelAccess else { return filePanelAccessRequired(current) }
+            guard filePanelAccess == current.target.id else { return filePanelAccessRequired(current) }
             // Allowed for this panel until it closes; another panel asks again.
             session?.filePanelAllowed = current.target.id
         }
@@ -580,7 +581,8 @@ final class SessionRuntime {
                 throw UseError("too_many_files", "Choose at most \(DialogRules.maxApprovedFiles) files at a time. Nothing was sent.", next: "observe")
             }
             // Exactly the files the person approved, read again right before the press.
-            guard let fileApproval, Set(fileApproval) == Set(names) else {
+            // Every selected name, duplicates and order included: same-named files are each counted.
+            guard let fileApproval, fileApproval == names else {
                 return text(["ok": false, "code": "files_approval_required", "files": names,
                     "app": current.frontApp.name, "dispatched": false, "next": "observe",
                     "message": "Choosing files hands them to the app. The person is asked first; nothing was sent."])
