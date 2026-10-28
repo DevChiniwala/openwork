@@ -52,7 +52,7 @@ import {
   getPermissionsRoute,
   getLibraryMyAgentRoute,
 } from "../../_lib/den-org";
-import { myAgentAvailable } from "./my-agent-screen";
+import { myAgentAvailable } from "./my-agent-availability";
 import { useOrgListWindow } from "../../_lib/use-org-list-window";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { buildDenFeedbackUrl } from "../../_lib/feedback";

@@ -1,20 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { getLibraryConnectorRoute, getLibraryMyAgentRoute, getLibraryRoute, orgFeatureEnabled, type DenOrgContext } from "../../_lib/den-org";
+import { getLibraryConnectorRoute, getLibraryMyAgentRoute, getLibraryRoute } from "../../_lib/den-org";
 import { useOrgDashboard } from "../_providers/org-dashboard-provider";
 import { ItemHeader, ItemPage } from "./item-header";
 import { useLibrary, type LibraryConnectionItem, type LibraryItem } from "./library-data";
 import { MyAgentPanel, MyAgentPanelSkeleton, MyAgentRow, MyAgentRowError, MyAgentRowSkeleton, type MyAgentLinks } from "./my-agent";
 import { useMyAgent, useMyAgentChecks, useSaveMyAgent } from "./my-agent-data";
 import { fromMyAgent, myAgentGoogleHref } from "./my-agent-connector-navigation";
-
-/** My agent shows where Your agent runs (Workbot on this deployment) and both rollouts are on for the member. */
-export function myAgentAvailable(orgContext: DenOrgContext | null | undefined): boolean {
-  return orgContext?.capabilities.workbot === true
-    && orgFeatureEnabled(orgContext, "workbotProactive")
-    && orgFeatureEnabled(orgContext, "workbotAgentLibrary");
-}
+import { myAgentAvailable } from "./my-agent-availability"
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;

@@ -19,7 +19,7 @@ import {
   getOrgAccessFlags,
   getPluginRoute,
 } from "../../../_lib/den-org";
-import { myAgentAvailable } from "../my-agent-screen";
+import { myAgentAvailable } from "../my-agent-availability";
 import { useDenFlow } from "../../../_providers/den-flow-provider";
 import {
   buildDashboardNavSections,
